@@ -15,9 +15,9 @@ import (
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 
-	"github.com/darrendavison/webspaces/kernel/config"
-	"github.com/darrendavison/webspaces/sdk"
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/webspaces/sdk"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 // Plugin is one launched, handshaken source plugin subprocess.

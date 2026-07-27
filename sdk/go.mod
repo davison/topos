@@ -1,4 +1,4 @@
-module github.com/darrendavison/webspaces/sdk
+module github.com/davison/webspaces/sdk
 
 go 1.25.0
 

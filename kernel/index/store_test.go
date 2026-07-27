@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/darrendavison/webspaces/kernel/item"
+	"github.com/davison/webspaces/kernel/item"
 )
 
 func openTestStore(t *testing.T) *Store {

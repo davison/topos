@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
 
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 // Handshake is the common handshake shared by the kernel and every plugin.

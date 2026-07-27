@@ -10,7 +10,7 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 
-	"github.com/darrendavison/webspaces/sdk"
+	"github.com/davison/webspaces/sdk"
 )
 
 type sourceConfig struct {

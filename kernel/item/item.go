@@ -5,7 +5,7 @@ package item
 import (
 	"fmt"
 
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 // Fidelity mirrors webspacesv1.LinkFidelity as a lowercase-hyphenated

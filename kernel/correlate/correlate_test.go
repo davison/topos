@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darrendavison/webspaces/kernel/config"
-	"github.com/darrendavison/webspaces/kernel/index"
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/webspaces/kernel/index"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 // fakeSource is a test double satisfying correlate.Source without launching

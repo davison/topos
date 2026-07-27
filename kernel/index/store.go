@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/darrendavison/webspaces/kernel/item"
+	"github.com/davison/webspaces/kernel/item"
 )
 
 // Store wraps the local SQLite index.

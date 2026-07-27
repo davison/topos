@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/darrendavison/webspaces/kernel/index"
-	"github.com/darrendavison/webspaces/kernel/item"
+	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/item"
 )
 
 func newTestStoreForHTTP(t *testing.T) *index.Store {

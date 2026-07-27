@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 const (

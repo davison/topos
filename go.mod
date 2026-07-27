@@ -1,4 +1,4 @@
-module github.com/darrendavison/webspaces
+module github.com/davison/webspaces
 
 go 1.25.0
 

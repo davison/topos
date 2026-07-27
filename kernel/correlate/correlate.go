@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/darrendavison/webspaces/kernel/config"
-	"github.com/darrendavison/webspaces/kernel/index"
-	"github.com/darrendavison/webspaces/kernel/item"
-	webspacesv1 "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/item"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
 
 // Source is the minimal plugin surface correlate depends on. Deliberately

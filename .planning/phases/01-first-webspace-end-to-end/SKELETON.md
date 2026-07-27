@@ -28,7 +28,7 @@ Every architectural seam the whole project depends on is exercised on that one p
 | Web UI | SvelteKit 2 / Svelte 5 SPA, `adapter-static` with `fallback: '200.html'` (never `index.html`), built into `kernel/webui/build/`, served via `go:embed all:build` behind one catch-all chi route | RESEARCH Pattern 4 + Pitfall 3. One static binary; `vite dev` proxies `/api` to the kernel during development. |
 | Design system | shadcn-svelte (new-york / slate / CSS variables), Tailwind v4 Vite plugin, `bits-ui`, `lucide-svelte`, Inter variable. Dark-mode-only via `class="dark"` on `<html>`, no theme toggle | `01-UI-SPEC.md`, approved 6/6 dimensions 2026-07-27. |
 | HTTP surface | `go-chi/chi/v5`, bound to **`127.0.0.1:7777`** by default. Same JSON routes serve the SPA and any agent — no separate "agent API" | AGENT-02. Loopback default is the security posture for a single-user local tool with no auth; LAN exposure is its own future security review. |
-| Module path | `github.com/darrendavison/webspaces` (+ `/sdk`, `/plugins/paperless`) | No git remote is configured yet. Rated `costly`, not `one-way`: changeable via `go mod edit -module` + an import rewrite at any point before Phase 2 publishes the SDK to a third party. |
+| Module path | `github.com/davison/webspaces` (+ `/sdk`, `/plugins/paperless`) | No git remote is configured yet. Rated `costly`, not `one-way`: changeable via `go mod edit -module` + an import rewrite at any point before Phase 2 publishes the SDK to a third party. |
 
 ## Stack Touched in Phase 1
 

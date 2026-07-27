@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package webspaces.v1;
 
-option go_package = "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1;webspacesv1";
+option go_package = "github.com/davison/webspaces/sdk/gen/webspaces/v1;webspacesv1";
 
 // SourcePlugin is read-only by construction. No RPC in this service changes
 // state in the source system, and none may ever be added — see PLUG-02.

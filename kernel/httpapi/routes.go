@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/darrendavison/webspaces/kernel/config"
-	"github.com/darrendavison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/webspaces/kernel/index"
 )
 
 // schemaVersion is the envelope's schema_version field. Bump only for

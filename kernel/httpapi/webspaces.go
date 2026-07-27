@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/darrendavison/webspaces/kernel/config"
-	"github.com/darrendavison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/webspaces/kernel/index"
 )
 
 type webspaceSummary struct {

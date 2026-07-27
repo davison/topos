@@ -1,4 +1,4 @@
-module github.com/darrendavison/webspaces/plugins/paperless
+module github.com/davison/webspaces/plugins/paperless
 
 go 1.25.0
 
