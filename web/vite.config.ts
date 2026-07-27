@@ -1,6 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	// sveltekit() is called with no arguments so SvelteKit loads its
@@ -18,5 +18,13 @@ export default defineConfig({
 				changeOrigin: true
 			}
 		}
+	},
+	test: {
+		// Plan 01-03 only unit-tests plain TS (web/src/lib/format.ts) — no
+		// Svelte component test harness (jsdom, @testing-library/svelte) is
+		// needed yet, so the environment stays 'node' until a future plan
+		// actually needs to mount a component.
+		environment: 'node',
+		include: ['src/**/*.test.ts']
 	}
 });

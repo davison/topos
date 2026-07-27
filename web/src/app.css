@@ -121,3 +121,28 @@
 		font-family: var(--font-sans);
 	}
 }
+
+@layer components {
+	/*
+	 * Fixed-height stream row surface (01-03 StreamRow.svelte /
+	 * StreamList.svelte loading skeleton). Every stream row — real or
+	 * skeleton — shares this exact height so a long list scrolls at a
+	 * constant rhythm regardless of tag count or whether a preview
+	 * snippet is present, and the loading skeleton never reflows the
+	 * list when real data arrives. Height accounts for: md (16px)
+	 * padding top + bottom (32px), the one-line title (24px), two 4px
+	 * gaps between title/metadata/preview (8px), a clipped tag/date
+	 * strip (40px) and the two-line preview clamp (48px)
+	 * = 32 + 24 + 8 + 40 + 48 = 152px.
+	 */
+	.stream-row-surface {
+		height: 152px;
+	}
+
+	/* The tag/date metadata strip within a stream row: pills wrap up to
+	 * this fixed height, then clip — the strip never grows the row. */
+	.stream-row-meta {
+		max-height: 40px;
+		overflow: hidden;
+	}
+}
