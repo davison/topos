@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+current_phase: 01
+current_phase_name: First Webspace, End to End
 status: executing
-last_updated: "2026-07-27T23:01:38.252Z"
-last_activity: 2026-07-27
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-07-27T23:47:56.452Z"
+last_activity: 2026-07-28
 progress:
-  total_phases: 5
+  total_phases: 1
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
 ---
 
 # Project State
@@ -25,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-07-27)
 ## Current Position
 
 Phase: 01 (First Webspace, End to End) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
-Last activity: 2026-07-27
+Last activity: 2026-07-28
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -52,6 +54,11 @@ Progress: [███░░░░░░░] 25%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 2h44m | 3 tasks | 90 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P02 | 40min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -67,6 +74,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Task 1 checkpoint: locked plugin.proto v1 option-a (unary Fetch) over the plan's recommended streaming option-b
 - [Phase ?]: shadcn-svelte's live CLI/registry retired baseColor slate and style new-york in favor of an encoded theme-preset system; components.json still records the plan's contract values and every actual color is hand-authored in src/app.css from UI-SPEC hex tokens
 - [Phase ?]: lucide-svelte replaced with its upstream-recommended successor @lucide/svelte (deprecated package)
+- [Phase ?]: Implemented plan 01-02's plugin.proto interfaces against the actual locked unary Fetch contract (01-01's D-Task1 decision), not the plan's own stale streaming-Fetch interfaces block
+- [Phase ?]: Split paperless client.go's rendition fetch into named Preview/Thumbnail methods and added url.PathUnescape id decoding — both required to satisfy the plan's own acceptance criteria
+- [Phase ?]: PLUG-03 sync-time validation rejects only the offending item (not the whole source batch) when fidelity is unspecified or deep_link is empty, recording the rejection in sync_runs.error
 
 ### Pending Todos
 
@@ -91,6 +101,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-27T23:01:38.244Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-07-27T23:47:56.443Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Every item carries an "open in source" affordance that lands on the exact paperless-ngx document, and declares its link fidelity (exact / anchored / conversation-only)
   5. The plugin runs as a separate subprocess over the published `.proto` contract, that contract contains no source-mutating method, and the same items the UI shows are retrievable from the kernel HTTP API with stable IDs, structured content, and machine-readable provenance
 
-**Plans**: 4 plans (3 waves)
+**Plans**: 2/4 plans executed
 Plans:
 **Wave 1**
 
@@ -43,7 +43,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Detail pane: live content fetch through the plugin, hardened content routes, open-in-source with declared fidelity
+- [x] 01-02-PLAN.md — Detail pane: live content fetch through the plugin, hardened content routes, open-in-source with declared fidelity
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. First Webspace, End to End | 1/4 | In Progress|  |
+| 1. First Webspace, End to End | 2/4 | In Progress|  |
 | 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
