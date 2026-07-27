@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Walking skeleton tracer: config → plugin subprocess → SQLite index → HTTP API → browser, against real paperless-ngx
+- [x] 01-01-PLAN.md — Walking skeleton tracer: config → plugin subprocess → SQLite index → HTTP API → browser, against real paperless-ngx
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. First Webspace, End to End | 0/4 | Not started | - |
+| 1. First Webspace, End to End | 1/4 | In Progress|  |
 | 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |

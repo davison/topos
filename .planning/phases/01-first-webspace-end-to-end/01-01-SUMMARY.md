@@ -223,3 +223,7 @@ None beyond what Task 2 already established (`PAPERLESS_URL`/`PAPERLESS_TOKEN` i
 ---
 *Phase: 01-first-webspace-end-to-end*
 *Completed: 2026-07-27*
+
+## Self-Check: PASSED
+
+All files referenced above (kernel/webui/embed.go, kernel/webui/build/.gitkeep, kernel/httpapi/routes.go, web/svelte.config.js, web/vite.config.ts, web/components.json, web/src/app.css, web/src/lib/api.ts, web/src/routes/+page.svelte, web/src/routes/w/[webspace]/+page.svelte, this SUMMARY) confirmed present on disk. All referenced commits (930e53a, 92c0524, da15f94, 39abf0b) confirmed present in `git log --all`.
