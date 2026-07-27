@@ -1,0 +1,34 @@
+# webspaces config — copy to ~/.config/webspaces/config.toml (or
+# $XDG_CONFIG_HOME/webspaces/config.toml) and fill in your own values.
+#
+# Secrets are NEVER stored in this file (D-04) — only ${VAR} references,
+# expanded from the environment at load time.
+#
+# Keyword matching is exact, case-insensitive Unicode simple case folding
+# (Go's strings.EqualFold — D-03). There is no substring/prefix matching
+# and no NFC/NFD normalization: a decomposed-form tag will NOT match a
+# precomposed-form keyword, so keep keyword spelling/normalization
+# consistent with how tags are actually named in each source.
+
+[server]
+listen = "127.0.0.1:7777"
+
+[index]
+path = "~/.local/share/webspaces/index.db"
+
+[plugins]
+dir = "plugins"                       # resolved relative to the webspaces binary
+
+[sources.paperless]
+plugin      = "webspaces-plugin-paperless"
+base_url    = "${PAPERLESS_URL}"
+token       = "${PAPERLESS_TOKEN}"    # secrets NEVER live in this file (D-04)
+api_version = "10"
+
+[webspaces.house-move]
+# Deviation from the phase plan's illustrative example: this deployment's
+# paperless-ngx has no "house-move" or "House" tag. Its real tag for this
+# topic is "house and home" (id 11). The webspace slug/name stays
+# "house-move" so URLs, the e2e smoke script, and docs remain consistent
+# with the plan; only the keyword list reflects the user's actual data.
+keywords = ["house and home"]

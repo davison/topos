@@ -1,0 +1,11 @@
+.env
+bin/
+web/node_modules/
+
+# Stray top-level binaries from a bare `go build ./...` (main packages
+# compile to a binary named after their directory in the cwd when no -o is
+# given) — always build via `make build` (which passes explicit -o paths)
+# or scripts/e2e-smoke.sh instead.
+/webspaces
+/plugins/paperless/paperless
+/paperless

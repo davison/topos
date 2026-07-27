@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package webspaces.v1;
+
+option go_package = "github.com/darrendavison/webspaces/sdk/gen/webspaces/v1;webspacesv1";
+
+// SourcePlugin is read-only by construction. No RPC in this service changes
+// state in the source system, and none may ever be added — see PLUG-02.
+service SourcePlugin {
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Match(MatchRequest) returns (MatchResponse);
+  rpc Fetch(FetchRequest) returns (FetchResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message DescribeRequest {}
+message DescribeResponse {
+  string source_type      = 1;  // "paperless"
+  string display_name     = 2;  // "paperless-ngx"
+  string contract_version = 3;  // "webspaces.v1"
+}
+
+message MatchRequest  { repeated string keywords = 1; }  // exact, case-insensitive (D-03)
+message MatchResponse { repeated Item   items    = 1; }
+
+enum LinkFidelity {
+  LINK_FIDELITY_UNSPECIFIED       = 0;
+  LINK_FIDELITY_EXACT             = 1;
+  LINK_FIDELITY_ANCHORED          = 2;
+  LINK_FIDELITY_CONVERSATION_ONLY = 3;
+}
+
+message Item {
+  string source_id                = 1;  // stable, plugin-local id
+  string source_type              = 2;
+  string title                    = 3;
+  string preview                  = 4;  // bounded snippet, never full content
+  int64  timestamp_unix           = 5;  // primary sort: real-world time
+  int64  secondary_timestamp_unix = 6;  // tie-break: ingestion/receipt time
+  LinkFidelity fidelity           = 7;
+  string deep_link                = 8;
+  repeated string labels          = 9;  // native categorization (paperless tag names)
+  map<string, string> provenance  = 10;
+  string group_id                 = 11; // chat thread / mail conversation; "" for documents
+  string group_label              = 12;
+  bool   has_thumbnail            = 13;
+}
+
+enum ContentVariant {
+  CONTENT_VARIANT_UNSPECIFIED = 0;
+  CONTENT_VARIANT_FULL        = 1;
+  CONTENT_VARIANT_PREVIEW     = 2;
+  CONTENT_VARIANT_THUMBNAIL   = 3;
+}
+
+message FetchRequest { string source_id = 1; ContentVariant variant = 2; }
+
+// FetchResponse is a single unary response carrying full content (text and
+// rendition bytes together). Decision D-Task1: option-a — unary Fetch. A
+// rendition must fit in one gRPC message; the kernel plugin-host client and
+// the plugin gRPC server both raise their default 4 MB message-size limits
+// to accommodate large scanned PDFs.
+message FetchResponse {
+  bool   available                = 1;
+  string unavailable_reason       = 2;
+  string mime_type                = 3;  // "" when there is no binary rendition
+  int64  size_bytes               = 4;
+  string text                     = 5;  // extracted text, may be ""
+  bytes  data                     = 6;  // rendition bytes, may be empty
+  map<string, string> provenance  = 7;
+}
+
+message HealthRequest {}
+message HealthResponse { bool reachable = 1; int64 last_sync_unix = 2; string last_error = 3; }
