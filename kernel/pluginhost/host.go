@@ -5,20 +5,36 @@
 package pluginhost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/davison/webspaces/kernel/config"
 	"github.com/davison/webspaces/sdk"
 	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
 )
+
+// ErrItemNotFound is returned by Host.Fetch when the plugin reports the
+// requested source id does not exist (gRPC codes.NotFound), or when no
+// launched plugin is registered for the item's source type.
+var ErrItemNotFound = errors.New("pluginhost: item not found")
+
+// ErrSourceUnavailable is returned by Host.Fetch when the plugin's live
+// call to its source system failed transiently (gRPC codes.Unavailable,
+// or any other transport-level failure calling the plugin).
+var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
 // Plugin is one launched, handshaken source plugin subprocess.
 type Plugin struct {
@@ -104,6 +120,15 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		Cmd:              cmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger:           logger.Named("plugin." + name),
+		// Raises the gRPC message-size ceiling to match sdk.GRPCServer on
+		// the plugin side, so a unary Fetch response carrying a full
+		// rendition doesn't hit the 4 MB default (D-Task1, 01-01).
+		GRPCDialOptions: []grpc.DialOption{
+			grpc.WithDefaultCallOptions(
+				grpc.MaxCallRecvMsgSize(sdk.MaxMessageSize),
+				grpc.MaxCallSendMsgSize(sdk.MaxMessageSize),
+			),
+		},
 	})
 
 	rpcClient, err := client.Client()
@@ -141,6 +166,70 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 // Plugins returns every launched plugin.
 func (h *Host) Plugins() []*Plugin {
 	return h.plugins
+}
+
+// FetchResult is the kernel-domain translation of a plugin's unary Fetch
+// response. Body is nil when there is no rendition (available=false, or a
+// full-variant fetch that carried only extracted text).
+type FetchResult struct {
+	Available         bool
+	UnavailableReason string
+	MimeType          string
+	SizeBytes         int64
+	Text              string
+	Provenance        map[string]string
+	Body              io.ReadCloser
+}
+
+// Fetch calls the Fetch RPC on the plugin registered for sourceType,
+// request-time only (never sync-time), and translates the result into
+// kernel-domain types and errors. gRPC codes.NotFound maps to
+// ErrItemNotFound, codes.Unavailable and any other transport failure maps
+// to ErrSourceUnavailable.
+func (h *Host) Fetch(ctx context.Context, sourceType, sourceID string, variant webspacesv1.ContentVariant) (FetchResult, error) {
+	p := h.bySourceType(sourceType)
+	if p == nil {
+		return FetchResult{}, fmt.Errorf("%w: no plugin registered for source type %q", ErrItemNotFound, sourceType)
+	}
+
+	resp, err := p.impl.Fetch(ctx, &webspacesv1.FetchRequest{SourceId: sourceID, Variant: variant})
+	if err != nil {
+		if st, ok := status.FromError(err); ok {
+			switch st.Code() {
+			case codes.NotFound:
+				return FetchResult{}, fmt.Errorf("%w: %s", ErrItemNotFound, st.Message())
+			case codes.Unavailable:
+				return FetchResult{}, fmt.Errorf("%w: %s", ErrSourceUnavailable, st.Message())
+			}
+		}
+		return FetchResult{}, fmt.Errorf("%w: %v", ErrSourceUnavailable, err)
+	}
+
+	var body io.ReadCloser
+	if len(resp.GetData()) > 0 {
+		body = io.NopCloser(bytes.NewReader(resp.GetData()))
+	}
+
+	return FetchResult{
+		Available:         resp.GetAvailable(),
+		UnavailableReason: resp.GetUnavailableReason(),
+		MimeType:          resp.GetMimeType(),
+		SizeBytes:         resp.GetSizeBytes(),
+		Text:              resp.GetText(),
+		Provenance:        resp.GetProvenance(),
+		Body:              body,
+	}, nil
+}
+
+// bySourceType returns the launched plugin whose Describe-learned
+// source_type matches, or nil if none is registered.
+func (h *Host) bySourceType(sourceType string) *Plugin {
+	for _, p := range h.plugins {
+		if p.sourceType == sourceType {
+			return p
+		}
+	}
+	return nil
 }
 
 // Shutdown kills every launched plugin subprocess.

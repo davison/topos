@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -116,12 +117,87 @@ func truncatePreview(content string) string {
 	return string(runes[:previewRuneCap])
 }
 
-// Fetch is defined by the contract but not implemented in this plan — a
-// later plan implements live content fetch on item-open. This is a
-// functionality gap on a boundary that does not move, not an
-// architectural stub.
-func (p *SourcePlugin) Fetch(_ context.Context, _ *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "Fetch is not implemented in this plan (01-01); see plan 01-02")
+// noRenditionReason is the fixed unavailable_reason used whenever
+// paperless-ngx 404s a rendition endpoint (preview or thumb) for an
+// otherwise-known document — a normal outcome (e.g. an unsupported file
+// type), not an error.
+const noRenditionReason = "no previewable rendition"
+
+// Fetch implements live content fetch on item-open (KERN-03), the request
+// path — never called from Match/sync. It is a single unary RPC (locked
+// decision D-Task1, 01-01): the full rendition's bytes are returned in one
+// FetchResponse message rather than a stream, bounded by the raised
+// MaxMessageSize gRPC limit (sdk.GRPCServer / kernel pluginhost dial
+// options).
+func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+	id, err := strconv.Atoi(req.GetSourceId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "paperless: invalid source id %q", req.GetSourceId())
+	}
+
+	switch req.GetVariant() {
+	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL:
+		return p.fetchFull(ctx, id)
+	case webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+		return p.fetchRendition(ctx, id, "preview", p.client.Preview)
+	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		return p.fetchRendition(ctx, id, "thumb", p.client.Thumbnail)
+	default:
+		return nil, status.Error(codes.InvalidArgument, "paperless: unspecified content variant")
+	}
+}
+
+// fetchFull fetches the document's extracted text (which only exists via
+// the document detail endpoint, so document-not-found is authoritatively
+// detected here) plus its preview rendition, if any.
+func (p *SourcePlugin) fetchFull(ctx context.Context, id int) (*webspacesv1.FetchResponse, error) {
+	doc, err := p.client.Document(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "paperless: document %d not found", id)
+		}
+		return nil, status.Errorf(codes.Unavailable, "paperless: fetch document %d: %v", id, err)
+	}
+
+	rendition, err := p.client.Preview(ctx, id)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "paperless: fetch preview for document %d: %v", id, err)
+	}
+
+	resp := &webspacesv1.FetchResponse{
+		Text:       doc.Content,
+		Provenance: map[string]string{"source_type": sourceType, "source_id": strconv.Itoa(id)},
+	}
+	if rendition.Available {
+		resp.Available = true
+		resp.MimeType = rendition.ContentType
+		resp.SizeBytes = int64(len(rendition.Data))
+		resp.Data = rendition.Data
+	} else {
+		resp.Available = false
+		resp.UnavailableReason = noRenditionReason
+	}
+	return resp, nil
+}
+
+// fetchRendition fetches only a preview or thumbnail rendition, with no
+// extracted text. A 404 from paperless-ngx for the rendition itself is a
+// normal "unavailable" outcome, not a gRPC error — the pane falls back to
+// extracted text via the full-variant fetch instead.
+func (p *SourcePlugin) fetchRendition(ctx context.Context, id int, endpointName string, fetch func(context.Context, int) (RenditionResult, error)) (*webspacesv1.FetchResponse, error) {
+	rendition, err := fetch(ctx, id)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "paperless: fetch %s for document %d: %v", endpointName, id, err)
+	}
+	if !rendition.Available {
+		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noRenditionReason}, nil
+	}
+	return &webspacesv1.FetchResponse{
+		Available: true,
+		MimeType:  rendition.ContentType,
+		SizeBytes: int64(len(rendition.Data)),
+		Data:      rendition.Data,
+	}, nil
 }
 
 func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {

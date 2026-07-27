@@ -8,6 +8,7 @@ package correlate
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/davison/webspaces/kernel/config"
@@ -60,6 +61,7 @@ func (e *Engine) SyncAll(ctx context.Context) ([]WebspaceResult, error) {
 
 	sourceItemCounts := map[string]int{}
 	sourceErrors := map[string]error{}
+	rejectedItems := map[string][]string{}
 
 	results := make([]WebspaceResult, 0, len(e.Config.Webspaces))
 
@@ -77,7 +79,17 @@ func (e *Engine) SyncAll(ctx context.Context) ([]WebspaceResult, error) {
 				continue
 			}
 			for _, protoItem := range resp.GetItems() {
-				items = append(items, item.FromProto(src.SourceType(), protoItem))
+				it := item.FromProto(src.SourceType(), protoItem)
+				// PLUG-03: an item with an unspecified fidelity or an
+				// empty deep link must never reach the index. Skip just
+				// this item (not the whole sync) and name the plugin and
+				// source id so the sync run records it.
+				if rejErr := validateCorrelatedItem(it); rejErr != nil {
+					rejectedItems[src.SourceType()] = append(rejectedItems[src.SourceType()],
+						fmt.Sprintf("plugin %q source_id %q: %v", src.Name(), it.SourceID, rejErr))
+					continue
+				}
+				items = append(items, it)
 				sourceItemCounts[src.SourceType()]++
 			}
 		}
@@ -107,6 +119,12 @@ func (e *Engine) SyncAll(ctx context.Context) ([]WebspaceResult, error) {
 		if err, failed := sourceErrors[src.SourceType()]; failed {
 			run.Status = "error"
 			run.Error = err.Error()
+		} else if msgs := rejectedItems[src.SourceType()]; len(msgs) > 0 {
+			// The sync itself succeeded (other items from this source
+			// persisted normally) but these specific items were rejected
+			// at the correlation boundary — recorded, not silently
+			// dropped.
+			run.Error = strings.Join(msgs, "; ")
 		}
 		if err := e.Store.RecordSyncRun(ctx, run); err != nil {
 			return results, fmt.Errorf("correlate: record sync run for %s: %w", src.SourceType(), err)
@@ -114,4 +132,16 @@ func (e *Engine) SyncAll(ctx context.Context) ([]WebspaceResult, error) {
 	}
 
 	return results, nil
+}
+
+// validateCorrelatedItem enforces PLUG-03 at the sync boundary: no item
+// with an unspecified fidelity or an empty deep link may reach the index.
+func validateCorrelatedItem(it item.Item) error {
+	if it.Fidelity == item.FidelityUnspecified {
+		return fmt.Errorf("unspecified link fidelity")
+	}
+	if strings.TrimSpace(it.DeepLink) == "" {
+		return fmt.Errorf("empty deep link")
+	}
+	return nil
 }

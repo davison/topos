@@ -7,7 +7,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -15,6 +17,21 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrNotFound is returned by Document when paperless-ngx returns 404 for
+// the requested document id — distinct from a transport/5xx failure so
+// callers can map it to a "not found" rather than "unavailable" outcome.
+var ErrNotFound = errors.New("paperless: not found")
+
+// RenditionResult holds one fetched rendition (preview or thumbnail).
+// Available is false, with a zero Data/ContentType, when paperless-ngx
+// returned 404 for the rendition — a normal outcome (e.g. a file type
+// paperless cannot preview), not an error.
+type RenditionResult struct {
+	Available   bool
+	Data        []byte
+	ContentType string
+}
 
 // Client is a thin, read-only REST client against a paperless-ngx
 // instance. Every request uses the GET method — there is no code path in
@@ -183,6 +200,84 @@ func (c *Client) AllTags(ctx context.Context) (map[int]Tag, error) {
 		path, values = nextPath, nextValues
 	}
 	return out, nil
+}
+
+// Document fetches the full detail of a single document, including its
+// extracted content, for live item-open (KERN-03) — never called from the
+// sync/Match path. Returns ErrNotFound when paperless-ngx 404s.
+func (c *Client) Document(ctx context.Context, id int) (Document, error) {
+	path := fmt.Sprintf("/api/documents/%d/", id)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return Document{}, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Token "+c.token)
+	req.Header.Set("Accept", "application/json; version="+c.apiVersion)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Document{}, fmt.Errorf("request %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return Document{}, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Document{}, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, path)
+	}
+
+	var d documentResult
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return Document{}, fmt.Errorf("decode response from %s: %w", path, err)
+	}
+	return toDocument(d)
+}
+
+// Preview fetches a document's inline preview rendition via
+// GET {base}/api/documents/{id}/preview/. A 404 from paperless-ngx (no
+// previewable rendition for this file type) yields
+// RenditionResult{Available: false} with a nil error — it is a normal
+// outcome, not a transport failure.
+func (c *Client) Preview(ctx context.Context, id int) (RenditionResult, error) {
+	return c.rendition(ctx, fmt.Sprintf("/api/documents/%d/preview/", id))
+}
+
+// Thumbnail fetches a document's thumbnail rendition via
+// GET {base}/api/documents/{id}/thumb/. Same 404-is-not-an-error contract
+// as Preview.
+func (c *Client) Thumbnail(ctx context.Context, id int) (RenditionResult, error) {
+	return c.rendition(ctx, fmt.Sprintf("/api/documents/%d/thumb/", id))
+}
+
+// rendition performs the shared GET + status/body handling behind Preview
+// and Thumbnail.
+func (c *Client) rendition(ctx context.Context, path string) (RenditionResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return RenditionResult{}, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Token "+c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return RenditionResult{}, fmt.Errorf("request %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return RenditionResult{Available: false}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return RenditionResult{}, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, path)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return RenditionResult{}, fmt.Errorf("read body from %s: %w", path, err)
+	}
+	return RenditionResult{Available: true, Data: data, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
 func toDocument(d documentResult) (Document, error) {

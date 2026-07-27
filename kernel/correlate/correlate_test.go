@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func TestSyncAll_PersistsMatchedItems(t *testing.T) {
 		name: "paperless", sourceType: "paperless",
 		matchFunc: func(keywords []string) (*webspacesv1.MatchResponse, error) {
 			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, TimestampUnix: 100},
+				{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
 			}}, nil
 		},
 	}
@@ -88,8 +89,8 @@ func TestSyncAll_KeywordOrderDoesNotAffectResult(t *testing.T) {
 
 	matchFunc := func(keywords []string) (*webspacesv1.MatchResponse, error) {
 		return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-			{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, TimestampUnix: 100},
-			{SourceId: "2", Title: "Doc 2", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, TimestampUnix: 200},
+			{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
+			{SourceId: "2", Title: "Doc 2", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/2", TimestampUnix: 200},
 		}}, nil
 	}
 
@@ -157,5 +158,59 @@ func TestSyncAll_MatchErrorRecordsFailedSyncRun(t *testing.T) {
 	}
 	if run.Status != "error" || run.Error == "" {
 		t.Errorf("expected recorded error status, got: %+v", run)
+	}
+}
+
+// TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink verifies PLUG-03:
+// an item with an unspecified fidelity, or an empty deep link, is skipped
+// at the correlation boundary and never reaches the index, while other
+// valid items from the same source still persist normally, and the
+// rejection is named (plugin + source id) in the recorded sync run.
+func TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
+	store := newTestStore(t)
+
+	src := &fakeSource{
+		name: "paperless", sourceType: "paperless",
+		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
+			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
+				{SourceId: "good", Title: "Valid item", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/good", TimestampUnix: 100},
+				{SourceId: "no-fidelity", Title: "Missing fidelity", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_UNSPECIFIED, DeepLink: "http://paperless.lan/documents/no-fidelity", TimestampUnix: 200},
+				{SourceId: "no-link", Title: "Missing deep link", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 300},
+			}}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"ws": {Keywords: []string{"a"}},
+	}}
+	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
+
+	results, err := engine.SyncAll(context.Background())
+	if err != nil {
+		t.Fatalf("SyncAll: %v", err)
+	}
+	if len(results) != 1 || results[0].Err != nil || results[0].ItemCount != 1 {
+		t.Fatalf("expected the sync to succeed with exactly 1 persisted item, got: %+v", results)
+	}
+
+	items, err := store.StreamItems(context.Background(), "ws")
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "paperless:good" {
+		t.Fatalf("expected only the valid item to be persisted, got: %+v", items)
+	}
+
+	run, ok, err := store.LatestSyncRun(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("LatestSyncRun: ok=%v err=%v", ok, err)
+	}
+	if run.Status != "ok" {
+		t.Errorf("expected sync run status ok (rejections are per-item, not fatal), got %q", run.Status)
+	}
+	if run.Error == "" {
+		t.Error("expected the sync run to record the rejected items")
+	}
+	if !strings.Contains(run.Error, "paperless") || !strings.Contains(run.Error, "no-fidelity") || !strings.Contains(run.Error, "no-link") {
+		t.Errorf("expected the sync run error to name the plugin and both rejected source ids, got: %q", run.Error)
 	}
 }

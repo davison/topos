@@ -30,6 +30,27 @@ var PluginMap = map[string]plugin.Plugin{
 	"source": &SourcePluginGRPCPlugin{},
 }
 
+// MaxMessageSize raises gRPC's default 4 MB message-size ceiling on both
+// the plugin (server) and kernel (client) sides. Decision D-Task1 (01-01)
+// locked Fetch as a single unary RPC carrying a rendition's full bytes in
+// one message rather than a stream — this constant is what makes that
+// decision viable for real scanned-PDF rendition sizes. 64 MiB comfortably
+// covers a scanned-PDF preview or thumbnail; documents materially larger
+// than this are expected to fail with a clear gRPC ResourceExhausted error
+// rather than succeed silently truncated.
+const MaxMessageSize = 64 * 1024 * 1024
+
+// GRPCServer is passed as plugin.ServeConfig.GRPCServer on the plugin
+// side in place of plugin.DefaultGRPCServer, applying MaxMessageSize to
+// the server's receive/send limits.
+func GRPCServer(opts []grpc.ServerOption) *grpc.Server {
+	opts = append(opts,
+		grpc.MaxRecvMsgSize(MaxMessageSize),
+		grpc.MaxSendMsgSize(MaxMessageSize),
+	)
+	return grpc.NewServer(opts...)
+}
+
 // SourcePlugin is the Go interface plugin authors implement, mirroring the
 // four RPCs declared in plugin.proto. Implementing this interface rather
 // than the raw generated gRPC server type is the documented plugin

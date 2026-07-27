@@ -47,7 +47,10 @@ func main() {
 		Plugins: map[string]goplugin.Plugin{
 			"source": &sdk.SourcePluginGRPCPlugin{Impl: impl},
 		},
-		GRPCServer: goplugin.DefaultGRPCServer,
+		// sdk.GRPCServer (not goplugin.DefaultGRPCServer) raises the
+		// gRPC message-size ceiling so a unary Fetch response carrying a
+		// full rendition doesn't hit the 4 MB default (D-Task1, 01-01).
+		GRPCServer: sdk.GRPCServer,
 	})
 }
 

@@ -1,0 +1,195 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/pluginhost"
+	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+)
+
+// Fetcher is the minimal request-time plugin-call surface item.go depends
+// on. *pluginhost.Host satisfies this structurally. Kept as an interface
+// (rather than a concrete *pluginhost.Host parameter) so item_test.go can
+// exercise every response branch — 404, 502, security headers, 415, id
+// encoding — without launching a real plugin subprocess. This is the
+// deliberate exception to the "httpapi never reaches a plugin" rule:
+// stream.go must never import pluginhost (KERN-02); item.go is exactly
+// the request-time, item-open boundary where a live plugin call belongs.
+type Fetcher interface {
+	Fetch(ctx context.Context, sourceType, sourceID string, variant webspacesv1.ContentVariant) (pluginhost.FetchResult, error)
+}
+
+// allowedRenditionTypes is the MIME allowlist enforced on every byte
+// served by ItemContentHandler/ItemThumbnailHandler (T-01-10). A
+// plugin-supplied MIME type is never echoed into a response header
+// without first being checked against this set.
+var allowedRenditionTypes = map[string]bool{
+	"application/pdf": true,
+	"image/png":       true,
+	"image/jpeg":      true,
+	"image/gif":       true,
+	"image/webp":      true,
+}
+
+type rendition struct {
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	URL       string `json:"url"`
+}
+
+type itemContent struct {
+	Available         bool       `json:"available"`
+	UnavailableReason string     `json:"unavailable_reason"`
+	Text              string     `json:"text"`
+	Rendition         *rendition `json:"rendition"`
+}
+
+type itemDetailResponse struct {
+	SchemaVersion int         `json:"schema_version"`
+	Item          streamItem  `json:"item"`
+	Content       itemContent `json:"content"`
+}
+
+// itemIDParam resolves the {id} path parameter to its decoded form. chi
+// routes against r.URL.RawPath when the client sent one (i.e. the request
+// path contained percent-escapes), so chi.URLParam returns the raw,
+// still-escaped segment for a request like
+// "/api/items/paperless%3A42" — url.PathUnescape is required so
+// "paperless:42" and "paperless%3A42" resolve to the same item id.
+func itemIDParam(r *http.Request) string {
+	raw := chi.URLParam(r, "id")
+	if decoded, err := url.PathUnescape(raw); err == nil {
+		return decoded
+	}
+	return raw
+}
+
+// ItemHandler serves GET /api/items/{id}: an index read to resolve the
+// composite id to source_type/source_id and the item's own metadata, plus
+// exactly one request-time plugin Fetch call (full variant) for the live
+// extracted text and rendition descriptor (KERN-03).
+func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := itemIDParam(r)
+		ctx := r.Context()
+
+		it, ok, err := store.GetItem(ctx, id)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		if !ok {
+			WriteError(w, http.StatusNotFound, "item_not_found", "item \""+id+"\" was not found in the index")
+			return
+		}
+
+		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, webspacesv1.ContentVariant_CONTENT_VARIANT_FULL)
+		if err != nil {
+			writeFetchError(w, id, err)
+			return
+		}
+
+		content := itemContent{
+			Available:         result.Available,
+			UnavailableReason: result.UnavailableReason,
+			Text:              result.Text,
+		}
+		if result.Available && result.MimeType != "" {
+			content.Rendition = &rendition{
+				MimeType:  result.MimeType,
+				SizeBytes: result.SizeBytes,
+				URL:       "/api/items/" + id + "/content",
+			}
+		}
+
+		WriteJSON(w, http.StatusOK, itemDetailResponse{
+			SchemaVersion: schemaVersion,
+			Item:          toStreamItem(it),
+			Content:       content,
+		})
+	}
+}
+
+// ItemContentHandler serves GET /api/items/{id}/content — the preview
+// rendition's raw bytes, streamed straight through with io.Copy.
+func ItemContentHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
+	return renditionHandler(store, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW)
+}
+
+// ItemThumbnailHandler serves GET /api/items/{id}/thumbnail — the
+// thumbnail rendition's raw bytes, streamed straight through with
+// io.Copy.
+func ItemThumbnailHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
+	return renditionHandler(store, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL)
+}
+
+// renditionHandler is shared by ItemContentHandler and
+// ItemThumbnailHandler. This is the sharpest security surface in the
+// phase (T-01-10): it serves source-controlled bytes from the kernel's
+// own origin, so every accepted MIME type is checked against an
+// allowlist and every response carries a hardened header set before any
+// body is written.
+func renditionHandler(store *index.Store, fetcher Fetcher, variant webspacesv1.ContentVariant) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := itemIDParam(r)
+		ctx := r.Context()
+
+		it, ok, err := store.GetItem(ctx, id)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		if !ok {
+			WriteError(w, http.StatusNotFound, "item_not_found", "item \""+id+"\" was not found in the index")
+			return
+		}
+
+		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, variant)
+		if err != nil {
+			writeFetchError(w, id, err)
+			return
+		}
+
+		if !result.Available || result.Body == nil {
+			WriteError(w, http.StatusNotFound, "content_unavailable", "no rendition is available for item \""+id+"\"")
+			return
+		}
+		defer result.Body.Close()
+
+		// Never echo a plugin-supplied MIME string into the response
+		// header without matching it against the allowlist first.
+		if !allowedRenditionTypes[result.MimeType] {
+			WriteError(w, http.StatusUnsupportedMediaType, "unsupported_rendition_type",
+				"rendition MIME type \""+result.MimeType+"\" is not on the allowlist")
+			return
+		}
+
+		h := w.Header()
+		h.Set("Content-Type", result.MimeType)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Content-Disposition", "inline")
+		h.Set("Content-Security-Policy", "default-src 'none'; object-src 'none'; sandbox")
+		h.Set("Cache-Control", "private, no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, result.Body)
+	}
+}
+
+// writeFetchError maps a pluginhost.Fetch error to the shared HTTP error
+// envelope: ErrItemNotFound -> 404, ErrSourceUnavailable (and anything
+// else) -> 502. A source-unavailable failure must never fall through to a
+// 200 with a silently empty content object.
+func writeFetchError(w http.ResponseWriter, id string, err error) {
+	if errors.Is(err, pluginhost.ErrItemNotFound) {
+		WriteError(w, http.StatusNotFound, "item_not_found", err.Error())
+		return
+	}
+	WriteError(w, http.StatusBadGateway, "source_unavailable", err.Error())
+}

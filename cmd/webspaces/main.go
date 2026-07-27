@@ -165,7 +165,7 @@ func runServe() error {
 		}
 	}()
 
-	router := httpapi.Router(store, cfg)
+	router := httpapi.Router(store, cfg, host)
 
 	listen := cfg.Server.Listen
 	if !isLoopback(listen) {

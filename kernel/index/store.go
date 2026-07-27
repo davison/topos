@@ -213,6 +213,44 @@ ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.i
 	return out, nil
 }
 
+// GetItem returns the single item with the given composite id
+// ("{source_type}:{source_id}"), or ok=false if no such item is indexed.
+// Used by the item-open routes (kernel/httpapi/item.go) to resolve an id
+// to a source_type/source_id pair before making a request-time plugin
+// call — this is an index read like StreamItems, never a plugin call.
+func (s *Store) GetItem(ctx context.Context, id string) (item.Item, bool, error) {
+	const q = `
+SELECT id, source_type, source_id, title, preview,
+       timestamp_unix, secondary_timestamp_unix, fidelity, deep_link,
+       labels_json, provenance_json, group_id, group_label, has_thumbnail
+FROM items WHERE id = ?
+`
+	var it item.Item
+	var fidelity string
+	var labelsJSON, provJSON string
+	var hasThumb int
+	err := s.db.QueryRowContext(ctx, q, id).Scan(
+		&it.ID, &it.SourceType, &it.SourceID, &it.Title, &it.Preview,
+		&it.TimestampUnix, &it.SecondaryTimestampUnix, &fidelity, &it.DeepLink,
+		&labelsJSON, &provJSON, &it.GroupID, &it.GroupLabel, &hasThumb,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return item.Item{}, false, nil
+		}
+		return item.Item{}, false, fmt.Errorf("index: get item %s: %w", id, err)
+	}
+	it.Fidelity = item.Fidelity(fidelity)
+	it.HasThumbnail = hasThumb != 0
+	if err := json.Unmarshal([]byte(labelsJSON), &it.Labels); err != nil {
+		return item.Item{}, false, fmt.Errorf("index: unmarshal labels for %s: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(provJSON), &it.Provenance); err != nil {
+		return item.Item{}, false, fmt.Errorf("index: unmarshal provenance for %s: %w", id, err)
+	}
+	return it, true, nil
+}
+
 // Webspaces returns the current item count for every webspace that has
 // completed at least one sync (including zero-item syncs), keyed by
 // webspace name.
