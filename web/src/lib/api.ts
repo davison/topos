@@ -59,6 +59,25 @@ export interface StreamResponse {
 	items: StreamItem[];
 }
 
+export interface Rendition {
+	mime_type: string;
+	size_bytes: number;
+	url: string;
+}
+
+export interface ItemContent {
+	available: boolean;
+	unavailable_reason: string;
+	text: string;
+	rendition: Rendition | null;
+}
+
+export interface ItemDetail {
+	schema_version: number;
+	item: StreamItem;
+	content: ItemContent;
+}
+
 export interface ApiErrorEnvelope {
 	schema_version: number;
 	error: {
@@ -103,4 +122,19 @@ export function listWebspaces(): Promise<WebspacesResponse> {
 /** GET /api/webspaces/{webspace}/stream */
 export function getStream(webspace: string): Promise<StreamResponse> {
 	return getJSON<StreamResponse>(`/api/webspaces/${encodeURIComponent(webspace)}/stream`);
+}
+
+/** GET /api/items/{id} */
+export function getItem(id: string): Promise<ItemDetail> {
+	return getJSON<ItemDetail>(`/api/items/${encodeURIComponent(id)}`);
+}
+
+/** Relative kernel path for GET /api/items/{id}/content. */
+export function contentUrl(id: string): string {
+	return `/api/items/${encodeURIComponent(id)}/content`;
+}
+
+/** Relative kernel path for GET /api/items/{id}/thumbnail. */
+export function thumbnailUrl(id: string): string {
+	return `/api/items/${encodeURIComponent(id)}/thumbnail`;
 }
