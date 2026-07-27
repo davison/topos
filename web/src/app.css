@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens per 01-UI-SPEC.md. Dark-mode-only (no light palette, no
+ * toggle) — .dark mirrors :root intentionally, so components that only key
+ * off the .dark variant render identically to the (never-shown) root
+ * variant. Values are the exact hex tokens from the UI-SPEC Color table,
+ * not the shadcn-svelte "slate" preset defaults (those are still used as
+ * the initial scaffold base color per components.json, but every value
+ * that reaches the page is the UI-SPEC's own).
+ */
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+	--font-sans: 'Inter Variable', system-ui, sans-serif;
+
+	/* Spacing scale (4px multiples) per 01-UI-SPEC.md Spacing Scale. */
+	--spacing-xs: 4px;
+	--spacing-sm: 8px;
+	--spacing-md: 16px;
+	--spacing-lg: 24px;
+	--spacing-xl: 32px;
+	--spacing-2xl: 48px;
+	--spacing-3xl: 64px;
+}
+
+:root {
+	--radius: 0.625rem;
+
+	/* Dominant (60%): page background, stream pane, empty negative space. */
+	--background: #020617;
+	--foreground: #f1f5f9;
+
+	/* Secondary (30%): cards, detail pane surface, top header/nav bar. */
+	--card: #0f172a;
+	--card-foreground: #f1f5f9;
+	--popover: #0f172a;
+	--popover-foreground: #f1f5f9;
+	--secondary: #1e293b;
+	--secondary-foreground: #f1f5f9;
+	--muted: #1e293b;
+	--muted-foreground: #94a3b8;
+
+	/*
+	 * shadcn's --accent token drives hover/active surfaces on many
+	 * components (menu items, ghost buttons). The UI-SPEC reserves the
+	 * accent BLUE for CTAs/links/focus rings/selected-row indicators only —
+	 * it explicitly forbids the accent color from general iconography or
+	 * hover chrome, so --accent stays a neutral surface here. The actual
+	 * blue lives in --primary (the "Open in paperless-ngx" CTA button
+	 * variant) and --ring (focus-visible outlines).
+	 */
+	--accent: #1e293b;
+	--accent-foreground: #f1f5f9;
+
+	/* Accent (10%): CTA, links, focus rings, selected-row indicator. */
+	--primary: #60a5fa;
+	--primary-foreground: #0f172a;
+	--ring: #60a5fa;
+
+	/* Destructive: reserved, not exercised in Phase 1 (read-only viewer). */
+	--destructive: #f87171;
+	--destructive-foreground: #020617;
+
+	--border: #1e293b;
+	--input: #1e293b;
+}
+
+.dark {
+	--background: #020617;
+	--foreground: #f1f5f9;
+	--card: #0f172a;
+	--card-foreground: #f1f5f9;
+	--popover: #0f172a;
+	--popover-foreground: #f1f5f9;
+	--secondary: #1e293b;
+	--secondary-foreground: #f1f5f9;
+	--muted: #1e293b;
+	--muted-foreground: #94a3b8;
+	--accent: #1e293b;
+	--accent-foreground: #f1f5f9;
+	--primary: #60a5fa;
+	--primary-foreground: #0f172a;
+	--ring: #60a5fa;
+	--destructive: #f87171;
+	--destructive-foreground: #020617;
+	--border: #1e293b;
+	--input: #1e293b;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
+		font-family: var(--font-sans);
+	}
+}

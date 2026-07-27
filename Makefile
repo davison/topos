@@ -1,9 +1,12 @@
 .PHONY: build test proto smoke dev
 
-# build produces the kernel binary and the paperless plugin binary.
-# The SvelteKit SPA build step (npm --prefix web ...) is added by plan
-# 01-01 Task 3 once web/ exists.
+# build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
+# the kernel binary, and the paperless plugin binary, in that order — the
+# kernel embed directive needs kernel/webui/build populated before `go
+# build` runs to embed anything beyond the committed .gitkeep placeholder.
 build:
+	npm --prefix web ci
+	npm --prefix web run build
 	CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
 	go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
 
@@ -32,7 +35,12 @@ proto:
 smoke: build
 	./scripts/e2e-smoke.sh
 
+# dev runs the kernel and the SvelteKit dev server together. The kernel
+# binary is never embedded here — Vite's dev server proxies /api to
+# 127.0.0.1:7777 (see web/vite.config.ts), so edits to either side hot
+# reload independently.
 dev:
-	@echo "Run in two terminals:"
-	@echo "  1) go run ./cmd/webspaces serve"
-	@echo "  2) npm --prefix web run dev"
+	@trap 'kill 0' EXIT INT TERM; \
+	go run ./cmd/webspaces serve & \
+	npm --prefix web run dev -- --open & \
+	wait

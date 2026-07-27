@@ -5,12 +5,15 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/davison/webspaces/kernel/config"
 	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/webspaces/kernel/webui"
 )
 
 // schemaVersion is the envelope's schema_version field. Bump only for
@@ -26,7 +29,28 @@ func Router(store *index.Store, cfg *config.Config) chi.Router {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store))
+	// NotFound only fires for requests that matched none of the routes
+	// above, so this never shadows /api/*: any request under /api/ that
+	// falls through here is genuinely unmatched, and every UI route
+	// (/, /w/house-move, a browser reload on a deep link, ...) is served
+	// by the embedded SPA and its 200.html fallback.
+	r.NotFound(spaHandler(webui.FS()))
 	return r
+}
+
+// spaHandler serves the embedded SvelteKit build, rewriting any path with
+// no matching embedded file to /200.html — the adapter-static SPA fallback
+// page, which bootstraps Svelte's own client-side router. Never named
+// index.html: that collides with adapter-static's prerendered-output
+// handling (01-RESEARCH.md Pitfall 3).
+func spaHandler(assets fs.FS) http.HandlerFunc {
+	fileServer := http.FileServer(http.FS(assets))
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := fs.Stat(assets, strings.TrimPrefix(r.URL.Path, "/")); err != nil {
+			r.URL.Path = "/200.html"
+		}
+		fileServer.ServeHTTP(w, r)
+	}
 }
 
 // apiError is the shared error envelope shape:
