@@ -1,7 +1,7 @@
 ---
 phase: 1
 slug: first-webspace-end-to-end
-status: draft
+status: approved
 shadcn_initialized: false
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4"
 created: 2026-07-27
@@ -133,7 +133,7 @@ Accent reserved for: the "Open in source" button, inline text links, focus-visib
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: 13 covered, 1 backstop, 0 unresolved.
+Applicable state considerations resolved (probe engine run 2026-07-27 over 5 elements, 22 applicable): 17 covered, 1 backstop, 4 dismissed (with reasons), 0 unresolved.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -151,6 +151,14 @@ Applicable state considerations resolved: 13 covered, 1 backstop, 0 unresolved.
 | overflow | static-content: detail pane extracted text | ✅ covered | Extracted text scrolls within its own contained region inside the detail pane; it never pushes page layout or affects the stream pane's scroll position. |
 | long-text | static-content: detail pane extracted text | ✅ covered | Extracted text wraps naturally with no truncation — this is the primary content the pane exists to show. Only stream-row previews truncate, not the detail pane's full text. |
 | long-text | interactive-control: "Open in source" button | ✅ covered | CTA label is a fixed static string ("Open in paperless-ngx"), never user-generated content, so no truncation/wrap handling beyond standard button padding is needed. |
+| empty | media: detail pane document preview | ✅ covered | When paperless-ngx has no previewable rendition for the file type, the preview region falls back to the extracted text plus a generic document icon — never a broken embed. |
+| overflow | media: detail pane document preview | ✅ covered | The embedded preview is sized to the detail pane's preview region; PDF embeds scroll internally within that region and never push the pane layout or affect the stream pane's scroll. |
+| long-text | media: detail pane document preview | ➖ dismissed | Media preview is not a text surface; long-text handling belongs to the extracted-text rows above. |
+| overflow | interactive-control: "Open in source" button | ➖ dismissed | Fixed static label with standard button padding, no user-generated content — same rationale as its long-text row. |
+| loading | nav: top header (webspace title) | ➖ dismissed | The webspace title renders synchronously from route/config state; no async load state exists for the header. |
+| error | nav: top header (webspace title) | ➖ dismissed | The header renders from local route state; API failure states surface in the stream-load error (backstop row), not in the header. |
+| overflow | nav: top header (webspace title) | ✅ covered | The webspace title truncates to one line with ellipsis at the header's available width. |
+| long-text | nav: top header (webspace title) | ✅ covered | Webspace names are user-defined config keywords and may be arbitrarily long — same one-line ellipsis rule; the full name is exposed via a tooltip/title attribute. |
 
 ---
 
@@ -166,11 +174,11 @@ No third-party registries declared for Phase 1 — only official shadcn-svelte b
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 2026-07-27 (6/6 dimensions, no blocking issues)
