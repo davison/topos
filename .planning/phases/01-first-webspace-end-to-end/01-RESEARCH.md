@@ -516,17 +516,19 @@ GET /api/documents/{id}/thumb/       # thumbnail
 | A3 | `pelletier/go-toml/v2` recommended over `BurntSushi/toml` for the config loader | Standard Stack / Alternatives Considered | Low risk — both are legitimate, verified libraries; a switch later is a config-loader-only change, not a downstream contract change |
 | A4 | The `.proto`-level `Health` RPC is sketched now even though PLUG-04 (health reporting) is a Phase 2 requirement | Architecture Patterns, Pattern 2 | Minor — if the planner decides not to reserve the RPC number now, Phase 2 just adds a new RPC; not a breaking risk either way |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **What exactly should the "preview" text be for a paperless document?**
    - What we know: paperless-ngx returns full extracted `content` (OCR'd text) in the document detail response; the Phase 1 notes leave "what is stored as the local preview" to Claude's discretion.
    - What's unclear: whether to truncate `content` to N characters, or use some other summary (e.g. first line / title only) — this affects both index storage size and stream UI design (UI-03).
    - Recommendation: Truncate `content` to a fixed character budget (e.g. 280–500 chars) at sync time and store that truncated string as `items.preview`; this keeps KERN-03's "metadata + preview only" boundary honest and gives the stream something meaningful to render without fetching full content.
+   - **RESOLVED (planning decision):** Preview is stored as 500 runes of collapsed OCR text (whitespace-collapsed `content`, truncated to 500 runes). Adopted in the phase plans.
 
 2. **Where does the plugins directory live, and how are plugin binaries discovered?**
    - What we know: `.claude/CLAUDE.md`'s "Stack Patterns by Variant" says plugin discovery should be "whatever plugin binaries are present in the plugins directory," not a compile-time list.
    - What's unclear: default path (`~/.config/webspaces/plugins/`? next to the kernel binary? both, in order?) — this is explicitly a "Claude's Discretion" item ("Running the service").
    - Recommendation: Default to a `plugins/` directory next to the kernel binary (simplest for a single-binary desktop tool), overridable via a `plugins_dir` key in `config.toml`; document this as a planning decision rather than researching further — it's a design choice, not a technical unknown.
+   - **RESOLVED (planning decision):** Plugins directory defaults to `plugins/` beside the kernel binary, overridable via a `plugins_dir` key in `config.toml`. Adopted in the phase plans.
 
 ## Environment Availability
 
