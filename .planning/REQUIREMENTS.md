@@ -63,4 +63,32 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 ## Traceability
 
-(Filled by roadmap: REQ-ID → Phase mapping)
+Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase — no orphans, no duplicates.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| KERN-01 | Phase 1 | Pending |
+| KERN-02 | Phase 1 | Pending |
+| KERN-03 | Phase 1 | Pending |
+| KERN-04 | Phase 2 | Pending |
+| KERN-05 | Phase 3 | Pending |
+| PLUG-01 | Phase 1 | Pending |
+| PLUG-02 | Phase 1 | Pending |
+| PLUG-03 | Phase 1 | Pending |
+| PLUG-04 | Phase 2 | Pending |
+| PLUG-05 | Phase 2 | Pending |
+| SRC-01 | Phase 3 | Pending |
+| SRC-02 | Phase 4 | Pending |
+| SRC-03 | Phase 5 | Pending |
+| SRC-04 | Phase 1 | Pending |
+| SRC-05 | Phase 2 | Pending |
+| UI-01 | Phase 1 | Pending |
+| UI-02 | Phase 2 | Pending |
+| UI-03 | Phase 1 | Pending |
+| UI-04 | Phase 1 | Pending |
+| UI-05 | Phase 2 | Pending |
+| UI-06 | Phase 2 | Pending |
+| AGENT-01 | Phase 2 | Pending |
+| AGENT-02 | Phase 1 | Pending |
+
+Deferred requirements (AGENT-10, AGENT-11, AGENT-12, UI-10) are v1.x and intentionally unmapped.
