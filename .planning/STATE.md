@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-07-28T00:09:20.069Z"
+current_phase: 01
+current_phase_name: First Webspace, End to End
+status: verifying
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-07-28T01:10:06.682Z"
 last_activity: 2026-07-28
 progress:
-  total_phases: 5
-  completed_phases: 0
+  total_phases: 1
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
 ---
 
 # Project State
@@ -26,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-07-27)
 
 Phase: 01 (First Webspace, End to End) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-28
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -58,6 +60,7 @@ Progress: [████████░░] 75%
 |------|----------|-------|-------|
 | Phase 01 P02 | 40min | 2 tasks | 17 files |
 | Phase 01 P03 | 25min | 2 tasks | 14 files |
+| Phase 01 P04 | 47min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -79,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 01-03]: Installed vitest as the frontend's first unit-test runner (no test infrastructure existed) to satisfy the plan's own npm run test acceptance criterion
 - [Phase ?]: [Phase 01-03]: StreamList.svelte's sync-failure branch is checked and rendered strictly before the empty branch — a webspace whose sync failed and returned zero items must never render as 'Nothing here yet'
 - [Phase ?]: [Phase 01-03]: Svelte 5 gotcha — a local variable literally named 'state' collides with the $state() rune's store auto-subscription parsing; renamed to loadState in the webspace route
+- [Phase ?]: [Phase 01-04]: RPC allowlist (not blacklist) chosen for sdk/contract_test.go so any new RPC fails the build until deliberately allowlisted
+- [Phase ?]: [Phase 01-04]: Item.SyncedAtUnix populated by kernel index at read time, never by a plugin — the sixth provenance key (synced_at_unix) the contract requires
+- [Phase ?]: [Phase 01-04]: docs/api.md documents content_unavailable and internal_error error codes in addition to the four named in the plan's own interfaces block, matching the shipped kernel/httpapi code
 
 ### Pending Todos
 
@@ -103,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T00:09:13.128Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-07-28T01:10:06.674Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
