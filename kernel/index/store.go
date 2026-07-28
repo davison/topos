@@ -81,8 +81,8 @@ func (s *Store) UpsertItems(ctx context.Context, items []item.Item) error {
 // item's own SourceType field), so a source's sync can never delete rows
 // belonging to a different source_type for the same webspace, even
 // transiently between the delete and the reinsert. This is what makes it
-// safe for the source-major sync loop in kernel/correlate/correlate.go to
-// call this once per (webspace, source) pair, independently of whether any
+// safe for the source-major sync loop in the correlation package to call
+// this once per (webspace, source) pair, independently of whether any
 // other configured source succeeded or failed in the same sync cycle
 // (promoting the sync identity from "webspace" to "(webspace,
 // source_type)" — see 02-01-PLAN.md's objective).
@@ -337,18 +337,6 @@ type SyncRun struct {
 	ItemCount    int
 }
 
-// RecordSyncRun records one completed sync attempt for a source.
-func (s *Store) RecordSyncRun(ctx context.Context, run SyncRun) error {
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sync_runs (source_type, started_unix, finished_unix, status, error, item_count)
-VALUES (?, ?, ?, ?, ?, ?)
-`, run.SourceType, run.StartedUnix, run.FinishedUnix, run.Status, run.Error, run.ItemCount)
-	if err != nil {
-		return fmt.Errorf("index: record sync run for %s: %w", run.SourceType, err)
-	}
-	return nil
-}
-
 // LatestSyncRun returns the most recently recorded sync run across all
 // sources, or ok=false if none has been recorded yet.
 func (s *Store) LatestSyncRun(ctx context.Context) (run SyncRun, ok bool, err error) {
@@ -365,4 +353,93 @@ FROM sync_runs ORDER BY id DESC LIMIT 1
 	}
 	run.FinishedUnix = finished.Int64
 	return run, true, nil
+}
+
+// StartSyncRun inserts a new sync_runs row for sourceType with status
+// "running" and a NULL finished_unix, and returns its id. This is the
+// first half of the two-phase write that lets SyncingSourceTypes report
+// "is this source syncing right now" between StartSyncRun and the
+// matching FinishSyncRun call — the coordinator (kernel/syncer) is the
+// only caller of either method (D-06).
+func (s *Store) StartSyncRun(ctx context.Context, sourceType string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+INSERT INTO sync_runs (source_type, started_unix, status) VALUES (?, unixepoch(), 'running')
+`, sourceType)
+	if err != nil {
+		return 0, fmt.Errorf("index: start sync run for %s: %w", sourceType, err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("index: start sync run id for %s: %w", sourceType, err)
+	}
+	return id, nil
+}
+
+// FinishSyncRun updates the sync_runs row started by StartSyncRun (runID)
+// with its outcome — it never inserts a new row, so a source's sync
+// leaves exactly one row per attempt, running-then-finished, never two.
+func (s *Store) FinishSyncRun(ctx context.Context, runID int64, status, errMsg string, itemCount int) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE sync_runs SET finished_unix = unixepoch(), status = ?, error = ?, item_count = ? WHERE id = ?
+`, status, errMsg, itemCount, runID)
+	if err != nil {
+		return fmt.Errorf("index: finish sync run %d: %w", runID, err)
+	}
+	return nil
+}
+
+// LatestSyncRunPerSource returns the most recently started sync_runs row
+// for every source_type that has ever recorded one, keyed by source_type.
+// A still-running row (NULL finished_unix) scans as FinishedUnix 0,
+// exactly as LatestSyncRun already does.
+func (s *Store) LatestSyncRunPerSource(ctx context.Context) (map[string]SyncRun, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT source_type, started_unix, finished_unix, status, error, item_count
+FROM sync_runs
+WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source_type)
+`)
+	if err != nil {
+		return nil, fmt.Errorf("index: latest sync run per source: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]SyncRun{}
+	for rows.Next() {
+		var run SyncRun
+		var finished sql.NullInt64
+		if err := rows.Scan(&run.SourceType, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount); err != nil {
+			return nil, fmt.Errorf("index: scan latest sync run per source row: %w", err)
+		}
+		run.FinishedUnix = finished.Int64
+		out[run.SourceType] = run
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("index: iterate latest sync run per source rows: %w", err)
+	}
+	return out, nil
+}
+
+// SyncingSourceTypes returns the set of source types with an unfinished
+// (status "running", finished_unix still NULL) sync_runs row right now.
+func (s *Store) SyncingSourceTypes(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT source_type FROM sync_runs WHERE status = 'running' AND finished_unix IS NULL
+`)
+	if err != nil {
+		return nil, fmt.Errorf("index: syncing source types: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]bool{}
+	for rows.Next() {
+		var sourceType string
+		if err := rows.Scan(&sourceType); err != nil {
+			return nil, fmt.Errorf("index: scan syncing source type row: %w", err)
+		}
+		out[sourceType] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("index: iterate syncing source types: %w", err)
+	}
+	return out, nil
 }

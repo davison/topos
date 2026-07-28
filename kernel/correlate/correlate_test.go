@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/davison/webspaces/kernel/config"
 	"github.com/davison/webspaces/kernel/index"
@@ -40,9 +39,7 @@ func newTestStore(t *testing.T) *index.Store {
 	return s
 }
 
-func fixedNow() time.Time { return time.Unix(1780000000, 0) }
-
-func TestSyncAll_PersistsMatchedItems(t *testing.T) {
+func TestSyncSource_PersistsMatchedItems(t *testing.T) {
 	store := newTestStore(t)
 
 	src := &fakeSource{
@@ -58,11 +55,11 @@ func TestSyncAll_PersistsMatchedItems(t *testing.T) {
 		"house-move": {Keywords: []string{"house-move", "House"}},
 	}}
 
-	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
+	engine := &Engine{Store: store, Config: cfg}
 
-	results, err := engine.SyncAll(context.Background())
-	if err != nil {
-		t.Fatalf("SyncAll: %v", err)
+	results, rejections := engine.SyncSource(context.Background(), src)
+	if rejections != "" {
+		t.Fatalf("expected no rejections, got %q", rejections)
 	}
 	if len(results) != 1 || results[0].ItemCount != 1 {
 		t.Fatalf("unexpected results: %+v", results)
@@ -75,17 +72,9 @@ func TestSyncAll_PersistsMatchedItems(t *testing.T) {
 	if len(items) != 1 || items[0].ID != "paperless:1" {
 		t.Fatalf("unexpected persisted items: %+v", items)
 	}
-
-	run, ok, err := store.LatestSyncRun(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("LatestSyncRun: ok=%v err=%v", ok, err)
-	}
-	if run.Status != "ok" || run.ItemCount != 1 {
-		t.Errorf("unexpected sync run: %+v", run)
-	}
 }
 
-func TestSyncAll_KeywordOrderDoesNotAffectResult(t *testing.T) {
+func TestSyncSource_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	store := newTestStore(t)
 
 	matchFunc := func(keywords []string) (*webspacesv1.MatchResponse, error) {
@@ -99,9 +88,9 @@ func TestSyncAll_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	cfg := &config.Config{Webspaces: map[string]config.Webspace{
 		"ws": {Keywords: []string{"a", "b"}},
 	}}
-	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
-	if _, err := engine.SyncAll(context.Background()); err != nil {
-		t.Fatalf("SyncAll (order 1): %v", err)
+	engine := &Engine{Store: store, Config: cfg}
+	if _, rejections := engine.SyncSource(context.Background(), src); rejections != "" {
+		t.Fatalf("SyncSource (order 1): unexpected rejections %q", rejections)
 	}
 	first, err := store.StreamItems(context.Background(), "ws")
 	if err != nil {
@@ -112,9 +101,9 @@ func TestSyncAll_KeywordOrderDoesNotAffectResult(t *testing.T) {
 		"ws": {Keywords: []string{"b", "a"}},
 	}}
 	src2 := &fakeSource{name: "paperless", sourceType: "paperless", matchFunc: matchFunc}
-	engine2 := &Engine{Store: store, Sources: []Source{src2}, Config: cfg2, NowFunc: fixedNow}
-	if _, err := engine2.SyncAll(context.Background()); err != nil {
-		t.Fatalf("SyncAll (order 2): %v", err)
+	engine2 := &Engine{Store: store, Config: cfg2}
+	if _, rejections := engine2.SyncSource(context.Background(), src2); rejections != "" {
+		t.Fatalf("SyncSource (order 2): unexpected rejections %q", rejections)
 	}
 	second, err := store.StreamItems(context.Background(), "ws")
 	if err != nil {
@@ -131,7 +120,7 @@ func TestSyncAll_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	}
 }
 
-func TestSyncAll_MatchErrorRecordsFailedSyncRun(t *testing.T) {
+func TestSyncSource_MatchErrorReturnsWebspaceResultErr(t *testing.T) {
 	store := newTestStore(t)
 
 	src := &fakeSource{
@@ -143,31 +132,22 @@ func TestSyncAll_MatchErrorRecordsFailedSyncRun(t *testing.T) {
 	cfg := &config.Config{Webspaces: map[string]config.Webspace{
 		"ws": {Keywords: []string{"a"}},
 	}}
-	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
+	engine := &Engine{Store: store, Config: cfg}
 
-	results, err := engine.SyncAll(context.Background())
-	if err != nil {
-		t.Fatalf("SyncAll should not return a top-level error on a source failure: %v", err)
-	}
+	results, _ := engine.SyncSource(context.Background(), src)
 	if len(results) != 1 || results[0].Err == nil {
 		t.Fatalf("expected a webspace-level error result, got: %+v", results)
 	}
-
-	run, ok, err := store.LatestSyncRun(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("LatestSyncRun: ok=%v err=%v", ok, err)
-	}
-	if run.Status != "error" || run.Error == "" {
-		t.Errorf("expected recorded error status, got: %+v", run)
-	}
 }
 
-// TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink verifies PLUG-03:
-// an item with an unspecified fidelity, or an empty deep link, is skipped
-// at the correlation boundary and never reaches the index, while other
-// valid items from the same source still persist normally, and the
-// rejection is named (plugin + source id) in the recorded sync run.
-func TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
+// TestSyncSource_RejectsUnspecifiedFidelityAndEmptyDeepLink verifies
+// PLUG-03: an item with an unspecified fidelity, or an empty deep link, is
+// skipped at the correlation boundary and never reaches the index, while
+// other valid items from the same source still persist normally, and the
+// rejection is named (plugin + source id) in the returned rejections
+// string — the caller (kernel/syncer.Coordinator) is what records this on
+// the sync_runs row.
+func TestSyncSource_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
 	store := newTestStore(t)
 
 	src := &fakeSource{
@@ -183,12 +163,9 @@ func TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
 	cfg := &config.Config{Webspaces: map[string]config.Webspace{
 		"ws": {Keywords: []string{"a"}},
 	}}
-	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
+	engine := &Engine{Store: store, Config: cfg}
 
-	results, err := engine.SyncAll(context.Background())
-	if err != nil {
-		t.Fatalf("SyncAll: %v", err)
-	}
+	results, rejections := engine.SyncSource(context.Background(), src)
 	if len(results) != 1 || results[0].Err != nil || results[0].ItemCount != 1 {
 		t.Fatalf("expected the sync to succeed with exactly 1 persisted item, got: %+v", results)
 	}
@@ -201,29 +178,25 @@ func TestSyncAll_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
 		t.Fatalf("expected only the valid item to be persisted, got: %+v", items)
 	}
 
-	run, ok, err := store.LatestSyncRun(context.Background())
-	if err != nil || !ok {
-		t.Fatalf("LatestSyncRun: ok=%v err=%v", ok, err)
+	if rejections == "" {
+		t.Error("expected the rejections string to record the rejected items")
 	}
-	if run.Status != "ok" {
-		t.Errorf("expected sync run status ok (rejections are per-item, not fatal), got %q", run.Status)
-	}
-	if run.Error == "" {
-		t.Error("expected the sync run to record the rejected items")
-	}
-	if !strings.Contains(run.Error, "paperless") || !strings.Contains(run.Error, "no-fidelity") || !strings.Contains(run.Error, "no-link") {
-		t.Errorf("expected the sync run error to name the plugin and both rejected source ids, got: %q", run.Error)
+	if !strings.Contains(rejections, "paperless") || !strings.Contains(rejections, "no-fidelity") || !strings.Contains(rejections, "no-link") {
+		t.Errorf("expected the rejections string to name the plugin and both rejected source ids, got: %q", rejections)
 	}
 }
 
-// TestSyncAll_PartialSourceFailure_HealthySourceItemsPersist is the
-// load-bearing regression test for 02-01-PLAN.md's objective: with two
-// configured sources, one of which fails Match, the healthy source's
-// freshly matched items must persist for every webspace, and the failing
-// source's previously persisted rows must be left completely unchanged —
-// never rolled back, never discarded, just because a sibling source was
+// TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist is the
+// load-bearing regression test for 02-01-PLAN.md's objective, adapted for
+// 02-02-PLAN.md's per-source-call shape (kernel/syncer.Coordinator now
+// calls SyncSource once per source independently, never via a joint
+// whole-run loop): with two sources, each synced via its own SyncSource
+// call, one of which fails Match, the healthy source's freshly matched
+// items must persist for every webspace, and the failing source's
+// previously persisted rows must be left completely unchanged — never
+// rolled back, never discarded, just because a sibling source was
 // unreachable this cycle (02-RESEARCH.md "Critical Architecture Finding").
-func TestSyncAll_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T) {
+func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -247,13 +220,12 @@ func TestSyncAll_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T) {
 		"house-move": {Keywords: []string{"house"}},
 	}}
 
-	// First cycle: both sources healthy — seed a baseline so the flaky
-	// source has previously persisted rows to prove untouched in the
-	// second cycle.
-	engine := &Engine{Store: store, Sources: []Source{healthy, flaky}, Config: cfg, NowFunc: fixedNow}
-	if _, err := engine.SyncAll(ctx); err != nil {
-		t.Fatalf("baseline SyncAll: %v", err)
-	}
+	// First cycle: both sources healthy, each synced independently — seed
+	// a baseline so the flaky source has previously persisted rows to
+	// prove untouched in the second cycle.
+	engine := &Engine{Store: store, Config: cfg}
+	engine.SyncSource(ctx, healthy)
+	engine.SyncSource(ctx, flaky)
 	baseline, err := store.StreamItems(ctx, "house-move")
 	if err != nil {
 		t.Fatalf("StreamItems (baseline): %v", err)
@@ -278,21 +250,20 @@ func TestSyncAll_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T) {
 			return nil, errors.New("connection refused")
 		},
 	}
-	engine2 := &Engine{Store: store, Sources: []Source{healthy2, failingFlaky}, Config: cfg, NowFunc: fixedNow}
 
-	results, err := engine2.SyncAll(ctx)
-	if err != nil {
-		t.Fatalf("SyncAll should not return a top-level error on a source failure: %v", err)
-	}
+	paperlessResults, _ := engine.SyncSource(ctx, healthy2)
+	silverbulletResults, _ := engine.SyncSource(ctx, failingFlaky)
 
 	var sawPaperlessOK, sawSilverbulletErr bool
-	for _, r := range results {
+	for _, r := range paperlessResults {
 		if r.SourceType == "paperless" && r.Webspace == "house-move" {
 			sawPaperlessOK = true
 			if r.Err != nil {
 				t.Errorf("expected the healthy source's result to have no error, got: %v", r.Err)
 			}
 		}
+	}
+	for _, r := range silverbulletResults {
 		if r.SourceType == "silverbullet" && r.Webspace == "house-move" {
 			sawSilverbulletErr = true
 			if r.Err == nil {
@@ -301,7 +272,7 @@ func TestSyncAll_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T) {
 		}
 	}
 	if !sawPaperlessOK || !sawSilverbulletErr {
-		t.Fatalf("expected one result per (webspace, source), got: %+v", results)
+		t.Fatalf("expected one result per (webspace, source), got paperless=%+v silverbullet=%+v", paperlessResults, silverbulletResults)
 	}
 
 	items, err := store.StreamItems(ctx, "house-move")
@@ -340,10 +311,10 @@ func idsOf(items []item.Item) []string {
 }
 
 // TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace proves
-// SyncSource itself (not just SyncAll) is source-major: calling it once
-// for one source persists that source's contribution to every configured
-// webspace, and does so via the source-scoped store method, never
-// touching another webspace's or another source's rows.
+// SyncSource is source-major: calling it once for one source persists
+// that source's contribution to every configured webspace, and does so
+// via the source-scoped store method, never touching another webspace's
+// or another source's rows.
 func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -360,9 +331,12 @@ func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 		"house-move": {Keywords: []string{"house"}},
 		"garden":     {Keywords: []string{"garden"}},
 	}}
-	engine := &Engine{Store: store, Sources: []Source{src}, Config: cfg, NowFunc: fixedNow}
+	engine := &Engine{Store: store, Config: cfg}
 
-	results := engine.SyncSource(ctx, src)
+	results, rejections := engine.SyncSource(ctx, src)
+	if rejections != "" {
+		t.Fatalf("unexpected rejections: %q", rejections)
+	}
 	if len(results) != 2 {
 		t.Fatalf("expected one result per configured webspace, got %d: %+v", len(results), results)
 	}

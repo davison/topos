@@ -1,15 +1,18 @@
-// Package correlate implements sync-time correlation (KERN-02): for each
-// configured webspace, it calls every plugin's Match RPC once and persists
-// the resulting items into the local index. This is the ONLY package in
-// the repository permitted to call a plugin's Match RPC — kernel/httpapi's
-// stream handler reads exclusively from kernel/index.
+// Package correlate (kernel/correlate) implements sync-time correlation
+// (KERN-02): for each configured webspace, it calls every plugin's Match
+// RPC once and persists the resulting items into the local index. This is
+// the ONLY package in the repository permitted to call a plugin's Match
+// RPC — kernel/httpapi's stream handler reads exclusively from
+// kernel/index. Its only non-test callers are cmd/webspaces/main.go
+// (source-list construction) and kernel/syncer.Coordinator, which is the
+// only caller of SyncSource — see kernel/syncer/coordinator.go's package
+// doc for why.
 package correlate
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/davison/webspaces/kernel/config"
 	"github.com/davison/webspaces/kernel/index"
@@ -27,19 +30,15 @@ type Source interface {
 	Match(ctx context.Context, keywords []string) (*webspacesv1.MatchResponse, error)
 }
 
-// Engine runs sync cycles against a set of sources and a config.
+// Engine runs sync cycles against a set of sources and a config. Sources
+// is retained for callers that build an Engine alongside a
+// kernel/syncer.Coordinator (the coordinator takes its own source list
+// separately) but is no longer read by anything in this package — the
+// coordinator is what iterates sources now (see SyncSource's doc comment).
 type Engine struct {
 	Store   *index.Store
 	Sources []Source
 	Config  *config.Config
-	NowFunc func() time.Time // overridable for tests; defaults to time.Now
-}
-
-func (e *Engine) now() time.Time {
-	if e.NowFunc != nil {
-		return e.NowFunc()
-	}
-	return time.Now()
 }
 
 // WebspaceResult summarizes one (webspace, source) sync outcome. The sync
@@ -66,25 +65,24 @@ type WebspaceResult struct {
 // persisted rows (the partial-source-failure bug fixed by this method —
 // see 02-RESEARCH.md "Critical Architecture Finding").
 //
-// One sync_runs row is recorded for this source, summarizing the whole
-// per-source cycle across every webspace.
-func (e *Engine) SyncSource(ctx context.Context, src Source) []WebspaceResult {
-	started := e.now().Unix()
-
-	results := make([]WebspaceResult, 0, len(e.Config.Webspaces))
-
-	totalItemCount := 0
-	var rejections []string
-	var runErr error
+// SyncSource never writes to sync_runs itself (02-02-PLAN.md Task 1): it
+// returns its per-webspace results plus rejections, the aggregated
+// "plugin %q source_id %q: %v" message for every item skipped at the
+// correlation boundary across every webspace this call touched, joined
+// with "; ". The caller — kernel/syncer.Coordinator, the only caller of
+// this method now that SyncAll is gone — owns the two-phase
+// StartSyncRun/FinishSyncRun write around this call and decides the
+// run's overall status from these return values, so the coordinator
+// remains the single source of truth for sync history (D-06).
+func (e *Engine) SyncSource(ctx context.Context, src Source) (results []WebspaceResult, rejections string) {
+	results = make([]WebspaceResult, 0, len(e.Config.Webspaces))
+	var rejected []string
 
 	for name, ws := range e.Config.Webspaces {
 		resp, err := src.Match(ctx, ws.Keywords)
 		if err != nil {
 			wrapped := fmt.Errorf("match against source %q: %w", src.Name(), err)
 			results = append(results, WebspaceResult{Webspace: name, SourceType: src.SourceType(), Err: wrapped})
-			if runErr == nil {
-				runErr = err
-			}
 			continue
 		}
 
@@ -96,7 +94,7 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) []WebspaceResult {
 			// (not the whole sync) and name the plugin and source id so
 			// the sync run records it.
 			if rejErr := validateCorrelatedItem(it); rejErr != nil {
-				rejections = append(rejections,
+				rejected = append(rejected,
 					fmt.Sprintf("plugin %q source_id %q: %v", src.Name(), it.SourceID, rejErr))
 				continue
 			}
@@ -109,51 +107,10 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) []WebspaceResult {
 			continue
 		}
 
-		totalItemCount += len(items)
 		results = append(results, WebspaceResult{Webspace: name, SourceType: src.SourceType(), ItemCount: len(items)})
 	}
 
-	finished := e.now().Unix()
-	run := index.SyncRun{
-		SourceType:   src.SourceType(),
-		StartedUnix:  started,
-		FinishedUnix: finished,
-		Status:       "ok",
-		ItemCount:    totalItemCount,
-	}
-	if runErr != nil {
-		run.Status = "error"
-		run.Error = runErr.Error()
-	} else if len(rejections) > 0 {
-		// The sync itself succeeded (other items from this source
-		// persisted normally) but these specific items were rejected at
-		// the correlation boundary — recorded, not silently dropped.
-		run.Error = strings.Join(rejections, "; ")
-	}
-	if err := e.Store.RecordSyncRun(ctx, run); err != nil {
-		// A sync_runs write failure is itself a result the caller needs
-		// to see: append it as a webspace-less result carrying just the
-		// source type and the error, rather than silently swallowing it
-		// (which the previous SyncAll-only shape effectively did on a
-		// full-cycle basis).
-		results = append(results, WebspaceResult{SourceType: src.SourceType(), Err: fmt.Errorf("correlate: record sync run for %s: %w", src.SourceType(), err)})
-	}
-
-	return results
-}
-
-// SyncAll runs one full sync cycle: every configured source is synced via
-// SyncSource in turn, and the results are concatenated. A returned error
-// (or a per-webspace Err) from one source never short-circuits, delays, or
-// discards another source's persistence — this is the source-major
-// restructuring 02-01-PLAN.md's objective describes: the sync identity
-// this loop operates on is "(webspace, source_type)", not "webspace".
-func (e *Engine) SyncAll(ctx context.Context) ([]WebspaceResult, error) {
-	results := make([]WebspaceResult, 0, len(e.Config.Webspaces)*len(e.Sources))
-	for _, src := range e.Sources {
-		results = append(results, e.SyncSource(ctx, src)...)
-	}
-	return results, nil
+	return results, strings.Join(rejected, "; ")
 }
 
 // validateCorrelatedItem enforces PLUG-03 at the sync boundary: no item

@@ -305,24 +305,114 @@ func equalIDOrder(got, want []string) bool {
 	return true
 }
 
-func TestRecordSyncRunAndLatest(t *testing.T) {
+// TestStartAndFinishSyncRun is the load-bearing proof for the two-phase
+// sync_runs write (02-02-PLAN.md Task 1): StartSyncRun inserts exactly one
+// running row, SyncingSourceTypes reports the source as syncing while that
+// row is unfinished, and FinishSyncRun updates THAT row (never inserting a
+// second) so the total row count for the source stays at 1.
+func TestStartAndFinishSyncRun(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	if err := s.RecordSyncRun(ctx, SyncRun{
-		SourceType: "paperless", StartedUnix: 1, FinishedUnix: 2, Status: "ok", ItemCount: 5,
-	}); err != nil {
-		t.Fatalf("RecordSyncRun: %v", err)
+	id, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if id <= 0 {
+		t.Fatalf("expected a positive run id, got %d", id)
 	}
 
-	run, ok, err := s.LatestSyncRun(ctx)
+	syncing, err := s.SyncingSourceTypes(ctx)
 	if err != nil {
-		t.Fatalf("LatestSyncRun: %v", err)
+		t.Fatalf("SyncingSourceTypes: %v", err)
 	}
+	if !syncing["paperless"] {
+		t.Error("expected paperless to be syncing between StartSyncRun and FinishSyncRun")
+	}
+
+	if err := s.FinishSyncRun(ctx, id, "ok", "", 12); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	syncing, err = s.SyncingSourceTypes(ctx)
+	if err != nil {
+		t.Fatalf("SyncingSourceTypes: %v", err)
+	}
+	if syncing["paperless"] {
+		t.Error("expected paperless to no longer be syncing after FinishSyncRun")
+	}
+
+	runs, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	run, ok := runs["paperless"]
 	if !ok {
-		t.Fatal("expected a sync run to be present")
+		t.Fatal("expected a recorded run for paperless")
 	}
-	if run.Status != "ok" || run.ItemCount != 5 {
-		t.Errorf("unexpected sync run: %+v", run)
+	if run.Status != "ok" || run.ItemCount != 12 || run.FinishedUnix == 0 {
+		t.Errorf("unexpected finished run: %+v", run)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_runs WHERE source_type = ?`, "paperless").Scan(&count); err != nil {
+		t.Fatalf("count sync_runs: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 sync_runs row (finish updates, never inserts), got %d", count)
+	}
+}
+
+// TestLatestSyncRunPerSource_TwoSourcesReturnsBothNewest proves
+// LatestSyncRunPerSource returns one entry per source_type, each the
+// newest for its own source.
+func TestLatestSyncRunPerSource_TwoSourcesReturnsBothNewest(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	id1, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id1, "ok", "", 3); err != nil {
+		t.Fatalf("FinishSyncRun(paperless): %v", err)
+	}
+	id2, err := s.StartSyncRun(ctx, "silverbullet")
+	if err != nil {
+		t.Fatalf("StartSyncRun(silverbullet): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id2, "error", "boom", 0); err != nil {
+		t.Fatalf("FinishSyncRun(silverbullet): %v", err)
+	}
+
+	runs, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 entries, got %d: %+v", len(runs), runs)
+	}
+	if runs["paperless"].Status != "ok" || runs["silverbullet"].Status != "error" {
+		t.Errorf("unexpected runs: %+v", runs)
+	}
+}
+
+// TestSyncingSourceTypes_UnrelatedSourceUnaffected proves a running row
+// for one source does not mark a different, never-started source as
+// syncing.
+func TestSyncingSourceTypes_UnrelatedSourceUnaffected(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.StartSyncRun(ctx, "paperless"); err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+
+	syncing, err := s.SyncingSourceTypes(ctx)
+	if err != nil {
+		t.Fatalf("SyncingSourceTypes: %v", err)
+	}
+	if syncing["silverbullet"] {
+		t.Error("expected silverbullet, which never started a run, to not be syncing")
 	}
 }
