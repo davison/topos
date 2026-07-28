@@ -31,11 +31,11 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 ### UI
 
 - [x] **UI-01**: Web UI shows a webspace as a chronological cross-source stream with a detail pane
-- [ ] **UI-02**: User can filter the stream by source
+- [x] **UI-02**: User can filter the stream by source
 - [x] **UI-03**: Items render inline previews appropriate to type (email body, chat thread, note, document)
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
-- [ ] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
-- [ ] **UI-06**: Sync status and plugin health are visible in the UI
+- [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
+- [x] **UI-06**: Sync status and plugin health are visible in the UI
 
 ### Agent Readiness (provisions only â€” the agent itself is v1.x)
 
@@ -83,11 +83,11 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | SRC-04 | Phase 1 | Complete |
 | SRC-05 | Phase 2 | Complete |
 | UI-01 | Phase 1 | Complete |
-| UI-02 | Phase 2 | Pending |
+| UI-02 | Phase 2 | Complete |
 | UI-03 | Phase 1 | Complete |
 | UI-04 | Phase 1 | Complete |
-| UI-05 | Phase 2 | Pending |
-| UI-06 | Phase 2 | Pending |
+| UI-05 | Phase 2 | Complete |
+| UI-06 | Phase 2 | Complete |
 | AGENT-01 | Phase 2 | Pending |
 | AGENT-02 | Phase 1 | Complete |
 
