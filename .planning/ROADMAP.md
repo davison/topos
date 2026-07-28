@@ -47,7 +47,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — Stream presentation and every UI state, including a failed sync never masquerading as an empty webspace
+- [x] 01-03-PLAN.md — Stream presentation and every UI state, including a failed sync never masquerading as an empty webspace
 - [ ] 01-04-PLAN.md — Published plugin + HTTP contracts, contract-conformance tests enforcing read-only and the agent envelope, operator docs
 
 **UI hint**: yes
@@ -154,7 +154,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. First Webspace, End to End | 2/4 | In Progress|  |
+| 1. First Webspace, End to End | 3/4 | In Progress|  |
 | 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
