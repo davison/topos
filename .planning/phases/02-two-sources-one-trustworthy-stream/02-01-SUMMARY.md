@@ -52,6 +52,8 @@ key-decisions:
 
 patterns-established:
   - "Source plugin Fetch must re-derive its own on-source path from source_id when the two differ (D-01 strips the .md extension for source_id; the real file always has it) — a bug caught only by live verification, now covered by fetch_test.go's fixture server rejecting any other path"
+  - "A text/html rendition that IS the item's content (not a preview alongside separate text, like SilverBullet's rendered markdown) gets its own full-pane-body layout branch, checked before the shared small-preview-box branch other rendition types share"
+  - "A plugin that returns text/html for direct iframe rendering must wrap its sanitized fragment in a minimal self-contained document (WrapDocument) carrying a fixed, hardcoded stylesheet matching the app's theme tokens — an iframe document has no access to the SPA's own CSS, and unstyled HTML renders unreadably against the app's dark background"
 
 requirements-completed: [SRC-05]
 # KERN-04 ("Sync scheduler with a per-plugin coordinator; user can trigger
@@ -90,18 +92,22 @@ coverage:
         status: pass
     human_judgment: false
   - id: D3
-    description: "Opening a SilverBullet item renders its page content as sanitized HTML inside the same sandboxed rendition iframe pattern the PDF rendition already uses"
+    description: "Opening a SilverBullet item renders its page content as sanitized HTML inside the same sandboxed rendition iframe pattern the PDF rendition already uses, filling the pane's body and matching the app's dark theme"
     verification:
       - kind: unit
         ref: "plugins/silverbullet/render_test.go#TestRenderSanitized_StripsRawScriptElement"
         status: pass
       - kind: unit
+        ref: "plugins/silverbullet/render_test.go#TestWrapDocument_InjectsThemeStyleAndPreservesFragment"
+        status: pass
+      - kind: unit
         ref: "kernel/httpapi/item_test.go#TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders"
         status: pass
       - kind: integration
-        ref: "live GET /api/items/{silverbullet id}/content returned 200, Content-Type text/html, sanitized rendered HTML body"
+        ref: "live GET /api/items/{silverbullet id}/content returned 200, Content-Type text/html, sanitized rendered HTML body wrapped in the theme-styled document"
         status: pass
-    human_judgment: false
+    human_judgment: true
+    rationale: "First tracer-gate UAT pass (screenshot at /home/darren/Pictures/.clip.png) found the rendered pane cramped into the small preview box with near-unreadable dark-on-dark text; both are now fixed (fix(02-01) commits 36555ec, 26e24b6) and verified at the API/markup level, but final visual confirmation of the fix is a human re-verification step this executor cannot self-approve — no browser tooling was available in this session to take a confirming screenshot."
   - id: D4
     description: "SilverBullet plugin's read-only and host-pinning guarantees are enforced by committed tests, not convention"
     verification:
@@ -116,7 +122,7 @@ coverage:
         status: pass
     human_judgment: false
 
-duration: 68min
+duration: 88min
 completed: 2026-07-28
 status: complete
 ---
@@ -127,10 +133,10 @@ status: complete
 
 ## Performance
 
-- **Duration:** 68 min (active implementation, from live-credential resume to final commit)
+- **Duration:** 88 min (active implementation, from live-credential resume through the two post-tracer-gate UAT fixes)
 - **Completed:** 2026-07-28
-- **Tasks:** 3 completed
-- **Files modified:** 34 (excluding `.planning/`)
+- **Tasks:** 3 completed, plus 2 post-tracer-gate UAT fix commits
+- **Files modified:** 34 (excluding `.planning/`) — the 2 fix commits touched files already in this set (`DetailPane.svelte`, `plugin.go`, `render.go`, `render_test.go`), no new files
 
 ## Accomplishments
 
@@ -146,6 +152,13 @@ status: complete
 3. **Task 3: Prove the SilverBullet plugin's read-only and host-pinning guarantees mechanically** - `5615ecf` (test)
 
 _Note: this plan's `tdd="true"` tasks were executed as single atomic commits per the `type="tracer"`/`type="auto"` commit protocol (real implementation + real tests + real `<verify>` together), not as separate RED/GREEN commits — the task's own tracer-type instructions ("execute and commit exactly like `type="auto"`") take precedence over the generic per-task TDD split for a cross-cutting change touching 14+ files across three Go modules._
+
+### Post-tracer-gate UAT fixes
+
+The tracer feedback gate's human verification (stream interleaving and deep links) passed; the detail-pane rendering did not, on two counts (screenshot evidence at `/home/darren/Pictures/.clip.png`). Both were fixed as separate `fix(02-01)` commits and are recorded as deviations 5 and 6 below:
+
+4. **fix: SilverBullet rendered content fills the detail pane body** - `36555ec` (fix)
+5. **fix: inject app-matching dark theme into rendered SilverBullet HTML** - `26e24b6` (fix)
 
 ## Files Created/Modified
 
@@ -209,10 +222,26 @@ _Note: this plan's `tdd="true"` tasks were executed as single atomic commits per
 - **Verification:** `npm run check` (0 errors), visual re-check after rebuild showed correct source-specific copy.
 - **Committed in:** `955028a`
 
+**5. [Rule 1 - Bug] Rendered SilverBullet content confined to the small PDF-preview box**
+- **Found during:** Tracer feedback gate human UAT (post-Task-3), screenshot evidence at `/home/darren/Pictures/.clip.png`
+- **Issue:** `DetailPane.svelte`'s `text/html` branch was nested inside the same `h-72` fixed-height box paperless's PDF thumbnail uses, with an empty raw-text area below it. For SilverBullet the rendered content IS the item's content, not a preview alongside separately-shown text — it needs the pane's full remaining body.
+- **Fix:** Gave the `text/html` branch its own top-level layout path (checked before the shared PDF/image/text branch), occupying `min-h-0 flex-1` (the pane's full remaining width/height) instead of the small box. Content still scrolls inside the iframe's own document (UI-SPEC requirement, unchanged) — only the outer container's sizing changed.
+- **Files modified:** `web/src/lib/components/DetailPane.svelte`
+- **Verification:** `npm run check` (0 errors); no `{@html}` directive introduced (`! grep -F '@html'` still exits 0); live API response unchanged (layout-only fix).
+- **Committed in:** `36555ec`
+
+**6. [Rule 1 - Bug] Unstyled rendered HTML unreadable against the app's dark theme**
+- **Found during:** Tracer feedback gate human UAT (post-Task-3), same screenshot evidence
+- **Issue:** The sanitized HTML fragment `Fetch` returned carried no CSS of its own; rendered inside the iframe it inherited the browser default (near-black text) over the app's dark (`#0f172a`/`#020617`) background — close to unreadable.
+- **Fix:** New `plugins/silverbullet/render.go` `WrapDocument(sanitizedFragment)` wraps `RenderSanitized`'s output in a minimal, self-contained HTML document with a fixed, hardcoded `<style>` block matching `web/src/app.css`'s theme tokens (`--card` background, `--foreground` text, `--primary` links, `--muted`/`--muted-foreground` for code/quotes). No external stylesheet fetch, no `@import`, no `url()`. Runs strictly *after* `bluemonday.SanitizeBytes` and is never re-passed through the sanitizer — the stylesheet is a Go string literal, never derived from page content, so it cannot reintroduce any stripped XSS surface.
+- **Files modified:** `plugins/silverbullet/render.go`, `plugins/silverbullet/plugin.go` (`fetchFull` calls `WrapDocument`), `plugins/silverbullet/render_test.go` (two new committed regression tests)
+- **Verification:** `go test ./...` (silverbullet module); live `GET /api/items/{id}/content` confirmed the full styled document is returned, sanitized fragment unchanged in `<body>`.
+- **Committed in:** `26e24b6`
+
 ---
 
-**Total deviations:** 4 auto-fixed (1 Rule 2, 3 Rule 1)
-**Impact on plan:** All four were necessary for correctness against the real deployment this plan is explicitly scoped to verify against (Task 1 Step 0's live-instance check, and the plan's own human-check step). No scope creep beyond what live verification demanded — the `ca_cert`/constructor-signature change is the only one that touches a declared interface, and it's additive (existing 2-arg call sites elsewhere in the plan's own action text still compile as written, since the plan itself never called these constructors from outside `main.go`/tests).
+**Total deviations:** 6 auto-fixed (1 Rule 2, 5 Rule 1)
+**Impact on plan:** All six were necessary for correctness against the real deployment this plan is explicitly scoped to verify against (Task 1 Step 0's live-instance check, the plan's own human-check step, and the tracer feedback gate's human UAT). No scope creep beyond what live verification demanded — the `ca_cert`/constructor-signature change is the only one that touches a declared interface, and it's additive (existing 2-arg call sites elsewhere in the plan's own action text still compile as written, since the plan itself never called these constructors from outside `main.go`/tests). Deviations 5-6 are UI-only fixes (layout container + a server-generated stylesheet); no plugin contract, index schema, or sync-engine behavior changed.
 
 ## Issues Encountered
 
@@ -233,7 +262,8 @@ None beyond what the plan's `user_setup` block already specified (`SILVERBULLET_
 - `kernel/correlate.Engine.SyncSource`/`kernel/index.Store.ReplaceWebspaceSourceItems` are the write path every later-phase plugin (IMAP, Signal, WhatsApp) now inherits — no further architectural change needed for a third/fourth/fifth source to persist correctly.
 - `plugins/silverbullet` is a complete reference for the "second source" shape (as `plugins/paperless` was for the first), useful for 02-02/02-03/02-04's coordinator/health/agent-API work and for the later PLUG-05 mock-plugin validation exercise.
 - The `GET /api/sources` health-merge endpoint (RESEARCH.md, a later plan in this phase) can replace `sourceDisplayName()`'s local mapping with a live, plugin-reported `display_name` without changing `DetailPane.svelte`'s call site shape.
-- No blockers identified for 02-02 (refresh/health/coordinator) or 02-03/02-04 (filter UI, agent permissions).
+- **Outstanding before this plan's tracer gate is fully signed off:** the two detail-pane fixes (`36555ec`, `26e24b6`) need a human visual re-verification pass — they were verified at the API/markup level in this session but no browser tooling was available to capture a confirming screenshot. Port 7777 was left free and both plugin subprocesses cleaned up at the end of this session.
+- No other blockers identified for 02-02 (refresh/health/coordinator) or 02-03/02-04 (filter UI, agent permissions).
 
 ---
 *Phase: 02-two-sources-one-trustworthy-stream*
@@ -241,4 +271,4 @@ None beyond what the plan's `user_setup` block already specified (`SILVERBULLET_
 
 ## Self-Check: PASSED
 
-All claimed files exist on disk and all three task commits (`f1bec9a`, `955028a`, `5615ecf`) are present in `git log`.
+All claimed files exist on disk and all five commits (`f1bec9a`, `955028a`, `5615ecf`, `36555ec`, `26e24b6`) are present in `git log`.
