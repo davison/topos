@@ -77,7 +77,21 @@ Notes:
   4. An item whose source is unreachable or has been deleted shows an explicit unavailable/stale state in the stream and detail pane, never a blank pane or a silent 404
   5. Config grants agent read access and action hand-off separately, per plugin, defaulting to deny — a plugin with no grant is absent from agent-facing API responses
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Tracer: SilverBullet joins the stream end to end, plus the source-scoped persistence fix a second source requires
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Single-flight sync coordinator, background scheduler, and the per-source health + manual-refresh HTTP surface
+
+**Wave 3** *(blocked on Wave 2 completion; both plans run in parallel)*
+
+- [ ] 02-03-PLAN.md — UI trust surface: health chips, source filter, staleness and unavailable states
+- [ ] 02-04-PLAN.md — Default-deny agent grants in a `/agent/v1` namespace, plus the reference mock plugin and the PLUG-05 validation exercise
+
 **UI hint**: yes
 
 Notes:
@@ -160,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
-| 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
+| 2. Two Sources, One Trustworthy Stream | 0/4 | Planned | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
