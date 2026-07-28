@@ -183,7 +183,29 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant webspacesv1.C
 		h.Set("Content-Type", result.MimeType)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Content-Disposition", "inline")
-		h.Set("Content-Security-Policy", "default-src 'none'; object-src 'none'; sandbox")
+		// style-src 'unsafe-inline' (added live via UAT — see
+		// 02-01-SUMMARY.md): without it, default-src 'none' with no
+		// explicit style-src blocks the browser from applying ANY inline
+		// <style> element, including the SilverBullet plugin's own
+		// theme stylesheet (plugins/silverbullet/render.go's
+		// WrapDocument), served but silently never applied — rendered
+		// markdown looked unstyled even though the correct HTML/CSS was
+		// on the wire. Scripts remain fully blocked regardless
+		// (default-src 'none' plus the sandbox directive plus the
+		// embedding <iframe>'s own sandbox attribute in
+		// DetailPane.svelte, none of which this change touches).
+		// style-src 'unsafe-inline' is safe here specifically because
+		// the only inline style any rendition document can ever carry is
+		// the fixed Go string literal WrapDocument injects AFTER
+		// bluemonday sanitization — bluemonday strips any <style>
+		// element or style attribute that originated from page content,
+		// so this directive cannot be exploited by a hostile or
+		// malformed source document. This CSP is shared by every
+		// rendition type (PDF, images, text/html); widening style-src
+		// does not change how a PDF or image renders (neither has any
+		// inline stylesheet to apply) so this is a monotonic widening,
+		// not a behavior change, for those types.
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; sandbox")
 		h.Set("Cache-Control", "private, no-store")
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, result.Body)

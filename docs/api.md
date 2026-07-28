@@ -150,7 +150,7 @@ byte, and set a hardened header set on every accepted response:
 Content-Type: <allowlisted MIME type>
 X-Content-Type-Options: nosniff
 Content-Disposition: inline
-Content-Security-Policy: default-src 'none'; object-src 'none'; sandbox
+Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; sandbox
 Cache-Control: private, no-store
 ```
 
@@ -170,6 +170,23 @@ mechanism above (in particular the `sandbox` CSP directive, which strips
 script execution, form submission, and top-level navigation from the
 iframe an embedding client renders this content inside) as the second,
 independent layer of defense.
+
+`style-src 'unsafe-inline'` exists specifically so a `text/html`
+rendition's own inline `<style>` block is actually applied inside the
+embedding iframe — `default-src 'none'` with no `style-src` override
+otherwise blocks a document from styling itself at all, which shipped as
+a live bug (unstyled rendered markdown read as near-black text against
+the app's dark theme) before this directive was added. This does not
+weaken script blocking: `default-src 'none'` (with no `script-src`
+override) and the `sandbox` directive together still deny all script
+execution regardless of `style-src`. It's safe specifically because the
+only inline style any rendition document can ever carry is a fixed
+string the *producing plugin's own Go source* injects strictly after its
+own sanitization pass — SilverBullet's `bluemonday.UGCPolicy()` strips
+any `<style>` element or `style` attribute that originated from page
+content before that trusted stylesheet is ever appended, so a hostile or
+malformed source document cannot smuggle a stylesheet through this
+directive.
 
 ## The stable-ID scheme
 

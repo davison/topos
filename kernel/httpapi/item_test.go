@@ -246,8 +246,64 @@ func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testin
 	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "sandbox") {
 		t.Errorf("expected a sandboxing CSP, got %q", rec.Header().Get("Content-Security-Policy"))
 	}
+	// Regression test: default-src 'none' with no style-src directive
+	// silently blocks the browser from applying ANY inline <style>
+	// element — including the SilverBullet plugin's own theme
+	// stylesheet (plugins/silverbullet/render.go's WrapDocument), served
+	// correctly but never applied. Caught by live UAT; see
+	// 02-01-SUMMARY.md.
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "style-src 'unsafe-inline'") {
+		t.Errorf("expected style-src 'unsafe-inline' in the CSP so an iframe document's own inline stylesheet is applied, got %q", rec.Header().Get("Content-Security-Policy"))
+	}
+	// Scripts must remain fully blocked regardless of the style-src
+	// widening above — default-src 'none' with no script-src override
+	// still denies script execution, and the sandbox directive (with no
+	// allow-scripts token) is unchanged.
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "default-src 'none'") {
+		t.Errorf("expected default-src 'none' to remain in the CSP, got %q", rec.Header().Get("Content-Security-Policy"))
+	}
+	if strings.Contains(rec.Header().Get("Content-Security-Policy"), "script-src") {
+		t.Errorf("expected no script-src override (scripts must stay blocked by default-src 'none'), got %q", rec.Header().Get("Content-Security-Policy"))
+	}
 	if rec.Body.String() != string(body) {
 		t.Error("response body does not match the fetched rendition bytes")
+	}
+}
+
+// TestItemContentHandler_PDFRenditionCSPUnaffectedByStyleSrcWidening proves
+// the style-src 'unsafe-inline' widening (added for text/html renditions)
+// is applied uniformly by the shared renditionHandler and does not change
+// PDF rendition behavior: the same hardened header set (sandbox,
+// default-src 'none', nosniff) still applies, and the widened style-src
+// is present but inert for a PDF (which carries no inline stylesheet to
+// apply) — a monotonic widening, not a behavior change, for this MIME
+// type.
+func TestItemContentHandler_PDFRenditionCSPUnaffectedByStyleSrcWidening(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	seedTestItem(t, store, testItem())
+
+	body := []byte("%PDF-1.4 fake rendition bytes")
+	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
+		Available: true, MimeType: "application/pdf", SizeBytes: int64(len(body)),
+		Body: io.NopCloser(bytes.NewReader(body)),
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+		t.Errorf("expected the PDF rendition's hardened CSP to be unchanged, got %q", csp)
+	}
+	if !strings.Contains(csp, "style-src 'unsafe-inline'") {
+		t.Errorf("expected the shared CSP (including the new style-src) to apply to PDF renditions too, got %q", csp)
+	}
+	if rec.Body.String() != string(body) {
+		t.Error("PDF rendition body must be served unchanged by the CSP widening")
 	}
 }
 
