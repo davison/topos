@@ -1,22 +1,46 @@
 # The webspaces kernel HTTP API
 
-This is the complete, agent-facing JSON contract the kernel serves over
-its loopback HTTP listener (`AGENT-02`). **There is no separate agent
-API** — the embedded web UI (the SvelteKit SPA) consumes exactly this same
-JSON, over exactly these same routes. Anything a human can see in the UI,
-an agent can retrieve from these endpoints, in a stable, structured shape.
+This is the complete JSON contract the kernel serves over its loopback
+HTTP listener. There are **two route namespaces sharing one JSON
+contract**:
+
+- **`/api/*`** — the human/UI-facing surface. The embedded web UI (the
+  SvelteKit SPA) consumes exactly this JSON, over exactly these routes.
+  It is **grant-free**: every route below documented under `/api/*`
+  behaves identically regardless of any `[sources.<name>.agent]`
+  configuration (`AGENT-02`).
+- **`/agent/v1/*`** — a default-deny, per-source-grant-filtered mirror of
+  `/api/*` for an automated caller (`AGENT-01`), documented in its own
+  section below. Both namespaces share the identical envelope shape and
+  the same `schema_version` counter — there is no second versioning
+  scheme, only a narrower view over the same data for the agent surface.
+
+Anything a human can see in the UI, a **granted** agent can retrieve from
+the equivalent `/agent/v1/*` endpoint, in the identical structured shape.
+An ungranted source is, by design, indistinguishable from a nonexistent
+one when viewed through `/agent/v1/*` — see "The `/agent/v1` namespace",
+below.
 
 ## Loopback-only default, no auth
 
 By default the kernel binds `127.0.0.1:7777` (configurable via `[server]
-listen` — see `config.example.toml`). There is **no authentication or
-authorization on this API in v1**: the security boundary is "this API is
-only reachable from processes already running on this machine, as this
+listen` — see `config.example.toml`). There is **no authentication on
+this API in v1, on either namespace**: the security boundary is "this API
+is only reachable from processes already running on this machine, as this
 user." Binding `listen` to a non-loopback address (e.g. `0.0.0.0` or a LAN
 interface) is a deliberate security decision this project has **not**
 made — the kernel logs a warning at startup if it detects a non-loopback
 bind, but does not refuse to start. Don't expose this port to a LAN or the
 internet without adding your own reverse proxy and auth in front of it.
+
+**The `/agent/v1` per-source grant model (`AGENT-01`, below) is an
+authorization control layered on top of this boundary, not an
+authentication mechanism.** It answers "which sources may an already-local
+caller read through this namespace", never "is this caller who it claims
+to be" — any process on this machine can already reach `/api/*` (which is
+grant-free by design) exactly as freely as `/agent/v1`. Don't mistake a
+`[sources.<name>.agent]` grant for a security boundary against another
+local process; it isn't one.
 
 ## Envelope convention
 
@@ -301,6 +325,74 @@ sync for that source rather than triggering a fresh one — the reported
 outcome is still that run's real result, never a distinct
 "already-syncing" rejection.
 
+## The `/agent/v1` namespace (`AGENT-01`)
+
+`/agent/v1/*` mirrors the `/api/*` routes above under **default-deny,
+per-source grants** declared in config:
+
+```toml
+[sources.silverbullet.agent]
+read = true      # this source's items are visible through /agent/v1
+handoff = false  # this source's action hand-off capability (metadata only — see below)
+```
+
+An absent `[sources.<name>.agent]` block, an absent `read` key, and an
+explicit `read = false` are **all identically "deny"** — there is no
+`default`/`enabled` key that widens this; the absence of a grant *is* the
+deny. `read` and `handoff` are independent: a source with `handoff = true`
+and `read = false` is still fully absent from every `/agent/v1/*`
+response.
+
+| Route | Mirrors | Restriction |
+|---|---|---|
+| `GET /agent/v1/sources` | `GET /api/sources` | Ungranted sources are omitted entirely; each entry gains a `capabilities: {read, handoff}` object. |
+| `GET /agent/v1/webspaces` | `GET /api/webspaces` | `item_count` and `last_sync` are computed over granted sources only. |
+| `GET /agent/v1/webspaces/{webspace}/stream` | `GET /api/webspaces/{webspace}/stream` | `items` and `sync` are restricted to granted sources; ordering is otherwise identical to the `/api` stream with ungranted rows removed, never reordered. |
+| `GET /agent/v1/items/{id}` | `GET /api/items/{id}` | An ungranted source's item responds identically to a nonexistent id (see below). |
+| `GET /agent/v1/items/{id}/content` | `GET /api/items/{id}/content` | Same restriction as above; no rendition bytes are written for an ungranted item. |
+| `GET /agent/v1/items/{id}/thumbnail` | `GET /api/items/{id}/thumbnail` | Same restriction as above. |
+
+```
+$ curl -s http://127.0.0.1:7777/agent/v1/sources | jq
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "name": "silverbullet",
+      "source_type": "silverbullet",
+      "display_name": "SilverBullet",
+      "reachable": true,
+      "syncing": false,
+      "last_status": "ok",
+      "last_sync_unix": 1785000000,
+      "last_error": "",
+      "capabilities": { "read": true, "handoff": false }
+    }
+  ]
+}
+```
+
+**An ungranted source is indistinguishable from a nonexistent one, by
+design (`T-02-20`).** `GET /agent/v1/items/{id}` for an item belonging to
+an ungranted source returns a response byte-identical in status code,
+error code and message wording to the response for an `{id}` that is not
+in the index at all — `404 item_not_found`, same message construction as
+`/api/items/{id}`'s not-found case. There is **no distinct error code**
+for "exists but ungranted" — a different response shape would be an
+enumeration oracle, letting a caller infer which sources exist even
+without read access to them, which is exactly what this design prevents.
+`GET /agent/v1/webspaces/{webspace}/stream` for a **known** webspace with
+zero granted items returns `200` with `"items": []`, never `404` — a
+zero-grant config never turns a real webspace into a 404. Zero configured
+grants overall means `GET /agent/v1/sources` returns `200` with
+`"sources": []`, not an error.
+
+`handoff` is published as **metadata only** in this version of the API —
+the `capabilities.handoff` field on `GET /agent/v1/sources`. No route on
+either namespace performs an action against a source in v1; agent-
+initiated actions (`AGENT-11`, e.g. "draft an email reply") are a v1.x
+concern layered on top of this permission model, not present here.
+
 ## The stable-ID scheme
 
 Every item's `id` is `"{source_type}:{source_id}"` — `source_type` is
@@ -342,10 +434,17 @@ Every item's `provenance` object carries exactly these six keys:
 
 ## Error codes
 
+The table below is written against the `/api/*` route names; every code
+applies identically to that route's `/agent/v1/*` mirror (e.g.
+`item_not_found` on `GET /api/items/{id}` also covers
+`GET /agent/v1/items/{id}` — including the ungranted case, which reuses
+this exact code rather than a distinct one; see "The `/agent/v1`
+namespace", above).
+
 | Code | HTTP status | Route(s) | Meaning |
 |---|---|---|---|
 | `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream` | `{webspace}` is not configured, or has never completed a sync. |
-| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). |
+| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
@@ -359,9 +458,7 @@ planned for this phase:
 
 - **Full-text search** across a webspace (`KERN-05`) — Phase 3, paired
   with the email source (the first one with enough volume to need it).
-- **Agent permission grants** (`AGENT-01`) — a default-deny, per-plugin
-  grant model gating which sources an agent may read or act through —
-  Phase 2.
 - **Agent-initiated actions** (`AGENT-11`, e.g. "draft an email reply") —
   this API is read-only end to end for the whole of v1; action hand-off is
-  a v1.x concern layered on top of the permission model above.
+  a v1.x concern layered on top of the `/agent/v1` permission model
+  documented above.

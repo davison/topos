@@ -1,6 +1,9 @@
-// Package httpapi implements the kernel's loopback JSON HTTP API. The same
-// JSON contract serves both the embedded SPA and any programmatic agent
-// (AGENT-02) — there is no separate "agent API".
+// Package httpapi implements the kernel's loopback JSON HTTP API: /api/*,
+// the human/UI-facing surface the embedded SPA consumes (AGENT-02), and
+// /agent/v1/*, a default-deny, per-source-grant-filtered mirror of it for
+// an automated caller (AGENT-01, D-12; see agent.go). Both share one JSON
+// envelope and one schema_version counter — there is no second versioning
+// scheme, only a narrower view over the same data for the agent surface.
 package httpapi
 
 import (
@@ -22,7 +25,8 @@ const schemaVersion = 1
 
 // Router builds the chi router serving /api/webspaces,
 // /api/webspaces/{webspace}/stream, /api/items/{id} (+ /content,
-// /thumbnail), /api/sources, and the manual-refresh routes.
+// /thumbnail), /api/sources, the manual-refresh routes, and the mirrored
+// /agent/v1/* namespace (MountAgentRoutes, agent.go).
 // StreamHandler deliberately takes only *index.Store — httpapi's
 // sync-time read path cannot import kernel/pluginhost, so the stream
 // route is structurally incapable of reaching a plugin (KERN-02 /
@@ -43,6 +47,12 @@ func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober Heal
 	r.Get("/api/sources", SourcesHandler(store, prober))
 	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfg, refresher))
 	r.Post("/api/sync", SyncRefreshHandler(refresher))
+	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
+	// default-deny, grant-filtered mirror of the routes above, over the
+	// same store/config/fetcher/prober. Every /api/* route above is
+	// unaffected by any grant configuration — grants gate the agent
+	// surface only.
+	MountAgentRoutes(r, store, cfg, fetcher, prober)
 	// NotFound only fires for requests that matched none of the routes
 	// above, so this never shadows /api/*: any request under /api/ that
 	// falls through here is genuinely unmatched, and every UI route

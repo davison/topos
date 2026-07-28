@@ -277,6 +277,95 @@ sync_interval = "soon"
 	}
 }
 
+// TestAgentReadGrantedNames_AbsentEmptyAndExplicitFalseAreAllDenied proves
+// the three ways a source can end up unread-granted (no [agent] block at
+// all, an empty [agent] block, and an explicit read = false) all produce
+// the identical result: absent from AgentReadGrantedNames. This is the
+// three-way equivalence T-02-19 depends on.
+func TestAgentReadGrantedNames_AbsentEmptyAndExplicitFalseAreAllDenied(t *testing.T) {
+	t.Setenv("TEST_AGENT_URL", "http://x.lan")
+	t.Setenv("TEST_AGENT_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.no-block]
+plugin = "x"
+base_url = "${TEST_AGENT_URL}"
+token = "${TEST_AGENT_TOKEN}"
+
+[sources.empty-block]
+plugin = "x"
+base_url = "${TEST_AGENT_URL}"
+token = "${TEST_AGENT_TOKEN}"
+[sources.empty-block.agent]
+
+[sources.explicit-false]
+plugin = "x"
+base_url = "${TEST_AGENT_URL}"
+token = "${TEST_AGENT_TOKEN}"
+[sources.explicit-false.agent]
+read = false
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	granted := cfg.AgentReadGrantedNames()
+	if len(granted) != 0 {
+		t.Errorf("expected zero read-granted sources across all three deny-equivalent shapes, got %v", granted)
+	}
+}
+
+// TestAgentReadGrantedNames_HandoffWithoutReadIsNotReadGranted proves the
+// two grants are independent: a source with handoff = true and no read key
+// (or read = false) is still absent from AgentReadGrantedNames, while its
+// own Handoff field is still readable off the Config for capability
+// publishing.
+func TestAgentReadGrantedNames_HandoffWithoutReadIsNotReadGranted(t *testing.T) {
+	t.Setenv("TEST_AGENT_URL2", "http://x.lan")
+	t.Setenv("TEST_AGENT_TOKEN2", "tok")
+	path := writeTempConfig(t, `
+[sources.handoff-only]
+plugin = "x"
+base_url = "${TEST_AGENT_URL2}"
+token = "${TEST_AGENT_TOKEN2}"
+[sources.handoff-only.agent]
+handoff = true
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if granted := cfg.AgentReadGrantedNames(); len(granted) != 0 {
+		t.Errorf("expected handoff=true/read=false to not be read-granted, got %v", granted)
+	}
+	if !cfg.Sources["handoff-only"].Agent.Handoff {
+		t.Error("expected Agent.Handoff to be true even though Read is false")
+	}
+}
+
+// TestAgentReadGrantedNames_ExplicitReadTrueIsGranted is the positive case:
+// a source that explicitly sets read = true is present in the granted set.
+func TestAgentReadGrantedNames_ExplicitReadTrueIsGranted(t *testing.T) {
+	t.Setenv("TEST_AGENT_URL3", "http://x.lan")
+	t.Setenv("TEST_AGENT_TOKEN3", "tok")
+	path := writeTempConfig(t, `
+[sources.granted]
+plugin = "x"
+base_url = "${TEST_AGENT_URL3}"
+token = "${TEST_AGENT_TOKEN3}"
+[sources.granted.agent]
+read = true
+handoff = true
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	granted := cfg.AgentReadGrantedNames()
+	if !granted["granted"] {
+		t.Errorf("expected 'granted' source to be read-granted, got %v", granted)
+	}
+}
+
 func TestLoad_ExpandsHomeInIndexPath(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -19,8 +19,15 @@ import (
 // structurally. Kept as an interface (the same pattern item.go's Fetcher
 // already establishes) so sources_test.go can exercise every merge branch
 // with a fake, without launching real plugin subprocesses.
+//
+// SourceTypesByName extends this interface (02-04-PLAN.md Task 1):
+// kernel/httpapi/agent.go's grant filtering needs the launched-plugin
+// name-to-source_type mapping on every /agent/v1 request, and must reach
+// it through the same no-RPC, already-cached path SourcesHandler's own
+// merge relies on — never a live probe just to resolve a name.
 type HealthProber interface {
 	ProbeSources(ctx context.Context) []pluginhost.SourceHealth
+	SourceTypesByName() map[string]string
 }
 
 // Refresher is the minimal sync-dispatch surface SourceRefreshHandler and
@@ -60,39 +67,50 @@ type sourcesResponse struct {
 // reachable:false, never a 500.
 func SourcesHandler(store *index.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		healths := prober.ProbeSources(ctx)
-
-		runs, err := store.LatestSyncRunPerSource(ctx)
+		statuses, err := sourceStatusesFrom(r.Context(), store, prober)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		syncing, err := store.SyncingSourceTypes(ctx)
-		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
-			return
-		}
-
-		statuses := make([]sourceStatus, len(healths))
-		for i, h := range healths {
-			run := runs[h.SourceType] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
-			statuses[i] = sourceStatus{
-				Name:         h.Name,
-				SourceType:   h.SourceType,
-				DisplayName:  h.DisplayName,
-				Reachable:    h.Reachable,
-				Syncing:      syncing[h.SourceType],
-				LastStatus:   run.Status,
-				LastSyncUnix: run.FinishedUnix,
-				LastError:    run.Error,
-			}
-		}
-		sort.Slice(statuses, func(i, j int) bool { return statuses[i].Name < statuses[j].Name })
-
 		WriteJSON(w, http.StatusOK, sourcesResponse{SchemaVersion: schemaVersion, Sources: statuses})
 	}
+}
+
+// sourceStatusesFrom builds one sourceStatus per launched plugin, sorted by
+// name — the shared merge SourcesHandler (unfiltered) and
+// kernel/httpapi/agent.go's agent sources route (grant-filtered on top of
+// this) both build on. Factored out here (02-04-PLAN.md Task 1) so the
+// agent route reuses the identical merge logic rather than reimplementing
+// it against a restricted source set.
+func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthProber) ([]sourceStatus, error) {
+	healths := prober.ProbeSources(ctx)
+
+	runs, err := store.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		return nil, err
+	}
+	syncing, err := store.SyncingSourceTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	statuses := make([]sourceStatus, len(healths))
+	for i, h := range healths {
+		run := runs[h.SourceType] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
+		statuses[i] = sourceStatus{
+			Name:         h.Name,
+			SourceType:   h.SourceType,
+			DisplayName:  h.DisplayName,
+			Reachable:    h.Reachable,
+			Syncing:      syncing[h.SourceType],
+			LastStatus:   run.Status,
+			LastSyncUnix: run.FinishedUnix,
+			LastError:    run.Error,
+		}
+	}
+	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Name < statuses[j].Name })
+
+	return statuses, nil
 }
 
 // runStatus is the JSON shape of one source's outcome from a manual

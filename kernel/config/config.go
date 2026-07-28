@@ -108,6 +108,23 @@ func (cfg *Config) SyncIntervalFor(sourceName string) (time.Duration, error) {
 	return d, nil
 }
 
+// AgentReadGrantedNames returns the config names (the [sources.<name>] key)
+// of every source with agent.read = true. This is the sole authorization
+// decision point for AGENT-01: a source with an absent [sources.<name>.agent]
+// block, an absent read key, or an explicit read = false all decode to the
+// same Go zero value (false) and are simply never added to the returned set
+// — no special-case code distinguishes the three cases, which is what makes
+// them structurally identical to callers (T-02-19).
+func (cfg *Config) AgentReadGrantedNames() map[string]bool {
+	granted := map[string]bool{}
+	for name, src := range cfg.Sources {
+		if src.Agent.Read {
+			granted[name] = true
+		}
+	}
+	return granted
+}
+
 // expandIndexPathHome expands a leading "~" in [index] path to the current
 // user's home directory.
 func (cfg *Config) expandIndexPathHome() error {

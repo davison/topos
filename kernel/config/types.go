@@ -59,6 +59,35 @@ type Source struct {
 	// every other configured source. A Go duration string; empty means
 	// "use the global [sync] interval".
 	SyncInterval string `toml:"sync_interval,omitempty"`
+	// Agent declares this source's per-plugin agent grants (AGENT-01,
+	// D-11): whether an automated caller through /agent/v1 may read this
+	// source's items at all, and whether it may hand actions off through
+	// this source's own interfaces (metadata only in this phase — see
+	// AgentGrant). An absent [sources.<name>.agent] block decodes to the
+	// Go zero value, which is default-deny for both grants — there is no
+	// separate "enabled" key that could widen this; the absence of a
+	// grant block IS the deny.
+	Agent AgentGrant `toml:"agent"`
+}
+
+// AgentGrant is one source's per-plugin agent permission grant (AGENT-01,
+// D-11). Read and Handoff are independent booleans: neither implies the
+// other, and both default to false (deny) when the block or the key is
+// absent, purely by Go's zero value — no special-case decoding needed, and
+// deliberately no "default"/"enabled" key that could be set to widen this.
+type AgentGrant struct {
+	// Read grants an automated caller through /agent/v1 read access to
+	// this source's items — the source appears in /agent/v1/sources, its
+	// items appear in agent streams, and its items are readable through
+	// the agent item routes. False (the zero value) means the source is
+	// structurally absent from every agent-facing response, exactly as if
+	// it did not exist (T-02-20 — no existence leak).
+	Read bool `toml:"read"`
+	// Handoff grants this source's action hand-off capability. Published
+	// as metadata only in this phase (the "capabilities.handoff" field of
+	// /agent/v1/sources) — no route in v1 acts on a Handoff grant; actual
+	// agent-initiated actions are AGENT-11, deferred to v1.x.
+	Handoff bool `toml:"handoff"`
 }
 
 // Webspace declares a shared keyword list matched against every source's

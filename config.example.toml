@@ -145,6 +145,33 @@ token = "${SB_AUTH_TOKEN}"
 # error rather than a load-time error.
 # ca_cert = "~/.config/webspaces/silverbullet-ca.pem"
 
+# [sources.<name>.agent] — this source's per-plugin agent grant (AGENT-01,
+# D-11): whether an automated caller through /agent/v1 may read this
+# source's items, and whether it may hand actions off through this
+# source's own interfaces. Two independent booleans, both default to
+# false (deny): an absent [sources.<name>.agent] block, an absent key
+# within one, and an explicit "= false" are ALL identically "deny" — there
+# is no special "default"/"enabled" key that widens this; the absence of a
+# grant IS the deny. A source with read = false is structurally absent
+# from every /agent/v1/* response: absent from GET /agent/v1/sources, its
+# items absent from every agent stream, and its items unreadable through
+# every agent item route — indistinguishable from a source that does not
+# exist. read and handoff are independent: neither implies the other.
+# handoff is published as metadata only in v1 (the capabilities.handoff
+# field of GET /agent/v1/sources) — no route in this version of the API
+# acts on it; agent-initiated actions (AGENT-11) are a v1.x concern.
+#
+# This example deliberately grants silverbullet read access and leaves
+# paperless ungranted, so the two blocks below demonstrate the asymmetry a
+# real deployment will have rather than a uniform setting.
+[sources.paperless.agent]
+read = false
+handoff = false
+
+[sources.silverbullet.agent]
+read = true
+handoff = false
+
 # [webspaces.<name>] — one block per webspace. "<name>" becomes the
 # webspace's URL slug (e.g. /w/house-move) and its GET
 # /api/webspaces/{name}/stream path segment.

@@ -179,6 +179,20 @@ func (h *Host) Plugins() []*Plugin {
 	return h.plugins
 }
 
+// SourceTypesByName returns the config name ([sources.<name>]) to
+// Describe-learned source_type mapping for every launched plugin, built
+// from the already-cached launch-time Describe results — this issues no
+// RPC. kernel/httpapi/agent.go calls this on every /agent/v1 request to
+// resolve which source_types the config's agent.read grants apply to, and
+// must not pay a live network probe cost just to answer that question.
+func (h *Host) SourceTypesByName() map[string]string {
+	out := make(map[string]string, len(h.plugins))
+	for _, p := range h.plugins {
+		out[p.name] = p.sourceType
+	}
+	return out
+}
+
 // SourceHealth is one plugin's live reachability probe result, keyed to
 // its config name and Describe-learned identity. 02-02-PLAN.md's D-08:
 // this is a liveness signal only — last-sync time and last-error are
