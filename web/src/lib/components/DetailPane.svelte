@@ -84,18 +84,25 @@
 				<Button variant="outline" size="sm" onclick={() => loadContent(item.id)}>Retry</Button>
 			</AlertAction>
 		</Alert>
+	{:else if content && content.available && content.rendition?.mime_type === 'text/html'}
+		<!-- Rendered markdown (SilverBullet, D-04) IS the item's content, not
+		     a preview thumbnail alongside separate extracted text — unlike
+		     the PDF/image branch below, it occupies the pane's full
+		     remaining body (min-h-0 flex-1), never the small fixed-height
+		     preview box. Content still scrolls inside the iframe's own
+		     document and never pushes this pane's own layout (UI-SPEC). The
+		     sanitized HTML is served through the kernel's own hardened,
+		     sandboxed rendition route and rendered inside this iframe —
+		     never injected into the SPA document via Svelte's raw-HTML
+		     directive, which would discard the sandbox boundary this iframe
+		     provides for free (RESEARCH.md's explicit anti-pattern). -->
+		<div class="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+			<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
+		</div>
 	{:else if content}
 		<div class="flex min-h-0 flex-1 flex-col gap-6">
 			<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
 				{#if content.available && content.rendition?.mime_type === 'application/pdf'}
-					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
-				{:else if content.available && content.rendition?.mime_type === 'text/html'}
-					<!-- Sanitized rendered markdown (SilverBullet, D-04): served
-					     through the kernel's own hardened, sandboxed rendition
-					     route and rendered inside this iframe — never injected
-					     into the SPA document via Svelte's raw-HTML directive,
-					     which would discard the sandbox boundary this iframe
-					     provides for free (RESEARCH.md's explicit anti-pattern). -->
 					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
 				{:else if content.available && content.rendition?.mime_type.startsWith('image/')}
 					<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
@@ -106,7 +113,7 @@
 					</div>
 				{/if}
 			</div>
-			{#if content.text && content.rendition?.mime_type !== 'text/html'}
+			{#if content.text}
 				<div
 					class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
 				>
