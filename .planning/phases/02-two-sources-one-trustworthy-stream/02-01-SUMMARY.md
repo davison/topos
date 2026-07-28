@@ -54,6 +54,7 @@ patterns-established:
   - "Source plugin Fetch must re-derive its own on-source path from source_id when the two differ (D-01 strips the .md extension for source_id; the real file always has it) — a bug caught only by live verification, now covered by fetch_test.go's fixture server rejecting any other path"
   - "A text/html rendition that IS the item's content (not a preview alongside separate text, like SilverBullet's rendered markdown) gets its own full-pane-body layout branch, checked before the shared small-preview-box branch other rendition types share"
   - "A plugin that returns text/html for direct iframe rendering must wrap its sanitized fragment in a minimal self-contained document (WrapDocument) carrying a fixed, hardcoded stylesheet matching the app's theme tokens — an iframe document has no access to the SPA's own CSS, and unstyled HTML renders unreadably against the app's dark background"
+  - "A rendition CSP of default-src 'none' with no style-src override blocks the browser from applying ANY inline <style> a served document carries, even one the kernel/plugin generated itself and trusts completely — an inline stylesheet needs an explicit style-src 'unsafe-inline' (safe here only because the sole inline style any rendition can carry is a fixed, post-sanitization Go string literal, never page content)"
 
 requirements-completed: [SRC-05]
 # KERN-04 ("Sync scheduler with a per-plugin coordinator; user can trigger
@@ -103,11 +104,17 @@ coverage:
       - kind: unit
         ref: "kernel/httpapi/item_test.go#TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders"
         status: pass
+      - kind: unit
+        ref: "kernel/httpapi/item_test.go#TestItemContentHandler_PDFRenditionCSPUnaffectedByStyleSrcWidening"
+        status: pass
       - kind: integration
-        ref: "live GET /api/items/{silverbullet id}/content returned 200, Content-Type text/html, sanitized rendered HTML body wrapped in the theme-styled document"
+        ref: "live GET /api/items/{silverbullet id}/content returned 200, Content-Type text/html, sanitized rendered HTML body wrapped in the theme-styled document, CSP containing style-src 'unsafe-inline' (verified against a freshly rebuilt+restarted server, after confirming a stale running instance was still serving the pre-fix CSP)"
+        status: pass
+      - kind: integration
+        ref: "live GET /api/items/paperless:528/content confirmed CSP widening applied uniformly with no change to PDF rendition status/headers/body"
         status: pass
     human_judgment: true
-    rationale: "First tracer-gate UAT pass (screenshot at /home/darren/Pictures/.clip.png) found the rendered pane cramped into the small preview box with near-unreadable dark-on-dark text; both are now fixed (fix(02-01) commits 36555ec, 26e24b6) and verified at the API/markup level, but final visual confirmation of the fix is a human re-verification step this executor cannot self-approve — no browser tooling was available in this session to take a confirming screenshot."
+    rationale: "First tracer-gate UAT pass (screenshot at /home/darren/Pictures/.clip.png) found the rendered pane cramped into the small preview box with near-unreadable dark-on-dark text. Layout fixed (36555ec) and confirmed by the user. A second UAT pass on the theme fix (26e24b6) found the styled document served correctly but not applied by the browser — root-caused to the rendition CSP's missing style-src directive and fixed in cc25120. All three fixes verified live at the API/header/markup level in this session (including that PDF rendition CSP/behavior is unaffected), but final visual confirmation of the CSP fix is a human re-verification step this executor cannot self-approve — no browser tooling was available in this session to take a confirming screenshot."
   - id: D4
     description: "SilverBullet plugin's read-only and host-pinning guarantees are enforced by committed tests, not convention"
     verification:
@@ -122,7 +129,7 @@ coverage:
         status: pass
     human_judgment: false
 
-duration: 88min
+duration: 105min
 completed: 2026-07-28
 status: complete
 ---
@@ -133,10 +140,10 @@ status: complete
 
 ## Performance
 
-- **Duration:** 88 min (active implementation, from live-credential resume through the two post-tracer-gate UAT fixes)
+- **Duration:** 105 min (active implementation, from live-credential resume through three rounds of post-tracer-gate UAT fixes)
 - **Completed:** 2026-07-28
-- **Tasks:** 3 completed, plus 2 post-tracer-gate UAT fix commits
-- **Files modified:** 34 (excluding `.planning/`) — the 2 fix commits touched files already in this set (`DetailPane.svelte`, `plugin.go`, `render.go`, `render_test.go`), no new files
+- **Tasks:** 3 completed, plus 3 post-tracer-gate UAT fix commits
+- **Files modified:** 34 (excluding `.planning/`) — the 3 fix commits touched files already in this set (`DetailPane.svelte`, `plugin.go`, `render.go`, `render_test.go`, `item.go`, `item_test.go`, `docs/api.md`), no new files
 
 ## Accomplishments
 
@@ -155,10 +162,11 @@ _Note: this plan's `tdd="true"` tasks were executed as single atomic commits per
 
 ### Post-tracer-gate UAT fixes
 
-The tracer feedback gate's human verification (stream interleaving and deep links) passed; the detail-pane rendering did not, on two counts (screenshot evidence at `/home/darren/Pictures/.clip.png`). Both were fixed as separate `fix(02-01)` commits and are recorded as deviations 5 and 6 below:
+The tracer feedback gate's human verification (stream interleaving and deep links) passed; the detail-pane rendering did not, on two counts (screenshot evidence at `/home/darren/Pictures/.clip.png`). Both were fixed as separate `fix(02-01)` commits and are recorded as deviations 5-7 below:
 
-4. **fix: SilverBullet rendered content fills the detail pane body** - `36555ec` (fix)
-5. **fix: inject app-matching dark theme into rendered SilverBullet HTML** - `26e24b6` (fix)
+4. **fix: SilverBullet rendered content fills the detail pane body** - `36555ec` (fix) — confirmed by the user on re-verification
+5. **fix: inject app-matching dark theme into rendered SilverBullet HTML** - `26e24b6` (fix) — styled document served correctly but not applied by the browser (see next fix)
+6. **fix: allow inline styles in rendition CSP so themed HTML actually renders** - `cc25120` (fix) — root cause: `default-src 'none'` with no `style-src` override blocks the browser from applying any inline `<style>`, including the kernel's own theme injection from fix 5
 
 ## Files Created/Modified
 
@@ -238,10 +246,18 @@ The tracer feedback gate's human verification (stream interleaving and deep link
 - **Verification:** `go test ./...` (silverbullet module); live `GET /api/items/{id}/content` confirmed the full styled document is returned, sanitized fragment unchanged in `<body>`.
 - **Committed in:** `26e24b6`
 
+**7. [Rule 1 - Bug] Rendition CSP's missing style-src blocked the browser from applying the theme fix**
+- **Found during:** Second-round tracer feedback gate human UAT — the theme fix (deviation 6) was served correctly (confirmed via direct `curl`) but the browser still rendered black-on-dark text.
+- **Issue:** `kernel/httpapi/item.go`'s shared `renditionHandler` sets `Content-Security-Policy: default-src 'none'; object-src 'none'; sandbox` on every rendition response. `default-src 'none'` with no `style-src` override is itself the fallback for styles too, so the browser refused to apply WrapDocument's own inline `<style>` block — the CSP silently neutralized the previous fix.
+- **Fix:** Added `style-src 'unsafe-inline'` to the shared CSP: `default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; sandbox`. Scripts remain fully blocked (`default-src 'none'` with no `script-src` override, plus the unchanged `sandbox` directive). Safe specifically because the only inline style any rendition document can carry is a fixed Go string literal a plugin injects strictly *after* its own sanitization pass (bluemonday strips any `<style>`/style attribute that originated from page content before that trusted stylesheet is appended) — a hostile source document cannot smuggle a stylesheet through this directive.
+- **Files modified:** `kernel/httpapi/item.go`, `kernel/httpapi/item_test.go` (extended the text/html security-header test + new `TestItemContentHandler_PDFRenditionCSPUnaffectedByStyleSrcWidening` proving the already-working PDF iframe path is unaffected by the shared-CSP widening), `docs/api.md` (published-contract CSP string + rationale paragraph)
+- **Verification:** `go test ./...` (repo root + all modules); live re-check against a freshly rebuilt (`make build`) and restarted server confirmed the new CSP header and unchanged PDF-rendition behavior — caught and corrected a stale-running-server false negative in the same session (an already-running `webspaces serve` process, started before the rebuild, was still serving the pre-fix CSP; killed and restarted before the check that matters).
+- **Committed in:** `cc25120`
+
 ---
 
-**Total deviations:** 6 auto-fixed (1 Rule 2, 5 Rule 1)
-**Impact on plan:** All six were necessary for correctness against the real deployment this plan is explicitly scoped to verify against (Task 1 Step 0's live-instance check, the plan's own human-check step, and the tracer feedback gate's human UAT). No scope creep beyond what live verification demanded — the `ca_cert`/constructor-signature change is the only one that touches a declared interface, and it's additive (existing 2-arg call sites elsewhere in the plan's own action text still compile as written, since the plan itself never called these constructors from outside `main.go`/tests). Deviations 5-6 are UI-only fixes (layout container + a server-generated stylesheet); no plugin contract, index schema, or sync-engine behavior changed.
+**Total deviations:** 7 auto-fixed (1 Rule 2, 6 Rule 1)
+**Impact on plan:** All seven were necessary for correctness against the real deployment this plan is explicitly scoped to verify against (Task 1 Step 0's live-instance check, the plan's own human-check step, and two rounds of the tracer feedback gate's human UAT). No scope creep beyond what live verification demanded — the `ca_cert`/constructor-signature change is the only one that touches a declared interface, and it's additive (existing 2-arg call sites elsewhere in the plan's own action text still compile as written, since the plan itself never called these constructors from outside `main.go`/tests). Deviations 5-7 are UI/kernel-header-only fixes (layout container, a server-generated stylesheet, and one CSP directive); no plugin contract, index schema, or sync-engine behavior changed.
 
 ## Issues Encountered
 
@@ -262,7 +278,8 @@ None beyond what the plan's `user_setup` block already specified (`SILVERBULLET_
 - `kernel/correlate.Engine.SyncSource`/`kernel/index.Store.ReplaceWebspaceSourceItems` are the write path every later-phase plugin (IMAP, Signal, WhatsApp) now inherits — no further architectural change needed for a third/fourth/fifth source to persist correctly.
 - `plugins/silverbullet` is a complete reference for the "second source" shape (as `plugins/paperless` was for the first), useful for 02-02/02-03/02-04's coordinator/health/agent-API work and for the later PLUG-05 mock-plugin validation exercise.
 - The `GET /api/sources` health-merge endpoint (RESEARCH.md, a later plan in this phase) can replace `sourceDisplayName()`'s local mapping with a live, plugin-reported `display_name` without changing `DetailPane.svelte`'s call site shape.
-- **Outstanding before this plan's tracer gate is fully signed off:** the two detail-pane fixes (`36555ec`, `26e24b6`) need a human visual re-verification pass — they were verified at the API/markup level in this session but no browser tooling was available to capture a confirming screenshot. Port 7777 was left free and both plugin subprocesses cleaned up at the end of this session.
+- **Outstanding before this plan's tracer gate is fully signed off:** the CSP fix (`cc25120`) needs a human visual re-verification pass — the layout fix (`36555ec`) was already confirmed by the user; the theme fix (`26e24b6`) was found to be neutralized by the rendition CSP and is now corrected, verified at the header/API level against a freshly rebuilt server in this session, but no browser tooling was available to capture a confirming screenshot. Port 7777 was left free and all plugin/server subprocesses cleaned up at the end of this session.
+- **Process hygiene note for the next session:** during this round, an already-running `webspaces serve` process (started before the `make build` rebuild) was found still serving the pre-fix CSP — a live demonstration of the "stale binary" failure mode. Always confirm a server's process start time postdates the most recent `make build` before trusting a live check against it.
 - No other blockers identified for 02-02 (refresh/health/coordinator) or 02-03/02-04 (filter UI, agent permissions).
 
 ---
@@ -271,4 +288,4 @@ None beyond what the plan's `user_setup` block already specified (`SILVERBULLET_
 
 ## Self-Check: PASSED
 
-All claimed files exist on disk and all five commits (`f1bec9a`, `955028a`, `5615ecf`, `36555ec`, `26e24b6`) are present in `git log`.
+All claimed files exist on disk and all six commits (`f1bec9a`, `955028a`, `5615ecf`, `36555ec`, `26e24b6`, `cc25120`) are present in `git log`.
