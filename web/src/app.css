@@ -32,6 +32,10 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	/* Health-indicator-only status tokens (02-UI-SPEC.md Color table) — sit
+	   outside the 60/30/10 surface split, same treatment as --destructive. */
+	--color-success: var(--success);
+	--color-warning: var(--warning);
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
@@ -82,9 +86,20 @@
 	--primary-foreground: #0f172a;
 	--ring: #60a5fa;
 
-	/* Destructive: reserved, not exercised in Phase 1 (read-only viewer). */
+	/* Destructive: reserved, not exercised in Phase 1 (read-only viewer);
+	   Phase 2 additionally reuses it for the "unreachable" health-chip dot
+	   (a red status signal, not a destructive-action trigger). */
 	--destructive: #f87171;
 	--destructive-foreground: #020617;
+
+	/*
+	 * Success/Warning (Phase 2, 02-UI-SPEC.md Color table): health-chip
+	 * dot + stream-row stale-marker tones only. Not part of the 60/30/10
+	 * surface split — reserved semantic colors, same category as
+	 * --destructive above.
+	 */
+	--success: #4ade80;
+	--warning: #fbbf24;
 
 	--border: #1e293b;
 	--input: #1e293b;
@@ -108,6 +123,8 @@
 	--ring: #60a5fa;
 	--destructive: #f87171;
 	--destructive-foreground: #020617;
+	--success: #4ade80;
+	--warning: #fbbf24;
 	--border: #1e293b;
 	--input: #1e293b;
 }

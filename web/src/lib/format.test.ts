@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { formatItemDate, formatFidelity } from './format';
+import { formatItemDate, formatFidelity, formatRelativeTime, healthTone } from './format';
+import type { SourceStatus } from './api';
+
+function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
+	return {
+		name: 'paperless',
+		source_type: 'paperless',
+		display_name: 'paperless-ngx',
+		reachable: true,
+		syncing: false,
+		last_status: 'ok',
+		last_sync_unix: 1700000000,
+		last_error: '',
+		...overrides
+	};
+}
 
 describe('formatItemDate', () => {
 	it('formats a UTC timestamp using its UTC calendar day', () => {
@@ -44,5 +59,42 @@ describe('formatFidelity', () => {
 
 	it('falls back to the raw value for an unrecognized fidelity', () => {
 		expect(formatFidelity('mystery')).toBe('mystery');
+	});
+});
+
+describe('formatRelativeTime', () => {
+	it('returns a relative string carrying a minute unit for a timestamp 90 seconds ago', () => {
+		const nowUnix = Math.floor(Date.now() / 1000);
+		const result = formatRelativeTime(nowUnix - 90);
+		expect(result).toMatch(/minute/i);
+	});
+
+	it('returns the empty string for a zero timestamp rather than a 1970 date', () => {
+		expect(formatRelativeTime(0)).toBe('');
+	});
+});
+
+describe('healthTone', () => {
+	it('maps reachable + last_status ok to the success tone', () => {
+		expect(healthTone(makeSource({ reachable: true, last_status: 'ok' }))).toBe('success');
+	});
+
+	it('maps reachable + last_status error to the warning tone', () => {
+		expect(healthTone(makeSource({ reachable: true, last_status: 'error' }))).toBe('warning');
+	});
+
+	it('maps unreachable to the destructive tone', () => {
+		expect(healthTone(makeSource({ reachable: false, last_status: 'error' }))).toBe('destructive');
+	});
+
+	it('maps last_status "" (never synced) to the unknown tone, never success', () => {
+		const tone = healthTone(makeSource({ last_status: '', last_sync_unix: 0, reachable: true }));
+		expect(tone).toBe('unknown');
+		expect(tone).not.toBe('success');
+	});
+
+	it('never renders the unknown state as success even when paired with reachable:false', () => {
+		const tone = healthTone(makeSource({ last_status: '', last_sync_unix: 0, reachable: false }));
+		expect(tone).not.toBe('success');
 	});
 });

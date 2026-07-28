@@ -114,6 +114,30 @@ async function getJSON<T>(path: string): Promise<T> {
 	return (await res.json()) as T;
 }
 
+/**
+ * postJSON mirrors getJSON's error-envelope handling exactly (same
+ * ApiError construction, same fallback for a non-envelope body) for the
+ * kernel's POST refresh routes — a failed refresh surfaces the kernel's
+ * own error code (e.g. `source_not_found`) rather than a generic message.
+ */
+async function postJSON<T>(path: string): Promise<T> {
+	const res = await fetch(path, { method: 'POST' });
+	if (!res.ok) {
+		let envelope: ApiErrorEnvelope | undefined;
+		try {
+			envelope = (await res.json()) as ApiErrorEnvelope;
+		} catch {
+			// response body wasn't the error envelope (e.g. the kernel is
+			// entirely unreachable) — fall through to a generic error below.
+		}
+		if (envelope?.error) {
+			throw new ApiError(envelope.error.code, envelope.error.message);
+		}
+		throw new ApiError('http_error', `Request to ${path} failed with status ${res.status}`);
+	}
+	return (await res.json()) as T;
+}
+
 /** GET /api/webspaces */
 export function listWebspaces(): Promise<WebspacesResponse> {
 	return getJSON<WebspacesResponse>('/api/webspaces');
@@ -137,6 +161,65 @@ export function contentUrl(id: string): string {
 /** Relative kernel path for GET /api/items/{id}/thumbnail. */
 export function thumbnailUrl(id: string): string {
 	return `/api/items/${encodeURIComponent(id)}/thumbnail`;
+}
+
+// --- Source health / filter / refresh (02-02's kernel/httpapi/sources.go) ---
+
+export interface SourceStatus {
+	name: string; // config key
+	source_type: string; // matches StreamItem.source_type
+	display_name: string; // e.g. "paperless-ngx", "SilverBullet"
+	reachable: boolean;
+	syncing: boolean;
+	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown
+	last_sync_unix: number;
+	last_error: string;
+}
+
+export interface SourcesResponse {
+	schema_version: number;
+	sources: SourceStatus[];
+}
+
+// RefreshResult mirrors one entry of the kernel's runStatus JSON shape
+// (kernel/httpapi/sources.go) exactly, per docs/api.md — this diverges
+// from PLAN.md's <interfaces> sketch (which named the field "source" and
+// included a "started_unix" the kernel does not send); the live kernel
+// code and docs/api.md are authoritative over that sketch, consistent
+// with how 02-01/02-02 reconciled their own interface sketches.
+export interface RefreshResult {
+	name: string;
+	source_type: string;
+	status: 'ok' | 'error';
+	item_count: number;
+	error: string;
+	coalesced: boolean;
+	finished_unix: number;
+}
+
+export interface SourceRefreshResponse {
+	schema_version: number;
+	source: RefreshResult;
+}
+
+export interface SyncRefreshResponse {
+	schema_version: number;
+	sources: RefreshResult[];
+}
+
+/** GET /api/sources */
+export function getSources(): Promise<SourcesResponse> {
+	return getJSON<SourcesResponse>('/api/sources');
+}
+
+/** POST /api/sources/{name}/refresh */
+export function refreshSource(name: string): Promise<SourceRefreshResponse> {
+	return postJSON<SourceRefreshResponse>(`/api/sources/${encodeURIComponent(name)}/refresh`);
+}
+
+/** POST /api/sync */
+export function refreshAll(): Promise<SyncRefreshResponse> {
+	return postJSON<SyncRefreshResponse>('/api/sync');
 }
 
 // SOURCE_DISPLAY_NAMES is a small local fallback mapping used to
