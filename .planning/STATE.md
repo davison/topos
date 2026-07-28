@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+current_phase: 01
+current_phase_name: first-webspace-end-to-end
 status: executing
-last_updated: "2026-07-28T12:03:05.641Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-07-28T12:14:59.015Z"
 last_activity: 2026-07-28
 progress:
-  total_phases: 5
-  completed_phases: 0
+  total_phases: 1
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
-  percent: 0
+  completed_plans: 6
 ---
 
 # Project State
@@ -25,11 +27,11 @@ See: .planning/PROJECT.md (updated 2026-07-27)
 ## Current Position
 
 Phase: 01 (first-webspace-end-to-end) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-07-28
 
-Progress: [████████░░] 83%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -60,6 +62,7 @@ Progress: [████████░░] 83%
 | Phase 01 P03 | 25min | 2 tasks | 14 files |
 | Phase 01 P04 | 47min | 2 tasks | 11 files |
 | Phase 01 P05 | 4min | 3 tasks | 2 files |
+| Phase 01 P06 | 15min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -86,6 +89,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 01-04]: docs/api.md documents content_unavailable and internal_error error codes in addition to the four named in the plan's own interfaces block, matching the shipped kernel/httpapi code
 - [Phase ?]: [Phase 01-05]: Restored SPA styling by importing app.css in the root layout (gap G-01-2) — single-line root cause fix, no other files touched
 - [Phase ?]: [Phase 01-05]: e2e-smoke.sh hardened with a stale-listener pre-check and a three-part stylesheet assertion (link exists, fetches non-empty, contains #020617 token) as a recurrence guard
+- [Phase ?]: [Phase 01-06]: Host predicate excludes port from comparison — the configured host is the user's own instance and a reverse proxy legitimately moves ports on it
+- [Phase ?]: [Phase 01-06]: Same-host redirect test uses a distinct trailing-slash path, not the literal same path plus one more slash, because Go's net/url reference resolution collapses repeated slashes before the client's guard sees them
 
 ### Pending Todos
 
@@ -110,6 +115,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T12:03:05.633Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-07-28T12:14:59.006Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None

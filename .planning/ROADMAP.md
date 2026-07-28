@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Every item carries an "open in source" affordance that lands on the exact paperless-ngx document, and declares its link fidelity (exact / anchored / conversation-only)
   5. The plugin runs as a separate subprocess over the published `.proto` contract, that contract contains no source-mutating method, and the same items the UI shows are retrievable from the kernel HTTP API with stable IDs, structured content, and machine-readable provenance
 
-**Plans**: 6 plans — 4 executed, 2 gap-closure pending
+**Plans**: 6/6 plans executed
 Plans:
 **Wave 1**
 
@@ -53,7 +53,7 @@ Plans:
 **Gap closure** *(from UAT — see 01-UAT.md `## Gaps`)*
 
 - [x] 01-05-PLAN.md — G-01-2: root layout never imported app.css, so the build shipped zero CSS — fix, guard against stylesheet-less builds, hand off for UAT re-run of tests 2–4
-- [ ] 01-06-PLAN.md — G-01-6: committed outbound-host allowlist — host-pinned paperless client plus a repo-wide egress audit *(runs after 01-05)*
+- [x] 01-06-PLAN.md — G-01-6: committed outbound-host allowlist — host-pinned paperless client plus a repo-wide egress audit *(runs after 01-05)*
 
 **UI hint**: yes
 
@@ -159,7 +159,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. First Webspace, End to End | 5/6 | In Progress|  |
+| 1. First Webspace, End to End | 6/6 | In Progress|  |
 | 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
