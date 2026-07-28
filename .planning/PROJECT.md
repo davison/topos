@@ -12,19 +12,18 @@ Open one webspace and instantly see and grok all related information across ever
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ paperless-ngx plugin — via its REST API over LAN — Phase 1 (real documents synced, previewed, deep-linked; read-only and host-pinned egress enforced by committed tests)
+- ✓ Hybrid data model: plugins sync metadata + previews into a local index; full content fetched live from the source when an item is opened — Phase 1
 
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names)
-- [ ] Kernel + plugin architecture: source connectors are plugins with a documented contract so new sources can be added later, including by other people
+- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phase 1: proven for paperless-ngx tags; other silos pending)*
+- [ ] Kernel + plugin architecture: source connectors are plugins with a documented contract so new sources can be added later, including by other people *(Phase 1: contract shipped, documented in docs/plugin-contract.md, pinned by tests; source-agnosticism proven when the second source lands in Phase 2)*
 - [ ] Email plugin (IMAP) — working against Proton Mail Bridge, generic enough for any IMAP provider
 - [ ] Signal plugin — reads Signal Desktop's local database on the same machine
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
-- [ ] paperless-ngx plugin — via its REST API over LAN
 - [ ] SilverBullet plugin — wiki/notes content and tags
-- [ ] Hybrid data model: plugins sync metadata + previews into a local index; full content fetched live from the source when an item is opened
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item
+- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 1: stream + detail pane + deep links shipped for one source; source filter lands in Phase 2)*
 
 ### Out of Scope
 
@@ -57,9 +56,9 @@ Open one webspace and instantly see and grok all related information across ever
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Build greenfield rather than extend Timelinize/Onyx/Dogsheep | None do identifier-correlated cross-source views; correlation is the core, not a bolt-on | — Pending |
-| Kernel + UI with per-source plugins | New sources addable later, including by third parties; mirrors proven connector architectures | — Pending |
-| Config-mapped keyword correlation for v1; AI inference later | Deterministic, no false positives; magic can layer on top once the plumbing works | — Pending |
-| Hybrid data model (local metadata/preview index, live fetch on open) | Fast browsing and uniform search without full duplication or staleness of content | — Pending |
+| Kernel + UI with per-source plugins | New sources addable later, including by third parties; mirrors proven connector architectures | Phase 1: shipped — go-plugin/gRPC contract documented and pinned by RPC-allowlist + read-only AST tests |
+| Config-mapped keyword correlation for v1; AI inference later | Deterministic, no false positives; magic can layer on top once the plumbing works | Phase 1: works — webspace keyword matched against paperless-ngx tags with per-item rejection on contract violations |
+| Hybrid data model (local metadata/preview index, live fetch on open) | Fast browsing and uniform search without full duplication or staleness of content | Phase 1: validated — instant metadata from index, live preview fill via plugin Fetch |
 | Chat access via desktop app local databases | Least infra of the workaround options; no cloud, no bridges to run | — Pending |
 | Deploy to desktop, reach server services over LAN | Chat DBs live on the desktop; bridge/paperless/SilverBullet are network-reachable anyway | — Pending |
 | MVP sources: IMAP email, Signal, WhatsApp, paperless-ngx, SilverBullet | The user's actual silos; filesystem and others deferred | — Pending |
@@ -82,4 +81,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-27 after initialization*
+*Last updated: 2026-07-28 after Phase 1*

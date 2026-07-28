@@ -1,7 +1,7 @@
 ---
 phase: 01-first-webspace-end-to-end
 verified: 2026-07-28T13:35:00Z
-status: human_needed
+status: passed
 score: 46/50 must-haves verified
 behavior_unverified: 4
 overrides_applied: 0
@@ -9,6 +9,7 @@ re_verification:
   previous_status: human_needed
   previous_score: 62/64
   gaps_closed:
+
     - "G-01-2: SPA shipped zero CSS (missing `import '../app.css'` in +layout.svelte) — fixed, rebuilt, and confirmed live: production build emits a 33,334-byte CSS asset containing all required selectors/tokens, 200.html links it, and the currently-running server (started by 01-05's handoff, still up) serves it at /w/house-move with a 35-item populated stream."
     - "G-01-6: outbound-host allowlist was flagged as an unwired test-tier prohibition — now closed: plugins/paperless/client.go refuses foreign hosts at both CheckRedirect and DialContext (ErrForeignHost sentinel), 5 committed runtime tests pass, a repo-wide AST audit (internal/audit) fails the build on any foreign URL literal or unsanctioned outbound HTTP construction, proven non-vacuous by a negative-control fixture, and 01-01-PLAN.md's third prohibition now names both enforcing test files."
   gaps_remaining: []
