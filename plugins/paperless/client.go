@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -22,6 +23,15 @@ import (
 // the requested document id — distinct from a transport/5xx failure so
 // callers can map it to a "not found" rather than "unavailable" outcome.
 var ErrNotFound = errors.New("paperless: not found")
+
+// ErrForeignHost is returned when the outbound host allowlist refuses a
+// dial target or redirect destination that is neither the configured
+// paperless-ngx host nor a loopback address. This is the enforcement half
+// of the prohibition that plugin outbound traffic MUST NOT reach any host
+// other than the user's own configured paperless-ngx instance and the
+// loopback interface (PROJECT.md Constraints; 01-01-PLAN.md's third
+// prohibition, closed by gap G-01-6).
+var ErrForeignHost = errors.New("paperless: foreign host refused")
 
 // RenditionResult holds one fetched rendition (preview or thumbnail).
 // Available is false, with a zero Data/ContentType, when paperless-ngx
@@ -36,9 +46,11 @@ type RenditionResult struct {
 // Client is a thin, read-only REST client against a paperless-ngx
 // instance. Every request uses the GET method — there is no code path in
 // this file that sends any other method (PLUG-02: plugins never mutate
-// source data stores).
+// source data stores). Every outbound connection is also host-pinned: see
+// allowHost.
 type Client struct {
 	baseURL    string
+	baseHost   string // lowercased Hostname() of baseURL; empty means "loopback only" (fail closed)
 	token      string
 	apiVersion string
 	http       *http.Client
@@ -48,19 +60,94 @@ type Client struct {
 // connections to paperless-ngx (SRC-04/concurrency) and a 30-second
 // per-request timeout, sharing exactly one http.Client/http.Transport
 // across every RPC this plugin process serves.
+//
+// Every outbound connection this client makes — including a redirect hop
+// served by paperless-ngx itself — is checked against allowHost before any
+// bytes leave the process. If baseURL fails to parse or has no hostname,
+// baseHost is left empty so allowHost permits loopback only: a malformed
+// base_url must never widen the allowlist.
 func NewClient(baseURL, token, apiVersion string) *Client {
-	transport := &http.Transport{
-		MaxConnsPerHost: 4,
+	var baseHost string
+	if u, err := url.Parse(baseURL); err == nil {
+		baseHost = strings.ToLower(u.Hostname())
 	}
-	return &Client{
+
+	c := &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
+		baseHost:   baseHost,
 		token:      token,
 		apiVersion: apiVersion,
-		http: &http.Client{
-			Transport: transport,
-			Timeout:   30 * time.Second,
+	}
+
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		MaxConnsPerHost: 4,
+		// DialContext is the backstop: it refuses to open a connection to
+		// a foreign host regardless of which code path in this file (now
+		// or in the future) tried to reach it, catching anything
+		// CheckRedirect below did not — a request never built from a
+		// redirect at all, for instance.
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
+			if err := c.allowHost(host); err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, network, addr)
 		},
 	}
+
+	c.http = &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+		// CheckRedirect is the common case: it stops a cross-host
+		// redirect served by paperless-ngx (a compromised, spoofed, or
+		// misconfigured source could otherwise steer this client at an
+		// arbitrary host) before a connection to it is even opened.
+		// Installing a custom CheckRedirect replaces Go's built-in
+		// 10-redirect cap, so that cap is re-implemented here
+		// deliberately.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("paperless: stopped after %d redirects", len(via))
+			}
+			return c.allowHost(req.URL.Hostname())
+		},
+	}
+	return c
+}
+
+// allowHost is the outbound host allowlist predicate. It strips any port
+// and IPv6 brackets from host, lowercases it, and permits the value when
+// it equals this client's configured paperless-ngx hostname, when
+// net.ParseIP reports a loopback address, or when it is the literal
+// "localhost"; otherwise it returns an error wrapping ErrForeignHost and
+// naming the refused host.
+//
+// Port is deliberately outside the comparison: the configured host is the
+// user's own paperless-ngx instance, and a reverse proxy in front of it
+// may legitimately move between ports (e.g. 80 to 443) on that same host.
+// The prohibition this enforces is about foreign hosts, not foreign
+// ports — do not "tighten" this into a port check.
+func (c *Client) allowHost(hostport string) error {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.Trim(host, "[]"))
+
+	if host != "" && c.baseHost != "" && host == c.baseHost {
+		return nil
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return fmt.Errorf("%w: %q", ErrForeignHost, host)
 }
 
 // Document is a paperless-ngx document as relevant to this plugin.
