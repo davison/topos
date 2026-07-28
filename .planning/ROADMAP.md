@@ -52,7 +52,7 @@ Plans:
 
 **Gap closure** *(from UAT — see 01-UAT.md `## Gaps`)*
 
-- [ ] 01-05-PLAN.md — G-01-2: root layout never imported app.css, so the build shipped zero CSS — fix, guard against stylesheet-less builds, hand off for UAT re-run of tests 2–4
+- [x] 01-05-PLAN.md — G-01-2: root layout never imported app.css, so the build shipped zero CSS — fix, guard against stylesheet-less builds, hand off for UAT re-run of tests 2–4
 - [ ] 01-06-PLAN.md — G-01-6: committed outbound-host allowlist — host-pinned paperless client plus a repo-wide egress audit *(runs after 01-05)*
 
 **UI hint**: yes
@@ -159,7 +159,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. First Webspace, End to End | 4/4 | In Progress|  |
+| 1. First Webspace, End to End | 5/6 | In Progress|  |
 | 2. Two Sources, One Trustworthy Stream | 0/TBD | Not started | - |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
