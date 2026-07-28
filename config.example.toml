@@ -172,6 +172,37 @@ handoff = false
 read = true
 handoff = false
 
+# [sources.mock] — the reference "mock" plugin (plugins/mock, PLUG-05):
+# a working SourcePlugin built entirely from docs/plugin-contract.md, the
+# proto/webspaces/v1/plugin.proto wire contract, and the sdk module, with
+# no network dependency and a fixed, in-memory item set. Uncomment this
+# block (and the [webspaces.demo] block at the bottom of this file) to
+# see it in action without any real source system to connect to.
+#
+# plugin: the plugin binary's filename, resolved inside [plugins] dir —
+# `make build` produces bin/plugins/webspaces-plugin-mock alongside the
+# other two plugin binaries.
+# plugin = "webspaces-plugin-mock"
+#
+# base_url / token: the mock plugin's own main.go does NOT require
+# WEBSPACES_SOURCE_CONFIG to be set at all — it has no connection details
+# to configure. The two placeholder lines below exist only because
+# kernel/config.Validate currently requires base_url and token to be
+# non-empty for every configured source, regardless of whether the
+# plugin itself needs them — a pre-existing kernel-level constraint that
+# predates this plugin (it will need relaxing for a genuinely
+# configless real source, e.g. Signal or WhatsApp reading a local
+# database, in a later phase). Any non-empty placeholder value works;
+# the mock plugin ignores both.
+# base_url = "unused"
+# token = "unused"
+#
+# [sources.mock.agent] — same shape as every other source's agent grant,
+# above.
+# [sources.mock.agent]
+# read = true
+# handoff = false
+
 # [webspaces.<name>] — one block per webspace. "<name>" becomes the
 # webspace's URL slug (e.g. /w/house-move) and its GET
 # /api/webspaces/{name}/stream path segment.
@@ -189,3 +220,10 @@ handoff = false
 # required; a webspace with zero keywords, or any empty-string keyword,
 # fails config load.
 keywords = ["house and home"]
+
+# [webspaces.demo] — pairs with the commented-out [sources.mock] block
+# above: "demo" matches the label every one of plugins/mock's four fixed
+# items carries, so uncommenting both blocks and running `webspaces sync`
+# populates this webspace with all four mock items.
+# [webspaces.demo]
+# keywords = ["demo"]

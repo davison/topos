@@ -4,15 +4,25 @@ This document is the published, third-party-facing contract for a
 webspaces **source plugin**: a subprocess that reads one personal data
 silo (paperless-ngx, an IMAP mailbox, a Signal database, a SilverBullet
 space, ...) and hands normalized items back to the kernel. It is written
-for a reader with no access to this repository beyond three things:
+for a reader with no access to this repository beyond four things:
 
 - this file,
-- `proto/webspaces/v1/plugin.proto` (the wire contract), and
-- the `sdk` Go module (`github.com/davison/webspaces/sdk`).
+- `proto/webspaces/v1/plugin.proto` (the wire contract),
+- the `sdk` Go module (`github.com/davison/webspaces/sdk`), and
+- `plugins/mock` — a complete, working reference plugin built from
+  exactly these four inputs and nothing else (`PLUG-05`; see "Build your
+  first plugin", below).
 
-If those three are all you have, you should be able to write a working
-plugin. The one shipping reference implementation, `plugins/paperless`, is
-a second, fuller example — but the contract below is complete without it.
+If those four are all you have, you should be able to write a working
+plugin — `plugins/mock` is the proof: it was built and validated against
+this document with no access to any real-source plugin implementation.
+
+**Other implementations (aside, not required reading):** two fuller,
+real-source examples also ship in this repository —
+`plugins/paperless` (a REST API source) and `plugins/silverbullet` (an
+HTTP-with-frontmatter source) — useful once you're past "Build your first
+plugin" and want to see how a plugin structures a real HTTP client, but
+neither is needed to understand or apply anything in this document.
 
 ## A plugin is read-only by construction
 
@@ -27,13 +37,19 @@ asked to follow — it is a property of the contract's shape:
   Adding any RPC — mutating or not — fails that test (and therefore the
   build) until the addition is a deliberate, reviewed widening of the
   allowlist.
-- The reference plugin's own HTTP client is additionally checked by
-  `plugins/paperless/readonly_test.go`, which walks the Go AST of every
-  file under `plugins/` and fails if any file constructs a non-`GET` HTTP
-  request. A third-party plugin outside this repository doesn't get that
-  specific test for free, but it inherits the same shape: there is no RPC
-  in the contract that could carry a write, so there is nothing for a
-  plugin's own outbound requests to trigger beyond reads.
+- Every plugin shipped in this repository is additionally checked by a Go
+  AST scan that walks every file under `plugins/` and fails the build if
+  any file constructs a non-`GET` HTTP request (`http.MethodPost`,
+  `http.NewRequest(http.MethodDelete, ...)`, and so on). A third-party
+  plugin outside this repository doesn't get that specific scan for free,
+  but it inherits the same shape from the contract itself: there is no RPC
+  that could carry a write, so there is nothing for a plugin's own
+  outbound requests to trigger beyond reads. If your plugin's source
+  system exposes a read-only API token or credential, prefer that over a
+  read/write one — the contract structurally prevents this kernel from
+  ever asking your plugin to write, but a well-scoped credential is a
+  second, independent line of defense at your source system's own
+  boundary.
 
 A plugin may talk to its source system however it needs to (REST, IMAP,
 a local database file, a linked-device WebSocket) — the read-only
@@ -142,6 +158,18 @@ expanded to `""`) — never start up silently and fail later, mid-`Match`,
 with a confusing downstream error. Log the missing key by name (never log
 the value of a secret key such as a token) and exit non-zero.
 
+**A plugin with nothing to configure reads the variable and does nothing
+with it.** Not every source needs connection details at all — a source
+that has no external system to reach (like `plugins/mock`) simply never
+requires `WEBSPACES_SOURCE_CONFIG` to be set:
+
+```go
+// plugins/mock/main.go — read it if present (forward-compatible with an
+// operator setting an empty [sources.mock] config block), but never fail
+// startup for its absence, unlike a plugin with real required keys.
+_ = os.Getenv("WEBSPACES_SOURCE_CONFIG")
+```
+
 ## RPC semantics
 
 ### `Describe`
@@ -186,29 +214,43 @@ the webspace's keyword list in config — there is no per-source override
 syntax, and a plugin must not invent its own fuzzy-matching behavior to
 compensate.
 
-**Worked example** — the reference paperless-ngx plugin resolves each
-keyword to zero or more tag IDs via an exact, case-insensitive tag-name
-lookup, then fetches every document carrying any of the resolved tag IDs:
+**Worked example** — `plugins/mock`'s `Match` (the full file is
+`plugins/mock/plugin.go`) has a fixed, in-memory item set instead of a
+real source system to query, but the matching rule itself is identical to
+what a real plugin must implement: every item whose `Labels` contains any
+keyword, compared exactly and case-insensitively:
 
 ```go
-func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
-	tagIDs, err := p.client.ResolveTagIDs(ctx, req.GetKeywords()) // exact, case-insensitive
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "paperless: resolve tag ids: %v", err)
-	}
-	docs, err := p.client.ListDocuments(ctx, tagIDs) // OR across all resolved tag ids
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "paperless: list documents: %v", err)
-	}
-	items := make([]*webspacesv1.Item, 0, len(docs))
-	for _, d := range docs {
-		items = append(items, p.toItem(d))
+func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+	keywords := req.GetKeywords()
+	var items []*webspacesv1.Item
+	for _, it := range mockItems {
+		if labelsMatchAnyKeyword(it.GetLabels(), keywords) {
+			items = append(items, it)
+		}
 	}
 	return &webspacesv1.MatchResponse{Items: items}, nil
 }
+
+func labelsMatchAnyKeyword(labels, keywords []string) bool {
+	for _, label := range labels {
+		for _, kw := range keywords {
+			if strings.EqualFold(label, kw) { // exact, case-insensitive
+				return true
+			}
+		}
+	}
+	return false
+}
 ```
 
-Return a gRPC `codes.Unavailable` status (not a partial, silently-empty
+A real plugin's `Match` typically has one more step before this: resolving
+each keyword against the source system's own categorization API (an HTTP
+call to look up a tag by name, an IMAP `LIST` to find a matching folder,
+...) before it can even ask "which items carry this categorization" — the
+mock skips that step because its "categorization" (`Labels`) is already
+in memory. Whatever that resolution step looks like for your source,
+return a gRPC `codes.Unavailable` status (not a partial, silently-empty
 result) when the source system cannot be reached — the kernel records
 this per-source in that sync run's status and surfaces it as
 `source_unavailable`-shaped state, rather than treating "the source is
@@ -273,10 +315,12 @@ message HealthRequest {}
 message HealthResponse { bool reachable = 1; int64 last_sync_unix = 2; string last_error = 3; }
 ```
 
-A lightweight reachability probe. Phase 1 doesn't yet surface this in the
-UI (that's `PLUG-04`, Phase 2) but the RPC exists in the contract now so
-every plugin implements it from the start rather than retrofitting it
-later.
+A lightweight reachability probe, called live on every request to
+`GET /api/sources` / `GET /agent/v1/sources` (`PLUG-04`) — never cached,
+so implement it as a cheap operation (a lightweight list/ping call, not a
+full resync). Return `reachable: false` with `last_error` set for any
+failure to reach the source system; never return a gRPC error from
+`Health` itself.
 
 ## The `Item` message
 
@@ -300,20 +344,20 @@ message Item {
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `source_id` | Stable within your plugin — the kernel derives its own global id as `"{source_type}:{source_id}"`. Never reuse a `source_id` for two different underlying objects. |
-| `source_type` | Must exactly match what your `Describe` RPC reports — the kernel doesn't trust a value here that disagrees with `Describe`. |
-| `title` | Short, human-readable. |
-| `preview` | A bounded snippet (hundreds of characters, not the full document/message) — the local index stores this, never full content, per the hybrid data model. |
-| `timestamp_unix` | The primary sort key across the whole stream — real-world event time (when a document was created, a message sent). |
-| `secondary_timestamp_unix` | The tie-break sort key when two items share `timestamp_unix` — typically an ingestion or receipt time. This exists because a date-only source (paperless-ngx's `created` field, for example, has day granularity, not a timestamp) still needs a deterministic same-day order; use the more precise field you have (e.g. paperless-ngx's full-datetime `added` field) here. |
-| `fidelity` | See `LinkFidelity`, below — never omit this; the kernel rejects (at sync time) any item with an unspecified fidelity. |
-| `deep_link` | An absolute URL back to the source system for this exact item. Never empty — also rejected at sync time if it is. |
-| `labels` | The source's own native categorization strings (tag names, folder names) — informational, not used for matching (matching happens inside your `Match` implementation, before this message is built). |
-| `provenance` | Machine-readable provenance the kernel HTTP API republishes verbatim to agents (AGENT-02) — see below for the documented key set. |
-| `group_id` / `group_label` | For sources with a natural thread/conversation concept (a chat, a mail thread): a stable id and human label for that group. Leave both `""` for a source with no such concept (a standalone document). |
-| `has_thumbnail` | Whether a `CONTENT_VARIANT_THUMBNAIL` fetch is expected to succeed — lets the UI decide whether to render a thumbnail slot without an extra round-trip. |
+| Field | Required? | Meaning |
+|---|---|---|
+| `source_id` | **Required** | Stable within your plugin — the kernel derives its own global id as `"{source_type}:{source_id}"`. Never reuse a `source_id` for two different underlying objects. |
+| `source_type` | **Required** | Must exactly match what your `Describe` RPC reports — the kernel doesn't trust a value here that disagrees with `Describe`. |
+| `title` | **Required** (may be a placeholder string, never truly empty) | Short, human-readable. |
+| `preview` | Optional — may be `""` | A bounded snippet (hundreds of characters, not the full document/message) — the local index stores this, never full content, per the hybrid data model. |
+| `timestamp_unix` | **Required** | The primary sort key across the whole stream — real-world event time (when a document was created, a message sent). |
+| `secondary_timestamp_unix` | Optional — may be `0` | The tie-break sort key when two items share `timestamp_unix` — typically an ingestion or receipt time. This exists because a date-only source (a `created` field with only day granularity, for example) still needs a deterministic same-day order; use the more precise field you have (an `added`/`received` timestamp, if your source has one) here. |
+| `fidelity` | **Required**, and must not be `LINK_FIDELITY_UNSPECIFIED` | See `LinkFidelity`, below — the kernel rejects (at sync time) any item with an unspecified fidelity; that one item is skipped and logged, the rest of that sync's valid items still persist. |
+| `deep_link` | **Required**, must not be `""` | An absolute URL back to the source system for this exact item — also rejected at sync time if empty, with the same skip-and-log behavior as an unspecified fidelity. |
+| `labels` | Optional — may be empty | The source's own native categorization strings (tag names, folder names) — informational, not used for matching (matching happens inside your `Match` implementation, before this message is built). |
+| `provenance` | **Required** — populate the five plugin-owned keys (see "Provenance", below) | Machine-readable provenance the kernel HTTP API republishes verbatim to agents (AGENT-02). |
+| `group_id` / `group_label` | Optional — leave both `""` for a source with no thread concept | For sources with a natural thread/conversation concept (a chat, a mail thread): a stable id and human label for that group. |
+| `has_thumbnail` | Optional — defaults to `false` | Whether a `CONTENT_VARIANT_THUMBNAIL` fetch is expected to succeed — lets the UI decide whether to render a thumbnail slot without an extra round-trip. |
 
 ### Provenance
 
@@ -386,12 +430,99 @@ level, including debug. Log the *presence* or *name* of a secret
 (`"token configured"`, `"missing environment variable X"`), never its
 value.
 
+## Build your first plugin
+
+This walkthrough goes from an empty directory to a plugin the kernel
+launches and calls successfully, using nothing beyond the four inputs
+listed at the top of this document. `plugins/mock` is the worked example
+throughout — every step below names the exact file in that module where
+the step lives.
+
+**1. Create a new Go module under `plugins/`.**
+
+```
+mkdir plugins/yourplugin && cd plugins/yourplugin
+go mod init github.com/davison/webspaces/plugins/yourplugin
+```
+
+(Substitute your own module path if you're building outside this
+repository entirely — nothing about the contract requires your plugin to
+live in this repo.)
+
+**2. Add your module to the Go workspace, if building inside this repo.**
+
+`go.work` at the repository root lists every module `go build`/`go test`
+resolve across in one pass — see the top-level `use (...)` block, which
+`plugins/mock`'s entry (`./plugins/mock`) mirrors. Add your own module's
+path there the same way, or run `go work use ./plugins/yourplugin`.
+
+**3. Depend on the `sdk` module** (see "Depending on the SDK", above) and
+implement `sdk.SourcePlugin`'s four methods — `Describe`, `Match`,
+`Fetch`, `Health` — on a type of your own (`plugins/mock/plugin.go`'s
+`SourcePlugin` struct and its four methods are the complete worked
+example; start there and adapt).
+
+**4. Write your `main` package** (`plugins/mock/main.go` is the complete
+worked example): read `WEBSPACES_SOURCE_CONFIG` if your plugin needs
+connection details (see "Configuration", above — and note a plugin with
+nothing to configure, like the mock, simply doesn't require it), construct
+your `SourcePlugin` implementation, and call `plugin.Serve` with
+`sdk.Handshake`, your implementation registered under the `"source"` key,
+and `sdk.GRPCServer` (see "Depending on the SDK", above, for the exact
+shape).
+
+**5. Build it.**
+
+```
+CGO_ENABLED=0 go build -o bin/plugins/webspaces-plugin-yourplugin ./plugins/yourplugin
+```
+
+**6. Configure the kernel to launch it** — add a
+`[sources.<name>]` block to your `config.toml` (see `config.example.toml`
+for the exact shape, including its commented-out `[sources.mock]`
+example) naming your binary's filename as `plugin`, plus whatever
+connection-detail keys your plugin's own `main.go` reads out of
+`WEBSPACES_SOURCE_CONFIG`. Add a `[webspaces.<name>]` block with at least
+one keyword that matches something your `Match` implementation returns,
+so a sync actually produces items to see.
+
+**7. Run it.** `webspaces sync` (a one-shot sync) or `webspaces serve`
+(sync-on-schedule plus the HTTP API) both launch every configured plugin,
+call `Describe` immediately after the handshake, and then drive `Match`
+at sync time and `Fetch`/`Health` at request time, exactly per "RPC
+semantics", above. If your plugin fails to launch, the kernel's own
+startup log names which configured source failed and why — the handshake
+and `Describe` call both happen before any sync work starts, so a
+misconfigured plugin fails fast rather than silently producing zero
+items.
+
+**8. Write tests against the behavior list, not the implementation** —
+`plugins/mock/plugin_test.go` is the complete worked example: it asserts
+`Describe`'s identity fields, `Match`'s exact-case-insensitive rule and
+its zero-items-on-no-match behavior, that every returned `Item` carries a
+non-`UNSPECIFIED` fidelity and a non-empty `deep_link` (the same
+correlation-boundary check the kernel itself enforces at sync time — see
+`fidelity`/`deep_link` in the `Item` table, above), `Fetch`'s
+not-found-maps-to-`codes.NotFound` behavior, and `Health`'s always-true
+shape for a source with nothing to be unreachable from. Adapt the same
+assertions against your own plugin's real behavior.
+
+This is the exact process `plugins/mock` itself was built and validated
+through (`PLUG-05`) — a fresh agent context, given only this document,
+`plugin.proto`, the `sdk` module, and `plugins/mock` as inputs, produced a
+second working plugin from these steps alone. See 02-04-SUMMARY.md for
+that validation exercise's record (inputs given, gaps found and closed,
+and the honestly-stated limits of that approximation).
+
 ## What this document does not cover
 
 - The kernel HTTP JSON API that a browser or an agent consumes — see
-  `docs/api.md`.
-- Plugin health surfaced in the UI, and a per-plugin agent permission
-  model — both land in Phase 2 (`PLUG-04`, `AGENT-01`).
-- A reference "mock" plugin built purely from this document with no access
-  to the reference paperless-ngx implementation — planned for Phase 2
-  (`PLUG-05`) as the validation step for this contract.
+  `docs/api.md`, including its `/agent/v1/*` namespace and the per-source
+  `agent.read`/`agent.handoff` grants (`AGENT-01`) that gate it. Nothing
+  in this document — the plugin contract itself — is grant-aware; grants
+  are a kernel-side, config-driven concern applied after your plugin's
+  items reach the index, not something a plugin implements or checks.
+- Agent-initiated actions (`AGENT-11`, e.g. "draft an email reply") — the
+  whole contract above is read-only end to end; action hand-off, if it
+  ever lands, is a v1.x concern layered on top of the RPCs above, not a
+  change to them.

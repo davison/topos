@@ -1,25 +1,32 @@
 .PHONY: build test proto smoke dev
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
-# the kernel binary, and the paperless plugin binary, in that order — the
-# kernel embed directive needs kernel/webui/build populated before `go
-# build` runs to embed anything beyond the committed .gitkeep placeholder.
+# the kernel binary, and the plugin binaries — webspaces-plugin-paperless,
+# webspaces-plugin-silverbullet, and webspaces-plugin-mock (the reference
+# plugin PLUG-05 validates docs/plugin-contract.md against) — in that
+# order. The kernel embed directive needs kernel/webui/build populated
+# before `go build` runs to embed anything beyond the committed .gitkeep
+# placeholder.
 build:
 	npm --prefix web ci
 	npm --prefix web run build
 	CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
 	go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
 	go build -o bin/plugins/webspaces-plugin-silverbullet ./plugins/silverbullet
+	go build -o bin/plugins/webspaces-plugin-mock ./plugins/mock
 
-# test runs the test suite across all three workspace modules. Go
-# workspaces scope "./..." to the module containing the working directory,
-# so each module is tested explicitly rather than relying on a single
-# "./..." from the repo root covering all of them.
+# test runs the test suite across all four workspace modules (sdk,
+# paperless, silverbullet, mock — the webspaces-plugin-mock module built
+# above) plus the root kernel module. Go workspaces scope "./..." to the
+# module containing the working directory, so each module is tested
+# explicitly rather than relying on a single "./..." from the repo root
+# covering all of them.
 test:
 	CGO_ENABLED=0 go build ./... && go test ./...
 	cd sdk && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/paperless && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/silverbullet && CGO_ENABLED=0 go build ./... && go test ./...
+	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
 
 # proto regenerates the sdk/gen Go stubs from proto/webspaces/v1/plugin.proto.
 # Prefers buf; falls back to protoc + protoc-gen-go + protoc-gen-go-grpc
