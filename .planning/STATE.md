@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-07-28T22:51:11.288Z"
+status: verifying
+last_updated: "2026-07-28T23:37:51.486Z"
 last_activity: 2026-07-28
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 9
-  percent: 20
+  completed_plans: 10
+  percent: 40
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-07-28)
 
 Phase: 02 (two-sources-one-trustworthy-stream) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-28
 
-Progress: [█████████░] 90%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 90%
 | Phase 02 P01 | 68min | 3 tasks | 34 files |
 | Phase 02 P02 | 35min | 3 tasks | 22 files |
 | Phase 02 P03 | 55min | 3 tasks | 15 files |
+| Phase 02 P04 | 50min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 02-03]: RefreshResult TS shape follows the live kernel/httpapi/sources.go + docs/api.md exactly, not PLAN.md's interfaces sketch (field/wrapper-key names differ, no started_unix)
 - [Phase ?]: [Phase 02-03]: WebspaceHeader moved from +layout.svelte into +page.svelte — a layout can't receive props back from the page it renders via {@render children()}, and the header's new props are all owned by page-level sources/filter state
 - [Phase ?]: [Phase 02-03]: healthTone treats never-synced (last_status: '') as taking precedence over live reachability, per docs/api.md's 'render as neutral, never green ok' framing
+- [Phase ?]: [Phase 02-04]: kernel/httpapi/agent.go stays in package httpapi (not a subpackage as 02-PATTERNS.md sketched) — a subpackage would need WriteJSON/WriteError/toStreamItem/etc from its parent while the parent mounts it, an import cycle
+- [Phase ?]: [Phase 02-04]: SourcesHandler's merge logic factored into sourceStatusesFrom, reused unfiltered by /api/sources and filtered by /agent/v1/sources
+- [Phase ?]: [Phase 02-04]: kernel/config.Validate's unconditional base_url/token requirement is NOT relaxed for plugins/mock's genuinely-configless case — logged as a deferred item for Phase 4/5 (Signal/WhatsApp) rather than fixed outside this plan's files_modified scope
+- [Phase ?]: [Phase 02-04]: PLUG-05's isolation exercise (Task 3) was performed directly by this executor, not via a dispatched fresh subagent — no Task/subagent-dispatch tool was available in this execution environment, a materially weaker approximation than the plan's own already-flagged limitation, recorded honestly in 02-04-SUMMARY.md
 
 ### Pending Todos
 
@@ -125,6 +130,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T22:51:11.279Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-07-28T23:37:51.478Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None

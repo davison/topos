@@ -18,7 +18,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **PLUG-02**: Contract is read-only by construction â€” no source-mutating methods exist
 - [x] **PLUG-03**: Every item declares deep-link fidelity: exact / anchored / conversation-only
 - [x] **PLUG-04**: Plugins report health (reachable, last sync, last error) to the kernel
-- [ ] **PLUG-05**: A third party can build a plugin from the contract docs + reference mock plugin alone
+- [x] **PLUG-05**: A third party can build a plugin from the contract docs + reference mock plugin alone
 
 ### Source Plugins
 
@@ -39,7 +39,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 ### Agent Readiness (provisions only â€” the agent itself is v1.x)
 
-- [ ] **AGENT-01**: Per-plugin permission model, default-deny, defined in config: separately grants (a) agent read access to a source's items and (b) action hand-off via that source's own interfaces
+- [x] **AGENT-01**: Per-plugin permission model, default-deny, defined in config: separately grants (a) agent read access to a source's items and (b) action hand-off via that source's own interfaces
 - [x] **AGENT-02**: Item schema and kernel HTTP API are designed for programmatic/agent consumption (stable IDs, structured content, machine-readable provenance)
 
 ## v1.x Requirements (deferred â€” v1 architecture must be ready for them)
@@ -76,7 +76,7 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | PLUG-02 | Phase 1 | Complete |
 | PLUG-03 | Phase 1 | Complete |
 | PLUG-04 | Phase 2 | Complete |
-| PLUG-05 | Phase 2 | Pending |
+| PLUG-05 | Phase 2 | Complete |
 | SRC-01 | Phase 3 | Pending |
 | SRC-02 | Phase 4 | Pending |
 | SRC-03 | Phase 5 | Pending |
@@ -88,7 +88,7 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | UI-04 | Phase 1 | Complete |
 | UI-05 | Phase 2 | Complete |
 | UI-06 | Phase 2 | Complete |
-| AGENT-01 | Phase 2 | Pending |
+| AGENT-01 | Phase 2 | Complete |
 | AGENT-02 | Phase 1 | Complete |
 
 Deferred requirements (AGENT-10, AGENT-11, AGENT-12, UI-10) are v1.x and intentionally unmapped.

@@ -223,3 +223,7 @@ None. This plan added no new required user-facing configuration — every `[sour
 ---
 *Phase: 02-two-sources-one-trustworthy-stream*
 *Completed: 2026-07-29*
+
+## Self-Check: PASSED
+
+All 21 claimed files exist on disk and all four commits (`3226c5a`, `9f0ed10`, `11d633c`, `bde4f7f`) are present in `git log`.

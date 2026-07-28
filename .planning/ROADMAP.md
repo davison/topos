@@ -14,7 +14,7 @@ Webspaces is built as a series of vertical slices: every phase ends with the use
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: First Webspace, End to End** - Kernel spine, plugin contract, and web UI proven by real paperless-ngx documents in a browsable stream (completed 2026-07-28)
-- [ ] **Phase 2: Two Sources, One Trustworthy Stream** - SilverBullet joins the stream; filter, health, refresh, staleness states, and default-deny agent permissions
+- [x] **Phase 2: Two Sources, One Trustworthy Stream** - SilverBullet joins the stream; filter, health, refresh, staleness states, and default-deny agent permissions (completed 2026-07-28)
 - [ ] **Phase 3: Email in the Webspace** - Proton/IMAP mail appears in the stream, never marked read, with full-text search across the webspace
 - [ ] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety
 - [ ] **Phase 5: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
@@ -90,7 +90,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion; both plans run in parallel)*
 
 - [x] 02-03-PLAN.md — UI trust surface: health chips, source filter, staleness and unavailable states
-- [ ] 02-04-PLAN.md — Default-deny agent grants in a `/agent/v1` namespace, plus the reference mock plugin and the PLUG-05 validation exercise
+- [x] 02-04-PLAN.md — Default-deny agent grants in a `/agent/v1` namespace, plus the reference mock plugin and the PLUG-05 validation exercise
 
 **UI hint**: yes
 
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
-| 2. Two Sources, One Trustworthy Stream | 3/4 | In Progress|  |
+| 2. Two Sources, One Trustworthy Stream | 4/4 | Complete   | 2026-07-28 |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
