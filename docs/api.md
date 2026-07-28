@@ -143,8 +143,8 @@ independent of the rendition.
 The raw bytes of the preview and thumbnail renditions, respectively,
 streamed straight through from the plugin's live `Fetch` call. Both routes
 enforce a fixed MIME allowlist (`application/pdf`, `image/png`,
-`image/jpeg`, `image/gif`, `image/webp`) before writing any byte, and set
-a hardened header set on every accepted response:
+`image/jpeg`, `image/gif`, `image/webp`, `text/html`) before writing any
+byte, and set a hardened header set on every accepted response:
 
 ```
 Content-Type: <allowlisted MIME type>
@@ -160,6 +160,16 @@ matters because these routes serve source-controlled bytes (a paperless-ngx
 user's own uploaded PDF, for instance) from the kernel's own origin; the
 sandboxing CSP and `nosniff` header are what keep an embedded/rendered
 document from executing as if it were same-origin content.
+
+`text/html` renditions (currently produced only by the SilverBullet
+plugin, rendering a wiki page's markdown) are sanitized by the *producing
+plugin* — via `goldmark` (safe-by-default HTML/URL-scheme rendering) and a
+`bluemonday.UGCPolicy()` pass — before the bytes ever reach the kernel.
+The kernel does not re-sanitize; it relies on the same allowlist-plus-CSP
+mechanism above (in particular the `sandbox` CSP directive, which strips
+script execution, form submission, and top-level navigation from the
+iframe an embedding client renders this content inside) as the second,
+independent layer of defense.
 
 ## The stable-ID scheme
 

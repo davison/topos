@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -160,12 +161,72 @@ func (p *SourcePlugin) toItem(f FileMeta, tags []string, body []byte) *webspaces
 	}
 }
 
-// Fetch is stubbed in Task 1 — Task 2 fills it in with the real
-// goldmark+bluemonday rendered-markdown variant switch. This is the one
-// place a later task fills without an architectural change (per the
-// plan's own note).
-func (p *SourcePlugin) Fetch(_ context.Context, _ *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "silverbullet: fetch not yet implemented")
+// noThumbnailReason is the fixed unavailable_reason used for the
+// THUMBNAIL variant — a wiki page has no image rendition, ever, unlike
+// paperless's noRenditionReason which covers an unsupported-file-type
+// edge case.
+const noThumbnailReason = "SilverBullet pages have no thumbnail rendition"
+
+// Fetch implements live content fetch on item-open (KERN-03) — never
+// called from Match/sync. FULL and PREVIEW both render the page's
+// sanitized HTML (D-04: rendered markdown is the default detail-pane
+// content); THUMBNAIL is always unavailable, with no error, since a wiki
+// page never has an image rendition.
+func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+	switch req.GetVariant() {
+	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+		return p.fetchFull(ctx, req.GetSourceId())
+	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
+	default:
+		return nil, status.Error(codes.InvalidArgument, "silverbullet: unspecified content variant")
+	}
+}
+
+// fetchFull reads the page's raw markdown, strips its frontmatter, renders
+// the remaining body to sanitized HTML, and returns both: Data is the
+// sanitized HTML (mime_type "text/html", the rendition the detail pane's
+// iframe fetches — D-04), Text is the frontmatter-stripped raw markdown
+// (for a possible future raw ContentVariant; never persisted to the
+// index, matching the plan's hybrid-model prohibition).
+//
+// sourceID is the page path WITHOUT the ".md" extension (D-01 — it's what
+// Match stripped when building the item's source_id, and what the kernel
+// round-trips back as FetchRequest.source_id unchanged). The actual file
+// on the SilverBullet instance always carries ".md", so it must be
+// re-appended before calling ReadFile — a bug caught live against the
+// real instance (a request for the bare, extension-less path 404s; Task 1
+// Step 0's exploratory checks only ever probed a hardcoded ".md" path
+// directly, so this asymmetry didn't surface until Task 2's live check).
+func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspacesv1.FetchResponse, error) {
+	filePath := sourceID + ".md"
+
+	raw, err := p.client.ReadFile(ctx, filePath)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "silverbullet: page %q not found", sourceID)
+		}
+		return nil, status.Errorf(codes.Unavailable, "silverbullet: read %q: %v", sourceID, err)
+	}
+
+	body, _ := ExtractTagsAndBody(raw)
+
+	sanitized, err := RenderSanitized(body)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "silverbullet: render %q: %v", sourceID, err)
+	}
+
+	return &webspacesv1.FetchResponse{
+		Available: true,
+		MimeType:  "text/html",
+		SizeBytes: int64(len(sanitized)),
+		Data:      sanitized,
+		Text:      string(body),
+		Provenance: map[string]string{
+			"source_type": sourceType,
+			"source_id":   sourceID,
+		},
+	}, nil
 }
 
 func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {

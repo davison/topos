@@ -138,3 +138,22 @@ export function contentUrl(id: string): string {
 export function thumbnailUrl(id: string): string {
 	return `/api/items/${encodeURIComponent(id)}/thumbnail`;
 }
+
+// SOURCE_DISPLAY_NAMES is a small local fallback mapping used to
+// parameterize source-specific UI copy (RESEARCH.md "Pitfall 3:
+// Hardcoded source name in shared UI copy" — DetailPane's failure copy
+// and OpenInSource's button label both used to read "paperless-ngx"
+// unconditionally, which is wrong for any other source). A live,
+// plugin-reported display_name will arrive via a future GET /api/sources
+// route (RESEARCH.md "Health merge", a later plan in this phase); this
+// mapping is the minimal fix needed now, with a sensible fallback (the
+// raw source_type) for any source not yet listed here.
+const SOURCE_DISPLAY_NAMES: Record<string, string> = {
+	paperless: 'paperless-ngx',
+	silverbullet: 'SilverBullet'
+};
+
+/** Human-friendly display name for a source_type. */
+export function sourceDisplayName(sourceType: string): string {
+	return SOURCE_DISPLAY_NAMES[sourceType] ?? sourceType;
+}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getItem, contentUrl, type StreamItem, type ItemContent } from '$lib/api';
+	import { getItem, contentUrl, sourceDisplayName, type StreamItem, type ItemContent } from '$lib/api';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Alert, AlertTitle, AlertDescription, AlertAction } from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -14,6 +14,12 @@
 	let content: ItemContent | null = $state(null);
 	let loadingContent = $state(true);
 	let loadFailed = $state(false);
+
+	// displayName parameterizes the source-specific copy below
+	// (RESEARCH.md Pitfall 3) — this pane is shared across every source,
+	// so neither the failure copy nor OpenInSource's button label may
+	// hardcode one source's name.
+	let displayName = $derived(sourceDisplayName(item.source_type));
 
 	function formatDate(unix: number): string {
 		if (!unix) return '';
@@ -58,7 +64,7 @@
 				<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
 			{/each}
 		</div>
-		<OpenInSource link={item.link} />
+		<OpenInSource link={item.link} sourceType={item.source_type} />
 	</header>
 
 	<!-- Stage two: live-fetched preview + extracted text. -->
@@ -71,8 +77,8 @@
 		<Alert variant="destructive">
 			<AlertTitle>Couldn't load this document</AlertTitle>
 			<AlertDescription>
-				paperless-ngx didn't respond. It may be offline — try again, or open it directly in
-				paperless-ngx.
+				{displayName} didn't respond. It may be offline — try again, or open it directly in
+				{displayName}.
 			</AlertDescription>
 			<AlertAction>
 				<Button variant="outline" size="sm" onclick={() => loadContent(item.id)}>Retry</Button>
@@ -83,6 +89,14 @@
 			<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
 				{#if content.available && content.rendition?.mime_type === 'application/pdf'}
 					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
+				{:else if content.available && content.rendition?.mime_type === 'text/html'}
+					<!-- Sanitized rendered markdown (SilverBullet, D-04): served
+					     through the kernel's own hardened, sandboxed rendition
+					     route and rendered inside this iframe — never injected
+					     into the SPA document via Svelte's raw-HTML directive,
+					     which would discard the sandbox boundary this iframe
+					     provides for free (RESEARCH.md's explicit anti-pattern). -->
+					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
 				{:else if content.available && content.rendition?.mime_type.startsWith('image/')}
 					<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
 				{:else}
@@ -92,7 +106,7 @@
 					</div>
 				{/if}
 			</div>
-			{#if content.text}
+			{#if content.text && content.rendition?.mime_type !== 'text/html'}
 				<div
 					class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
 				>

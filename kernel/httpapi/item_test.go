@@ -217,13 +217,47 @@ func TestItemContentHandler_SecurityHeadersOnAllowedMIME(t *testing.T) {
 	}
 }
 
+func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	seedTestItem(t, store, testItem())
+
+	body := []byte("<h1>Decking</h1><p>sanitized page content</p>")
+	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
+		Available: true, MimeType: "text/html", SizeBytes: int64(len(body)),
+		Body: io.NopCloser(bytes.NewReader(body)),
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "text/html" {
+		t.Errorf("unexpected Content-Type: %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Error("missing X-Content-Type-Options: nosniff")
+	}
+	if rec.Header().Get("Content-Disposition") != "inline" {
+		t.Errorf("unexpected Content-Disposition: %q", rec.Header().Get("Content-Disposition"))
+	}
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("expected a sandboxing CSP, got %q", rec.Header().Get("Content-Security-Policy"))
+	}
+	if rec.Body.String() != string(body) {
+		t.Error("response body does not match the fetched rendition bytes")
+	}
+}
+
 func TestItemContentHandler_DisallowedMIME415(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	seedTestItem(t, store, testItem())
 
 	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
-		Available: true, MimeType: "text/html",
-		Body: io.NopCloser(strings.NewReader("<script>alert(1)</script>")),
+		Available: true, MimeType: "application/x-not-allowlisted",
+		Body: io.NopCloser(strings.NewReader("whatever")),
 	}})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)

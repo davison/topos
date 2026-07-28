@@ -36,6 +36,14 @@ var allowedRenditionTypes = map[string]bool{
 	"image/jpeg":      true,
 	"image/gif":       true,
 	"image/webp":      true,
+	// text/html: added for the SilverBullet plugin's rendered-markdown
+	// rendition (D-04). Safe to serve from the kernel's own origin under
+	// the same hardened header set every rendition already gets below
+	// (Content-Security-Policy: ...; sandbox, X-Content-Type-Options:
+	// nosniff) — the producing plugin sanitizes with bluemonday before
+	// this byte ever reaches the kernel, and the sandboxed iframe boundary
+	// is a second, independent layer on top of that (T-02-01).
+	"text/html": true,
 }
 
 type rendition struct {
