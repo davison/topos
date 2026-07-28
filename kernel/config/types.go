@@ -8,6 +8,7 @@ type Config struct {
 	Server    ServerConfig        `toml:"server"`
 	Index     IndexConfig         `toml:"index"`
 	Plugins   PluginsConfig       `toml:"plugins"`
+	Sync      SyncConfig          `toml:"sync"`
 	Sources   map[string]Source   `toml:"sources"`
 	Webspaces map[string]Webspace `toml:"webspaces"`
 }
@@ -25,6 +26,13 @@ type IndexConfig struct {
 // PluginsConfig configures where plugin binaries are discovered.
 type PluginsConfig struct {
 	Dir string `toml:"dir"` // default "plugins" (resolved relative to the running executable)
+}
+
+// SyncConfig configures the background scheduler's global sync interval
+// (KERN-04, D-05). A source can override this with its own
+// Source.SyncInterval.
+type SyncConfig struct {
+	Interval string `toml:"interval"` // Go duration string; default DefaultSyncInterval ("15m") if empty
 }
 
 // Source configures a single source plugin: which binary to launch and the
@@ -46,6 +54,11 @@ type Source struct {
 	// store; the field itself is generic (not silverbullet-specific) since
 	// any future LAN source could hit the same self-signed-cert situation.
 	CACert string `toml:"ca_cert,omitempty"`
+	// SyncInterval optionally overrides [sync] interval for this source
+	// alone (D-05) — e.g. a heavy source can be slowed without affecting
+	// every other configured source. A Go duration string; empty means
+	// "use the global [sync] interval".
+	SyncInterval string `toml:"sync_interval,omitempty"`
 }
 
 // Webspace declares a shared keyword list matched against every source's
@@ -55,7 +68,8 @@ type Webspace struct {
 }
 
 const (
-	DefaultListen     = "127.0.0.1:7777"
-	DefaultIndexPath  = "~/.local/share/webspaces/index.db"
-	DefaultPluginsDir = "plugins"
+	DefaultListen       = "127.0.0.1:7777"
+	DefaultIndexPath    = "~/.local/share/webspaces/index.db"
+	DefaultPluginsDir   = "plugins"
+	DefaultSyncInterval = "15m"
 )

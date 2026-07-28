@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTempConfig(t *testing.T, contents string) string {
@@ -126,6 +127,153 @@ api_version = "10"
 	}
 	if !strings.Contains(err.Error(), "TEST_UNSET_PAPERLESS_TOKEN") {
 		t.Errorf("expected error to name TEST_UNSET_PAPERLESS_TOKEN, got: %v", err)
+	}
+}
+
+func TestSyncIntervalFor_NoSyncBlockDefaultsToFifteenMinutes(t *testing.T) {
+	path := writeTempConfig(t, `
+[webspaces.house-move]
+keywords = ["house"]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	d, err := cfg.SyncIntervalFor("anything")
+	if err != nil {
+		t.Fatalf("SyncIntervalFor: %v", err)
+	}
+	if d != 15*time.Minute {
+		t.Errorf("expected 15m default, got %v", d)
+	}
+}
+
+func TestSyncIntervalFor_GlobalOverrideAppliesToEverySource(t *testing.T) {
+	t.Setenv("TEST_SYNC_URL", "http://x.lan")
+	t.Setenv("TEST_SYNC_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sync]
+interval = "5m"
+
+[sources.paperless]
+plugin = "webspaces-plugin-paperless"
+base_url = "${TEST_SYNC_URL}"
+token = "${TEST_SYNC_TOKEN}"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	d, err := cfg.SyncIntervalFor("paperless")
+	if err != nil {
+		t.Fatalf("SyncIntervalFor: %v", err)
+	}
+	if d != 5*time.Minute {
+		t.Errorf("expected 5m global interval, got %v", d)
+	}
+}
+
+func TestSyncIntervalFor_PerSourceOverrideAppliesOnlyToThatSource(t *testing.T) {
+	t.Setenv("TEST_SYNC_URL", "http://x.lan")
+	t.Setenv("TEST_SYNC_TOKEN", "tok")
+	t.Setenv("TEST_SYNC_URL2", "http://y.lan")
+	t.Setenv("TEST_SYNC_TOKEN2", "tok2")
+	path := writeTempConfig(t, `
+[sync]
+interval = "5m"
+
+[sources.paperless]
+plugin = "webspaces-plugin-paperless"
+base_url = "${TEST_SYNC_URL}"
+token = "${TEST_SYNC_TOKEN}"
+
+[sources.silverbullet]
+plugin = "webspaces-plugin-silverbullet"
+base_url = "${TEST_SYNC_URL2}"
+token = "${TEST_SYNC_TOKEN2}"
+sync_interval = "1m"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sb, err := cfg.SyncIntervalFor("silverbullet")
+	if err != nil {
+		t.Fatalf("SyncIntervalFor(silverbullet): %v", err)
+	}
+	if sb != time.Minute {
+		t.Errorf("expected 1m override for silverbullet, got %v", sb)
+	}
+	pl, err := cfg.SyncIntervalFor("paperless")
+	if err != nil {
+		t.Fatalf("SyncIntervalFor(paperless): %v", err)
+	}
+	if pl != 5*time.Minute {
+		t.Errorf("expected 5m global interval for paperless (no override), got %v", pl)
+	}
+}
+
+func TestLoad_UnparseableIntervalFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[sync]
+interval = "soon"
+
+[webspaces.house-move]
+keywords = ["house"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unparseable interval, got nil")
+	}
+	if !strings.Contains(err.Error(), "interval") {
+		t.Errorf("expected error to name 'interval', got: %v", err)
+	}
+}
+
+func TestLoad_ZeroIntervalFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[sync]
+interval = "0s"
+
+[webspaces.house-move]
+keywords = ["house"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for zero interval, got nil")
+	}
+}
+
+func TestLoad_NegativeIntervalFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[sync]
+interval = "-1m"
+
+[webspaces.house-move]
+keywords = ["house"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for negative interval, got nil")
+	}
+}
+
+func TestLoad_UnparseablePerSourceIntervalFailsNamingTheKey(t *testing.T) {
+	t.Setenv("TEST_SYNC_URL3", "http://x.lan")
+	t.Setenv("TEST_SYNC_TOKEN3", "tok")
+	path := writeTempConfig(t, `
+[sources.paperless]
+plugin = "webspaces-plugin-paperless"
+base_url = "${TEST_SYNC_URL3}"
+token = "${TEST_SYNC_TOKEN3}"
+sync_interval = "soon"
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unparseable sync_interval, got nil")
+	}
+	if !strings.Contains(err.Error(), "sync_interval") {
+		t.Errorf("expected error to name 'sync_interval', got: %v", err)
 	}
 }
 

@@ -54,6 +54,19 @@ path = "~/.local/share/webspaces/index.db"
 # source fails at "webspaces sync"/"webspaces serve" startup, by name.
 dir = "plugins"
 
+[sync]
+# interval: how often the background scheduler refreshes every configured
+# source (KERN-04). Each source's FIRST refresh happens immediately at
+# kernel startup, not one interval later — the interval only governs the
+# repeating cadence after that first run. A per-source [sources.<name>]
+# sync_interval key (documented below) overrides this for one source
+# alone.
+# Default: "15m" if omitted.
+# Validation: must parse as a Go duration (e.g. "5m", "90s", "1h") and be
+# strictly positive; an unparseable or zero/negative value fails config
+# load, naming the "[sync] interval" key.
+interval = "15m"
+
 # [sources.<name>] — one block per source plugin instance. "<name>" is
 # your own label (it does not have to match the plugin's source_type; the
 # kernel always learns source_type from the plugin's own Describe RPC,
@@ -108,6 +121,15 @@ base_url = "${SILVERBULLET_URL}"
 # Validation: must be non-empty after expansion; same missing-variable
 # error shape as base_url.
 token = "${SB_AUTH_TOKEN}"
+
+# sync_interval: OPTIONAL per-source override of [sync] interval, above —
+# lets one heavy or rate-limited source sync less often without slowing
+# every other configured source down to match.
+# Default: unset, meaning "use the global [sync] interval".
+# Validation: same as [sync] interval — must parse as a positive Go
+# duration; an unparseable or zero/negative value fails config load,
+# naming this source's "sync_interval" key.
+# sync_interval = "30m"
 
 # ca_cert: OPTIONAL filesystem path to a PEM-encoded CA certificate this
 # source's plugin client should trust in addition to the system trust

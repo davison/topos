@@ -17,6 +17,7 @@ import (
 	"github.com/davison/webspaces/kernel/httpapi"
 	"github.com/davison/webspaces/kernel/index"
 	"github.com/davison/webspaces/kernel/pluginhost"
+	"github.com/davison/webspaces/kernel/syncer"
 )
 
 func main() {
@@ -117,6 +118,16 @@ func sourcesFromHost(host *pluginhost.Host) []correlate.Source {
 	return sources
 }
 
+// newCoordinator builds the correlate.Engine + syncer.Coordinator pair
+// every sync in the system — the scheduler, the manual refresh routes,
+// and this CLI — must go through. Neither runSync nor runServe may call
+// the correlation engine's sync methods directly; the coordinator is the
+// only entry point (D-06).
+func newCoordinator(store *index.Store, cfg *config.Config, host *pluginhost.Host) *syncer.Coordinator {
+	engine := &correlate.Engine{Store: store, Config: cfg}
+	return syncer.NewCoordinator(store, engine, sourcesFromHost(host))
+}
+
 func runSync() error {
 	ctx := context.Background()
 	logger := setupLogger()
@@ -128,24 +139,22 @@ func runSync() error {
 	defer host.Shutdown()
 	defer store.Close()
 
-	engine := &correlate.Engine{Store: store, Sources: sourcesFromHost(host), Config: cfg}
-	results, err := engine.SyncAll(ctx)
-	if err != nil {
-		return err
-	}
+	coord := newCoordinator(store, cfg, host)
+	results := coord.RefreshAll(ctx)
 
 	for _, r := range results {
-		if r.Err != nil {
-			fmt.Printf("%s/%s: error: %v\n", r.Webspace, r.SourceType, r.Err)
+		if r.Status == "error" {
+			fmt.Printf("%s: error: %s\n", r.Source, r.Error)
 			continue
 		}
-		fmt.Printf("%s/%s: %d items\n", r.Webspace, r.SourceType, r.ItemCount)
+		fmt.Printf("%s: %d items\n", r.Source, r.ItemCount)
 	}
 	return nil
 }
 
 func runServe() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	logger := setupLogger()
 
 	cfg, store, host, err := setup(ctx, logger)
@@ -155,15 +164,14 @@ func runServe() error {
 	defer host.Shutdown()
 	defer store.Close()
 
-	engine := &correlate.Engine{Store: store, Sources: sourcesFromHost(host), Config: cfg}
+	coord := newCoordinator(store, cfg, host)
 
-	// Minimal Phase 1 sync trigger: sync once at startup in the
-	// background. The full scheduler/coordinator is KERN-04, Phase 2.
-	go func() {
-		if _, err := engine.SyncAll(ctx); err != nil {
-			logger.Error("startup sync failed", "error", err)
-		}
-	}()
+	// Background scheduler (KERN-04, D-05): one goroutine per configured
+	// source, first run immediate (replacing Phase 1's one-shot startup
+	// goroutine), then repeating at each source's resolved sync_interval.
+	// Cancelled via the same ctx that's cancelled when runServe returns.
+	sched := &syncer.Scheduler{Coordinator: coord, Config: cfg, Logger: logger}
+	go sched.Run(ctx)
 
 	router := httpapi.Router(store, cfg, host)
 

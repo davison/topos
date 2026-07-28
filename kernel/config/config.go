@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -79,6 +80,32 @@ func applyDefaults(cfg *Config) {
 	if cfg.Plugins.Dir == "" {
 		cfg.Plugins.Dir = DefaultPluginsDir
 	}
+	if cfg.Sync.Interval == "" {
+		cfg.Sync.Interval = DefaultSyncInterval
+	}
+}
+
+// SyncIntervalFor returns the sync interval to use for sourceName: that
+// source's own [sources.<name>] sync_interval when non-empty, else the
+// global [sync] interval. Both are parsed with time.ParseDuration —
+// Validate has already rejected an unparseable or non-positive value at
+// load time, so a caller of SyncIntervalFor after a successful Load never
+// sees this error in practice, but the signature still returns one
+// (rather than panicking) so a hand-built *Config in a test isn't a
+// footgun.
+func (cfg *Config) SyncIntervalFor(sourceName string) (time.Duration, error) {
+	raw := cfg.Sync.Interval
+	if raw == "" {
+		raw = DefaultSyncInterval
+	}
+	if src, ok := cfg.Sources[sourceName]; ok && src.SyncInterval != "" {
+		raw = src.SyncInterval
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("config: sync interval %q for source %q: %w", raw, sourceName, err)
+	}
+	return d, nil
 }
 
 // expandIndexPathHome expands a leading "~" in [index] path to the current
@@ -142,8 +169,31 @@ func (cfg *Config) Validate(missing []string) error {
 		if strings.TrimSpace(src.Token) == "" {
 			return fmt.Errorf("config: source %q has empty token%s", name, missingSuffix(missing))
 		}
+		if src.SyncInterval != "" {
+			if err := validatePositiveDuration(src.SyncInterval); err != nil {
+				return fmt.Errorf("config: [sources.%s] sync_interval: %w", name, err)
+			}
+		}
 	}
 
+	if err := validatePositiveDuration(cfg.Sync.Interval); err != nil {
+		return fmt.Errorf("config: [sync] interval: %w", err)
+	}
+
+	return nil
+}
+
+// validatePositiveDuration parses raw as a Go duration and rejects a zero
+// or negative result — a zero interval would spin the scheduler's ticker
+// at its minimum resolution, and a negative one panics time.NewTicker.
+func validatePositiveDuration(raw string) error {
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", raw, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("must be a positive duration, got %q", raw)
+	}
 	return nil
 }
 
