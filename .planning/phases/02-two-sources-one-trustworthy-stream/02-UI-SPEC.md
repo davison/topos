@@ -1,7 +1,7 @@
 ---
 phase: 2
 slug: two-sources-one-trustworthy-stream
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1 — no re-init)"
 created: 2026-07-28
@@ -28,6 +28,8 @@ created: 2026-07-28
 | Font | Inter (variable), unchanged |
 
 **No new shadcn components required.** Health chips, filter chips, and staleness indicators are composed entirely from Phase 1's already-installed primitives (`Badge`, `Button`, `Tooltip`, `Alert`) plus plain styled `<span>`/`<div>` status dots — this directly satisfies D-08's "reuses the existing badge/tooltip components" instruction and keeps the registry footprint at zero new blocks. Filter chips are `Button` instances toggling `variant="default"`/`variant="outline"` by selection state, not a new `toggle-group` install.
+
+**Visual hierarchy:** The stream list remains the primary focal point (inherited from Phase 1). Health chips and the source filter in the webspace header are secondary navigation elements — they inform and narrow, never compete with the stream for attention. Stale indicators on affected stream rows are tertiary signals: subtle per-row proof of partial-source-failure recovery (Pitfall 1), not a banner-level alarm.
 
 ---
 
@@ -115,31 +117,47 @@ Accent reserved for: the "Open in source" button, inline text links, focus-visib
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved (probe run over 6 elements: webspace-header/nav, stream-list/list-collection, detail-pane/media, per-source-refresh/interactive-control, source-filter-chip/interactive-control, health-tooltip/static-content): 17 covered, 2 backstop, 6 dismissed (with reasons), 0 unresolved. Phase 1's already-resolved rows (basic empty/loading/populated/long-text for the unfiltered stream and detail pane) are not repeated here — only new or materially changed considerations for Phase 2 are listed.
+Probe run (ui-consideration-probe engine, post-verification per Step 9.5) over 6 elements: E1 webspace-header health-chip row (nav), E2 stream-list (list-collection), E3 detail-pane (media), E4 per-source-refresh/refresh-all (interactive-control), E5 source-filter-chips (interactive-control), E6 health-tooltip (static-content, engine-unclassified → resolved manually). **37 applicable considerations: 25 covered, 2 backstop, 10 dismissed (with reasons), 0 unresolved.** Element kinds and all resolutions confirmed with the user this session. Phase 1's already-resolved rows (basic empty/loading/populated/long-text for the unfiltered stream and detail pane) are inherited, not re-derived — where a Phase-2 row below defers to them, that is stated explicitly.
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| loading | nav: webspace header (health/filter chips) | ✅ covered | Chips render a neutral/muted dot ("unknown") until the first `GET /api/sources` resolves, rather than defaulting to green — avoids a false "all healthy" flash on cold load. |
-| error | nav: webspace header (health/filter chips) | ✅ covered | If `GET /api/sources` itself fails, the chip row is omitted entirely (webspace title and stream still render normally) — a non-critical surface failing here must never block or blank the primary stream view. |
-| overflow | nav: webspace header (health/filter chips) | ✅ covered | The chip row wraps to a second line as more sources are added in Phases 3–5; no horizontal scroll, no clipping. |
-| long-text | nav: webspace header (health/filter chips) | ➖ dismissed | Source display names come from each plugin's `Describe()` RPC (fixed, short, developer-authored strings, not user input) — no truncation/wrap handling needed. |
-| partial | list-collection: stream list (interleaved sources, one stale) | ✅ covered | Per D-10: only the affected source's rows carry the subtle amber stale indicator; the healthy source's rows render with zero visual change — this is the visual proof that Pitfall 1 (partial-source-failure) is fixed, not merely the backend behavior. |
-| error | list-collection: stream list (partial-source-failure regression check) | 🧪 backstop | A healthy source's items must survive, unchanged, a sync cycle where a *different* configured source fails — held out as backstop because verifying it visually requires deliberately taking one plugin offline mid-session; the plan must wire an explicit test (per RESEARCH.md "Warning signs" for Pitfall 1) rather than relying on manual UAT alone. |
-| empty | list-collection: stream list (filtered to one source, zero matches) | ✅ covered | Distinct copy from the unfiltered empty state (see Copywriting Contract) — tells the user to switch back to "All" rather than implying the whole webspace is empty. |
-| zero-one-many | list-collection: stream list (filter interaction) | ✅ covered | Selecting "All" always returns to the full interleaved set; selecting a single-source chip narrows to exactly that source's rows with no layout shift (same row component, same fixed `stream-row-surface` height from Phase 1's `app.css`). |
-| populated | list-collection: stream list (SilverBullet rows) | ✅ covered | Per D-04: page name as title, frontmatter-stripped plaintext snippet, tags as badges — same visual treatment as paperless rows (title/date/tags/snippet), so the two sources read as one consistent stream, not two visually distinct systems. |
-| loading | interactive-control: per-source / refresh-all buttons | ✅ covered | Pressed refresh shows the "Syncing…" state (spinning `RefreshCw` icon) on the specific control pressed; per D-06 a second press while in-flight coalesces into the same visual state rather than queuing a second spinner. |
-| error | interactive-control: per-source / refresh-all buttons | ✅ covered | A refresh that ends in failure flips that source's health chip to red/amber with the updated tooltip error — no separate toast/dialog; the chip *is* the error surface (D-08). |
-| long-text | interactive-control: per-source / refresh-all buttons | ➖ dismissed | Fixed short labels ("Refresh", "Refresh all"), never user-generated content. |
-| overflow | interactive-control: source filter chip | ➖ dismissed | Fixed short chip labels (source display names); overflow handling is covered at the row level above, not per-chip. |
-| long-text | static-content: health chip tooltip body | ✅ covered | Tooltip content (relative time + last-error message) wraps within a fixed max-width (no truncation) — plugin error strings are diagnostically valuable and must remain fully readable, unlike stream-row previews which intentionally clamp. |
-| loading | media: detail pane (source-unreachable branch) | ✅ covered | Detail pane never shows a blank pane while a source is unreachable — the cached/indexed preview renders immediately with the explicit unreachable alert layered on top (D-10), reusing Phase 1's `Alert` component in a non-destructive (not `variant="destructive"`) tone since the item itself is still viewable. |
-| error | media: detail pane (item deleted at source) | ✅ covered | `content_unavailable` on live fetch renders the "no longer available at {display_name}" alert over the cached preview, per D-10 — distinct copy and distinct trigger from the generic "didn't respond" error state. |
-| populated | media: detail pane (SilverBullet rendered markdown) | ✅ covered | Rendered HTML renders inside the same `<iframe src={contentUrl(item.id)}>` pattern Phase 1 established for PDFs (RESEARCH.md "Rendered-markdown-as-iframe pattern") — no `{@html}` injection, preserving the CSP/sandbox boundary. |
-| overflow | media: detail pane (SilverBullet rendered markdown) | ✅ covered | Rendered markdown scrolls within the iframe's own document, consistent with the existing PDF-embed overflow behavior — never pushes the detail pane's own layout. |
-| partial | interactive-control: source filter chip vs. sync-in-progress | 🧪 backstop | Filtering to a source that is *currently syncing* must still show its existing (pre-sync) indexed items, not a blank list while the sync completes — held out as backstop: this is a timing-dependent interaction between two Phase-2 features (filter + coordinator) that's cheap to describe but awkward to assert without a wired test around sync-run state transitions. |
-| empty | media: detail pane (SilverBullet page with no extractable tags/snippet) | ➖ dismissed | Falls under Phase 1's already-covered "item with no preview text renders title + metadata only" row — no new SilverBullet-specific gap; frontmatter-stripped snippet extraction failing gracefully to "title + metadata only" is a plugin-side (not UI-side) concern. |
-| loading | list-collection: stream list (background scheduler tick, D-05) | ➖ dismissed | A scheduled (non-manual) sync tick is deliberately silent in the UI unless the user has that source's health chip open/hovered — D-07 only specifies a *non-blocking* indicator for manually-triggered refreshes; ambient background syncs re-populating the stream on next fetch is Phase 1's existing "reads from local index, renders near-instantly" behavior, not a new loading state to design. |
+| empty | E1 nav: webspace header (health/filter chips) | ✅ covered | Zero configured sources → the health-chip row and the source-filter row are hidden entirely; the stream shows Phase 1's existing empty state. No half-rendered header chrome for a sourceless webspace. |
+| loading | E1 nav: webspace header (health/filter chips) | ✅ covered | Chips render a neutral/muted dot ("unknown") until the first `GET /api/sources` resolves, rather than defaulting to green — avoids a false "all healthy" flash on cold load. |
+| error | E1 nav: webspace header (health/filter chips) | ✅ covered | If `GET /api/sources` itself fails, the chip row is omitted entirely (webspace title and stream still render normally) — a non-critical surface failing here must never block or blank the primary stream view. |
+| populated | E1 nav: webspace header (health/filter chips) | ✅ covered | One chip per configured source: status dot + `display_name`, dot color mapped to health state (green reachable / amber stale / red unreachable / neutral unknown), tooltip per Copywriting Contract. |
+| partial | E1 nav: webspace header (health/filter chips) | ✅ covered | Each chip renders its own source's state independently — a source that has never completed a sync shows the neutral "unknown" dot; one source's failure never alters a sibling chip's rendering. |
+| overflow | E1 nav: webspace header (health/filter chips) | ✅ covered | The chip row wraps to a second line as more sources are added in Phases 3–5; no horizontal scroll, no clipping. |
+| zero-one-many | E1 nav: webspace header (health/filter chips) | ✅ covered | Zero sources → row hidden (see empty). One or many → identical chip layout; many-case wrapping per the overflow row. No singular/plural copy differences (chips are per-source labels, not counts). |
+| long-text | E1 nav: webspace header (health/filter chips) | ➖ dismissed | Source display names come from each plugin's `Describe()` RPC (fixed, short, developer-authored strings, not user input) — no truncation/wrap handling needed. |
+| empty | E2 list-collection: stream list (filtered to one source, zero matches) | ✅ covered | Distinct copy from the unfiltered empty state (see Copywriting Contract) — tells the user to switch back to "All" rather than implying the whole webspace is empty. |
+| loading | E2 list-collection: stream list (background scheduler tick, D-05) | ➖ dismissed | A scheduled (non-manual) sync tick is deliberately silent in the UI unless the user has that source's health chip open/hovered — D-07 only specifies a *non-blocking* indicator for manually-triggered refreshes; ambient background syncs re-populating the stream on next fetch is Phase 1's existing "reads from local index, renders near-instantly" behavior, not a new loading state to design. |
+| error | E2 list-collection: stream list (partial-source-failure regression check) | 🧪 backstop | A healthy source's items must survive, unchanged, a sync cycle where a *different* configured source fails — held out as backstop because verifying it visually requires deliberately taking one plugin offline mid-session; the plan must wire an explicit test (per RESEARCH.md "Warning signs" for Pitfall 1) rather than relying on manual UAT alone. |
+| populated | E2 list-collection: stream list (SilverBullet rows) | ✅ covered | Per D-04: page name as title, frontmatter-stripped plaintext snippet, tags as badges — same visual treatment as paperless rows (title/date/tags/snippet), so the two sources read as one consistent stream, not two visually distinct systems. |
+| partial | E2 list-collection: stream list (interleaved sources, one stale) | ✅ covered | Per D-10: only the affected source's rows carry the subtle amber stale indicator; the healthy source's rows render with zero visual change — this is the visual proof that Pitfall 1 (partial-source-failure) is fixed, not merely the backend behavior. |
+| overflow | E2 list-collection: stream list | ➖ dismissed | Inherited Phase 1 behavior: the stream scrolls within its own pane at fixed row height; nothing about adding a second source changes the container contract. |
+| zero-one-many | E2 list-collection: stream list (filter interaction) | ✅ covered | Selecting "All" always returns to the full interleaved set; selecting a single-source chip narrows to exactly that source's rows with no layout shift (same row component, same fixed `stream-row-surface` height from Phase 1's `app.css`). |
+| long-text | E2 list-collection: stream list (row previews) | ➖ dismissed | Inherited Phase 1 behavior: row titles and snippets intentionally clamp; SilverBullet snippets flow through the same clamped preview fields as paperless rows. |
+| empty | E3 media: detail pane (SilverBullet page with no extractable tags/snippet) | ➖ dismissed | Falls under Phase 1's already-covered "item with no preview text renders title + metadata only" row — no new SilverBullet-specific gap; frontmatter-stripped snippet extraction failing gracefully to "title + metadata only" is a plugin-side (not UI-side) concern. |
+| loading | E3 media: detail pane (source-unreachable branch) | ✅ covered | Detail pane never shows a blank pane while a source is unreachable — the cached/indexed preview renders immediately with the explicit unreachable alert layered on top (D-10), reusing Phase 1's `Alert` component in a non-destructive (not `variant="destructive"`) tone since the item itself is still viewable. |
+| error | E3 media: detail pane (item deleted at source) | ✅ covered | `content_unavailable` on live fetch renders the "no longer available at {display_name}" alert over the cached preview, per D-10 — distinct copy and distinct trigger from the generic "didn't respond" error state. |
+| populated | E3 media: detail pane (SilverBullet rendered markdown) | ✅ covered | Rendered HTML renders inside the same `<iframe src={contentUrl(item.id)}>` pattern Phase 1 established for PDFs (RESEARCH.md "Rendered-markdown-as-iframe pattern") — no `{@html}` injection, preserving the CSP/sandbox boundary. |
+| partial | E3 media: detail pane (cached preview + alert overlay) | ✅ covered | The unreachable/deleted branches ARE the designed partial state: full cached content renders, liveness is degraded, and the alert overlay names exactly what is missing (live fetch) — never a half-blank pane. |
+| overflow | E3 media: detail pane (SilverBullet rendered markdown) | ✅ covered | Rendered markdown scrolls within the iframe's own document, consistent with the existing PDF-embed overflow behavior — never pushes the detail pane's own layout. |
+| zero-one-many | E3 media: detail pane | ➖ dismissed | The pane renders exactly one selected item by construction; the no-selection state is Phase 1's existing placeholder. No plural case exists for this surface. |
+| empty | E4 interactive-control: per-source / refresh-all buttons | ➖ dismissed | Buttons carry no data state; with zero sources no refresh controls render (same condition as the E1 empty row). |
+| loading | E4 interactive-control: per-source / refresh-all buttons | ✅ covered | Pressed refresh shows the "Syncing…" state (spinning `RefreshCw` icon) on the specific control pressed; per D-06 a second press while in-flight coalesces into the same visual state rather than queuing a second spinner. |
+| error | E4 interactive-control: per-source / refresh-all buttons | ✅ covered | A refresh that ends in failure flips that source's health chip to red/amber with the updated tooltip error — no separate toast/dialog; the chip *is* the error surface (D-08). |
+| populated | E4 interactive-control: per-source / refresh-all buttons | ✅ covered | Idle state: static `RefreshCw` icon button with accessible label "Refresh {display_name}" (44px touch-target floor), plus the "Refresh all" labeled button in the webspace header. |
+| long-text | E4 interactive-control: per-source / refresh-all buttons | ➖ dismissed | Fixed short labels ("Refresh", "Refresh all"), never user-generated content. |
+| empty | E5 interactive-control: source filter chips | ✅ covered | Zero configured sources → filter row hidden together with the health-chip row (E1 empty) — no orphaned "All" chip over an empty stream. |
+| loading | E5 interactive-control: source filter chips | ✅ covered | Filter chips derive from the same `GET /api/sources` response as the health chips and appear with them once it resolves; until then the row is absent (no placeholder chips that could be mis-clicked). |
+| error | E5 interactive-control: source filter chips | ✅ covered | Sources-API failure omits the filter row along with the chip row (same rule as E1 error); the stream still renders unfiltered. |
+| populated | E5 interactive-control: source filter chips | ✅ covered | "All" plus one chip per source; the active chip is accent-highlighted (`variant="default"` vs `variant="outline"` Button toggling per the Design System section). |
+| partial | E5 interactive-control: source filter chip vs. sync-in-progress | 🧪 backstop | Filtering to a source that is *currently syncing* must still show its existing (pre-sync) indexed items, not a blank list while the sync completes — held out as backstop: this is a timing-dependent interaction between two Phase-2 features (filter + coordinator) that's cheap to describe but awkward to assert without a wired test around sync-run state transitions. |
+| overflow | E5 interactive-control: source filter chips | ➖ dismissed | Fixed short chip labels (source display names); overflow handling is covered at the row level (E1 overflow), not per-chip. |
+| zero-one-many | E5 interactive-control: source filter chips | ✅ covered | Zero → row hidden (empty row). One source → "All" + that source's chip still render (harmless identity filter, consistent layout for Phases 3–5). Many → chips wrap with the header row. |
+| long-text | E5 interactive-control: source filter chips | ➖ dismissed | Fixed short chip labels (source display names, developer-authored) — no truncation handling needed. |
+| long-text | E6 static-content: health chip tooltip body | ✅ covered | Tooltip content (relative time + last-error message) wraps within a fixed max-width (no truncation) — plugin error strings are diagnostically valuable and must remain fully readable, unlike stream-row previews which intentionally clamp. (Engine-unclassified element resolved manually as static content; other state categories are not applicable to a hover-only read-only surface.) |
 
 ---
 
@@ -155,11 +173,11 @@ No third-party registries declared for Phase 2 — only official shadcn-svelte b
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (checker FLAG — missing focal-point declaration — resolved by the "Visual hierarchy" note in the Design System section)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 0 blocking issues (2026-07-28). UI-consideration probe run post-verification: 37 applicable, 25 covered, 2 backstop, 10 dismissed, 0 unresolved.
