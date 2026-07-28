@@ -142,3 +142,12 @@ None - no external service configuration required.
 ---
 *Phase: 01-first-webspace-end-to-end*
 *Completed: 2026-07-28*
+
+## Self-Check: PASSED
+
+- FOUND: web/src/routes/+layout.svelte
+- FOUND: scripts/e2e-smoke.sh
+- FOUND: .planning/phases/01-first-webspace-end-to-end/01-05-SUMMARY.md
+- FOUND commit: 5d2b119
+- FOUND commit: 85ef4a9
+- FOUND commit: 8722298
