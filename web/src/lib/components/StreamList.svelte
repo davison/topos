@@ -3,32 +3,41 @@
 	import StreamRow from './StreamRow.svelte';
 	import StreamEmpty from './StreamEmpty.svelte';
 	import StreamError from './StreamError.svelte';
-	import type { StreamResponse } from '$lib/api';
+	import { filterItemsBySource, streamVariant } from '$lib/format';
+	import type { StreamResponse, SourceStatus } from '$lib/api';
 
 	let {
 		state,
 		response,
 		selectedId,
 		onselect,
-		onretry
+		onretry,
+		staleSourceTypes,
+		selectedSource,
+		sourcesByType
 	}: {
 		state: 'loading' | 'error' | 'ready';
 		response: StreamResponse | null;
 		selectedId: string | null;
 		onselect: (id: string) => void;
 		onretry: () => void;
+		staleSourceTypes: Set<string>;
+		selectedSource: string | null;
+		sourcesByType: Map<string, SourceStatus>;
 	} = $props();
 
-	// Sync-failure check: MUST be evaluated, and rendered, before the
-	// empty-state check below. A webspace whose sync run recorded a
-	// failure and returned zero items must show the failure state, never
-	// "Nothing here yet" — a silently under-reported webspace is the
-	// worst possible failure for this product (see PLAN.md prohibitions).
-	// This ordering is the entire point of this component.
-	let syncFailed = $derived(
-		response !== null && response.sync.status === 'error' && response.items.length === 0
+	// streamVariant (format.ts) is the single, pure, unit-tested decision
+	// this component renders from: a failed sync with zero items always
+	// wins over any empty state, filtered or not — computed from the
+	// response's own aggregate sync status and its UNFILTERED item count,
+	// never the filtered subset below, so a filter can never mask a sync
+	// failure. This ordering is the entire point of this component (see
+	// PLAN.md prohibitions).
+	let variant = $derived(response ? streamVariant(response, selectedSource) : null);
+	let visibleItems = $derived(response ? filterItemsBySource(response.items, selectedSource) : []);
+	let filteredDisplayName = $derived(
+		selectedSource ? (sourcesByType.get(selectedSource)?.display_name ?? selectedSource) : null
 	);
-	let isEmpty = $derived(response !== null && !syncFailed && response.items.length === 0);
 </script>
 
 {#if state === 'loading'}
@@ -44,16 +53,26 @@
 	</div>
 {:else if state === 'error'}
 	<StreamError {onretry} />
-{:else if syncFailed && response}
+{:else if variant === 'sync-failed' && response}
 	<StreamError {onretry} syncError={response.sync.error} />
-{:else if isEmpty}
+{:else if variant === 'empty-filtered'}
+	<StreamEmpty displayName={filteredDisplayName} />
+{:else if variant === 'empty'}
 	<StreamEmpty />
 {:else if response}
 	<!-- Populated: one row per item, in exactly the order the API
-	     returned — no sort, re-sort, re-group or filter of any kind. -->
+	     returned — no sort, re-sort, re-group or filter of any kind
+	     beyond the source narrowing above. Stale markers are decoration
+	     on a row, never an input to ordering. -->
 	<div class="flex flex-col gap-3">
-		{#each response.items as item (item.id)}
-			<StreamRow {item} selected={item.id === selectedId} onselect={() => onselect(item.id)} />
+		{#each visibleItems as item (item.id)}
+			<StreamRow
+				{item}
+				selected={item.id === selectedId}
+				onselect={() => onselect(item.id)}
+				stale={staleSourceTypes.has(item.source_type)}
+				sourceDisplayName={sourcesByType.get(item.source_type)?.display_name ?? item.source_type}
+			/>
 		{/each}
 	</div>
 {/if}
