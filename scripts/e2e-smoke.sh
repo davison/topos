@@ -30,12 +30,18 @@ go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
 echo "==> Running webspaces sync"
 ./bin/webspaces sync
 
+BASE="http://127.0.0.1:7777"
+
+echo "==> Checking 127.0.0.1:7777 is free"
+if curl -fsS -o /dev/null --max-time 2 "$BASE/api/webspaces"; then
+  echo "FAIL: something is already listening on 127.0.0.1:7777 — stop it before running this smoke test (it would let this script's checks pass vacuously against a stale build)" >&2
+  exit 1
+fi
+
 echo "==> Starting webspaces serve"
 ./bin/webspaces serve &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
-
-BASE="http://127.0.0.1:7777"
 
 echo "==> Waiting for the server to accept connections"
 for i in $(seq 1 30); do
@@ -48,6 +54,35 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
+
+echo "==> Checking the served SPA links a real stylesheet"
+SPA_HTML="$(curl -fsS "$BASE/")"
+CSS_HREF="$(printf '%s' "$SPA_HTML" | grep -o 'rel="stylesheet"[^>]*href="[^"]*\.css"\|href="[^"]*\.css"[^>]*rel="stylesheet"' | grep -o 'href="[^"]*\.css"' | head -1 | cut -d'"' -f2)"
+if [ -z "$CSS_HREF" ]; then
+  echo "FAIL: served SPA HTML links no stylesheet — the production build may have shipped zero CSS (see gap G-01-2)" >&2
+  exit 1
+fi
+# adapter-static emits relative asset hrefs (./_app/...); normalise to an
+# absolute path before prefixing $BASE.
+CSS_PATH="${CSS_HREF#.}"
+case "$CSS_PATH" in
+  /*) ;;
+  *) CSS_PATH="/$CSS_PATH" ;;
+esac
+CSS_TMP="$(mktemp /tmp/webspaces-smoke-css.XXXXXX)"
+trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$CSS_TMP"' EXIT
+curl -fsS "$BASE$CSS_PATH" -o "$CSS_TMP" || {
+  echo "FAIL: stylesheet linked at $CSS_HREF did not fetch successfully" >&2
+  exit 1
+}
+if [ ! -s "$CSS_TMP" ]; then
+  echo "FAIL: stylesheet linked at $CSS_HREF fetched but is empty" >&2
+  exit 1
+fi
+grep -qF '#020617' "$CSS_TMP" || {
+  echo "FAIL: fetched stylesheet does not contain the app's #020617 design token — it may be an empty or placeholder CSS file" >&2
+  exit 1
+}
 
 echo "==> GET /api/webspaces"
 curl -fsS "$BASE/api/webspaces" | jq -e '.webspaces | length >= 0' >/dev/null
