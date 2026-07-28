@@ -1,34 +1,103 @@
 # webspaces config — copy to ~/.config/webspaces/config.toml (or
-# $XDG_CONFIG_HOME/webspaces/config.toml) and fill in your own values.
+# $XDG_CONFIG_HOME/webspaces/config.toml if XDG_CONFIG_HOME is set) and
+# fill in your own values.
+#
+# One file holds kernel settings, source connections, and webspace
+# definitions (D-04). Every key below is documented with its purpose, its
+# default (if any), and its validation rule.
 #
 # Secrets are NEVER stored in this file (D-04) — only ${VAR} references,
-# expanded from the environment at load time.
+# expanded from the environment at load time via Go's os.Expand. An
+# unset variable expands to the empty string and is reported by name in
+# the load-time error, not silently accepted.
 #
-# Keyword matching is exact, case-insensitive Unicode simple case folding
-# (Go's strings.EqualFold — D-03). There is no substring/prefix matching
-# and no NFC/NFD normalization: a decomposed-form tag will NOT match a
-# precomposed-form keyword, so keep keyword spelling/normalization
-# consistent with how tags are actually named in each source.
+# Keyword matching is exact, case-insensitive (D-03): "house" matches a
+# tag/folder/group literally named "House", but does NOT match "Household"
+# — there is no substring or prefix matching, and no NFC/NFD Unicode
+# normalization, so keep your keyword spelling consistent with how each
+# source actually names things. All keywords in a webspace's list are
+# matched against every configured plugin's own native categorization
+# (paperless-ngx tags today; IMAP folders/labels, chat group names, and
+# SilverBullet page tags in later phases) — there is no per-source
+# override syntax (D-02). If one silo names a topic differently than
+# another, add that silo's own spelling as an additional keyword in the
+# same list, rather than looking for a per-source config knob.
 
 [server]
+# listen: host:port the kernel's HTTP API and embedded web UI bind to.
+# Default: "127.0.0.1:7777" if omitted.
+# Validation: none enforced at load time, but binding anything other than
+# 127.0.0.1/localhost/::1 is a deliberate security decision this project
+# has not made for v1 — the kernel logs a warning at startup ("this
+# exposes the API beyond this machine") rather than refusing to start.
+# There is no authentication on this API in v1; only loopback binding
+# keeps it private.
 listen = "127.0.0.1:7777"
 
 [index]
+# path: filesystem location of the local SQLite index (the hybrid data
+# model's persisted metadata+preview store — KERN-03). A leading "~" is
+# expanded to the current user's home directory.
+# Default: "~/.local/share/webspaces/index.db" if omitted.
+# Validation: the parent directory is created on demand; no other
+# validation.
 path = "~/.local/share/webspaces/index.db"
 
 [plugins]
-dir = "plugins"                       # resolved relative to the webspaces binary
+# dir: where the kernel looks for plugin binaries at startup. A relative
+# path is resolved relative to the running "webspaces" executable's own
+# directory, not the current working directory — so "make build"'s
+# bin/webspaces and bin/plugins/ layout works regardless of where you run
+# the binary from.
+# Default: "plugins" if omitted.
+# Validation: none at config-load time; a missing binary for a configured
+# source fails at "webspaces sync"/"webspaces serve" startup, by name.
+dir = "plugins"
 
+# [sources.<name>] — one block per source plugin instance. "<name>" is
+# your own label (it does not have to match the plugin's source_type; the
+# kernel always learns source_type from the plugin's own Describe RPC,
+# never from this key).
 [sources.paperless]
-plugin      = "webspaces-plugin-paperless"
-base_url    = "${PAPERLESS_URL}"
-token       = "${PAPERLESS_TOKEN}"    # secrets NEVER live in this file (D-04)
+# plugin: the plugin binary's filename, resolved inside [plugins] dir.
+# Validation: none at load time; a missing file fails at startup, by path.
+plugin = "webspaces-plugin-paperless"
+
+# base_url: the paperless-ngx instance's base URL. ${PAPERLESS_URL} is
+# expanded from the environment — never hardcode a real URL/host here if
+# you intend to share this file; use the ${VAR} form even for a
+# non-secret value like this one, for consistency with token, below.
+# Validation: must be non-empty after expansion; an empty value (e.g. from
+# an unset PAPERLESS_URL) fails config load, naming the missing variable.
+base_url = "${PAPERLESS_URL}"
+
+# token: the paperless-ngx API token. Secrets NEVER live in this file as
+# literal values (D-04) — only a ${VAR} reference belongs here.
+# Validation: must be non-empty after expansion; same missing-variable
+# error shape as base_url.
+token = "${PAPERLESS_TOKEN}"
+
+# api_version: the paperless-ngx REST API version this plugin negotiates
+# via the Accept header (e.g. "application/json; version=10"). Match your
+# paperless-ngx instance's supported API version range.
+# Validation: none enforced; an incompatible version will surface as an
+# HTTP error from paperless-ngx itself at sync time.
 api_version = "10"
 
+# [webspaces.<name>] — one block per webspace. "<name>" becomes the
+# webspace's URL slug (e.g. /w/house-move) and its GET
+# /api/webspaces/{name}/stream path segment.
 [webspaces.house-move]
-# Deviation from the phase plan's illustrative example: this deployment's
-# paperless-ngx has no "house-move" or "House" tag. Its real tag for this
-# topic is "house and home" (id 11). The webspace slug/name stays
-# "house-move" so URLs, the e2e smoke script, and docs remain consistent
-# with the plan; only the keyword list reflects the user's actual data.
+# keywords: every string here is matched, exactly and case-insensitively,
+# against every configured plugin's native categorization for this
+# webspace. This example's real value differs from the illustrative
+# "house-move"/"House" pair used elsewhere in this project's docs: this
+# deployment's actual paperless-ngx tag for the topic is "house and
+# home" — the webspace's slug/name stays "house-move" for URL/docs
+# consistency, but the keyword list reflects what the source system
+# actually calls it. Add more strings to this list (rather than editing
+# the source) if a second plugin/source names the same topic differently.
+# Validation: at least one non-empty, non-whitespace-only keyword is
+# required; a webspace with zero keywords, or any empty-string keyword,
+# fails config load.
 keywords = ["house and home"]
