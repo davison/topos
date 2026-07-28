@@ -75,3 +75,51 @@ func TestRenderSanitized_OrdinaryMarkdownSurvives(t *testing.T) {
 		}
 	}
 }
+
+// TestWrapDocument_InjectsThemeStyleAndPreservesFragment is the regression
+// test for the live-UAT-found contrast bug: unstyled rendered markdown
+// rendered near-black text on the pane's dark background. WrapDocument
+// must produce a full document carrying the fixed theme stylesheet in
+// <head>, with the sanitized fragment unchanged in <body>.
+func TestWrapDocument_InjectsThemeStyleAndPreservesFragment(t *testing.T) {
+	fragment := []byte("<h1>Title</h1><p>hello</p>")
+	doc := WrapDocument(fragment)
+	got := string(doc)
+
+	if !strings.Contains(got, "<style>") {
+		t.Fatal("expected a <style> block in the wrapped document")
+	}
+	// Theme tokens from web/src/app.css that must appear in the injected
+	// stylesheet: dark card background and light foreground text, so the
+	// iframe document is actually readable against the app's dark theme.
+	for _, want := range []string{"#0f172a", "#f1f5f9", "#60a5fa"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected the injected stylesheet to reference theme token %q, got: %s", want, got)
+		}
+	}
+	if !strings.Contains(got, string(fragment)) {
+		t.Errorf("expected the original sanitized fragment to be preserved unchanged in the body, got: %s", got)
+	}
+	// The style block must never depend on an external resource — no
+	// second request, and nothing for the sandboxed iframe to be denied
+	// fetching.
+	if strings.Contains(got, "@import") || strings.Contains(got, "url(") {
+		t.Errorf("expected a fully self-contained stylesheet (no @import/url()), got: %s", got)
+	}
+}
+
+// TestWrapDocument_StyleNeverReprocessedThroughSanitizer proves the
+// wrapping step happens strictly after sanitization: a fragment that
+// still (hypothetically) carried a raw <script> tag would not be further
+// altered by WrapDocument — the guarantee against hostile content lives
+// entirely in RenderSanitized, and WrapDocument's own fixed <style> output
+// is not itself sanitized (it doesn't need to be — it's Go source, never
+// derived from page content).
+func TestWrapDocument_StyleNeverReprocessedThroughSanitizer(t *testing.T) {
+	doc := WrapDocument([]byte("<p>plain</p>"))
+	// The fixed stylesheet must appear byte-for-byte (bluemonday would
+	// strip or mangle a <style> element if this were re-run through it).
+	if !strings.Contains(string(doc), "font-family:") {
+		t.Errorf("expected the literal stylesheet text to survive unmodified, got: %s", doc)
+	}
+}

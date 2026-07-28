@@ -215,12 +215,19 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "silverbullet: render %q: %v", sourceID, err)
 	}
+	// WrapDocument wraps the already-sanitized fragment in a minimal
+	// document carrying a fixed, hardcoded stylesheet matching the app's
+	// dark theme (found via live UAT: unstyled HTML rendered near-black
+	// text on the pane's dark background). The wrap happens strictly
+	// after sanitization and never re-enters bluemonday, so it cannot
+	// reintroduce any XSS surface the sanitizer removed.
+	doc := WrapDocument(sanitized)
 
 	return &webspacesv1.FetchResponse{
 		Available: true,
 		MimeType:  "text/html",
-		SizeBytes: int64(len(sanitized)),
-		Data:      sanitized,
+		SizeBytes: int64(len(doc)),
+		Data:      doc,
 		Text:      string(body),
 		Provenance: map[string]string{
 			"source_type": sourceType,
