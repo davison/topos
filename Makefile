@@ -9,6 +9,7 @@ build:
 	npm --prefix web run build
 	CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
 	go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
+	go build -o bin/plugins/webspaces-plugin-silverbullet ./plugins/silverbullet
 
 # test runs the test suite across all three workspace modules. Go
 # workspaces scope "./..." to the module containing the working directory,
@@ -18,6 +19,7 @@ test:
 	CGO_ENABLED=0 go build ./... && go test ./...
 	cd sdk && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/paperless && CGO_ENABLED=0 go build ./... && go test ./...
+	cd plugins/silverbullet && CGO_ENABLED=0 go build ./... && go test ./...
 
 # proto regenerates the sdk/gen Go stubs from proto/webspaces/v1/plugin.proto.
 # Prefers buf; falls back to protoc + protoc-gen-go + protoc-gen-go-grpc

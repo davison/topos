@@ -16,4 +16,5 @@ kernel/webui/build/*
 # or scripts/e2e-smoke.sh instead.
 /webspaces
 /plugins/paperless/paperless
+/plugins/silverbullet/silverbullet
 /paperless

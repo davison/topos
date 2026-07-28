@@ -34,6 +34,18 @@ type Source struct {
 	BaseURL    string `toml:"base_url"`    // "${PAPERLESS_URL}" style env reference
 	Token      string `toml:"token"`       // "${PAPERLESS_TOKEN}" style env reference — never a literal secret (D-04)
 	APIVersion string `toml:"api_version"` // e.g. "10"
+	// CACert is an optional filesystem path to a PEM-encoded CA
+	// certificate a source plugin's HTTP client should trust in addition
+	// to (by replacing, for that plugin's client only) the system trust
+	// store. Deviation beyond the plan's originally scoped Source fields
+	// (Rule 2): discovered live against the user's real SilverBullet
+	// instance, which serves HTTPS behind a self-signed certificate the
+	// system trust store does not contain — a plugin's Go HTTP client
+	// otherwise cannot connect at all. Left empty for a source (like
+	// paperless-ngx) whose instance uses a CA already in the system trust
+	// store; the field itself is generic (not silverbullet-specific) since
+	// any future LAN source could hit the same self-signed-cert situation.
+	CACert string `toml:"ca_cert,omitempty"`
 }
 
 // Webspace declares a shared keyword list matched against every source's

@@ -76,7 +76,7 @@ func contractFixtureItems() []item.Item {
 func TestContract_StreamEnvelope_IDsLinkAndProvenance(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()
-	if err := store.ReplaceWebspaceItems(ctx, "house-move", contractFixtureItems()); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", contractFixtureItems()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestContract_StreamEnvelope_IDsLinkAndProvenance(t *testing.T) {
 func TestContract_EmptyWebspaceReturns200EmptyArrayNotNull(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()
-	if err := store.ReplaceWebspaceItems(ctx, "empty-space", nil); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(ctx, "empty-space", "paperless", nil); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func assertErrorEnvelope(t *testing.T, rec *httptest.ResponseRecorder, wantStatu
 func TestContract_StreamCalledTwiceIsByteIdentical(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()
-	if err := store.ReplaceWebspaceItems(ctx, "house-move", contractFixtureItems()); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", contractFixtureItems()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

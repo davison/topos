@@ -136,10 +136,10 @@ func runSync() error {
 
 	for _, r := range results {
 		if r.Err != nil {
-			fmt.Printf("%s: error: %v\n", r.Webspace, r.Err)
+			fmt.Printf("%s/%s: error: %v\n", r.Webspace, r.SourceType, r.Err)
 			continue
 		}
-		fmt.Printf("%s: %d items\n", r.Webspace, r.ItemCount)
+		fmt.Printf("%s/%s: %d items\n", r.Webspace, r.SourceType, r.ItemCount)
 	}
 	return nil
 }

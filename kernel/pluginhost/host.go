@@ -106,6 +106,7 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		"base_url":    src.BaseURL,
 		"token":       src.Token,
 		"api_version": src.APIVersion,
+		"ca_cert":     src.CACert,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal source config: %w", err)

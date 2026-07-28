@@ -24,11 +24,16 @@ import (
 // `go test ./...` from any one module cannot.
 const repoRoot = "../.."
 
-// sanctionedEgressFile is the one file in the repo allowed to construct
-// outbound HTTP requests — the paperless plugin's REST client. Widening
-// this list is a deliberate change: update it here, plus this comment,
-// as part of that change.
-const sanctionedEgressFile = "plugins/paperless/client.go"
+// sanctionedEgressFiles is the set of files in the repo allowed to
+// construct outbound HTTP requests — one per source plugin's REST/HTTP
+// client. Widening this set is a deliberate change: update it here, plus
+// this comment, as part of that change. Widened in 02-01-PLAN.md Task 1 to
+// add the SilverBullet plugin's client alongside paperless's (previously a
+// single sanctionedEgressFile constant, when only one plugin existed).
+var sanctionedEgressFiles = map[string]bool{
+	"plugins/paperless/client.go":    true,
+	"plugins/silverbullet/client.go": true,
+}
 
 // skipDirs are directories (relative to repoRoot, slash-separated) whose
 // entire subtree is skipped: vendored/generated/build output that is
@@ -46,8 +51,8 @@ var skipDirs = map[string]bool{
 
 // outboundHTTPIdents are net/http package-level identifiers that
 // construct or issue an outbound request or reference the shared default
-// client/transport. Referencing any of these outside sanctionedEgressFile
-// would open a second, unaudited egress point.
+// client/transport. Referencing any of these outside a file in
+// sanctionedEgressFiles would open a second, unaudited egress point.
 var outboundHTTPIdents = map[string]bool{
 	"Get":                   true,
 	"Head":                  true,
@@ -79,7 +84,7 @@ var schemeAuthority = regexp.MustCompile(`^(?:https?|wss?)://`)
 // comment or a string built by concatenation cannot trip or defeat this
 // check) of every non-test .go file in the repository and fails if it
 // finds a foreign absolute URL literal, or outbound HTTP construction
-// outside plugins/paperless/client.go. This is the mechanical enforcement
+// outside a file in sanctionedEgressFiles. This is the mechanical enforcement
 // of the prohibition that plugin outbound traffic — and the kernel, which
 // must have no egress at all — MUST NOT reach any host other than the
 // user's own configured paperless-ngx instance and the loopback interface
@@ -113,7 +118,7 @@ func TestNoForeignEgressOutsideSanctionedClient(t *testing.T) {
 			return nil
 		}
 
-		offenses = append(offenses, scanFileForForeignEgress(t, path, rel == sanctionedEgressFile)...)
+		offenses = append(offenses, scanFileForForeignEgress(t, path, sanctionedEgressFiles[rel])...)
 		return nil
 	})
 	if err != nil {
@@ -127,7 +132,7 @@ func TestNoForeignEgressOutsideSanctionedClient(t *testing.T) {
 				"user's own configured paperless-ngx instance and the loopback interface\"): "+
 				"found outbound-egress violation(s):\n%s\n\n"+
 				"To widen the sanctioned-egress list as part of a deliberate change, update "+
-				"sanctionedEgressFile in internal/audit/outbound_hosts_test.go.",
+				"sanctionedEgressFiles in internal/audit/outbound_hosts_test.go.",
 			strings.Join(offenses, "\n"),
 		)
 	}
@@ -157,7 +162,7 @@ func shouldSkipDir(rel string) bool {
 
 // scanFileForForeignEgress parses path and walks its AST, returning one
 // human-readable offense string per finding. sanctioned is true only for
-// sanctionedEgressFile, in which case outbound-HTTP-construction offenses
+// sanctionedEgressFiles, in which case outbound-HTTP-construction offenses
 // are not flagged (foreign URL literals still are, though none exist
 // there today).
 func scanFileForForeignEgress(t *testing.T, path string, sanctioned bool) []string {
@@ -191,8 +196,8 @@ func scanFileForForeignEgress(t *testing.T, path string, sanctioned bool) []stri
 			}
 			if pkgIdent, ok := expr.X.(*ast.Ident); ok && pkgIdent.Name == "http" && outboundHTTPIdents[expr.Sel.Name] {
 				offenses = append(offenses, fmt.Sprintf(
-					"%s: outbound HTTP construction http.%s referenced outside %s",
-					fset.Position(expr.Pos()), expr.Sel.Name, sanctionedEgressFile,
+					"%s: outbound HTTP construction http.%s referenced outside a sanctioned client file",
+					fset.Position(expr.Pos()), expr.Sel.Name,
 				))
 			}
 		case *ast.CompositeLit:
@@ -205,8 +210,8 @@ func scanFileForForeignEgress(t *testing.T, path string, sanctioned bool) []stri
 			}
 			if pkgIdent, ok := sel.X.(*ast.Ident); ok && pkgIdent.Name == "http" && outboundHTTPTypes[sel.Sel.Name] {
 				offenses = append(offenses, fmt.Sprintf(
-					"%s: outbound HTTP construction http.%s{} referenced outside %s",
-					fset.Position(expr.Pos()), sel.Sel.Name, sanctionedEgressFile,
+					"%s: outbound HTTP construction http.%s{} referenced outside a sanctioned client file",
+					fset.Position(expr.Pos()), sel.Sel.Name,
 				))
 			}
 		}

@@ -71,15 +71,31 @@ func (s *Store) UpsertItems(ctx context.Context, items []item.Item) error {
 	return nil
 }
 
-// ReplaceWebspaceItems upserts items and replaces the full set of
-// webspace_items rows for webspaceName with exactly the given items, in a
-// single transaction — so a sync that fails or is interrupted leaves the
-// pre-sync item set for this webspace intact, never a partially-written
-// set.
-func (s *Store) ReplaceWebspaceItems(ctx context.Context, webspaceName string, items []item.Item) error {
+// ReplaceWebspaceSourceItems upserts items and replaces ONLY the
+// webspace_items rows for (webspaceName, sourceType), in a single
+// transaction — so a sync that fails or is interrupted leaves the pre-sync
+// item set for this webspace/source intact, never a partially-written set.
+//
+// Every item in items MUST have SourceType == sourceType — this method
+// trusts its own sourceType parameter for the scoped delete (not each
+// item's own SourceType field), so a source's sync can never delete rows
+// belonging to a different source_type for the same webspace, even
+// transiently between the delete and the reinsert. This is what makes it
+// safe for the source-major sync loop in kernel/correlate/correlate.go to
+// call this once per (webspace, source) pair, independently of whether any
+// other configured source succeeded or failed in the same sync cycle
+// (promoting the sync identity from "webspace" to "(webspace,
+// source_type)" — see 02-01-PLAN.md's objective).
+//
+// items may be nil/empty — a source that matched zero items for this
+// webspace still calls this to clear its own previous rows and still marks
+// webspaces.synced_unix, registering the webspace as known even if this is
+// the only source configured (or the only one that has synced
+// successfully so far).
+func (s *Store) ReplaceWebspaceSourceItems(ctx context.Context, webspaceName, sourceType string, items []item.Item) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("index: begin webspace sync transaction: %w", err)
+		return fmt.Errorf("index: begin webspace source sync transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -87,23 +103,33 @@ func (s *Store) ReplaceWebspaceItems(ctx context.Context, webspaceName string, i
 		return err
 	}
 
-	ids := make([]string, len(items))
-	for i, it := range items {
-		ids[i] = it.ID
+	// Source-scoped delete: only rows in webspace_items for this
+	// (webspace, source_type) pair are removed. A sibling source's rows
+	// for the same webspace are never touched by this statement, even
+	// transiently — the whole delete-then-reinsert happens inside this one
+	// transaction.
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM webspace_items
+WHERE webspace_name = ?
+  AND item_id IN (SELECT id FROM items WHERE source_type = ?)
+`, webspaceName, sourceType); err != nil {
+		return fmt.Errorf("index: clear webspace_items for %s/%s: %w", webspaceName, sourceType, err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM webspace_items WHERE webspace_name = ?`, webspaceName); err != nil {
-		return fmt.Errorf("index: clear webspace_items for %s: %w", webspaceName, err)
-	}
-	for _, id := range ids {
+	for _, it := range items {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO webspace_items (webspace_name, item_id) VALUES (?, ?)`,
-			webspaceName, id,
+			webspaceName, it.ID,
 		); err != nil {
-			return fmt.Errorf("index: insert webspace_items row for %s/%s: %w", webspaceName, id, err)
+			return fmt.Errorf("index: insert webspace_items row for %s/%s: %w", webspaceName, it.ID, err)
 		}
 	}
 
+	// Marked on ANY source's successful contribution, not gated on every
+	// configured source having synced at least once — otherwise a
+	// webspace with one working source and one not-yet-configured/still-
+	// erroring source would incorrectly 404 as "never synced"
+	// (02-RESEARCH.md Critical Architecture Finding).
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO webspaces (name, synced_unix) VALUES (?, unixepoch())
 ON CONFLICT(name) DO UPDATE SET synced_unix = excluded.synced_unix
@@ -112,7 +138,7 @@ ON CONFLICT(name) DO UPDATE SET synced_unix = excluded.synced_unix
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("index: commit webspace sync transaction: %w", err)
+		return fmt.Errorf("index: commit webspace source sync transaction: %w", err)
 	}
 	return nil
 }

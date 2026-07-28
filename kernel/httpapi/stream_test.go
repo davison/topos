@@ -57,7 +57,7 @@ func TestStreamHandler_UnknownWebspace404(t *testing.T) {
 func TestStreamHandler_KnownEmptyWebspaceReturns200EmptyArray(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()
-	if err := store.ReplaceWebspaceItems(ctx, "house-move", nil); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", nil); err != nil {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
@@ -93,7 +93,7 @@ func TestStreamHandler_ReturnsItemsWithLinkAndProvenance(t *testing.T) {
 		Fidelity: item.FidelityExact, DeepLink: "http://paperless.lan:8000/documents/42",
 		Labels: []string{"House"}, Provenance: map[string]string{"source_type": "paperless"},
 	}
-	if err := store.ReplaceWebspaceItems(ctx, "house-move", []item.Item{it}); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", []item.Item{it}); err != nil {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 

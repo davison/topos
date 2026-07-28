@@ -35,6 +35,9 @@ func Load(path string) (*Config, error) {
 	if err := cfg.expandIndexPathHome(); err != nil {
 		return nil, err
 	}
+	if err := cfg.expandSourceCACertPathsHome(); err != nil {
+		return nil, err
+	}
 
 	if err := cfg.Validate(missing); err != nil {
 		return nil, err
@@ -89,6 +92,26 @@ func (cfg *Config) expandIndexPathHome() error {
 		return fmt.Errorf("config: resolve home directory for index path: %w", err)
 	}
 	cfg.Index.Path = strings.Replace(cfg.Index.Path, "~", u.HomeDir, 1)
+	return nil
+}
+
+// expandSourceCACertPathsHome expands a leading "~" in any configured
+// [sources.<name>] ca_cert path to the current user's home directory —
+// same convention as expandIndexPathHome, extended to this new field
+// (deviation beyond the plan's originally scoped Source fields, added
+// live during 02-01-PLAN.md Task 1 for the CA-cert-pinning need).
+func (cfg *Config) expandSourceCACertPathsHome() error {
+	for name, src := range cfg.Sources {
+		if !strings.HasPrefix(src.CACert, "~") {
+			continue
+		}
+		u, err := user.Current()
+		if err != nil {
+			return fmt.Errorf("config: resolve home directory for source %q ca_cert: %w", name, err)
+		}
+		src.CACert = strings.Replace(src.CACert, "~", u.HomeDir, 1)
+		cfg.Sources[name] = src
+	}
 	return nil
 }
 

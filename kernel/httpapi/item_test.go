@@ -40,7 +40,7 @@ func newTestItemRouter(store *index.Store, fetcher Fetcher) http.Handler {
 
 func seedTestItem(t *testing.T, store *index.Store, it item.Item) {
 	t.Helper()
-	if err := store.ReplaceWebspaceItems(context.Background(), "test-webspace", []item.Item{it}); err != nil {
+	if err := store.ReplaceWebspaceSourceItems(context.Background(), "test-webspace", "paperless", []item.Item{it}); err != nil {
 		t.Fatalf("seed item: %v", err)
 	}
 }
