@@ -9,7 +9,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **KERN-01**: User can define webspaces in config: each has a keyword mapped to the native categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages)
 - [x] **KERN-02**: Correlation is resolved at sync time and persisted in the local index (never computed at query time)
 - [x] **KERN-03**: Hybrid store: metadata + preview indexed locally; full content fetched live from the source when an item is opened
-- [ ] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
+- [x] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
 - [ ] **KERN-05**: User can full-text search within a webspace (FTS5 over indexed metadata/previews)
 
 ### Plugin Architecture
@@ -17,7 +17,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **PLUG-01**: Plugins run as isolated subprocesses under a documented, versioned gRPC contract (published `.proto`)
 - [x] **PLUG-02**: Contract is read-only by construction â€” no source-mutating methods exist
 - [x] **PLUG-03**: Every item declares deep-link fidelity: exact / anchored / conversation-only
-- [ ] **PLUG-04**: Plugins report health (reachable, last sync, last error) to the kernel
+- [x] **PLUG-04**: Plugins report health (reachable, last sync, last error) to the kernel
 - [ ] **PLUG-05**: A third party can build a plugin from the contract docs + reference mock plugin alone
 
 ### Source Plugins
@@ -70,12 +70,12 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | KERN-01 | Phase 1 | Complete |
 | KERN-02 | Phase 1 | Complete |
 | KERN-03 | Phase 1 | Complete |
-| KERN-04 | Phase 2 | Pending |
+| KERN-04 | Phase 2 | Complete |
 | KERN-05 | Phase 3 | Pending |
 | PLUG-01 | Phase 1 | Complete |
 | PLUG-02 | Phase 1 | Complete |
 | PLUG-03 | Phase 1 | Complete |
-| PLUG-04 | Phase 2 | Pending |
+| PLUG-04 | Phase 2 | Complete |
 | PLUG-05 | Phase 2 | Pending |
 | SRC-01 | Phase 3 | Pending |
 | SRC-02 | Phase 4 | Pending |

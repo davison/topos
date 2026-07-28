@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-07-28T16:59:45.099Z"
+last_updated: "2026-07-28T18:58:17.274Z"
 last_activity: 2026-07-28
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
   percent: 20
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-28)
 ## Current Position
 
 Phase: 02 (two-sources-one-trustworthy-stream) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-07-28
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [███████░░░] 70%
 | Phase 01 P05 | 4min | 3 tasks | 2 files |
 | Phase 01 P06 | 15min | 3 tasks | 6 files |
 | Phase 02 P01 | 68min | 3 tasks | 34 files |
+| Phase 02 P02 | 35min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 02-01]: Sync identity promoted from 'webspace' to '(webspace, source_type)' — ReplaceWebspaceSourceItems/SyncSource replace the whole-webspace write path outright so a healthy source's items are never discarded by a sibling source's failure
 - [Phase ?]: [Phase 02-01]: Added an optional per-source ca_cert config field (not in the plan's original scope) to pin a self-signed CA for the user's real SilverBullet instance, discovered live during Task 1
 - [Phase ?]: [Phase 02-01]: Fixed hardcoded 'paperless-ngx' UI copy (DetailPane failure alert, OpenInSource button) via a new sourceDisplayName() helper, reported live by the user during the tracer checkpoint
+- [Phase ?]: [Phase 02-02]: kernel/syncer package name (not kernel/sync) — avoids aliasing against the standard library's own sync package, needed alongside golang.org/x/sync/singleflight
+- [Phase ?]: [Phase 02-02]: correlate.Engine.SyncSource returns (results, rejections string) — the coordinator needs the aggregated rejection message to record on the sync_runs row it now owns
+- [Phase ?]: [Phase 02-02]: GET /api/sources last_error is sourced exclusively from the kernel's own sync_runs history, never a plugin's self-reported HealthResponse fields (A-PLUG-04)
 
 ### Pending Todos
 
@@ -117,6 +121,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T16:59:45.091Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-07-28T18:58:17.266Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None

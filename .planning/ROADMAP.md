@@ -85,7 +85,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Single-flight sync coordinator, background scheduler, and the per-source health + manual-refresh HTTP surface
+- [x] 02-02-PLAN.md — Single-flight sync coordinator, background scheduler, and the per-source health + manual-refresh HTTP surface
 
 **Wave 3** *(blocked on Wave 2 completion; both plans run in parallel)*
 
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
-| 2. Two Sources, One Trustworthy Stream | 1/4 | In Progress|  |
+| 2. Two Sources, One Trustworthy Stream | 2/4 | In Progress|  |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
