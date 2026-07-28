@@ -29,7 +29,7 @@ requirements change, not a coverage gap.
 | `GET /api/documents/{id}/` — document detail incl. extracted `content` | INTEGRATE | |
 | `GET /api/documents/{id}/preview/` — inline rendition | INTEGRATE | |
 | `GET /api/documents/{id}/thumb/` — thumbnail | INTEGRATE | |
-| `GET /api/documents/{id}/download/` — original file bytes | OPT-OUT | not needed — the detail pane renders the `preview/` rendition inline; downloading the original is what the "Open in paperless-ngx" deep link (UI-04) hands off to. Revisit only if a rendition-less file type appears. |
+| `GET /api/documents/{id}/download/` — original file bytes | OPT-OUT | not needed — the detail pane renders the `preview/` rendition inline; the original is what the "Open in paperless-ngx" deep link (UI-04) hands off to. Revisit if a rendition-less file type appears. |
 | Token auth (`Authorization: Token <t>` header) | INTEGRATE | |
 | `POST /api/token/` — exchange username+password for a token | OPT-OUT | not needed — D-04 requires the token come from the `PAPERLESS_TOKEN` env var; webspaces never handles the user's paperless password. |
 | API versioning via `Accept: application/json; version=N` | INTEGRATE | |
@@ -54,7 +54,7 @@ requirements change, not a coverage gap.
 | `POST /api/documents/post_document/` — upload | OPT-OUT | explicitly out of scope, permanently — plugins must never mutate source data stores (PROJECT.md `## Constraints`); no mutating RPC exists in `plugin.proto` to carry it (PLUG-02). |
 | `POST /api/documents/bulk_edit/`, `/api/bulk_edit_objects/` | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
 | `PUT/PATCH/DELETE /api/documents/{id}/` | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
-| `POST/PUT/DELETE /api/tags/`, `/api/correspondents/`, `/api/document_types/`, `/api/storage_paths/`, `/api/custom_fields/` | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
+| `POST/PUT/DELETE` on any taxonomy endpoint (tags, correspondents, etc.) | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
 | `POST/DELETE /api/documents/{id}/notes/` | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
 | `POST /api/share_links/` — create a public share link | OPT-OUT | explicitly out of scope, permanently — mutating, and it would publish personal content outside the machine, contradicting the privacy constraint. |
 | `POST /api/acknowledge_tasks/` | OPT-OUT | explicitly out of scope, permanently — same read-only-by-construction constraint. |
