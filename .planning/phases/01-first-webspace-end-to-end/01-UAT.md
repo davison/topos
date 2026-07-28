@@ -1,49 +1,53 @@
 ---
-status: testing
+status: complete
 phase: 01-first-webspace-end-to-end
 source: [01-VERIFICATION.md]
 round: 2
 started: 2026-07-28T12:36:00Z
-updated: 2026-07-28T12:36:00Z
+updated: "2026-07-28T12:58:00Z"
 ---
 
 ## Current Test
 
-number: 1
-name: Re-run UAT tests 2, 3, 4 in the browser now that G-01-2 (CSS delivery) is fixed
-expected: |
-  Detail pane sits BESIDE the stream (never stacked below), title/date/tags appear
-  instantly with a skeleton-then-fill preview, scroll containment is per-region,
-  stream rows are fixed-height (152px) small-thumbnail cards with ellipsised titles
-  and two-line clamped snippets, and the three original UAT symptoms (full-size
-  centered images, unformatted stacked text, whole-page scrolling) are gone.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
 ### 1. Re-run UAT tests 2, 3, 4 — browser rendering after CSS fix
+
 test: Hard-reload (Ctrl+Shift+R) http://127.0.0.1:7777/ (server already running with the styled build). Click a document row to open the detail pane; scroll the PDF/extracted text while watching the stream list; click "Open in paperless-ngx"; open a webspace row with several tags and a long title; check a no-OCR-text document; scroll the stream with the detail pane open; try an 80+ character webspace name; point base_url at an unreachable host and confirm the sync-error state.
 expected: Per 01-05-PLAN.md Task 3's human-check block — detail pane beside the stream, instant metadata with skeleton-then-fill preview, per-region scroll containment, fixed-height small-thumbnail cards with one-line ellipsised titles and two-line clamped snippets, "Nothing here yet" / truncated-name-tooltip / sync-error states render correctly; the three original symptoms (full-size centered images, unformatted stacked text, whole-page scrolling) are gone.
-result: [pending]
+result: pass
+note: "Pass with one caveat (user: not captured in requirements) — pane flex behavior is inverted; see Deferred Follow-Ups"
 
 ### 2. AGENT-02 / concurrency backstop (carried forward)
+
 test: Issue GET /api/webspaces/house-move/stream repeatedly in a tight loop while `webspaces sync` runs concurrently; diff each response against the two known-good pre/post item sets.
 expected: Every response matches either the pre-sync or post-sync set exactly, never a partial mix (SQLite WAL snapshot isolation).
-result: [pending]
+result: pass
+note: "user: 'pass (cannot easily verify failure mode)' — backstop relies on WAL snapshot isolation by construction"
 
 ### 3. UI / error stream-list backstop (carried forward)
+
 test: Stop `webspaces serve` (or block port 7777) and load a webspace route in the browser; confirm the error state, then restart the kernel and retry.
 expected: "Couldn't load this webspace" copy with a working retry control that recovers the stream once the kernel is back.
-result: [pending]
+result: pass
+note: "user: 'pass with the same caveat: difficult to force the error scenario' — backstop; error copy grep-confirmed in StreamError.svelte"
 
 ## Summary
 
 total: 3
-passed: 0
+passed: 3
 issues: 0
-pending: 3
+pending: 0
 skipped: 0
 blocked: 0
+
+## Deferred Follow-Ups
+
+- test: 1
+  idea: "Pane flex behavior is inverted: the detail pane is fixed-width and the stream pane widens when the browser window is enlarged. Should be the other way around — stream pane fixed width, detail pane fills the remaining area."
+  deferred_at: 2026-07-28
 
 ## Gaps
 
@@ -56,6 +60,7 @@ Prior-round gaps (round 1: 2 passed, 4 issues) — both closed by gap-closure pl
   test: 2, 3, 4
   resolved_by: 01-05 (import '../app.css' in +layout.svelte; smoke-test stylesheet + stale-listener guards)
   note: "CSS provably ships (33,334-byte asset, all tokens/selectors confirmed, served live); visual confirmation queued as round-2 test 1"
+
 - gap_id: G-01-6
   truth: "A committed, wired test enforces that no code path transmits data to any host other than the configured paperless-ngx base_url and loopback"
   status: resolved
