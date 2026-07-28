@@ -81,7 +81,7 @@ Notes:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Tracer: SilverBullet joins the stream end to end, plus the source-scoped persistence fix a second source requires
+- [x] 02-01-PLAN.md — Tracer: SilverBullet joins the stream end to end, plus the source-scoped persistence fix a second source requires
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
-| 2. Two Sources, One Trustworthy Stream | 0/4 | Planned | - |
+| 2. Two Sources, One Trustworthy Stream | 1/4 | In Progress|  |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |

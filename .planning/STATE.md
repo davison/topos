@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_phase_name: Two Sources, One Trustworthy Stream
 status: executing
-stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-07-28T15:28:57.404Z"
+last_updated: "2026-07-28T16:59:45.099Z"
 last_activity: 2026-07-28
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
 progress:
-  total_phases: 2
+  total_phases: 5
   completed_phases: 1
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
+  percent: 20
 ---
 
 # Project State
@@ -23,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-28)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 2 — Two Sources, One Trustworthy Stream
+**Current focus:** Phase 02 — two-sources-one-trustworthy-stream
 
 ## Current Position
 
-Phase: 2 — Two Sources, One Trustworthy Stream
-Plan: Not started
+Phase: 02 (two-sources-one-trustworthy-stream) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-07-28 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-07-28
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -64,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 01 P04 | 47min | 2 tasks | 11 files |
 | Phase 01 P05 | 4min | 3 tasks | 2 files |
 | Phase 01 P06 | 15min | 3 tasks | 6 files |
+| Phase 02 P01 | 68min | 3 tasks | 34 files |
 
 ## Accumulated Context
 
@@ -92,6 +90,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 01-05]: e2e-smoke.sh hardened with a stale-listener pre-check and a three-part stylesheet assertion (link exists, fetches non-empty, contains #020617 token) as a recurrence guard
 - [Phase ?]: [Phase 01-06]: Host predicate excludes port from comparison — the configured host is the user's own instance and a reverse proxy legitimately moves ports on it
 - [Phase ?]: [Phase 01-06]: Same-host redirect test uses a distinct trailing-slash path, not the literal same path plus one more slash, because Go's net/url reference resolution collapses repeated slashes before the client's guard sees them
+- [Phase ?]: [Phase 02-01]: Sync identity promoted from 'webspace' to '(webspace, source_type)' — ReplaceWebspaceSourceItems/SyncSource replace the whole-webspace write path outright so a healthy source's items are never discarded by a sibling source's failure
+- [Phase ?]: [Phase 02-01]: Added an optional per-source ca_cert config field (not in the plan's original scope) to pin a self-signed CA for the user's real SilverBullet instance, discovered live during Task 1
+- [Phase ?]: [Phase 02-01]: Fixed hardcoded 'paperless-ngx' UI copy (DetailPane failure alert, OpenInSource button) via a new sourceDisplayName() helper, reported live by the user during the tracer checkpoint
 
 ### Pending Todos
 
@@ -116,6 +117,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-28T14:34:05.761Z
-Stopped at: Phase 2 UI-SPEC approved
-Resume file: /home/darren/projects/davison/webspaces/.planning/phases/02-two-sources-one-trustworthy-stream/02-UI-SPEC.md
+Last session: 2026-07-28T16:59:45.091Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

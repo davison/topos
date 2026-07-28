@@ -26,7 +26,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [ ] **SRC-02**: Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown
 - [ ] **SRC-03**: WhatsApp plugin runs as a whatsmeow linked device with its own persistent message store; degrades gracefully on de-link/ban; matches on group names
 - [x] **SRC-04**: paperless-ngx plugin via REST API; matches on tags; exact deep links to documents
-- [ ] **SRC-05**: SilverBullet plugin; matches on tags/pages; exact deep links to pages
+- [x] **SRC-05**: SilverBullet plugin; matches on tags/pages; exact deep links to pages
 
 ### UI
 
@@ -81,7 +81,7 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | SRC-02 | Phase 4 | Pending |
 | SRC-03 | Phase 5 | Pending |
 | SRC-04 | Phase 1 | Complete |
-| SRC-05 | Phase 2 | Pending |
+| SRC-05 | Phase 2 | Complete |
 | UI-01 | Phase 1 | Complete |
 | UI-02 | Phase 2 | Pending |
 | UI-03 | Phase 1 | Complete |
