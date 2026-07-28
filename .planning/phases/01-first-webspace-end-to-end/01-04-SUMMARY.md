@@ -215,3 +215,7 @@ None - no external service configuration required beyond `PAPERLESS_URL`/`PAPERL
 ---
 *Phase: 01-first-webspace-end-to-end*
 *Completed: 2026-07-28*
+
+## Self-Check: PASSED
+
+All 9 claimed files found on disk (sdk/contract_test.go, plugins/paperless/readonly_test.go, kernel/httpapi/contract_test.go, kernel/index/store_test.go, docs/plugin-contract.md, docs/api.md, config.example.toml, README.md, this SUMMARY.md). All 3 claimed commit hashes (6f9c934, 1a1384b, cdded04) found in git history.
