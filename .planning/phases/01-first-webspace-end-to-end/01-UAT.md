@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 01-first-webspace-end-to-end
 source: [01-VERIFICATION.md]
 started: 2026-07-28T02:45:00Z
@@ -70,13 +70,29 @@ blocked: 0
   reason: "User reported: stream rows render unstyled — huge centered preview images, unformatted title/date/tags/abstract, no source links, whole-page scrolling; only the final rendered block (apparently the detail pane, stacked below the list instead of beside it) is dark-themed with heading, working paperless link, and a too-small scrollable preview region"
   severity: major
   test: 2, 3, 4
-  artifacts: [.planning/phases/01-first-webspace-end-to-end/01-uat-test4-evidence.png]
-  missing: []
+  root_cause: "web/src/routes/+layout.svelte is missing `import '../app.css';` — app.css (Tailwind v4 entry + all design tokens + hand-authored classes) is orphaned, so Vite emits ZERO CSS in the production build; 200.html links no stylesheet. Present since the 01-01 scaffold (da15f94). All rendering seen was browser UA defaults on semantic HTML. vite.config.ts, svelte.config.js, Makefile, embed.go, and all component markup verified correct."
+  artifacts:
+    - path: "web/src/routes/+layout.svelte"
+      issue: "missing `import '../app.css';` at top of script block (the defect)"
+    - path: "web/src/app.css"
+      issue: "correct and complete but referenced by nothing"
+    - path: ".planning/phases/01-first-webspace-end-to-end/01-uat-test4-evidence.png"
+      issue: "screenshot evidence"
+  missing:
+    - "Add `import '../app.css';` to +layout.svelte, rebuild, confirm _app/immutable/assets/*.css emitted and 200.html links a stylesheet"
+    - "Confirm utility selectors used by components (.line-clamp-2, .flex, .truncate) present in emitted CSS (secondary @source coverage check)"
+    - "Recurrence guard: build-output assertion (e.g. in e2e-smoke.sh) that built HTML references at least one stylesheet"
+  debug_session: .planning/debug/stream-ui-unstyled.md
 - gap_id: G-01-6
   truth: "A committed, wired test enforces that no code path in the kernel or paperless plugin transmits data to any host other than the configured paperless-ngx base_url and loopback (the plan's test-tier prohibition)"
   status: failed
   reason: "User reported: test — requested a committed outbound-host allowlist test instead of downgrading the verification tier. readonly_test.go enforces GET-only methods but not destination hosts; no other test asserts an allowlist."
   severity: minor
   test: 6
-  artifacts: [plugins/paperless/readonly_test.go]
-  missing: [outbound-host allowlist test]
+  root_cause: "Definitional — the plan's test-tier prohibition was never wired to a committed test. readonly_test.go enforces GET-only methods but not destination hosts. No debug investigation needed (verifier established this with evidence)."
+  artifacts:
+    - path: "plugins/paperless/readonly_test.go"
+      issue: "closest analog — enforces methods, not destination hosts"
+  missing:
+    - "Committed outbound-host allowlist test asserting kernel + paperless plugin only dial the configured base_url host and loopback"
+  debug_session: none
