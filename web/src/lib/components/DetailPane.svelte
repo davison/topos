@@ -1,25 +1,34 @@
 <script lang="ts">
-	import { getItem, contentUrl, sourceDisplayName, type StreamItem, type ItemContent } from '$lib/api';
+	import { getItem, contentUrl, ApiError, type StreamItem, type ItemContent } from '$lib/api';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Alert, AlertTitle, AlertDescription, AlertAction } from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import OpenInSource from '$lib/components/OpenInSource.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
+	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
+	import { detailPaneState } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
 	// renders from it synchronously, before getItem(id) resolves (stage
-	// one of the two-stage render this pane implements).
-	let { item }: { item: StreamItem } = $props();
+	// one of the two-stage render this pane implements). displayName and
+	// sourceReachable are supplied by the caller (+page.svelte, sourced
+	// from the live GET /api/sources response) — this pane is shared
+	// across every source, so neither its copy nor its unreachable/error
+	// branch choice may hardcode or guess at one source's identity.
+	let {
+		item,
+		displayName,
+		sourceReachable
+	}: { item: StreamItem; displayName: string; sourceReachable: boolean } = $props();
 
 	let content: ItemContent | null = $state(null);
 	let loadingContent = $state(true);
-	let loadFailed = $state(false);
+	let fetchErrorCode: string | null = $state(null);
 
-	// displayName parameterizes the source-specific copy below
-	// (RESEARCH.md Pitfall 3) — this pane is shared across every source,
-	// so neither the failure copy nor OpenInSource's button label may
-	// hardcode one source's name.
-	let displayName = $derived(sourceDisplayName(item.source_type));
+	// The one place that decides which of the four mutually exclusive
+	// states this pane shows (D-10) — see format.ts for the full
+	// precedence rule and staleness.test.ts for its unit tests.
+	let paneState = $derived(detailPaneState(content, fetchErrorCode, sourceReachable));
 
 	function formatDate(unix: number): string {
 		if (!unix) return '';
@@ -32,17 +41,18 @@
 
 	async function loadContent(id: string) {
 		loadingContent = true;
-		loadFailed = false;
+		fetchErrorCode = null;
 		content = null;
 		try {
 			const detail = await getItem(id);
 			content = detail.content;
-		} catch {
-			// The approved error copy is generic ("didn't respond") and
-			// does not distinguish error codes — any failure (source
-			// unavailable, network, unexpected shape) surfaces the same
-			// state, with the deep link still usable.
-			loadFailed = true;
+		} catch (err) {
+			// Any live-fetch failure (source unreachable, network,
+			// unexpected shape) lands here; detailPaneState maps it to the
+			// unreachable or generic-error branch below based on this
+			// item's source's live reachability, not the specific error
+			// code — the deep link stays usable either way.
+			fetchErrorCode = err instanceof ApiError ? err.code : 'unknown_error';
 		} finally {
 			loadingContent = false;
 		}
@@ -67,15 +77,48 @@
 		<OpenInSource link={item.link} sourceType={item.source_type} />
 	</header>
 
-	<!-- Stage two: live-fetched preview + extracted text. -->
+	<!-- Stage two: live-fetched preview + extracted text, or one of the
+	     three failure states below — never a blank pane (D-10). -->
 	{#if loadingContent}
 		<div class="flex min-h-0 flex-1 flex-col gap-6">
 			<Skeleton class="h-72 w-full shrink-0 rounded-lg" />
 			<Skeleton class="w-full flex-1 rounded-lg" />
 		</div>
-	{:else if loadFailed}
+	{:else if paneState === 'unreachable' || paneState === 'deleted'}
+		<!-- D-10: the source is unreachable, or the item is confirmed gone
+		     at the source — either way the item itself is still viewable,
+		     so this is a non-destructive alert layered over the cached
+		     preview (item.preview / item.thumbnail_url — already in
+		     memory from the stream, not a re-fetch), never a replacement
+		     for the pane. -->
+		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+			<Alert>
+				<AlertTriangle />
+				<AlertTitle>
+					{paneState === 'deleted' ? 'No longer available' : 'Source unreachable'}
+				</AlertTitle>
+				<AlertDescription>
+					{#if paneState === 'deleted'}
+						No longer available at {displayName} — showing the last synced version.
+					{:else}
+						This source is currently unreachable — showing the last synced version.
+					{/if}
+				</AlertDescription>
+			</Alert>
+			{#if item.thumbnail_url}
+				<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
+					<img src={item.thumbnail_url} alt={item.title} class="h-full w-full object-contain" />
+				</div>
+			{/if}
+			{#if item.preview}
+				<p class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
+					{item.preview}
+				</p>
+			{/if}
+		</div>
+	{:else if paneState === 'error'}
 		<Alert variant="destructive">
-			<AlertTitle>Couldn't load this document</AlertTitle>
+			<AlertTitle>Couldn't load this item</AlertTitle>
 			<AlertDescription>
 				{displayName} didn't respond. It may be offline — try again, or open it directly in
 				{displayName}.

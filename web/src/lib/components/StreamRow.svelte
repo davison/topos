@@ -1,5 +1,11 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import {
+		Tooltip,
+		TooltipContent,
+		TooltipProvider,
+		TooltipTrigger
+	} from '$lib/components/ui/tooltip/index.js';
 	import Thumbnail from './Thumbnail.svelte';
 	import { formatItemDate } from '$lib/format';
 	import { cn } from '$lib/utils.js';
@@ -8,8 +14,16 @@
 	let {
 		item,
 		selected = false,
-		onselect
-	}: { item: StreamItem; selected?: boolean; onselect: () => void } = $props();
+		onselect,
+		stale = false,
+		sourceDisplayName = ''
+	}: {
+		item: StreamItem;
+		selected?: boolean;
+		onselect: () => void;
+		stale?: boolean;
+		sourceDisplayName?: string;
+	} = $props();
 </script>
 
 <!--
@@ -23,8 +37,9 @@
   (--primary/--ring, see app.css) mark in this row, applied only when
   selected — the accent color is otherwise absent from this file. The
   focus-visible ring is the accent's other sanctioned use. Tag pills
-  render with the Badge "secondary" variant (neutral palette) and the
-  metadata text uses the neutral muted-foreground token, never accent.
+  render with the Badge "secondary" variant (neutral palette), the
+  metadata text uses the neutral muted-foreground token, and the D-10
+  stale marker below uses the dedicated --warning token — never accent.
 -->
 <button
 	type="button"
@@ -45,8 +60,31 @@
 		</p>
 
 		<!-- Clipped metadata strip: date + one Badge per tag (label role: 14px/400/1.4). -->
-		<div class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground">
+		<div
+			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground"
+		>
 			<span class="shrink-0">{formatItemDate(item.timestamp_unix)}</span>
+			{#if stale}
+				<!-- D-10: tertiary, per-row proof the affected source's items
+				     are still visible (not silently dropped) — subtle, never
+				     a banner-level alarm, and never the accent color. -->
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger>
+							{#snippet child({ props })}
+								<span
+									{...props}
+									class="bg-warning size-2 shrink-0 rounded-full"
+									aria-label={`${sourceDisplayName} is currently unreachable — this item may be out of date`}
+								></span>
+							{/snippet}
+						</TooltipTrigger>
+						<TooltipContent>
+							{sourceDisplayName} is currently unreachable — this item may be out of date.
+						</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
+			{/if}
 			{#each item.labels as label (label)}
 				<Badge variant="secondary">{label}</Badge>
 			{/each}
