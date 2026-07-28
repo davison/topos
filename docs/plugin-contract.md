@@ -84,12 +84,23 @@ type SourcePlugin interface {
 }
 ```
 
-A plugin's `main` package registers that implementation and serves it:
+A plugin's `main` package registers that implementation and serves it.
+Note the import alias below: `goplugin "github.com/hashicorp/go-plugin"`
+— **not** the unrelated Go standard-library `plugin` package
+(`plugin.Open`, for loading `.so` shared objects), which shares the bare
+name `plugin` but has nothing to do with this contract. Every plugin in
+this repository (`plugins/mock/main.go` included) uses this exact alias:
 
 ```go
-plugin.Serve(&plugin.ServeConfig{
+import (
+	goplugin "github.com/hashicorp/go-plugin"
+
+	"github.com/davison/webspaces/sdk"
+)
+
+goplugin.Serve(&goplugin.ServeConfig{
 	HandshakeConfig: sdk.Handshake,
-	Plugins: map[string]plugin.Plugin{
+	Plugins: map[string]goplugin.Plugin{
 		"source": &sdk.SourcePluginGRPCPlugin{Impl: &myPlugin{}},
 	},
 	GRPCServer: sdk.GRPCServer, // raises the gRPC message-size ceiling — see Fetch, below
@@ -466,10 +477,10 @@ example; start there and adapt).
 worked example): read `WEBSPACES_SOURCE_CONFIG` if your plugin needs
 connection details (see "Configuration", above — and note a plugin with
 nothing to configure, like the mock, simply doesn't require it), construct
-your `SourcePlugin` implementation, and call `plugin.Serve` with
+your `SourcePlugin` implementation, and call `goplugin.Serve` with
 `sdk.Handshake`, your implementation registered under the `"source"` key,
 and `sdk.GRPCServer` (see "Depending on the SDK", above, for the exact
-shape).
+shape and the `goplugin` import alias).
 
 **5. Build it.**
 
@@ -477,14 +488,29 @@ shape).
 CGO_ENABLED=0 go build -o bin/plugins/webspaces-plugin-yourplugin ./plugins/yourplugin
 ```
 
-**6. Configure the kernel to launch it** — add a
-`[sources.<name>]` block to your `config.toml` (see `config.example.toml`
-for the exact shape, including its commented-out `[sources.mock]`
-example) naming your binary's filename as `plugin`, plus whatever
-connection-detail keys your plugin's own `main.go` reads out of
-`WEBSPACES_SOURCE_CONFIG`. Add a `[webspaces.<name>]` block with at least
-one keyword that matches something your `Match` implementation returns,
-so a sync actually produces items to see.
+**6. Configure the kernel to launch it.** The kernel's config file
+(`~/.config/webspaces/config.toml` by default; `config.example.toml` in
+this repository is a fully-commented reference for every key) needs two
+blocks: one `[sources.<name>]` entry naming your plugin, and one
+`[webspaces.<name>]` entry with a keyword your `Match` implementation
+will actually return an item for. The minimal shape, self-contained here
+so you don't need any file beyond this document to write it:
+
+```toml
+[sources.yourplugin]
+plugin = "webspaces-plugin-yourplugin"   # your binary's filename, resolved inside [plugins] dir (default "plugins")
+# ... plus whatever connection-detail keys your plugin's own main.go
+# reads out of WEBSPACES_SOURCE_CONFIG (see "Configuration", above) — a
+# plugin with nothing to configure, like plugins/mock, needs none.
+
+[webspaces.demo]
+keywords = ["your-keyword-here"]   # must exactly, case-insensitively match something your Match returns
+```
+
+Every dotted-table key here (`[sources.<name>]`, `[webspaces.<name>]`) is
+a plain TOML table — nothing plugin-specific about the file format
+itself, only the key set under `[sources.<name>]`, which your own plugin
+defines and documents (see "Configuration", above).
 
 **7. Run it.** `webspaces sync` (a one-shot sync) or `webspaces serve`
 (sync-on-schedule plus the HTTP API) both launch every configured plugin,
