@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -92,10 +93,17 @@ func toStreamItem(it item.Item) streamItem {
 	if labels == nil {
 		labels = []string{}
 	}
-	prov := it.Provenance
-	if prov == nil {
-		prov = map[string]string{}
+	// prov is a fresh copy, never the plugin-supplied map itself: the
+	// kernel owns synced_at_unix (it.SyncedAtUnix, populated by the index
+	// layer at read time — never by a plugin) and always sets it here,
+	// overriding anything a plugin might have supplied under the same
+	// key. Copying also keeps toStreamItem free of any shared-map
+	// mutation surprises across repeated calls with the same item.Item.
+	prov := make(map[string]string, len(it.Provenance)+1)
+	for k, v := range it.Provenance {
+		prov[k] = v
 	}
+	prov["synced_at_unix"] = strconv.FormatInt(it.SyncedAtUnix, 10)
 	thumb := ""
 	if it.HasThumbnail {
 		thumb = "/api/items/" + it.ID + "/thumbnail"

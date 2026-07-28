@@ -172,7 +172,8 @@ func (s *Store) StreamItems(ctx context.Context, webspaceName string) ([]item.It
 	const q = `
 SELECT items.id, items.source_type, items.source_id, items.title, items.preview,
        items.timestamp_unix, items.secondary_timestamp_unix, items.fidelity, items.deep_link,
-       items.labels_json, items.provenance_json, items.group_id, items.group_label, items.has_thumbnail
+       items.labels_json, items.provenance_json, items.group_id, items.group_label, items.has_thumbnail,
+       items.synced_at
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
@@ -194,6 +195,7 @@ ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.i
 			&it.ID, &it.SourceType, &it.SourceID, &it.Title, &it.Preview,
 			&it.TimestampUnix, &it.SecondaryTimestampUnix, &fidelity, &it.DeepLink,
 			&labelsJSON, &provJSON, &it.GroupID, &it.GroupLabel, &hasThumb,
+			&it.SyncedAtUnix,
 		); err != nil {
 			return nil, fmt.Errorf("index: scan item row: %w", err)
 		}
@@ -222,7 +224,8 @@ func (s *Store) GetItem(ctx context.Context, id string) (item.Item, bool, error)
 	const q = `
 SELECT id, source_type, source_id, title, preview,
        timestamp_unix, secondary_timestamp_unix, fidelity, deep_link,
-       labels_json, provenance_json, group_id, group_label, has_thumbnail
+       labels_json, provenance_json, group_id, group_label, has_thumbnail,
+       synced_at
 FROM items WHERE id = ?
 `
 	var it item.Item
@@ -233,6 +236,7 @@ FROM items WHERE id = ?
 		&it.ID, &it.SourceType, &it.SourceID, &it.Title, &it.Preview,
 		&it.TimestampUnix, &it.SecondaryTimestampUnix, &fidelity, &it.DeepLink,
 		&labelsJSON, &provJSON, &it.GroupID, &it.GroupLabel, &hasThumb,
+		&it.SyncedAtUnix,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {

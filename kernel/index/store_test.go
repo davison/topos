@@ -150,6 +150,84 @@ func TestReplaceWebspaceItems_Idempotent(t *testing.T) {
 	}
 }
 
+// TestStreamItems_OrdersByPrimaryTimestampDescendingAcrossInsertOrder pins
+// the primary sort key of the total order StreamHandler depends on
+// (01-04-PLAN.md Task 1): items are inserted out of chronological order,
+// so SQLite's natural row order would return low, high, mid — only the
+// ORDER BY items.timestamp_unix DESC clause produces high, mid, low.
+func TestStreamItems_OrdersByPrimaryTimestampDescendingAcrossInsertOrder(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	low := sampleItem("low", 100)
+	high := sampleItem("high", 300)
+	mid := sampleItem("mid", 200)
+
+	if err := s.ReplaceWebspaceItems(ctx, "ws", []item.Item{low, high, mid}); err != nil {
+		t.Fatalf("ReplaceWebspaceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws")
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	wantOrder := []string{high.ID, mid.ID, low.ID}
+	if got := idsOf(items); !equalIDOrder(got, wantOrder) {
+		t.Errorf("expected order %v, got %v", wantOrder, got)
+	}
+}
+
+// TestStreamItems_TiesOnBothTimestampsBreakByIDAscending pins the final
+// tie-break key (id ASC) of the total order: every item shares both the
+// primary and secondary timestamp, so only the id-ASC clause can produce a
+// deterministic result. Inserted in descending id order, so dropping the
+// final ORDER BY clause would return the reverse of the expected order.
+func TestStreamItems_TiesOnBothTimestampsBreakByIDAscending(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	c := sampleItem("charlie", 500)
+	c.SecondaryTimestampUnix = 500
+	b := sampleItem("bravo", 500)
+	b.SecondaryTimestampUnix = 500
+	a := sampleItem("alpha", 500)
+	a.SecondaryTimestampUnix = 500
+
+	if err := s.ReplaceWebspaceItems(ctx, "ws", []item.Item{c, b, a}); err != nil {
+		t.Fatalf("ReplaceWebspaceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws")
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	// "paperless:alpha" < "paperless:bravo" < "paperless:charlie" lexically.
+	wantOrder := []string{a.ID, b.ID, c.ID}
+	if got := idsOf(items); !equalIDOrder(got, wantOrder) {
+		t.Errorf("expected order %v, got %v", wantOrder, got)
+	}
+}
+
+func idsOf(items []item.Item) []string {
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	return ids
+}
+
+func equalIDOrder(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestRecordSyncRunAndLatest(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()

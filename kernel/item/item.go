@@ -51,6 +51,14 @@ type Item struct {
 	GroupID                string
 	GroupLabel             string
 	HasThumbnail           bool
+	// SyncedAtUnix is the index's own record of when this row was last
+	// written (the items.synced_at column). It is never populated by a
+	// plugin's MatchResponse — FromProto leaves it zero — and is instead
+	// filled in by the index layer (kernel/index/store.go) when an item is
+	// read back, so the kernel HTTP layer can publish it as the
+	// synced_at_unix provenance key (AGENT-02) without trusting a plugin
+	// to report its own sync time.
+	SyncedAtUnix int64
 }
 
 // ID derives the kernel-wide stable item ID from a source type and a
