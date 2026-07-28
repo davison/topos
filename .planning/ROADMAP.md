@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Every item carries an "open in source" affordance that lands on the exact paperless-ngx document, and declares its link fidelity (exact / anchored / conversation-only)
   5. The plugin runs as a separate subprocess over the published `.proto` contract, that contract contains no source-mutating method, and the same items the UI shows are retrievable from the kernel HTTP API with stable IDs, structured content, and machine-readable provenance
 
-**Plans**: 4/4 plans executed
+**Plans**: 6 plans — 4 executed, 2 gap-closure pending
 Plans:
 **Wave 1**
 
@@ -49,6 +49,11 @@ Plans:
 
 - [x] 01-03-PLAN.md — Stream presentation and every UI state, including a failed sync never masquerading as an empty webspace
 - [x] 01-04-PLAN.md — Published plugin + HTTP contracts, contract-conformance tests enforcing read-only and the agent envelope, operator docs
+
+**Gap closure** *(from UAT — see 01-UAT.md `## Gaps`)*
+
+- [ ] 01-05-PLAN.md — G-01-2: root layout never imported app.css, so the build shipped zero CSS — fix, guard against stylesheet-less builds, hand off for UAT re-run of tests 2–4
+- [ ] 01-06-PLAN.md — G-01-6: committed outbound-host allowlist — host-pinned paperless client plus a repo-wide egress audit *(runs after 01-05)*
 
 **UI hint**: yes
 
