@@ -80,7 +80,7 @@ func TestContract_StreamEnvelope_IDsLinkAndProvenance(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{})
+	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{})
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -128,7 +128,7 @@ func TestContract_EmptyWebspaceReturns200EmptyArrayNotNull(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{})
+	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{})
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/empty-space/stream", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -157,7 +157,7 @@ func TestContract_EmptyWebspaceReturns200EmptyArrayNotNull(t *testing.T) {
 
 func TestContract_UnknownWebspace404(t *testing.T) {
 	store := newTestStoreForHTTP(t)
-	router := Router(store, testConfig(), &fakeFetcher{})
+	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/does-not-exist/stream", nil)
 	rec := httptest.NewRecorder()
@@ -168,7 +168,7 @@ func TestContract_UnknownWebspace404(t *testing.T) {
 
 func TestContract_UnknownItem404(t *testing.T) {
 	store := newTestStoreForHTTP(t)
-	router := Router(store, testConfig(), &fakeFetcher{})
+	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:does-not-exist", nil)
 	rec := httptest.NewRecorder()
@@ -183,7 +183,7 @@ func TestContract_FetchFailureReturns502SourceUnavailable(t *testing.T) {
 
 	router := Router(store, testConfig(), &fakeFetcher{
 		err: fmt.Errorf("%w: connection refused", pluginhost.ErrSourceUnavailable),
-	})
+	}, &fakeProber{}, &fakeRefresher{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42", nil)
 	rec := httptest.NewRecorder()
@@ -248,7 +248,7 @@ func TestContract_StreamCalledTwiceIsByteIdentical(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{})
+	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{})
 
 	req1 := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
 	rec1 := httptest.NewRecorder()

@@ -173,7 +173,7 @@ func runServe() error {
 	sched := &syncer.Scheduler{Coordinator: coord, Config: cfg, Logger: logger}
 	go sched.Run(ctx)
 
-	router := httpapi.Router(store, cfg, host)
+	router := httpapi.Router(store, cfg, host, host, coord)
 
 	listen := cfg.Server.Listen
 	if !isLoopback(listen) {

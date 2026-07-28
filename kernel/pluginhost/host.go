@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
@@ -38,10 +39,11 @@ var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
 // Plugin is one launched, handshaken source plugin subprocess.
 type Plugin struct {
-	name       string // config key under [sources.<name>]
-	sourceType string // learned via Describe, not trusted from the filename
-	client     *goplugin.Client
-	impl       sdk.SourcePlugin
+	name        string // config key under [sources.<name>]
+	sourceType  string // learned via Describe, not trusted from the filename
+	displayName string // learned via Describe
+	client      *goplugin.Client
+	impl        sdk.SourcePlugin
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -51,6 +53,13 @@ func (p *Plugin) Name() string { return p.name }
 // SourceType returns the source_type learned from the plugin's own
 // Describe RPC response — never trusted from the filename (T-01-07).
 func (p *Plugin) SourceType() string { return p.sourceType }
+
+// DisplayName returns the display_name learned from the plugin's own
+// Describe RPC response (e.g. "paperless-ngx", "SilverBullet") — the
+// health/sources API surfaces this so the UI never hardcodes a
+// per-source display string (02-01-PLAN.md's sourceDisplayName fix is
+// the local-mapping predecessor this makes obsolete).
+func (p *Plugin) DisplayName() string { return p.displayName }
 
 // Match calls the plugin's Match RPC. Satisfies correlate.Source.
 func (p *Plugin) Match(ctx context.Context, keywords []string) (*webspacesv1.MatchResponse, error) {
@@ -157,16 +166,67 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 	}
 
 	return &Plugin{
-		name:       name,
-		sourceType: desc.GetSourceType(),
-		client:     client,
-		impl:       impl,
+		name:        name,
+		sourceType:  desc.GetSourceType(),
+		displayName: desc.GetDisplayName(),
+		client:      client,
+		impl:        impl,
 	}, nil
 }
 
 // Plugins returns every launched plugin.
 func (h *Host) Plugins() []*Plugin {
 	return h.plugins
+}
+
+// SourceHealth is one plugin's live reachability probe result, keyed to
+// its config name and Describe-learned identity. 02-02-PLAN.md's D-08:
+// this is a liveness signal only — last-sync time and last-error are
+// deliberately NOT part of this type, because those come from the
+// kernel's own sync_runs history (kernel/index.Store), never from a
+// plugin's self-reported HealthResponse fields (A-PLUG-04). A plugin that
+// reports a rosier history than the kernel actually recorded must not be
+// able to turn its own health chip green.
+type SourceHealth struct {
+	Name        string // config key under [sources.<name>]
+	SourceType  string // Describe-learned
+	DisplayName string // Describe-learned
+	Reachable   bool
+	ProbeError  string
+}
+
+// ProbeSources calls every launched plugin's Health RPC concurrently — a
+// live reachability probe, not a cached value — and returns one
+// SourceHealth per plugin, in launch order (so the response order is
+// stable run to run, matching the deterministic ordering
+// kernel/httpapi.SourcesHandler sorts on top of). A transport error or a
+// Reachable:false response both map to Reachable:false with the error
+// text in ProbeError; ProbeSources itself never returns a Go error — one
+// plugin being unreachable is data, not a failure of the whole probe.
+func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
+	out := make([]SourceHealth, len(h.plugins))
+	var wg sync.WaitGroup
+	for i, p := range h.plugins {
+		wg.Add(1)
+		go func(i int, p *Plugin) {
+			defer wg.Done()
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName()}
+			resp, err := p.Health(ctx)
+			switch {
+			case err != nil:
+				health.Reachable = false
+				health.ProbeError = err.Error()
+			case !resp.GetReachable():
+				health.Reachable = false
+				health.ProbeError = resp.GetLastError()
+			default:
+				health.Reachable = true
+			}
+			out[i] = health
+		}(i, p)
+	}
+	wg.Wait()
+	return out
 }
 
 // FetchResult is the kernel-domain translation of a plugin's unary Fetch

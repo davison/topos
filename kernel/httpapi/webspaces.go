@@ -34,8 +34,8 @@ func WebspacesHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
 		}
 
 		var lastSync syncStatus
-		if run, ok, err := store.LatestSyncRun(ctx); err == nil && ok {
-			lastSync = syncStatus{Status: run.Status, FinishedUnix: run.FinishedUnix, Error: run.Error}
+		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
+			lastSync = aggregateSyncStatus(runs)
 		}
 
 		names := make([]string, 0, len(cfg.Webspaces))

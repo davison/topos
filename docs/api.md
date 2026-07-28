@@ -108,6 +108,24 @@ never-synced** webspace returns `404 webspace_not_found` — this is the
 one place `404` and "empty" mean genuinely different things, and this API
 never conflates them.
 
+**The `sync` object is an aggregate across every configured source**
+(`KERN-04`), not a single most-recent-run — this is a behavior change
+from Phase 1, where it mirrored the single most recently recorded run
+across the whole kernel. `status` is `"error"` if *any* configured
+source's latest run errored, else `"running"` if any source is still
+mid-sync, else `"ok"` if at least one run has ever completed, else the
+zero value (`""`) if nothing has ever synced. `finished_unix` is the
+newest `finished_unix` across every source's latest run. `error` joins
+each failing source's message, prefixed with its source type, in sorted
+source order (so it's deterministic) — e.g. `"silverbullet: dial tcp:
+connection refused"`. This is what stops a two-source webspace whose only
+failing source returned nothing from rendering as merely empty: before
+this aggregate, a webspace with one healthy source and one silently
+broken one could report `sync.status: "ok"` just because the *other*
+source's run happened to be the most recent one recorded anywhere in the
+kernel. `GET /api/webspaces`'s `last_sync` field uses the identical
+aggregate.
+
 ### `GET /api/items/{id}`
 
 `{id}` is the stable composite id (`{source_type}:{source_id}`, e.g.
@@ -188,6 +206,101 @@ content before that trusted stylesheet is ever appended, so a hostile or
 malformed source document cannot smuggle a stylesheet through this
 directive.
 
+### `GET /api/sources`
+
+One entry per configured source: its config name, plugin-reported
+`source_type` and `display_name`, a **live** reachability probe result,
+whether it is currently syncing, and the kernel's own recorded sync
+history for it (`PLUG-04`). Sorted by name.
+
+```
+$ curl -s http://127.0.0.1:7777/api/sources | jq
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "name": "paperless",
+      "source_type": "paperless",
+      "display_name": "paperless-ngx",
+      "reachable": true,
+      "syncing": false,
+      "last_status": "ok",
+      "last_sync_unix": 1785000000,
+      "last_error": ""
+    },
+    {
+      "name": "silverbullet",
+      "source_type": "silverbullet",
+      "display_name": "SilverBullet",
+      "reachable": false,
+      "syncing": false,
+      "last_status": "error",
+      "last_sync_unix": 1784900000,
+      "last_error": "dial tcp: connection refused"
+    }
+  ]
+}
+```
+
+`reachable` is a **live** `Health` RPC probe made at request time, not a
+cached value — a source can flip from reachable to unreachable between
+two calls with no sync in between. `last_status`, `last_sync_unix` and
+`last_error`, by contrast, come exclusively from the kernel's own
+recorded sync history — a plugin's self-reported last-sync time and last
+error are never trusted for these fields, so a plugin cannot report a
+rosier history than the kernel actually recorded and turn its own health
+chip green. `last_status: ""` (with `last_sync_unix: 0` and `last_error:
+""`) is the neutral "unknown" state for a source that has never completed
+a sync — render this as a neutral indicator, never as a green "ok". One
+plugin's probe failing never fails the whole response: it becomes that
+source's own `reachable: false`, never a `500`.
+
+### `POST /api/sources/{name}/refresh` and `POST /api/sync`
+
+Trigger a manual sync of one configured source, or every configured
+source, through the exact same coordinator entry point the background
+scheduler uses (`KERN-04`) — a manual refresh, a scheduled tick, and the
+`webspaces sync` CLI command all dedupe against each other via the same
+single-flight guarantee. A refresh request for a source that is already
+syncing **coalesces** into that in-flight run and reports its outcome; it
+is never queued behind it and never starts a second concurrent sync for
+that source.
+
+```
+$ curl -s -X POST http://127.0.0.1:7777/api/sources/silverbullet/refresh | jq
+{
+  "schema_version": 1,
+  "source": {
+    "name": "silverbullet",
+    "source_type": "silverbullet",
+    "status": "ok",
+    "item_count": 17,
+    "error": "",
+    "coalesced": false,
+    "finished_unix": 1785000500
+  }
+}
+
+$ curl -s -X POST http://127.0.0.1:7777/api/sync | jq
+{
+  "schema_version": 1,
+  "sources": [
+    { "name": "paperless", "source_type": "paperless", "status": "ok", "item_count": 35, "error": "", "coalesced": false, "finished_unix": 1785000500 },
+    { "name": "silverbullet", "source_type": "silverbullet", "status": "ok", "item_count": 17, "error": "", "coalesced": true, "finished_unix": 1785000500 }
+  ]
+}
+```
+
+`POST /api/sources/{name}/refresh` with an unconfigured `{name}` returns
+`404 source_not_found` in the standard error envelope — `{name}` is
+validated against the configured source set *before* any dispatch, and
+the error message names only the value you sent, never which source
+names actually exist (this route cannot be used to enumerate configured
+sources). `coalesced: true` means this call joined an already-in-flight
+sync for that source rather than triggering a fresh one — the reported
+outcome is still that run's real result, never a distinct
+"already-syncing" rejection.
+
 ## The stable-ID scheme
 
 Every item's `id` is `"{source_type}:{source_id}"` — `source_type` is
@@ -236,14 +349,14 @@ Every item's `provenance` object carries exactly these six keys:
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
+| `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
 | `internal_error` | 500 | any route | An unexpected kernel-side failure (e.g. the local index file itself is unreadable) — not a source or plugin problem. |
 
 ## What is not here yet
 
-This API is deliberately incomplete for v1 (Phase 1). Not yet present,
-and not planned for this phase:
+This API is deliberately incomplete for v1. Not yet present, and not
+planned for this phase:
 
-- **Source filtering and per-plugin health** (`PLUG-04`) — Phase 2.
 - **Full-text search** across a webspace (`KERN-05`) — Phase 3, paired
   with the email source (the first one with enough volume to need it).
 - **Agent permission grants** (`AGENT-01`) — a default-deny, per-plugin

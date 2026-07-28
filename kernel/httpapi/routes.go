@@ -21,19 +21,28 @@ import (
 const schemaVersion = 1
 
 // Router builds the chi router serving /api/webspaces,
-// /api/webspaces/{webspace}/stream, and /api/items/{id} (+ /content,
-// /thumbnail). StreamHandler deliberately takes only *index.Store —
-// httpapi's sync-time read path cannot import kernel/pluginhost, so the
-// stream route is structurally incapable of reaching a plugin (KERN-02 /
+// /api/webspaces/{webspace}/stream, /api/items/{id} (+ /content,
+// /thumbnail), /api/sources, and the manual-refresh routes.
+// StreamHandler deliberately takes only *index.Store — httpapi's
+// sync-time read path cannot import kernel/pluginhost, so the stream
+// route is structurally incapable of reaching a plugin (KERN-02 /
 // Pitfall 1). The /api/items/* routes are the one deliberate exception:
 // fetcher is the request-time, item-open plugin call path (KERN-03).
-func Router(store *index.Store, cfg *config.Config, fetcher Fetcher) chi.Router {
+// prober and refresher are the other two: prober drives GET
+// /api/sources's live reachability probe, and refresher is the same
+// kernel/syncer.Coordinator the scheduler and the CLI use, so every
+// caller of a sync reaches the identical single-flight entry point
+// (D-06).
+func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber, refresher Refresher) chi.Router {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store))
 	r.Get("/api/items/{id}", ItemHandler(store, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
+	r.Get("/api/sources", SourcesHandler(store, prober))
+	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfg, refresher))
+	r.Post("/api/sync", SyncRefreshHandler(refresher))
 	// NotFound only fires for requests that matched none of the routes
 	// above, so this never shadows /api/*: any request under /api/ that
 	// falls through here is genuinely unmatched, and every UI route

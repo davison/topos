@@ -76,8 +76,8 @@ func StreamHandler(store *index.Store) http.HandlerFunc {
 			Items:         make([]streamItem, len(items)),
 		}
 
-		if run, ok, err := store.LatestSyncRun(ctx); err == nil && ok {
-			resp.Sync = syncStatus{Status: run.Status, FinishedUnix: run.FinishedUnix, Error: run.Error}
+		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
+			resp.Sync = aggregateSyncStatus(runs)
 		}
 
 		for i, it := range items {
