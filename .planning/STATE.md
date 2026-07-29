@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-07-28)
 Phase: 02 (two-sources-one-trustworthy-stream) — EXECUTING
 Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-29
+Last activity: 2026-07-29 - Completed quick task 260729-p2n: create a wrapper script that exposes the env vars in .env to the webspaces binary
 
 Progress: [██████████] 100%
 
@@ -125,6 +125,12 @@ None yet.
 - Phase 4 (Signal): Keyring backend extraction must be tested against the user's actual Arch/DE setup; schema-version detection required — spike before planning.
 - Phase 5 (WhatsApp): Highest-risk area. No official API; linked-device route can be de-linked or banned. Spike must answer linking stability, backfill volume, event-stream persistence, and recovery before planning.
 - Firewall/network access from the desktop to Proton Mail Bridge on the home server is not yet opened (bridge binds 127.0.0.1 by default).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260729-p2n | create a wrapper script that exposes the env vars in .env to the webspaces binary | 2026-07-29 | 7becca1 | [260729-p2n-create-a-wrapper-script-that-exposes-the](./quick/260729-p2n-create-a-wrapper-script-that-exposes-the/) |
 
 ## Deferred Items
 
