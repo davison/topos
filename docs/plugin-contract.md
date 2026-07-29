@@ -56,6 +56,15 @@ a local database file, a linked-device WebSocket) — the read-only
 guarantee lives at the `SourcePlugin` RPC boundary, not inside a plugin's
 own implementation.
 
+One thing the contract does **not** give you: containment. A plugin is a
+regular native binary launched as a subprocess with the full local OS
+access of the user who runs the kernel — `hashicorp/go-plugin` is a
+transport, not a sandbox. The read-only shape above constrains what the
+*kernel* can ask a plugin to do; it does not constrain what a plugin
+binary can do on its own. Installing a third-party plugin is therefore
+the same trust decision as installing the kernel binary itself: only run
+plugin binaries you built yourself or whose source you trust.
+
 ## Depending on the SDK
 
 A plugin is a separate Go module (or, if the source plugin's language
