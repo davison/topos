@@ -35,7 +35,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **UI-03**: Items render inline previews appropriate to type (email body, chat thread, note, document)
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
 - [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
-- [ ] **UI-06**: Sync status and plugin health are visible in the UI
+- [x] **UI-06**: Sync status and plugin health are visible in the UI
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
 

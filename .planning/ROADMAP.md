@@ -98,7 +98,7 @@ Plans:
 
 **Gap closure** *(from 02-UAT.md — G-02-1, major)*
 
-- [ ] 02-06-PLAN.md — Remove the `app.css` theme entries that shadow Tailwind's container scale (collapsing the health-chip tooltip and the index page column), plus a built-stylesheet recurrence guard
+- [x] 02-06-PLAN.md — Remove the `app.css` theme entries that shadow Tailwind's container scale (collapsing the health-chip tooltip and the index page column), plus a built-stylesheet recurrence guard
 
 **UI hint**: yes
 
@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
-| 2. Two Sources, One Trustworthy Stream | 5/5 | Complete   | 2026-07-29 |
+| 2. Two Sources, One Trustworthy Stream | 6/6 | Complete   | 2026-07-29 |
 | 3. Email in the Webspace | 0/TBD | Not started | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
