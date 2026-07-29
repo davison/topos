@@ -56,14 +56,20 @@ module later without re-checking that isolation still holds.
 Webspaces needs two things from you: your paperless-ngx credentials in the
 environment, and a config file describing your webspaces.
 
-1. Set your paperless-ngx connection details as environment variables
-   (put these in a `.env` file at the repo root for local development —
-   it's gitignored — or export them in your shell):
+1. Set your source connection details as environment variables (put these
+   in a `.env` file at the repo root for local development — it's
+   gitignored — or export them in your shell):
 
    ```bash
    export PAPERLESS_URL="https://paperless.example.lan:8000"
    export PAPERLESS_TOKEN="<your paperless-ngx API token>"
+   export SB_URL="https://silverbullet.example.lan:3000"
+   export SB_AUTH_TOKEN="<your SilverBullet auth token>"
    ```
+
+   This is the same `.env` file that `./scripts/run-with-env.sh` and
+   `scripts/e2e-smoke.sh` both source — put all four keys in one place and
+   both scripts pick them up.
 
 2. Copy the example config and edit it:
 
@@ -86,6 +92,19 @@ make build              # builds the SPA, the kernel binary, and the paperless p
 ./bin/webspaces sync    # runs one sync cycle against your configured sources
 ./bin/webspaces serve   # starts the kernel's HTTP API + embedded web UI
 ```
+
+If your credentials live in a repo-root `.env` (see Configure above), use the
+wrapper instead of exporting them by hand:
+
+```bash
+./scripts/run-with-env.sh serve   # same, with .env exported into the process
+```
+
+`scripts/run-with-env.sh` sources the gitignored repo-root `.env`, exports
+its keys, and `exec`s `bin/webspaces` with whatever arguments follow — so it
+works from a fresh shell with nothing pre-exported, and any `webspaces`
+subcommand works the same way (`./scripts/run-with-env.sh sync` as well as
+`serve`). It prints no credential value on any code path.
 
 Then open `http://127.0.0.1:7777/w/<your-webspace-name>` in a browser.
 
