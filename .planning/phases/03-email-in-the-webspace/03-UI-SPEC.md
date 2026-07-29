@@ -1,7 +1,7 @@
 ---
 phase: 3
 slug: email-in-the-webspace
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1/2 — no re-init)"
 created: 2026-07-29
@@ -116,7 +116,7 @@ Accent reserved for: exactly the same list as Phase 2 — "Open in source" CTA, 
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Probe run over 5 elements: E1 search-box (interactive-control, new), E2 search-results-list (list-collection, new), E3 sender field in stream-row + detail-pane (list-collection/media extension, not a new element), E4 detail-pane email HTML body (media, reuses an existing branch verbatim), E5 health chip for the email/Proton source (nav, inherited pattern, new source_type only). **32 applicable considerations: 21 covered, 1 backstop, 10 dismissed (with reasons), 0 unresolved.**
+Probe run (ui-consideration-probe engine, post-verification per Step 9.5) over 5 elements: E1 search-box (interactive-control, new), E2 search-results-list (list-collection, new), E3 sender field in stream-row + detail-pane (list-collection/media extension, not a new element), E4 detail-pane email HTML body (media, reuses an existing branch verbatim), E5 health chip for the email/Proton source (nav, inherited pattern, new source_type only). Element kinds and all resolutions confirmed with the user this session. **36 applicable considerations: 16 covered, 1 backstop, 19 dismissed (with reasons), 0 unresolved.** (The table also retains a few informational rows beyond the probe's applicable set — E4 populated/zero-one-many and E5 populated/zero-one-many — kept for inheritance clarity.)
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -145,7 +145,7 @@ Probe run over 5 elements: E1 search-box (interactive-control, new), E2 search-r
 | populated | E4 detail-pane email HTML body | ✅ covered | Sanitized email HTML renders in the already-existing `content.rendition?.mime_type === 'text/html'` iframe branch (`DetailPane.svelte`) — zero new branch, zero new component; email is simply a second source returning `text/html`, the exact condition SilverBullet's rendered markdown already satisfies. |
 | loading / error / overflow / long-text / partial / zero-one-many | E4 detail-pane email HTML body | ➖ dismissed | Fully inherited from Phase 1/2's already-resolved detail-pane rows (skeleton while loading, generic error alert + retry, iframe-internal scroll, never pushes pane layout) — email introduces no new branch logic beyond the mime-type check above. |
 | error | E5 health chip (email/Proton source) | ✅ covered | Bridge-unreachable renders the existing `destructive`-tone dot + "{display_name} — unreachable since {relative}" tooltip (Phase 2's unchanged Copywriting Contract row) — satisfies SRC-01 criterion 5's UI half with zero new UI code; see Copywriting Contract note on the backend-owned "actionable" half. |
-| populated / loading / partial / zero-one-many / overflow / long-text | E5 health chip (email/Proton source) | ➖ dismissed | Fully inherited from Phase 2's already-resolved E1 rows — email/Proton is simply a third `source_type` flowing through the same generic chip component; no per-source branching exists or is needed. |
+| empty / populated / loading / partial / zero-one-many / overflow / long-text | E5 health chip (email/Proton source) | ➖ dismissed | Fully inherited from Phase 2's already-resolved E1 rows — email/Proton is simply a third `source_type` flowing through the same generic chip component; no per-source branching exists or is needed. Empty (no health report yet for the Proton source) renders Phase 2's neutral/muted "unknown" dot until the first `Health()` resolve — never a false-green flash (dismissed-as-inherited, user-confirmed this session). |
 
 **Dedup (SRC-01 criterion 3) has no independent UI row above** because it requires no new UI logic: a message merged across several matched labels arrives as one `Item` whose `labels` array already contains every matched label, and `StreamRow.svelte`'s existing `{#each item.labels as label}` loop already renders one `Badge` per array entry — the same mechanism that already renders multiple paperless tags on one row. One row, multiple label badges, is the correct and already-covered visual proof of dedup; no plan task should add a new rendering path for it.
 
@@ -165,11 +165,11 @@ Install command for the executor: `npx shadcn-svelte@latest add input`
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 6/6 dimensions, 2026-07-29)
