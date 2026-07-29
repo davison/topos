@@ -1,27 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 02-two-sources-one-trustworthy-stream
 source: [02-VERIFICATION.md]
 started: 2026-07-29T10:50:00Z
-updated: 2026-07-29T18:05:00Z
+updated: 2026-07-29T18:40:00Z
 ---
 
 ## Current Test
 
-number: 3
-name: Final visual confirmation that G-02-1's fix renders correctly in a real browser
-expected: |
-  Run `make build`, then `./bin/webspaces serve`, open http://127.0.0.1:7777/ —
-  (1) the index page renders a normal-width column and each webspace is a full-width
-  card showing its name (e.g. "house-move") and item count, not a few-pixels-wide
-  clickable sliver; (2) on /w/house-move, hovering a source health chip shows a
-  tooltip bubble wide enough to read the entire sentence, including the full error
-  text on an unreachable source; (3) if a filtered-empty state is reachable via a
-  source filter chip, its copy renders as a readable paragraph rather than a ~16px
-  column; (4) a genuinely errored stream (StreamError) also renders at readable
-  width if reachable. Intended widths 20rem/48rem/28rem per 02-UI-SPEC.md — no
-  recurrence of the ~10px/~64px/~16px collapse from test 1.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -39,14 +26,14 @@ evidence: "Fresh general-purpose subagent (no session context, isolation rules b
 
 ### 3. Final visual confirmation that G-02-1's fix renders correctly in a real browser
 expected: Index page column at normal width with full-width webspace cards (name and item count visible and clickable); health-chip tooltip on /w/house-move readable in full, including untruncated error text on an unreachable source; StreamEmpty's filtered-empty variant and StreamError copy at readable paragraph width where reachable. Widths 20rem/48rem/28rem per 02-UI-SPEC.md; no recurrence of the collapse reported in test 1. (Fix verified at CSS-mechanism level in 02-VERIFICATION.md — this is the final pixel-render confirmation.)
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 3
-passed: 1
+passed: 2
 issues: 1
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
@@ -55,6 +42,8 @@ blocked: 0
 - gap_id: G-02-1
   truth: "Hovering a source health chip shows a readable tooltip (relative time + full untruncated error), and the index page's webspace link renders its name as a normally-sized clickable element"
   status: resolved
+  resolved_by: 02-06-PLAN.md
+  resolved_at: 2026-07-29
   reason: "User reported: tooltip when hovering the health chip is only ~10px wide, none of the text readable; similar issue on the index page — a clickable element below the 'webspaces' title is a few pixels wide with no visible text (links to /w/house-move). All other Test 1 checks passed."
   severity: major
   test: 1
