@@ -26,7 +26,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [ ] **SRC-02**: Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown
 - [ ] **SRC-03**: WhatsApp plugin runs as a whatsmeow linked device with its own persistent message store; degrades gracefully on de-link/ban; matches on group names
 - [x] **SRC-04**: paperless-ngx plugin via REST API; matches on tags; exact deep links to documents
-- [ ] **SRC-05**: SilverBullet plugin; matches on tags/pages; exact deep links to pages
+- [x] **SRC-05**: SilverBullet plugin; matches on tags/pages; exact deep links to pages
 
 ### UI
 
@@ -34,7 +34,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [ ] **UI-02**: User can filter the stream by source
 - [x] **UI-03**: Items render inline previews appropriate to type (email body, chat thread, note, document)
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
-- [ ] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
+- [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
 - [ ] **UI-06**: Sync status and plugin health are visible in the UI
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
