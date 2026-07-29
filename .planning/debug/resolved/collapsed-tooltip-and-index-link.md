@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-02-1: the tooltip when hovering over the health chip is only about 10px wide and so none of the text is readable. There is a similar issue on the index page too where something clickable exists below the title 'webspaces' but is also only a few pixels wide and displaying no text. Clicking it takes you to /w/house-move. Other than the 2 styling issues, looks perfect"
 created: 2026-07-29T12:30:00Z
-updated: 2026-07-29T12:55:00Z
+updated: 2026-07-29T18:05:00Z
 ---
 
 ## Current Focus

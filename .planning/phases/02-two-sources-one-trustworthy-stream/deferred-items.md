@@ -43,3 +43,31 @@ all (absent entirely = skip the check; present-but-empty = still an
 error).
 
 **Status:** open.
+
+## 02-06: `e2e-smoke.sh` paperless deep-link check fails on `link.url` prefix
+
+**Found during:** 02-06-PLAN.md Task 2, while running the full smoke test
+to verify the stylesheet stage against the live server. (This entry was
+claimed in `02-06-SUMMARY.md` but not actually written at the time; added
+during phase re-verification so the record matches the SUMMARY.)
+
+**Issue:** After the stylesheet stage passed, `scripts/e2e-smoke.sh`
+failed at a pre-existing, unrelated check: a paperless item's `link.url`
+did not start with the expected `$PAPERLESS_URL/documents/` prefix. This
+concerns paperless-ngx deep-link construction (or a
+`PAPERLESS_URL`/configured-source-URL mismatch in the execution
+environment), not anything in 02-06's CSS/theme scope.
+
+**Why deferred, not fixed here:** outside 02-06's declared
+`files_modified` (`web/src/app.css`, `scripts/assert-stylesheet.sh`,
+`scripts/e2e-smoke.sh`'s stylesheet stage only) and pre-existing — the
+same check predates the gap-closure plan. 02-VERIFICATION.md's truth #1
+separately verified the deep-link construction logic itself; the failure
+is environment-dependent.
+
+**Suggested resolution:** reproduce with the configured
+`[sources.paperless] base_url` and the `PAPERLESS_URL` env var printed
+side by side; either align the smoke test's expectation with the
+configured base URL or normalize the URL the paperless plugin emits.
+
+**Status:** open.
