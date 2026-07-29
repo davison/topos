@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 02-two-sources-one-trustworthy-stream
 source: [02-VERIFICATION.md]
 started: 2026-07-29T10:50:00Z
@@ -41,5 +41,21 @@ blocked: 0
   reason: "User reported: tooltip when hovering the health chip is only ~10px wide, none of the text readable; similar issue on the index page — a clickable element below the 'webspaces' title is a few pixels wide with no visible text (links to /w/house-move). All other Test 1 checks passed."
   severity: major
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "web/src/app.css lines 45-52 place the UI-SPEC spacing tokens (--spacing-xs: 4px ... --spacing-3xl: 64px) inside the Tailwind v4 @theme inline block; --spacing-<key> theme entries shadow the default --container-<key> scale, so the built CSS compiles .max-w-xs{max-width:4px}, .max-w-md{max-width:16px}, .max-w-3xl{max-width:64px}. Tooltip (w-fit max-w-xs) collapses to ~10px; index page's <main class='mx-auto max-w-3xl'> collapses to 64px and Card's overflow-hidden clips the webspace link to a few px. Latent victims: StreamEmpty.svelte / StreamError.svelte (max-w-md = 16px), not rendered during UAT."
+  artifacts:
+    - path: "web/src/app.css"
+      issue: "seven --spacing-<named> tokens in @theme inline shadow Tailwind v4's container scale (used by zero utilities — pure documentation in a live namespace)"
+    - path: "web/src/lib/components/ui/tooltip/tooltip-content.svelte"
+      issue: "victim via w-fit max-w-xs (symptom 1: ~10px tooltip)"
+    - path: "web/src/routes/+page.svelte"
+      issue: "victim via max-w-3xl on <main> (symptom 2: collapsed index column, clipped webspace link)"
+    - path: "web/src/lib/components/StreamEmpty.svelte"
+      issue: "latent victim via max-w-md (16px) — not rendered during UAT"
+    - path: "web/src/lib/components/StreamError.svelte"
+      issue: "latent victim via max-w-md (16px) — not rendered during UAT"
+  missing:
+    - "Remove/relocate the seven --spacing-<named> entries out of the @theme block (plain :root custom properties or renamed namespace); no consumers reference them as utilities"
+    - "Rebuild and assert built CSS resolves .max-w-3xl to 48rem, .max-w-xs to 20rem, .max-w-md to 28rem"
+    - "Extend e2e-smoke.sh stylesheet assertion to reject collapsed max-width values (recurrence guard)"
+    - "Visually re-check tooltip, index link, StreamEmpty and StreamError after fix"
+  debug_session: .planning/debug/collapsed-tooltip-and-index-link.md
