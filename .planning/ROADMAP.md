@@ -77,7 +77,7 @@ Notes:
   4. An item whose source is unreachable or has been deleted shows an explicit unavailable/stale state in the stream and detail pane, never a blank pane or a silent 404
   5. Config grants agent read access and action hand-off separately, per plugin, defaulting to deny — a plugin with no grant is absent from agent-facing API responses
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 **Wave 1**
 
@@ -91,6 +91,10 @@ Plans:
 
 - [x] 02-03-PLAN.md — UI trust surface: health chips, source filter, staleness and unavailable states
 - [x] 02-04-PLAN.md — Default-deny agent grants in a `/agent/v1` namespace, plus the reference mock plugin and the PLUG-05 validation exercise
+
+**Gap closure** *(from 02-VERIFICATION.md — 1 blocker, truth #6 failed)*
+
+- [ ] 02-05-PLAN.md — SilverBullet `Match` must fail with `codes.Unavailable` on a non-404 read failure instead of returning a silently-empty success that wipes the index
 
 **UI hint**: yes
 
