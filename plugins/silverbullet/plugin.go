@@ -98,11 +98,31 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		g.Go(func() error {
 			raw, err := p.client.ReadFile(gctx, f.Name)
 			if err != nil {
-				// A single unreadable page (e.g. deleted between listing
-				// and read, or a transient error) must not fail the whole
-				// sync — it simply never matches, same as a page with no
-				// matching tag/name would.
-				return nil
+				// Discriminate the one read failure that is a safe skip
+				// from every other one, which must fail the whole Match
+				// (docs/plugin-contract.md's Match section, 02-REVIEW.md
+				// CR-01, 02-VERIFICATION.md truth #6):
+				//
+				//   - errors.Is(err, ErrNotFound): the page was deleted or
+				//     renamed between ListFiles and this read. It simply
+				//     never matches, same as a page with no matching
+				//     tag/name would — return nil so the sync proceeds.
+				//   - every other error (dropped connection, TLS failure,
+				//     revoked/expired bearer token, any 5xx, the SPA-shell
+				//     response, a cancelled context): return err unchanged
+				//     so errgroup cancels gctx and g.Wait observes it below.
+				//     Silently treating these the same as a 404 previously
+				//     made Match return a successful, empty MatchResponse
+				//     for a genuine outage occurring after ListFiles had
+				//     already succeeded — which makes
+				//     kernel/correlate.SyncSource call
+				//     ReplaceWebspaceSourceItems with zero items and delete
+				//     every previously-synced SilverBullet row for every
+				//     webspace, while the run is recorded as ok.
+				if errors.Is(err, ErrNotFound) {
+					return nil
+				}
+				return err
 			}
 			body, tags := ExtractTagsAndBody(raw)
 			pagePath := strings.TrimSuffix(f.Name, ".md")
