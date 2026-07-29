@@ -1,7 +1,7 @@
 ---
 phase: 02-two-sources-one-trustworthy-stream
 verified: 2026-07-29T18:00:00Z
-status: human_needed
+status: passed
 score: 11/11 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,6 +9,7 @@ re_verification:
   previous_status: human_needed
   previous_score: 6/6
   gaps_closed:
+
     - "G-02-1: web/src/app.css's seven --spacing-<key> theme entries shadowed Tailwind v4's default container scale, collapsing max-w-xs (health-chip tooltip), max-w-3xl (index page column/card link) and max-w-md (StreamEmpty/StreamError) to 4px/64px/16px instead of their intended 20rem/48rem/28rem"
   gaps_remaining: []
   regressions: []
@@ -41,6 +42,7 @@ Gap-closure plan **02-06** closed G-02-1. This re-verification re-checks the fix
    .max-w-xs{max-width:var(--container-xs)}     --container-xs:20rem
    ```
    No `.max-w-(xs|sm|md|lg|xl|[0-9]xl){max-width:[0-9]+px}` pattern found anywhere in the built file (the exact collapsed-pixel signature of G-02-1 is now absent).
+
 3. **Traced every consumer of the affected utilities** directly in source: `web/src/lib/components/ui/tooltip/tooltip-content.svelte` (`max-w-xs`), `web/src/routes/+page.svelte` (`max-w-3xl` on `<main>`), `web/src/lib/components/StreamEmpty.svelte` (`max-w-md`, both the default and D-09 filtered-empty variant), `web/src/lib/components/StreamError.svelte` (`max-w-md`) — all four consumers exist, are unmodified by this plan, and now resolve through the corrected container-scale values traced in step 2.
 4. **Ran `scripts/assert-stylesheet.sh` against the freshly built stylesheet** (no argument, this session): exit 0, `OK: stylesheet ... passes G-01-2 and G-02-1 guards`.
 5. **Ran the plan's own adversarial fixtures directly** (not trusted from SUMMARY): a synthetic collapsed-pixel CSS fixture (`.max-w-3xl{max-width:64px}`) was correctly **rejected** (non-zero exit); a synthetic `var(--container-*)`-based fixture including Tailwind's legitimate `max-w-px{max-width:1px}` utility was correctly **accepted** (exit 0) — proving the guard discriminates the failure mode without over-triggering on the deliberately excluded `px` key.

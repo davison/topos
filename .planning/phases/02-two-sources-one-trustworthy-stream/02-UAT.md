@@ -14,9 +14,10 @@ updated: 2026-07-29T18:40:00Z
 
 ### 1. Visual confirmation of health chips, filter chips, and staleness states in a real browser
 expected: Two health chips with correct colors; unreachable tooltip with relative time and full error; amber stale markers on SilverBullet rows only; cached detail pane with unreachable alert (never blank); source filter chips update the list and `source` query parameter, surviving reload — all matching 02-UI-SPEC.md.
-result: issue
+result: pass
 reported: "everything passes as described, however the tooltip when hovering over the health chip is only about 10px wide and so none of the text is readable. There is a similar issue on the index page too where something clickable exists below the title 'webspaces' but is also only a few pixels wide and displaying no text. Clicking it takes you to /w/house-move. Other than the 2 styling issues, looks perfect"
 severity: major
+resolution: "Original run passed all checks except the two G-02-1 styling symptoms. G-02-1 was fixed by plan 02-06 (status: resolved below) and the fix visually re-verified in test 3 (pass, 2026-07-29), so this test's expected behavior now holds in full."
 
 ### 2. PLUG-05 third-party self-sufficiency from a genuinely fresh/isolated context
 expected: A truly isolated agent (real dispatched subagent, or human with no prior exposure to this repository) builds a SourcePlugin using only proto/webspaces/v1/plugin.proto, docs/plugin-contract.md, the sdk module, and plugins/mock — no access to plugins/paperless or plugins/silverbullet — producing a clean build with zero or few gaps, corroborating 02-04's in-session two-gap-then-zero-gap result.
@@ -31,8 +32,8 @@ result: pass
 ## Summary
 
 total: 3
-passed: 2
-issues: 1
+passed: 3
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
