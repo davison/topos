@@ -77,7 +77,7 @@ Notes:
   4. An item whose source is unreachable or has been deleted shows an explicit unavailable/stale state in the stream and detail pane, never a blank pane or a silent 404
   5. Config grants agent read access and action hand-off separately, per plugin, defaulting to deny — a plugin with no grant is absent from agent-facing API responses
 
-**Plans**: 5 plans
+**Plans**: 6 plans
 Plans:
 **Wave 1**
 
@@ -95,6 +95,10 @@ Plans:
 **Gap closure** *(from 02-VERIFICATION.md — 1 blocker, truth #6 failed)*
 
 - [x] 02-05-PLAN.md — SilverBullet `Match` must fail with `codes.Unavailable` on a non-404 read failure instead of returning a silently-empty success that wipes the index
+
+**Gap closure** *(from 02-UAT.md — G-02-1, major)*
+
+- [ ] 02-06-PLAN.md — Remove the `app.css` theme entries that shadow Tailwind's container scale (collapsing the health-chip tooltip and the index page column), plus a built-stylesheet recurrence guard
 
 **UI hint**: yes
 
