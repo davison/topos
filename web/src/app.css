@@ -42,14 +42,19 @@
 	--radius-xl: calc(var(--radius) + 4px);
 	--font-sans: 'Inter Variable', system-ui, sans-serif;
 
-	/* Spacing scale (4px multiples) per 01-UI-SPEC.md Spacing Scale. */
-	--spacing-xs: 4px;
-	--spacing-sm: 8px;
-	--spacing-md: 16px;
-	--spacing-lg: 24px;
-	--spacing-xl: 32px;
-	--spacing-2xl: 48px;
-	--spacing-3xl: 64px;
+	/*
+	 * No named --spacing-<key> entries here (G-02-1). The 01-UI-SPEC 4px-multiple
+	 * scale needs no named tokens: Tailwind's untouched base --spacing: 0.25rem
+	 * multiplier already expresses it through numeric utilities —
+	 * 4px→1, 8px→2, 16px→4, 24px→6, 32px→8, 48px→12, 64px→16 (e.g. gap-4 = 16px).
+	 * A named key declared in the spacing theme namespace SHADOWS the container
+	 * key of the same name, which is what every named max-w-* utility resolves
+	 * from. Seven such entries (xs/sm/md/lg/xl/2xl/3xl) previously lived here as
+	 * pure documentation of the scale above, referenced by zero utilities, and
+	 * that shadowing collapsed the health-chip tooltip (max-w-xs) and the index
+	 * page column (max-w-3xl) to a few pixels wide. Do not re-add named spacing
+	 * keys to this block.
+	 */
 }
 
 :root {
