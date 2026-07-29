@@ -123,7 +123,19 @@ Notes:
   4. User can type a query inside a webspace and get ranked, clickable matches across every source in that webspace
   5. The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when the bridge is unreachable
 
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+**Wave 1** *(both plans run in parallel — zero file overlap)*
+
+- [ ] 03-01-PLAN.md — Tracer: one real Proton email travels config → IMAP over TLS → EXAMINE/ENVELOPE scan → Message-ID dedup → index → stream row with sender
+- [ ] 03-03-PLAN.md — Full-text search (KERN-05): FTS5 external-content index with backfill, `Store.Search`, and `GET /api/webspaces/{ws}/search`
+
+**Wave 2** *(both plans run in parallel; blocked on Wave 1)*
+
+- [ ] 03-02-PLAN.md — Email bodies render inline (sanitized HTML rendition + detail-pane sender), plus four independent read-only proofs incl. the `\Seen`-unchanged test
+- [ ] 03-04-PLAN.md — Search UI: search box, ranked results reusing StreamRow with highlighted snippets, and the full state matrix
+
+**UI hint**: yes
 
 Notes:
 
@@ -183,7 +195,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 0/TBD | Not started | - |
+| 3. Email in the Webspace | 0/4 | Planned | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
