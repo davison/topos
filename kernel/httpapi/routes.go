@@ -41,6 +41,7 @@ func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober Heal
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store))
+	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store))
 	r.Get("/api/items/{id}", ItemHandler(store, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))

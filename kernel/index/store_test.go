@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/davison/webspaces/kernel/item"
@@ -414,5 +415,223 @@ func TestSyncingSourceTypes_UnrelatedSourceUnaffected(t *testing.T) {
 	}
 	if syncing["silverbullet"] {
 		t.Error("expected silverbullet, which never started a run, to not be syncing")
+	}
+}
+
+// searchableItem builds an item whose title/preview are distinguishable
+// search targets, unlike sampleItem's fixed "Doc {id}"/"preview text".
+func searchableItem(sourceID string, ts int64, title, preview string) item.Item {
+	it := sampleItem(sourceID, ts)
+	it.Title = title
+	it.Preview = preview
+	return it
+}
+
+// TestSearch_MatchesOnlyTheItemContainingTheWord is the core positive case:
+// seeding two items into a webspace and searching for a word appearing
+// only in the first returns exactly that item.
+func TestSearch_MatchesOnlyTheItemContainingTheWord(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	target := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	other := searchableItem("2", 200, "Garden fence quote", "replacing the back fence")
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{target, other}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "boiler")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected exactly 1 result, got %d: %+v", len(results), results)
+	}
+	if results[0].Item.ID != target.ID {
+		t.Errorf("expected match %q, got %q", target.ID, results[0].Item.ID)
+	}
+}
+
+// TestSearch_NoMatchReturnsEmptySliceNilError proves a query matching no
+// item returns an empty (non-nil) slice and a nil error.
+func TestSearch_NoMatchReturnsEmptySliceNilError(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "nonexistentword")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if results == nil {
+		t.Error("expected a non-nil empty slice, got nil")
+	}
+	if len(results) != 0 {
+		t.Errorf("expected zero results, got %d", len(results))
+	}
+}
+
+// TestSearch_ScopedToOneWebspaceOnly is the load-bearing proof for
+// T-03-15: an item associated only with webspace B must never be returned
+// by a search of webspace A, even when it is the only item matching the
+// query.
+func TestSearch_ScopedToOneWebspaceOnly(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	onlyInB := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "webspace-b", "paperless", []item.Item{onlyInB}); err != nil {
+		t.Fatalf("seed webspace-b: %v", err)
+	}
+	// webspace-a must be a known webspace (so Search isn't trivially empty
+	// because of a 404-shaped "never synced" case), just with no matching
+	// item.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "webspace-a", "paperless", nil); err != nil {
+		t.Fatalf("seed webspace-a: %v", err)
+	}
+
+	results, err := s.Search(ctx, "webspace-a", "boiler")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected an item indexed only in webspace-b to be absent from a webspace-a search, got %+v", results)
+	}
+
+	// Sanity: the same query against webspace-b (where the item actually
+	// lives) does return it.
+	resultsB, err := s.Search(ctx, "webspace-b", "boiler")
+	if err != nil {
+		t.Fatalf("Search webspace-b: %v", err)
+	}
+	if len(resultsB) != 1 || resultsB[0].Item.ID != onlyInB.ID {
+		t.Fatalf("expected webspace-b search to find %q, got %+v", onlyInB.ID, resultsB)
+	}
+}
+
+// TestSearch_TitleMatchRanksAboveviewMatch proves ordering: an item whose
+// title matches the query ranks above an item where only the preview
+// matches.
+func TestSearch_TitleMatchRanksAbovePreviewMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	titleMatch := searchableItem("1", 100, "Boiler quote", "a document about heating")
+	previewMatch := searchableItem("2", 200, "Heating document", "quote from the boiler engineer")
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{titleMatch, previewMatch}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "boiler")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d: %+v", len(results), results)
+	}
+	if results[0].Item.ID != titleMatch.ID {
+		t.Errorf("expected the title match to rank first, got order %v", []string{results[0].Item.ID, results[1].Item.ID})
+	}
+}
+
+// TestSearch_SnippetContainsDelimiters proves the snippet for a matching
+// result is wrapped in the configured open/close delimiters.
+func TestSearch_SnippetContainsDelimiters(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "boiler")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if !strings.Contains(results[0].Snippet, SnippetOpen) || !strings.Contains(results[0].Snippet, SnippetClose) {
+		t.Errorf("expected snippet to contain both delimiters, got %q", results[0].Snippet)
+	}
+}
+
+// TestSearch_EmptyOrWhitespaceQueryReturnsEmptyNoQuery proves ftsQuery's
+// degradation path is reached from Search itself, not just unit-tested in
+// isolation.
+func TestSearch_EmptyOrWhitespaceQueryReturnsEmptyNoQuery(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	for _, q := range []string{"", "   ", `"`} {
+		results, err := s.Search(ctx, "ws", q)
+		if err != nil {
+			t.Fatalf("Search(%q): %v", q, err)
+		}
+		if len(results) != 0 {
+			t.Errorf("Search(%q): expected zero results, got %d", q, len(results))
+		}
+	}
+}
+
+// TestBackfill_ReopeningAPreexistingIndexFindsItsItems simulates opening a
+// pre-Phase-3 index file: an index already holding items, whose items_fts
+// table and triggers are dropped directly through a raw connection (as if
+// this index predated the FTS5 schema addition), must have those items
+// searchable again after being reopened through Open — proving the
+// first-creation backfill, not just the sync triggers, keeps items_fts
+// populated.
+func TestBackfill_ReopeningAPreexistingIndexFindsItsItems(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	it := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	if err := s.ReplaceWebspaceSourceItems(context.Background(), "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	// Simulate a pre-Phase-3 index file by dropping items_fts and its
+	// triggers directly.
+	for _, stmt := range []string{
+		`DROP TRIGGER IF EXISTS items_ai`,
+		`DROP TRIGGER IF EXISTS items_ad`,
+		`DROP TRIGGER IF EXISTS items_au`,
+		`DROP TABLE IF EXISTS items_fts`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			t.Fatalf("simulate pre-Phase-3 index (%s): %v", stmt, err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { reopened.Close() })
+
+	results, err := reopened.Search(context.Background(), "ws", "boiler")
+	if err != nil {
+		t.Fatalf("Search after reopen: %v", err)
+	}
+	if len(results) != 1 || results[0].Item.ID != it.ID {
+		t.Fatalf("expected the pre-existing item %q to be found after backfill, got %+v", it.ID, results)
 	}
 }

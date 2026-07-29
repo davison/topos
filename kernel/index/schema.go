@@ -8,6 +8,9 @@ package index
 // applied) so an external-content
 // FTS5 virtual table can be added over items(title, preview) in Phase 3
 // (KERN-05) with content='items', content_rowid='rowid' and no migration.
+// Phase 3 filled in that design below (items_fts + its three synchronising
+// triggers) — see Store.Open's first-creation backfill for the companion
+// piece that makes items synced before this schema addition searchable too.
 const schema = `
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
@@ -62,4 +65,32 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 
 CREATE INDEX IF NOT EXISTS idx_items_chrono
   ON items(timestamp_unix DESC, secondary_timestamp_unix DESC, id ASC);
+
+-- External-content FTS5 index over items(title, preview) (KERN-05).
+-- items is a normal rowid table, so content_rowid='rowid' refers to its
+-- hidden rowid column, which the TEXT PRIMARY KEY id does not alias —
+-- joining items.rowid = items_fts.rowid recovers each row's real id.
+-- Verified end-to-end against this repo's pinned modernc.org/sqlite
+-- dependency (03-RESEARCH.md Pattern 3).
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+  title, preview, content='items', content_rowid='rowid'
+);
+
+-- Three triggers keep items_fts in sync with every write to items made
+-- through UpsertItems/ReplaceWebspaceSourceItems, with no application-level
+-- index maintenance. They only fire on writes made AFTER they exist —
+-- Store.Open's first-creation backfill ('rebuild') is what makes rows
+-- written before this schema addition searchable too.
+CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
+  INSERT INTO items_fts(rowid, title, preview) VALUES (new.rowid, new.title, new.preview);
+END;
+
+CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
+  INSERT INTO items_fts(items_fts, rowid, title, preview) VALUES('delete', old.rowid, old.title, old.preview);
+END;
+
+CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
+  INSERT INTO items_fts(items_fts, rowid, title, preview) VALUES('delete', old.rowid, old.title, old.preview);
+  INSERT INTO items_fts(rowid, title, preview) VALUES (new.rowid, new.title, new.preview);
+END;
 `

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 
@@ -39,9 +40,34 @@ func Open(path string) (*Store, error) {
 	// checkpointing and cross-statement PRAGMAs behave predictably.
 	db.SetMaxOpenConns(1)
 
+	// Recorded BEFORE the schema is applied, so this reflects whether
+	// items_fts existed in this index file prior to this Open call — an
+	// index file that already holds items synced before Phase 3 would
+	// otherwise have an empty FTS index forever, since the sync triggers
+	// only fire on writes made after they exist.
+	var ftsExistedBefore int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'items_fts'`,
+	).Scan(&ftsExistedBefore); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("index: check items_fts existence: %w", err)
+	}
+
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("index: apply schema: %w", err)
+	}
+
+	if ftsExistedBefore == 0 {
+		// First creation of items_fts in this index file (a brand new
+		// index, or a pre-Phase-3 file opened for the first time since
+		// this schema addition landed) — 'rebuild' re-derives the FTS
+		// index from every existing items row, backfilling anything
+		// synced before the table/triggers existed.
+		if _, err := db.Exec(`INSERT INTO items_fts(items_fts) VALUES('rebuild')`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("index: backfill items_fts: %w", err)
+		}
 	}
 
 	return &Store{db: db}, nil
@@ -237,6 +263,137 @@ ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.i
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("index: iterate stream items for %s: %w", webspaceName, err)
+	}
+	return out, nil
+}
+
+// SnippetOpen and SnippetClose are the delimiter runes Search wraps a
+// matched term with inside SearchResult.Snippet. They are the ASCII
+// control characters STX (0x02) and ETX (0x03) rather than any printable
+// character, because no real subject line or preview text can contain
+// them — a delimiter can therefore never be mistaken for source content.
+// Exported so the HTTP layer and docs/api.md can name the same values
+// instead of duplicating the literal.
+const (
+	SnippetOpen  = "\x02"
+	SnippetClose = "\x03"
+)
+
+// SearchResult is one ranked, snippet-carrying match returned by Search.
+type SearchResult struct {
+	Item    item.Item
+	Snippet string
+	// Rank is the raw bm25() score: more-negative is a better match.
+	Rank float64
+}
+
+// ftsQuery sanitizes raw search-box text into a literal-phrase FTS5 query
+// string safe to hand to MATCH. Handing a caller's raw text straight to
+// MATCH would let a lone double-quote or a leading hyphen produce an FTS5
+// query-syntax error instead of a result set — every caller of Search goes
+// through this helper, never MATCH directly.
+//
+// raw is split on whitespace; each field has any double-quote characters
+// stripped, and fields left empty afterward are dropped; every surviving
+// field is wrapped in double quotes (so FTS5 treats it as a literal phrase
+// rather than query syntax) and joined with spaces (FTS5's implicit AND);
+// the final term is suffixed with * so an in-progress word prefix-matches.
+// Returns "" when no field survives (raw was empty, whitespace-only, or
+// contained only quote characters) — Search treats that as "no query".
+func ftsQuery(raw string) string {
+	fields := strings.Fields(raw)
+	kept := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.ReplaceAll(f, `"`, "")
+		if f == "" {
+			continue
+		}
+		kept = append(kept, `"`+f+`"`)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	kept[len(kept)-1] += "*"
+	return strings.Join(kept, " ")
+}
+
+// searchQuery selects the identical column list StreamItems selects, plus
+// a highlighted snippet and a bm25 relevance rank, scoped to one webspace
+// via the same webspace_items join StreamItems uses. bm25() returns a
+// more-negative score for a better match, so ORDER BY rank ASC is correct
+// (03-RESEARCH.md Pattern 3). Both the webspace name and the sanitized FTS5
+// query are bound parameters — nothing here is built by string
+// concatenation.
+const searchQuery = `
+SELECT items.id, items.source_type, items.source_id, items.title, items.preview,
+       items.timestamp_unix, items.secondary_timestamp_unix, items.fidelity, items.deep_link,
+       items.labels_json, items.provenance_json, items.group_id, items.group_label, items.has_thumbnail,
+       items.synced_at,
+       snippet(items_fts, -1, ?, ?, '…', 12) AS snip,
+       bm25(items_fts) AS rank
+FROM items_fts
+JOIN items ON items.rowid = items_fts.rowid
+JOIN webspace_items ON webspace_items.item_id = items.id
+WHERE webspace_items.webspace_name = ?
+  AND items_fts MATCH ?
+ORDER BY rank ASC
+LIMIT 50
+`
+
+// Search returns items associated with webspaceName whose indexed title or
+// preview match rawQuery, ranked best-first by bm25 relevance, each
+// carrying a snippet highlighting the matched term between SnippetOpen and
+// SnippetClose. A missing, empty, or whitespace/quote-only rawQuery (one
+// that sanitizes to "") returns an empty slice and a nil error without
+// querying the database; a rawQuery that matches no item also returns an
+// empty slice and a nil error. Results are capped at 50 rows. This method
+// only reads the local index — it never triggers a live source call.
+func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string) ([]SearchResult, error) {
+	query := ftsQuery(rawQuery)
+	if query == "" {
+		return []SearchResult{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, searchQuery, SnippetOpen, SnippetClose, webspaceName, query)
+	if err != nil {
+		// ftsQuery's phrase-quoting makes a genuine MATCH syntax error
+		// unreachable in principle, but a malformed query must degrade to
+		// "no results" rather than propagate as a 500 if it ever occurs.
+		if strings.Contains(strings.ToLower(err.Error()), "fts5") {
+			return []SearchResult{}, nil
+		}
+		return nil, fmt.Errorf("index: search %s: %w", webspaceName, err)
+	}
+	defer rows.Close()
+
+	out := []SearchResult{}
+	for rows.Next() {
+		var it item.Item
+		var fidelity string
+		var labelsJSON, provJSON string
+		var hasThumb int
+		var snip string
+		var rank float64
+		if err := rows.Scan(
+			&it.ID, &it.SourceType, &it.SourceID, &it.Title, &it.Preview,
+			&it.TimestampUnix, &it.SecondaryTimestampUnix, &fidelity, &it.DeepLink,
+			&labelsJSON, &provJSON, &it.GroupID, &it.GroupLabel, &hasThumb,
+			&it.SyncedAtUnix, &snip, &rank,
+		); err != nil {
+			return nil, fmt.Errorf("index: scan search result row: %w", err)
+		}
+		it.Fidelity = item.Fidelity(fidelity)
+		it.HasThumbnail = hasThumb != 0
+		if err := json.Unmarshal([]byte(labelsJSON), &it.Labels); err != nil {
+			return nil, fmt.Errorf("index: unmarshal labels for %s: %w", it.ID, err)
+		}
+		if err := json.Unmarshal([]byte(provJSON), &it.Provenance); err != nil {
+			return nil, fmt.Errorf("index: unmarshal provenance for %s: %w", it.ID, err)
+		}
+		out = append(out, SearchResult{Item: it, Snippet: snip, Rank: rank})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("index: iterate search results for %s: %w", webspaceName, err)
 	}
 	return out, nil
 }
