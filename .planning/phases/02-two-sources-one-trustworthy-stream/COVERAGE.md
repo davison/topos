@@ -19,15 +19,15 @@
 |---|---|---|
 | `list-space` — `GET /.fs` (full file listing with per-file metadata) | INTEGRATE | |
 | `read-file` — `GET /.fs/{path}` (raw page body) | INTEGRATE | |
-| `file-metadata` — per-file `lastModified` / `created` / `contentType` / `size` / `perm` from the listing | INTEGRATE | |
+| `file-metadata` — per-file `lastModified`/`created`/`contentType`/`size`/`perm` | INTEGRATE | |
 | `auth-bearer` — `Authorization: Bearer <SB_AUTH_TOKEN>` | INTEGRATE | |
-| `write-file` — `PUT /.fs/{path}` | OPT-OUT | permanently out of scope — the plugin contract is read-only by construction (PLUG-02) and no source-mutating capability may ever be integrated; enforced mechanically by `sdk/contract_test.go` and `plugins/paperless/readonly_test.go` |
+| `write-file` — `PUT /.fs/{path}` | OPT-OUT | permanently out of scope — the plugin contract is read-only by construction (PLUG-02); no source-mutating capability may ever be integrated. Enforced by `sdk/contract_test.go` and readonly tests |
 | `delete-file` — `DELETE /.fs/{path}` | OPT-OUT | permanently out of scope — same read-only guarantee as `write-file` |
-| `head-file` — `HEAD /.fs/{path}` (metadata via `X-Last-Modified` / `X-Created` / `X-Permission` response headers) | OPT-OUT | not needed yet — the full listing already carries the same metadata in one request, so per-file HEAD adds a round trip with no new information at this phase's sync shape; it becomes useful only for incremental change detection, tracked as the `lastModified`-skip optimization noted in `02-RESEARCH.md` Pitfall 2 |
-| `auth-session-cookie` — the interactive `/.auth` login flow | OPT-OUT | not needed — bearer-token auth is the locked approach for a headless plugin (`02-CONTEXT.md`, Claude's Discretion); a session-login flow would add credential handling with no benefit for a machine client. Plan `02-01` Task 1 Step 0 halts and surfaces it if the user's instance turns out to require cookie auth instead, rather than silently degrading |
-| `server-side-search-or-tag-filter` | OPT-OUT | capability does not exist — SilverBullet's HTTP surface has no query, filter or search endpoint (confirmed against the official docs and community discussion in `02-RESEARCH.md` Pitfall 2). Tag and page-name matching is therefore performed client-side in the plugin over the full listing; this is an accepted cost, not an un-decided gap |
+| `head-file` — `HEAD /.fs/{path}` (metadata via response headers) | OPT-OUT | not needed yet — the listing already carries this metadata in one request; HEAD adds a round trip with no new info. Useful only for incremental change detection (`02-RESEARCH.md` Pitfall 2) |
+| `auth-session-cookie` — the interactive `/.auth` login flow | OPT-OUT | not needed — bearer-token auth is the locked approach for a headless plugin (`02-CONTEXT.md`); plan `02-01` Task 1 Step 0 halts if the instance requires cookie auth rather than silently degrading |
+| `server-side-search-or-tag-filter` | OPT-OUT | capability does not exist — no query/filter/search endpoint (`02-RESEARCH.md` Pitfall 2); tag/page-name matching runs client-side over the full listing, an accepted cost |
 | `static-client-assets` — `/.client/*` and the SilverBullet web UI's own routes | OPT-OUT | explicitly out of scope — webspaces links out to the SilverBullet UI via deep links (D-01, exact fidelity) and never proxies or re-serves its assets |
-| `plug/space-script endpoints` — SilverBullet's plug and space-script surfaces | OPT-OUT | explicitly out of scope — running code inside the user's SilverBullet instance is a mutation-shaped capability and contradicts the read-only constraint; leading-underscore plug paths are actively excluded from webspace matching |
+| `plug/space-script endpoints` — SilverBullet's plug and space-script surfaces | OPT-OUT | explicitly out of scope — running code in the user's instance is mutation-shaped and contradicts the read-only constraint; leading-underscore plug paths are excluded from matching |
 
 ## Not an external API integration
 
