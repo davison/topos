@@ -9,7 +9,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **KERN-01**: User can define webspaces in config: each has a keyword mapped to the native categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages)
 - [x] **KERN-02**: Correlation is resolved at sync time and persisted in the local index (never computed at query time)
 - [x] **KERN-03**: Hybrid store: metadata + preview indexed locally; full content fetched live from the source when an item is opened
-- [ ] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
+- [x] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
 - [ ] **KERN-05**: User can full-text search within a webspace (FTS5 over indexed metadata/previews)
 
 ### Plugin Architecture
@@ -17,8 +17,8 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **PLUG-01**: Plugins run as isolated subprocesses under a documented, versioned gRPC contract (published `.proto`)
 - [x] **PLUG-02**: Contract is read-only by construction — no source-mutating methods exist
 - [x] **PLUG-03**: Every item declares deep-link fidelity: exact / anchored / conversation-only
-- [ ] **PLUG-04**: Plugins report health (reachable, last sync, last error) to the kernel
-- [ ] **PLUG-05**: A third party can build a plugin from the contract docs + reference mock plugin alone
+- [x] **PLUG-04**: Plugins report health (reachable, last sync, last error) to the kernel
+- [x] **PLUG-05**: A third party can build a plugin from the contract docs + reference mock plugin alone
 
 ### Source Plugins
 
@@ -31,7 +31,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 ### UI
 
 - [x] **UI-01**: Web UI shows a webspace as a chronological cross-source stream with a detail pane
-- [ ] **UI-02**: User can filter the stream by source
+- [x] **UI-02**: User can filter the stream by source
 - [x] **UI-03**: Items render inline previews appropriate to type (email body, chat thread, note, document)
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
 - [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
@@ -39,7 +39,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
 
-- [ ] **AGENT-01**: Per-plugin permission model, default-deny, defined in config: separately grants (a) agent read access to a source's items and (b) action hand-off via that source's own interfaces
+- [x] **AGENT-01**: Per-plugin permission model, default-deny, defined in config: separately grants (a) agent read access to a source's items and (b) action hand-off via that source's own interfaces
 - [x] **AGENT-02**: Item schema and kernel HTTP API are designed for programmatic/agent consumption (stable IDs, structured content, machine-readable provenance)
 
 ## v1.x Requirements (deferred — v1 architecture must be ready for them)

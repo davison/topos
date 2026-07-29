@@ -14,16 +14,18 @@ Open one webspace and instantly see and grok all related information across ever
 
 - ✓ paperless-ngx plugin — via its REST API over LAN — Phase 1 (real documents synced, previewed, deep-linked; read-only and host-pinned egress enforced by committed tests)
 - ✓ Hybrid data model: plugins sync metadata + previews into a local index; full content fetched live from the source when an item is opened — Phase 1
+- ✓ SilverBullet plugin — wiki/notes content and tags, rendered markdown previews, host-pinned egress, token never logged — Phase 2
+- ✓ Kernel + plugin architecture: source connectors are plugins with a documented contract — Phase 2 (source-agnosticism proven by a second, structurally different source; PLUG-05 fresh-context test showed a third party can build a plugin from contract + mock alone)
+- ✓ Trustworthy multi-source stream: per-source health chips with diagnostic tooltips, source filter chips, manual refresh, staleness states, per-(webspace, source) sync integrity — Phase 2
+- ✓ Default-deny agent permission model (AGENT-01): read-only agent routes gated by per-source grants — Phase 2
 
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phase 1: proven for paperless-ngx tags; other silos pending)*
-- [ ] Kernel + plugin architecture: source connectors are plugins with a documented contract so new sources can be added later, including by other people *(Phase 1: contract shipped, documented in docs/plugin-contract.md, pinned by tests; source-agnosticism proven when the second source lands in Phase 2)*
+- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–2: proven for paperless-ngx tags and SilverBullet tags/pages; IMAP and chat silos pending)*
 - [ ] Email plugin (IMAP) — working against Proton Mail Bridge, generic enough for any IMAP provider
 - [ ] Signal plugin — reads Signal Desktop's local database on the same machine
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
-- [ ] SilverBullet plugin — wiki/notes content and tags
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 1: stream + detail pane + deep links shipped for one source; source filter lands in Phase 2)*
+- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 2: two-source interleaved stream with source filter shipped; email/chat previews pending)*
 
 ### Out of Scope
 
@@ -81,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-28 after Phase 1*
+*Last updated: 2026-07-29 after Phase 2*
