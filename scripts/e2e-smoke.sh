@@ -75,14 +75,7 @@ curl -fsS "$BASE$CSS_PATH" -o "$CSS_TMP" || {
   echo "FAIL: stylesheet linked at $CSS_HREF did not fetch successfully" >&2
   exit 1
 }
-if [ ! -s "$CSS_TMP" ]; then
-  echo "FAIL: stylesheet linked at $CSS_HREF fetched but is empty" >&2
-  exit 1
-fi
-grep -qF '#020617' "$CSS_TMP" || {
-  echo "FAIL: fetched stylesheet does not contain the app's #020617 design token — it may be an empty or placeholder CSS file" >&2
-  exit 1
-}
+"$SCRIPT_DIR/assert-stylesheet.sh" "$CSS_TMP"
 
 echo "==> GET /api/webspaces"
 curl -fsS "$BASE/api/webspaces" | jq -e '.webspaces | length >= 0' >/dev/null
