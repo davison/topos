@@ -150,6 +150,86 @@ source's run happened to be the most recent one recorded anywhere in the
 kernel. `GET /api/webspaces`'s `last_sync` field uses the identical
 aggregate.
 
+### `GET /api/webspaces/{webspace}/search`
+
+Full-text search over every item correlated into `{webspace}` (`KERN-05`).
+Like the stream route, this is a pure index read over the same
+`items`/`items_fts` local index — it never triggers a live plugin call, so
+it's always fast regardless of source-system latency.
+
+```
+$ curl -s "http://127.0.0.1:7777/api/webspaces/house-move/search?q=boiler" | jq
+{
+  "schema_version": 1,
+  "webspace": "house-move",
+  "query": "boiler",
+  "results": [
+    {
+      "id": "paperless:528",
+      "source_type": "paperless",
+      "source_id": "528",
+      "title": "Boiler service invoice",
+      "preview": "annual boiler service",
+      "timestamp_unix": 1784800000,
+      "secondary_timestamp_unix": 1784801234,
+      "labels": ["house and home"],
+      "group_id": "",
+      "group_label": "",
+      "link": { "url": "https://paperless.example.lan/documents/528", "fidelity": "exact" },
+      "thumbnail_url": "/api/items/paperless:528/thumbnail",
+      "provenance": { "...": "identical shape to a stream row" },
+      "snippet": "annual boiler service"
+    }
+  ]
+}
+```
+
+**Query parameter:** `q`. A missing, empty, or whitespace-only `q` returns
+`200` with `"query": ""` and `"results": []` — never an error, and the
+store is not even queried in this case.
+
+**Query syntax:** the raw `q` text is never handed to the underlying FTS5
+`MATCH` operator directly. It's split into whitespace-delimited terms,
+each wrapped as a literal phrase and combined with an implicit AND, with
+the final term prefix-matched — so a lone double-quote, a leading hyphen,
+or any other FTS5-query-syntax character in `q` can never produce a
+search-syntax error. A `q` that would be malformed FTS5 syntax degrades to
+`200` with an empty `results` array, exactly like a `q` that legitimately
+matches nothing — this route never returns a `500` because of what's
+typed into a search box.
+
+**Result shape:** every field a stream row carries (see `GET
+/api/webspaces/{webspace}/stream`, above), flattened, plus one additional
+field:
+
+- `snippet` — a short excerpt around the matched term, with the matched
+  term(s) wrapped between two ASCII control characters: **STX** (hex `02`,
+  JSON-escaped as `\u0002`) opening and **ETX** (hex `03`, JSON-escaped as
+  `\u0003`) closing. These characters cannot occur in real subject lines
+  or preview text, so a consumer can split `snippet` on them to apply its
+  own highlighting without ever mistaking a delimiter for source content.
+  Elided text within the snippet is marked with an ellipsis (`…`).
+
+**Result cap:** results are capped at **50** rows. There is no pagination
+in this version — a query matching more than 50 items simply returns the
+top 50 by rank.
+
+**Ordering:** results are ordered by **bm25 relevance rank, best match
+first** — this is a *different* ordering guarantee from the stream
+route's chronological order (see "Ordering guarantee", below, for the
+explicit cross-reference).
+
+**Webspace scoping:** results are drawn only from items associated with
+`{webspace}` — an item indexed only into a different webspace is never
+returned, no matter how well it matches `q`.
+
+**Unknown webspace:** `GET /api/webspaces/{unknown}/search?q=...` returns
+`404 webspace_not_found`, identical to the stream route's behavior for the
+same unknown name.
+
+This route has **no `/agent/v1` mirror** in this version — see "The
+`/agent/v1` namespace", below, for why.
+
 ### `GET /api/items/{id}`
 
 `{id}` is the stable composite id (`{source_type}:{source_id}`, e.g.
@@ -393,6 +473,13 @@ either namespace performs an action against a source in v1; agent-
 initiated actions (`AGENT-11`, e.g. "draft an email reply") are a v1.x
 concern layered on top of this permission model, not present here.
 
+`GET /api/webspaces/{webspace}/search` has **no `/agent/v1` mirror** in
+this version. An ungated agent-facing search route would let a caller
+search across every source in a webspace regardless of that source's own
+`read` grant, bypassing the per-source read grants this namespace exists
+to enforce — so search stays `/api`-only until a grant-filtered version
+of it is designed.
+
 ## The stable-ID scheme
 
 Every item's `id` is `"{source_type}:{source_id}"` — `source_type` is
@@ -419,6 +506,11 @@ order never depends on SQLite's underlying row order, and it never
 changes between two calls with no intervening sync — the same request
 against the same index state always returns byte-identical JSON.
 
+`GET /api/webspaces/{webspace}/search` uses a **different** ordering
+guarantee — bm25 relevance rank, best match first — not the chronological
+order above. Don't assume search results share the stream's chronological
+ordering; they don't.
+
 ## Provenance keys
 
 Every item's `provenance` object carries exactly these six keys:
@@ -443,7 +535,7 @@ namespace", above).
 
 | Code | HTTP status | Route(s) | Meaning |
 |---|---|---|---|
-| `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream` | `{webspace}` is not configured, or has never completed a sync. |
+| `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search` | `{webspace}` is not configured, or has never completed a sync. |
 | `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
@@ -456,8 +548,6 @@ namespace", above).
 This API is deliberately incomplete for v1. Not yet present, and not
 planned for this phase:
 
-- **Full-text search** across a webspace (`KERN-05`) — Phase 3, paired
-  with the email source (the first one with enough volume to need it).
 - **Agent-initiated actions** (`AGENT-11`, e.g. "draft an email reply") —
   this API is read-only end to end for the whole of v1; action hand-off is
   a v1.x concern layered on top of the `/agent/v1` permission model
