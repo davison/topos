@@ -153,6 +153,14 @@ None - no external service configuration required. This plan is independent of t
 - `Store.Search` and `GET /api/webspaces/{webspace}/search` are ready for 03-04's search UI (`SearchBox.svelte`, `api.ts`'s `searchWebspace()`) to consume directly — the JSON response shape (flattened stream-item fields + `snippet`) was designed specifically so the SPA can reuse its existing stream-row rendering component.
 - No blockers for 03-04 or the email plugin plans; this plan's index-layer change is additive and backward-compatible with every item already synced by paperless-ngx/SilverBullet.
 
+## Self-Check: PASSED
+
+All files created/modified confirmed present on disk (`kernel/index/schema.go`,
+`kernel/index/store.go`, `kernel/index/store_test.go`, `kernel/httpapi/search.go`,
+`kernel/httpapi/search_test.go`, `kernel/httpapi/routes.go`, `docs/api.md`, this
+SUMMARY.md). All task commits confirmed present in `git log --oneline --all`
+(`69ad70c`, `fe46993`, `683c935`).
+
 ---
 *Phase: 03-email-in-the-webspace*
 *Completed: 2026-07-29*
