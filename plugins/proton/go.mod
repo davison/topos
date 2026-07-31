@@ -5,6 +5,13 @@ go 1.25.0
 require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
+	github.com/microcosm-cc/bluemonday v1.0.27
+)
+
+require (
+	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
+	golang.org/x/net v0.26.0 // indirect
 )
 
 // golang.org/x/text is pulled in transitively by github.com/emersion/go-message's
@@ -17,4 +24,4 @@ require (
 // because github.com/davison/webspaces/sdk has no published remote
 // (mirrors plugins/silverbullet and plugins/mock's go.mod, which have
 // the same limitation).
-require golang.org/x/text v0.14.0 // indirect
+require golang.org/x/text v0.16.0 // indirect
