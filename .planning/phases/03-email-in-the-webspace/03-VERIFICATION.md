@@ -1,6 +1,6 @@
 ---
 phase: 03-email-in-the-webspace
-verified: 2026-07-31T15:05:27Z
+verified: 2026-07-31T18:15:00Z
 status: gaps_found
 score: 3/5 must-haves verified
 behavior_unverified: 1
@@ -9,79 +9,62 @@ re_verification:
   previous_status: gaps_found
   previous_score: 3/5
   gaps_closed:
-    - "plugins/proton/plugin.go's toItem() never set Item.TimestampUnix despite fetching INTERNALDATE — now fixed: matched.internalDate carries msg.InternalDate through Match's fetch loop, and toItem() assigns a guarded TimestampUnix (0 for a zero INTERNALDATE, never the -62135596800 sentinel). Confirmed by reading plugin.go and by TestMatch_ItemTimestampIsInternalDate / TestToItem_ZeroInternalDateYieldsZeroTimestamp passing."
-    - "skippedNoMessageID was counted but never logged (03-01's 'counted, logged skip' must-have was half-implemented) — now fixed: a guarded, count-only fmt.Fprintf to the new SourcePlugin.logOut field replaces the blank-identifier discard. Confirmed by reading plugin.go and by TestMatch_EmptyMessageIDSkipIsLogged passing."
-    - "client.go:56's comment contained the literal string 'InsecureSkipVerify', failing 03-01-PLAN.md's own mechanical acceptance grep — now fixed: the parenthetical is restated by concept, with the TLS configuration itself (RootCAs, ServerName) byte-for-byte unchanged. Confirmed: grep -rq InsecureSkipVerify plugins/proton/ now finds nothing."
+    - "plugins/proton/plugin.go's setMailboxCache replaced the whole mailboxCache map on every Match call instead of merging, so a sync cycle covering two or more webspaces left only the last-processed webspace's items Fetch-able — now fixed by mergeMailboxCache, an under-lock entry-wise upsert with a single call site on Match's success path, and the zero-mailboxes-matched branch now performs no cache mutation at all. Confirmed by reading plugin.go directly (mergeMailboxCache at ~line 404, single call site at line 227, no `p.mailboxCache =` reassignment anywhere in the file) and by TestMatch_MailboxCacheSurvivesASecondWebspaceMatch / TestMatch_ZeroMailboxMatchPreservesMailboxCache both passing."
+    - "web/src/lib/components/DetailPane.svelte declared its own local date formatter that omitted the timeZone: 'UTC' pin web/src/lib/format.ts's formatItemDate enforces, so the same item's date could show a different calendar day in the detail pane than in its stream row — now fixed: DetailPane.svelte imports and calls formatItemDate from $lib/format, the local formatter is deleted, and a new source-scan guard (web/src/lib/components/date-format.test.ts) fails the suite if any first-party component reintroduces an un-pinned formatter. Confirmed by reading DetailPane.svelte and by the guard test passing (72/72 frontend tests)."
   gaps_remaining: []
   regressions: []
 gaps:
   - truth: "Emails in Proton folders or labels matching the webspace keyword appear in the stream with sender, subject, and date, and render their body inline in the detail pane (ROADMAP SC1)"
-    status: failed
+    status: partial
     reason: >
-      A new, code-level defect independent of the now-closed TimestampUnix
-      gap: plugins/proton/plugin.go's SourcePlugin.mailboxCache is the
-      ONLY mechanism Fetch/fetchFull uses to resolve a source_id back to
-      the IMAP mailbox it must EXAMINE to read the body
-      (mailboxForSourceID, ~line 391, used by fetchFull ~line 424).
-      setMailboxCache (~line 381) unconditionally REPLACES the whole map
-      rather than merging into it, and Match calls it on both the
-      zero-mailboxes-matched path (~line 146, replaces with an empty map)
-      and the success path (~line 204, replaces with only the mailboxes
-      *this* Match call discovered). kernel/correlate/correlate.go's
-      SyncSource (~line 77-82) calls src.Match once PER CONFIGURED
-      WEBSPACE inside a single sync cycle, sequentially, against the same
-      long-lived plugin subprocess instance (kernel/pluginhost/host.go
-      launches exactly one Plugin per source name and looks it up by
-      source type for every Fetch call — confirmed by reading host.go's
-      bySourceType and Discover). Because each webspace's Match call only
-      rediscovers messages living in mailboxes matching THAT webspace's
-      own keywords, its resulting newCache never contains entries for
-      messages that only matched an earlier webspace's keywords in the
-      same cycle — and setMailboxCache then discards those earlier
-      entries wholesale. Concretely: with two or more configured
-      webspaces that both match Proton mail (config.example.toml's
-      [webspaces.<name>] block format explicitly supports and expects
-      multiple such blocks sharing one [sources.proton] — this is the
-      product's designed core use case per PROJECT.md, not an edge case),
-      after every sync cycle only the webspace processed last in Go's
-      randomized map iteration order has a working Fetch: opening any
-      item belonging to any OTHER webspace returns codes.NotFound
-      ("source_id %q is not known — the index has not been synced since
-      this plugin started") even though the item is visible in the stream
-      and the index genuinely was synced. This directly breaks this
-      truth's "render their body inline in the detail pane" clause for
-      the non-last-synced webspace(s). No test in the phase exercises two
-      sequential Match calls against one plugin instance followed by a
-      Fetch for an item only the first call discovered, so this shipped
-      with every suite green. First surfaced by an independent code
-      review pass after 03-05's gap closure landed (03-REVIEW.md CR-01,
-      committed as 38e4261 on top of 03-05's own commits) and
-      independently re-confirmed here by re-reading plugin.go,
-      correlate.go, and host.go directly — unfixed as of current HEAD.
-      A second, lower-severity issue from the same review remains present
-      too: web/src/lib/components/DetailPane.svelte defines its own local
-      formatDate() (~line 33-40) that omits the timeZone: 'UTC' pin
-      web/src/lib/format.ts's tested formatItemDate() deliberately
-      enforces (format.test.ts asserts this exact pin), so the SAME
-      item's date can render on a different calendar day in the detail
-      pane header than in its own stream row, for any viewer west of UTC.
+      The two functional defects that broke this truth in the prior
+      verification round (multi-webspace Fetch NotFound; detail-pane/
+      stream-row date disagreement) are both genuinely fixed and locked
+      by passing regression tests — confirmed independently in this
+      round by reading plugin.go and DetailPane.svelte and by re-running
+      the full Go and frontend suites (16 proton tests pass + 1
+      environment-gated skip; 72/72 frontend tests; svelte-check 0
+      errors). However, this round's independent code review
+      (03-REVIEW.md, committed aee46d1, superseding the prior round's
+      review) surfaced a NEW, unaddressed CRITICAL finding directly in
+      the same code path this truth depends on: plugins/proton/go.mod
+      pins golang.org/x/net v0.26.0 (indirect, pulled in by
+      github.com/microcosm-cc/bluemonday, which uses
+      golang.org/x/net/html as its HTML tokenizer). Every
+      golang.org/x/net release before v0.33.0 carries CVE-2024-45338
+      (GO-2024-3333): a crafted HTML document can be tokenized
+      non-linearly with respect to its length, a CPU/memory exhaustion
+      DoS vector. plugins/proton/body.go's RenderSanitizedEmail — called
+      from fetchFull, the exact function this truth's "render their body
+      inline in the detail pane" clause requires — runs
+      bluemonday.SanitizeBytes (and therefore this tokenizer) directly
+      over the HTML body of an arbitrary inbound email, with nothing
+      upstream filtering or pre-validating the bytes. Any sender able to
+      deliver mail to the monitored Proton account can trigger this
+      code path with fully attacker-chosen input. This is new to this
+      round (the plugin's HTML-rendering feature that introduced
+      bluemonday shipped in 03-02; no reviewer had previously flagged
+      this specific pinned version), and it directly threatens the
+      phase goal's "stays readable there" clause — a malicious inbound
+      email could hang or exhaust the plugin process on open, rather
+      than merely fail to render. Independently confirmed in this
+      verification pass by reading plugins/proton/go.mod:14 and go.sum:
+      23-24 at current HEAD — still v0.26.0, unbumped.
     artifacts:
-      - path: "plugins/proton/plugin.go"
-        issue: "setMailboxCache (~line 381) replaces p.mailboxCache wholesale instead of merging; called from both Match's empty-match path (~line 146) and success path (~line 204), which SyncSource invokes once per configured webspace against the one shared plugin instance"
-      - path: "kernel/correlate/correlate.go"
-        issue: "SyncSource (~line 77) calls src.Match once per e.Config.Webspaces entry within one sync cycle against a stateful plugin whose only cross-call state (mailboxCache) is not webspace-scoped — the loop itself is correct (per-webspace persistence via ReplaceWebspaceSourceItems is properly isolated), but it exposes the plugin-side defect"
-      - path: "web/src/lib/components/DetailPane.svelte"
-        issue: "local formatDate() (~line 33) omits the UTC pin that web/src/lib/format.ts's formatItemDate() enforces and web/src/lib/format.test.ts asserts, so the detail pane can show a different calendar day than the stream row for the same item"
+      - path: "plugins/proton/go.mod"
+        issue: "golang.org/x/net pinned to v0.26.0 (indirect, via github.com/microcosm-cc/bluemonday), predates the CVE-2024-45338/GO-2024-3333 fix landed in v0.33.0"
+      - path: "plugins/proton/body.go"
+        issue: "RenderSanitizedEmail runs bluemonday.SanitizeBytes (and therefore the vulnerable golang.org/x/net/html tokenizer) directly over an arbitrary inbound email's HTML body with no upstream validation — this is the new attacker-controlled-input surface that makes the stale dependency pin exploitable rather than theoretical"
     missing:
-      - "Merge into plugins/proton/plugin.go's mailboxCache per Match call instead of replacing it (e.g. an under-lock mergeMailboxCache that adds entries rather than assigning a new map), and stop resetting it to an empty map on the zero-mailboxes-matched path — that path has nothing new to contribute for its own webspace but must not erase what an earlier webspace's Match call in the same cycle already contributed"
-      - "A regression test in plugins/proton exercising two sequential Match calls against one plugin instance for disjoint keyword sets (simulating SyncSource's per-webspace loop), followed by a Fetch for a source_id that only the FIRST Match call discovered, asserting it still resolves instead of returning NotFound"
-      - "web/src/lib/components/DetailPane.svelte should import and render the shared, UTC-pinned formatItemDate from $lib/format instead of defining its own local formatDate"
+      - "Bump golang.org/x/net to >= v0.33.0 in plugins/proton/go.mod's require block and regenerate plugins/proton/go.sum"
+      - "Check plugins/silverbullet/go.mod for the same stale golang.org/x/net pin while addressing this (it also renders third-party-sourced content via goldmark/bluemonday, per 03-REVIEW.md CR-01's own note) — outside this phase's own scope but flagged since the same fix motion applies"
+      - "Re-run the plugin's full test suite after the bump to confirm no wire-format or behavioral change in bluemonday's tokenizer output breaks TestRenderSanitizedEmail_* or TestWrapDocument_*"
 human_verification:
-  - test: "Open a webspace with a real, currently-reachable Proton Bridge account configured. Confirm at least one real Proton email appears in the stream interleaved with paperless/SilverBullet items, showing sender before the date, with the subject as the row title. Click it: the detail pane opens and shows the message's body (plain text, or formatted HTML with headings/links/colors if the message has an HTML part)."
-    expected: "The email is visible, correctly dated (the TimestampUnix gap is now fixed), and its body renders in the detail pane. If more than one configured webspace matches Proton mail, additionally confirm the SAME check holds for a webspace that is NOT the last one synced in that cycle — this is exactly the scenario the CR-01 gap above breaks."
-    why_human: "Requires a running kernel/webUI against a real, currently-authenticating Proton Mail Bridge account and visual confirmation of rendered HTML/CSS in a browser — not mechanically checkable from source alone. Blocked this session: the Bridge account credential rejected LOGIN (03-01-SUMMARY.md 'Notable Live-Environment Finding'), an environment condition unchanged since the prior verification."
+  - test: "Open a webspace with a real, currently-reachable Proton Bridge account configured. Confirm at least one real Proton email appears in the stream interleaved with paperless/SilverBullet items, showing sender before the date, with the subject as the row title. Click it: the detail pane opens and shows the message's body (plain text, or formatted HTML with headings/links/colors if the message has an HTML part). If more than one configured webspace matches Proton mail, additionally confirm the SAME check holds for a webspace that is NOT the last one synced in that cycle."
+    expected: "The email is visible, correctly dated, and its body renders in the detail pane for every configured webspace that matches Proton mail — not just the one processed last in a sync cycle. This is the direct live confirmation of the mailboxCache fix closed this round."
+    why_human: "Requires a running kernel/webUI against a real, currently-authenticating Proton Mail Bridge account and visual confirmation of rendered HTML/CSS in a browser — not mechanically checkable from source alone. Blocked again this session: the Bridge account credential rejection recorded in 03-01-SUMMARY.md's 'Notable Live-Environment Finding' is unchanged across three verification passes now."
   - test: "Run `WEBSPACES_PROTON_LIVE_IT=1 PROTON_BRIDGE_ADDR=<addr> PROTON_BRIDGE_USER=<user> PROTON_BRIDGE_PASS=<pass> go test -run TestSeenFlagUnchanged_LiveBridge -v ./plugins/proton/...` against the real Bridge account once its credential issue is corrected."
-    expected: "The test passes, directly proving SRC-01's second success criterion (\\Seen flag unchanged across a full Match+Fetch cycle) against the real mailbox, not just the no-live-Bridge wire-transcript proxy for it."
+    expected: "The test passes, directly proving SRC-01's second success criterion (\\Seen flag unchanged across a full Match+Fetch cycle) against the real mailbox, not just the no-live-Bridge wire-transcript proxy for it (TestIMAPTranscript_ExamineAndPeekOnly / TestPluginIssuesNoIMAPMutatingCommands, both of which still pass)."
     why_human: "Requires a live, currently-authenticating Bridge connection and real mailbox state; the test is implemented and skips cleanly (confirmed again this session: SKIP, not FAIL) but has never been run to a PASS — same Bridge credential blocker as before, unchanged."
   - test: "After running a webspaces sync and opening an email in the detail pane, check the same email in the real Proton web or mobile client and confirm it is still shown as unread there."
     expected: "The email remains unread in Proton's own client — the direct, human-observable proof of the never-mark-read guarantee end to end."
@@ -94,99 +77,102 @@ human_verification:
 # Phase 3: Email in the Webspace Verification Report
 
 **Phase Goal:** User's Proton mail for a topic appears in the webspace stream and stays readable there, and the volume it brings is navigable by searching within the webspace
-**Verified:** 2026-07-31T15:05:27Z
+**Verified:** 2026-07-31T18:15:00Z
 **Status:** gaps_found
-**Re-verification:** Yes — after gap closure plan 03-05 (INTERNALDATE reaches Item.TimestampUnix, the empty-Message-Id skip is now logged, TLS-comment hygiene)
+**Re-verification:** Yes — after gap closure plan 03-06 (mailboxCache accumulates across webspaces instead of being replaced; DetailPane date renders through the shared UTC-pinned formatter)
+
+**Note on MVP mode:** ROADMAP.md marks this phase `Mode: mvp`, but its `Goal:` line is not phrased as a User Story (`As a … I want to … so that …`) — a discrepancy the phase's own plans (03-05, 03-06) already noted and deliberately did not resolve by inventing one. Running `user-story.validate` against the goal text confirms `valid: false`. The verification task for this round was dispatched with the standard goal-backward success-criteria list (not a User Story), matching how the two prior verification rounds for this exact phase were conducted. This report follows that established precedent and uses standard goal-backward verification rather than the MVP User Flow Coverage format; flagging this here rather than silently proceeding, per the MVP-mode format guard's intent.
 
 ## Goal Achievement
 
-### Observable Truths (mapped to ROADMAP Success Criteria)
+### Observable Truths
 
-| # | Truth (ROADMAP SC) | Status | Evidence |
-|---|---------|--------|----------|
-| 1 | Emails appear in the stream with sender, subject, and date, and render their body inline in the detail pane | ✗ FAILED | Sender, subject, and date now all work: `plugins/proton/plugin.go`'s `toItem()` (line ~336-358) now assigns a guarded `Item.TimestampUnix` from `matched.internalDate`, populated from `msg.InternalDate` in `Match`'s fetch loop (line 188). Confirmed by reading the code and by `TestMatch_ItemTimestampIsInternalDate`/`TestToItem_ZeroInternalDateYieldsZeroTimestamp` passing, and by tracing the value through `kernel/item/item.go FromProto` → `kernel/index/store.go`'s `ORDER BY items.timestamp_unix DESC` → `web/src/lib/format.ts`'s UTC-pinned `formatItemDate`. **But "render their body inline in the detail pane" is newly found broken**: `plugins/proton/plugin.go`'s `mailboxCache` — the only state `Fetch` uses to resolve a `source_id` to a mailbox — is replaced (not merged) on every `Match` call, and `kernel/correlate/correlate.go`'s `SyncSource` calls `Match` once per configured webspace within one sync cycle against the same long-lived plugin instance. With 2+ webspaces both matching Proton mail, opening an email belonging to any webspace but the last one synced in that cycle returns `codes.NotFound` from `fetchFull`, even though the item is visible in the stream. See gap below (CR-01). A related, lower-severity issue also remains: `DetailPane.svelte`'s local `formatDate()` omits the UTC pin `format.ts`'s tested `formatItemDate()` enforces, so the same item's date can render on a different calendar day in the detail pane vs. the stream row. |
-| 2 | Reading an email never marks it read in Proton — proven by an automated test asserting `\Seen` is unchanged after a full sync and a detail fetch | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | Unchanged from the prior verification: `readonly_test.go`'s AST scan and `imap_transcript_test.go`'s wire-transcript test still prove only `EXAMINE`/`BODY.PEEK[` are ever issued, no mutating IMAP commands. `TestSeenFlagUnchanged_LiveBridge` is implemented and still skips cleanly (confirmed this session — SKIP, not FAIL) but has never run to a PASS against a real Bridge account; routed to human verification, same environment blocker as before (Bridge credential rejection, unchanged). |
-| 3 | An email carrying several Proton labels appears exactly once, deduped by Message-ID | ✓ VERIFIED | `TestIMAPTranscript_ExamineAndPeekOnly` (unchanged) and the new `TestMatch_ItemTimestampIsInternalDate` (which also asserts exactly one item results from two matching mailboxes sharing one Message-ID) both pass. |
-| 4 | User can type a query inside a webspace and get ranked, clickable matches across every source | ✓ VERIFIED | Unaffected by this plan's changes. `kernel/index/store.go`'s `Search` and `kernel/httpapi/search.go`'s `SearchHandler` remain fully unit-tested and wired to `SearchBox.svelte`/`SearchResults.svelte`. `go test ./kernel/index/... ./kernel/httpapi/...` passes. |
-| 5 | Bridge unreachable produces a specific, timely, actionable health error rather than a hang | ✓ VERIFIED | Unaffected by this plan's changes. `Health()` still uses a bounded 5s dial+login and returns `Reachable:false` + a specific `LastError`. Previously confirmed live (03-01-SUMMARY.md). |
+| # | Truth | Status | Evidence |
+|---|-------|--------|----------|
+| 1 | Emails in Proton folders/labels matching the webspace keyword appear in the stream with sender, subject, date, and render body inline in the detail pane (SC1) | ✗ FAILED (partial) | Both prior functional blockers (mailboxCache replace-not-merge; DetailPane date drift) are genuinely fixed and test-locked. A new, independently-confirmed CRITICAL supply-chain vulnerability (stale `golang.org/x/net`, CVE-2024-45338) sits unaddressed in the exact HTML-rendering code path this truth requires. See gap below. |
+| 2 | Reading an email inside webspaces never marks it read in Proton — proven by an automated test asserting `\Seen` unchanged after a full sync and a detail fetch (SC2) | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | `plugins/proton/readonly_test.go`'s `TestPluginIssuesNoIMAPMutatingCommands` (AST scan forbidding IMAP-mutating identifiers) and `plugins/proton/imap_transcript_test.go`'s `TestIMAPTranscript_ExamineAndPeekOnly` (wire-transcript assertion: `EXAMINE`/`BODY.PEEK[` present, `SELECT`/`STORE`/`EXPUNGE`/`APPEND`/`COPY`/`MOVE`/`DELETE` absent, across a full Match+Fetch cycle) both pass — code-level proof no `\Seen`-setting command is ever issued. The live-Bridge test that would assert the actual flag value on a real mailbox (`TestSeenFlagUnchanged_LiveBridge`) still SKIPs — confirmed again this session — due to the unchanged Bridge credential blocker (03-01-SUMMARY.md). No behavioral test has ever run to PASS against a real account. |
+| 3 | An email carrying several Proton labels appears exactly once in the stream, deduped by Message-ID (SC3) | ✓ VERIFIED | `plugins/proton/plugin.go` `Match`'s `byMessageID` map merges matches by `normalizeMessageID(msg.Envelope.MessageId)`, appending the mailbox leaf to `labels` on a repeat hit rather than creating a second item. `TestIMAPTranscript_ExamineAndPeekOnly` asserts exactly 1 item is returned for a message present in two matching mailboxes, with both leaf names present in `item.GetLabels()`. Confirmed passing. |
+| 4 | User can type a query and get ranked, clickable matches across every source in the webspace (SC4) | ✓ VERIFIED | `kernel/httpapi/search.go` + `kernel/index` FTS5 bm25-ranked query, `kernel/httpapi/search_test.go`'s 7 tests all pass (unknown webspace 404, empty/whitespace query → empty results not error, single-quote malformed query → 200 not 500, zero-match, one-match-with-snippet). Frontend `SearchBox.svelte`/`SearchResults.svelte`/`format.ts`'s `parseSnippet`/`searchVariant` unchanged this round, covered by passing `format.test.ts`. Unchanged and previously verified; re-confirmed passing this round. |
+| 5 | The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when unreachable (SC5) | ✓ VERIFIED | `plugins/proton/client.go`: `tlsConfig := &tls.Config{ServerName: bridgeCertServerName}` with an explicit `RootCAs` pool built from the pinned exported Bridge certificate (falls back to nil/system pool with a logged warning, never a silent `InsecureSkipVerify` — confirmed absent via `grep -rq InsecureSkipVerify plugins/proton/` finding nothing). `plugin.go`'s `Health` calls `p.client.connect(healthDialTimeout)` (a bounded dial, not an unbounded one) and on error returns `&webspacesv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil` — a structured, non-hanging, non-panicking response. |
 
-**Score:** 3/5 truths verified (1 present-but-behavior-unverified, 1 failed)
+**Score:** 3/5 truths verified (1 present, behavior-unverified; 1 failed/partial — see gap)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `plugins/proton/plugin.go` `matched.internalDate` / `toItem` `TimestampUnix` | INTERNALDATE reaches the item's primary timestamp | ✓ VERIFIED | Field present (line ~53), populated at line 188, assigned with a zero-guard at line ~357. `go test -run 'TestMatch_ItemTimestampIsInternalDate|TestToItem_ZeroInternalDateYieldsZeroTimestamp'` passes. |
-| `plugins/proton/plugin.go` `SourcePlugin.logOut` / skip log line | Counted empty-Message-Id skip is also logged, count-only | ✓ VERIFIED | `logOut io.Writer` field present, initialized to `os.Stderr`; guarded `fmt.Fprintf` at line ~211 emits `"webspaces-plugin-proton: match: skipped %d message(s) with no Message-Id header"`. `TestMatch_EmptyMessageIDSkipIsLogged` passes and asserts the seeded subject never leaks into the log. |
-| `plugins/proton/client.go` `bridgeCertServerName` comment | No textual match for the TLS opt-out field, TLS config unchanged | ✓ VERIFIED | `grep -rq InsecureSkipVerify plugins/proton/` finds nothing; `RootCAs`/`ServerName` still present and unchanged. |
-| `plugins/proton/plugin.go` `mailboxCache` / `setMailboxCache` | Fetch can resolve any synced item's mailbox regardless of which webspace was synced last | ✗ **STUB (logic bug)** | `setMailboxCache` replaces the whole map on every `Match` call instead of merging; confirmed broken for any deployment with 2+ webspaces sharing the Proton source (see gap CR-01). No test exercises this path. |
-| `web/src/lib/components/DetailPane.svelte` date rendering | Detail pane date matches the stream row's date (both UTC-pinned) | ⚠️ ORPHANED-FROM-FIX | Local `formatDate()` does not use the shared `formatItemDate` from `$lib/format`; `format.ts`'s UTC pin is not applied here, so the two renderers can disagree for viewers west of UTC. |
+| `plugins/proton/plugin.go` | `mergeMailboxCache` entry-wise upsert; single call site on Match's success path; zero-mailboxes-matched branch performs no cache mutation | ✓ VERIFIED | Confirmed by reading: `mergeMailboxCache` at ~line 404 (`p.mailboxMu.Lock()`, iterates `discovered`, upserts per key, never re-binds the map); single call site `p.mergeMailboxCache(discovered)` at line 227; `grep -c 'p\.mailboxCache = '` finds zero re-bindings. |
+| `plugins/proton/mailbox_cache_test.go` | Two regression tests simulating the per-webspace Match loop | ✓ VERIFIED | `TestMatch_MailboxCacheSurvivesASecondWebspaceMatch` and `TestMatch_ZeroMailboxMatchPreservesMailboxCache` both exist and pass; SUMMARY quotes their pre-fix RED output (`codes.NotFound`) confirming they were observed failing for the right reason before the fix. |
+| `plugins/proton/imap_transcript_test.go` | Fourth seeded mailbox (`Labels/GammaTeam`) with a distinct Message-Id | ✓ VERIFIED | `gammaMessageID`/`sharedMessageID` consts present; `Labels/GammaTeam` mailbox seeded; `TestIMAPTranscript_ExamineAndPeekOnly`, `TestMatch_ItemTimestampIsInternalDate`, `TestMatch_EmptyMessageIDSkipIsLogged` all still pass against the extended fixture. |
+| `web/src/lib/components/DetailPane.svelte` | Renders date through shared `formatItemDate`, no local formatter | ✓ VERIFIED | `import { detailPaneState, formatItemDate } from '$lib/format';` present; `{formatItemDate(item.timestamp_unix)}` at the header date span; `toLocaleDateString` absent from the file (`grep` confirms zero matches). |
+| `web/src/lib/components/date-format.test.ts` | Source-scan guard over top-level components | ✓ VERIFIED | New file exists, well-formed (not a stub): enumerates top-level `.svelte` files, asserts non-empty list, asserts no `toLocaleDateString`, asserts every `timestamp_unix`-referencing component imports `formatItemDate`. Passes. |
+| `plugins/proton/go.mod` | Dependency set free of known-exploitable CVEs in code paths handling attacker-controlled input | ✗ GAP | `golang.org/x/net v0.26.0` (indirect via bluemonday) still pinned; CVE-2024-45338 unaddressed. Not an artifact any plan claimed as a must-have, but surfaced by 03-REVIEW.md and independently confirmed here. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `plugins/proton/plugin.go` Match fetch loop | `plugins/proton/plugin.go` toItem | `matched.internalDate` | ✓ WIRED | Populated at line 188, read at line ~337 |
-| `plugins/proton/plugin.go` toItem | `kernel/index/store.go` stream ordering | `Item.TimestampUnix` → `FromProto` (no fallback) → `items.timestamp_unix` → `ORDER BY` | ✓ WIRED | Traced by reading `kernel/item/item.go` and `kernel/index/store.go`; both unmodified by this plan and already covered by `TestStreamItems_*` |
-| `plugins/proton/plugin.go` Match | kernel log stream | `p.logOut` (stderr, forwarded by go-plugin) | ✓ WIRED | `TestMatch_EmptyMessageIDSkipIsLogged` passes |
-| `kernel/correlate/correlate.go` SyncSource | `plugins/proton/plugin.go` Match/Fetch | one shared plugin instance, `Match` called once per configured webspace, `Fetch` called later against the same instance | ✗ **NOT SAFELY WIRED** | `mailboxCache` is not scoped per webspace and is replaced (not merged) per `Match` call — see gap CR-01. The persistence side of this same loop (`ReplaceWebspaceSourceItems`) IS correctly scoped per webspace; only the plugin's in-memory `Fetch` cache is not. |
-| `web/src/lib/components/DetailPane.svelte` | `web/src/lib/format.ts` | Shared, UTC-pinned `formatItemDate` | ✗ NOT WIRED | `DetailPane.svelte` defines and uses its own local `formatDate` instead of importing `formatItemDate` |
+| `plugins/proton/plugin.go Match` | `plugins/proton/plugin.go fetchFull` | Accumulated `mailboxCache` map read by `mailboxForSourceID` | ✓ WIRED | `mailboxForSourceID` (RLock read) is the only source `fetchFull` consults to resolve which mailbox to `EXAMINE`; confirmed the map now accumulates (not replaced) across calls, verified by the two new regression tests passing. |
+| `kernel/correlate/correlate.go SyncSource` | `plugins/proton/plugin.go Match` | One long-lived plugin instance receiving one `Match` per configured webspace per cycle | ✓ WIRED (unchanged) | `git diff --exit-code kernel/correlate/correlate.go kernel/pluginhost/host.go` against the pre-03-06 tree shows no changes — confirmed the kernel-side loop was correctly scoped already and was deliberately left untouched; only the plugin-side state needed the fix. |
+| `web/src/lib/components/DetailPane.svelte` | `web/src/lib/format.ts` | Shared `formatItemDate`, already covered by `format.test.ts`'s UTC-pin assertion | ✓ WIRED | Import line and call site both confirmed present; `date-format.test.ts` makes a future re-divergence a test failure rather than a silent visual bug. |
+| `plugins/proton/body.go RenderSanitizedEmail` | `golang.org/x/net/html` (via `bluemonday`) | Untrusted email HTML parsed by a pinned, CVE-affected tokenizer | ✗ NOT REMEDIATED | This link is wired and functionally correct for ordinary input (all `TestRenderSanitizedEmail_*`/`TestWrapDocument_*` pass), but the tokenizer version behind it is a known DoS vector against the exact attacker-controlled input class this function processes. |
 
-### Data-Flow Trace (Level 4)
-
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|---------------------|--------|
-| `web/src/lib/components/StreamRow.svelte` | `item.timestamp_unix` | `plugins/proton/plugin.go toItem` → gRPC `Item.TimestampUnix` → `kernel/item/item.go FromProto` → `items.timestamp_unix` column | ✓ FLOWING | Real value now (INTERNALDATE seconds), not a hardcoded/zero fallback; confirmed by passing regression tests and by reading the full chain |
-| `web/src/lib/components/DetailPane.svelte` | body content (`Fetch` response) | `plugins/proton/plugin.go fetchFull` → `mailboxForSourceID` lookup against `mailboxCache` | ⚠️ CONDITIONALLY DISCONNECTED | Flows correctly for the webspace processed last in a sync cycle; returns `codes.NotFound` for any other webspace sharing the same Proton source, because `mailboxCache` only ever holds the last `Match` call's discoveries (see gap CR-01) |
-
-### Behavioral Spot-Checks / Test Execution
+### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Proton module tests | `cd plugins/proton && go test ./... -v -count=1` | 14 pass, 1 skip (`TestSeenFlagUnchanged_LiveBridge`, environment-blocked) | ✓ PASS |
-| Repo build/vet/test | `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./... -count=1` | clean, all packages `ok` or `[no test files]` | ✓ PASS |
-| Sibling plugin regression | `cd plugins/paperless && go test ./... -count=1` | pass | ✓ PASS |
-| Frontend tests | `npm --prefix web run test` | 69/69 pass | ✓ PASS |
-| `InsecureSkipVerify` textual match | `grep -rq InsecureSkipVerify plugins/proton/` | no match anywhere (code or comments) | ✓ PASS |
-| Debt markers | `grep -n 'TBD\|FIXME\|XXX' -r plugins/proton/*.go` | none found | ✓ PASS |
-| Multi-webspace Fetch regression (CR-01) | *(no such test exists)* | not exercised by any test in the repo | ✗ MISSING COVERAGE |
+| mailboxCache accumulates across two webspaces' Match calls | `go test -run TestMatch_MailboxCacheSurvivesASecondWebspaceMatch -v ./plugins/proton/...` | PASS | ✓ PASS |
+| Zero-mailbox-matched Match does not erase prior entries | `go test -run TestMatch_ZeroMailboxMatchPreservesMailboxCache -v ./plugins/proton/...` | PASS | ✓ PASS |
+| DetailPane / StreamRow date agreement guard | `npm run test` (date-format.test.ts) | 72/72 pass | ✓ PASS |
+| Full proton plugin suite, repo build/vet/test, frontend suite + svelte-check | see below | All green except env-gated skip | ✓ PASS |
+| `golang.org/x/net` still pinned to the vulnerable version | `grep -n "golang.org/x/net" plugins/proton/go.mod` | `v0.26.0 // indirect` | ✗ FAIL (gap) |
+
+Full regression evidence gathered this session:
+- `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./... -count=1` — clean, all packages `ok`.
+- `cd plugins/proton && go build ./... && go vet ./... && go test ./... -count=1 -v` — 16 tests PASS, 1 SKIP (`TestSeenFlagUnchanged_LiveBridge`, environment-blocked).
+- `npm run test` (web) — 4 test files, 72/72 tests pass.
+- `npm run check` (web) — `COMPLETED 746 FILES 0 ERRORS 1 WARNINGS` (pre-existing `SearchBox.svelte` `state_referenced_locally` warning, untouched, out of scope).
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
-|-------------|-------------|--------------|--------|----------|
-| SRC-01 | 03-01, 03-02, 03-05 | Email plugin (IMAP) works against Proton Mail Bridge; BODY.PEEK; matches keyword against folders/labels; dedups by Message-ID | ⚠️ PARTIAL | Read-only guarantee, dedup, TLS pinning, health error, and the date field are all now verified and correct. The requirement's implicit "readable" contract (body reachable in the detail pane) is not reliably met across the product's designed multi-webspace usage — see CR-01 gap above. REQUIREMENTS.md still shows `[ ]` unchecked for SRC-01, correctly reflecting this. |
-| KERN-05 | 03-03, 03-04 | User can full-text search within a webspace (FTS5) | ✓ SATISFIED | Unchanged from prior verification — fully implemented, tested end to end. REQUIREMENTS.md still shows `[ ]` unchecked and "Pending" in the traceability table; this is bookkeeping the SUMMARY explicitly and deliberately left for the seal/ship step, not a code gap. |
+|-------------|-------------|-------------|--------|----------|
+| SRC-01 | 03-01, 03-02, 03-05, 03-06 | Email plugin (IMAP) works against Proton Mail Bridge (self-signed cert handling); uses `BODY.PEEK` so mail is never marked read; matches webspace keyword against folders/labels; dedups by Message-ID | ✓ SATISFIED (with 1 flagged security gap) | Self-signed cert: `client.go` TLS pinning (SC5 row). `BODY.PEEK`: `TestIMAPTranscript_ExamineAndPeekOnly` (SC2 row, code-level proof; live proof still blocked). Keyword matching: `Match`'s `matchesAnyKeyword`/`leafName`. Dedup: `byMessageID` map (SC3 row). All functional clauses hold; the unaddressed `golang.org/x/net` CVE sits in the adjacent body-rendering path this requirement's "works against Proton Mail Bridge" implicitly covers (see gap). |
+| KERN-05 | 03-03, 03-04 | User can full-text search within a webspace (FTS5 over indexed metadata/previews) | ✓ SATISFIED | `kernel/index` FTS5 schema/triggers, `kernel/httpapi/search.go`, all `search_test.go` cases pass; frontend `SearchBox`/`SearchResults`/`parseSnippet` covered by passing tests. Unchanged this round. |
 
-No orphaned requirements found — both IDs declared in this phase's plans (SRC-01, KERN-05) match ROADMAP.md's Phase 3 requirements list exactly.
+No orphaned requirements: REQUIREMENTS.md maps exactly SRC-01 and KERN-05 to Phase 3, and both are declared in at least one plan's `requirements:` frontmatter field.
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `plugins/proton/plugin.go` | ~381-384 | `setMailboxCache` replaces the whole map instead of merging, called once per `Match` invocation while `Match` is itself called once per configured webspace against one shared plugin instance | 🛑 Blocker | Breaks Fetch/detail-pane body rendering for every webspace but the last-synced one whenever 2+ webspaces share the Proton source — see gap CR-01 above |
-| `web/src/lib/components/DetailPane.svelte` | ~33-40 | Local `formatDate()` reimplements date formatting without the `timeZone: 'UTC'` pin `web/src/lib/format.ts`'s tested `formatItemDate()` enforces | ⚠️ Warning | Same item's date can differ between the stream row and the detail pane for viewers west of UTC |
+Mechanical grep for `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER`/empty-implementation patterns across this round's modified files (`plugins/proton/plugin.go`, `mailbox_cache_test.go`, `imap_transcript_test.go`, `DetailPane.svelte`, `date-format.test.ts`, `node-builtins.d.ts`) found **none**.
 
-No debt markers (`TBD`/`FIXME`/`XXX`) found in any file this phase modified. No unresolved `TODO`/`HACK`/`PLACEHOLDER` markers found.
+The phase's own code review (`03-REVIEW.md`, `aee46d1`) surfaced non-textual findings beyond grep's reach:
+
+| File | Finding | Severity | Status |
+|------|---------|----------|--------|
+| `plugins/proton/go.mod:14` | CR-01: `golang.org/x/net v0.26.0` predates CVE-2024-45338 fix, reachable from arbitrary inbound email HTML | 🛑 Blocker | Unaddressed — promoted to a phase gap above |
+| `plugins/proton/plugin.go` (`Match`/`Fetch`/`fetchFull`), `client.go:196` | WR-01: `context.Context` accepted but never honored in the IMAP call path (no cancellation on dial/fetch) | ⚠️ Warning | Not blocking any stated success criterion; robustness gap only |
+| `plugins/proton/plugin.go:352` (`toItem`) | WR-02: Email `Subject` stored verbatim as `Item.Title` with no control-character stripping; a crafted Subject could inject FTS5 snippet delimiter bytes (STX/ETX) | ⚠️ Warning | Bounded impact (`parseSnippet` degrades gracefully, no XSS); not blocking SC1/SC4 today |
+| `plugins/proton/plugin.go:474-484` | WR-03: `fetchFull` trusts `UID SEARCH HEADER Message-Id`'s substring match without verifying exact equality against the resolved message | ⚠️ Warning | Theoretical wrong-body-served risk under adversarial Message-Id crafting; no test demonstrates an actual failure |
+| `web/src/routes/w/[webspace]/+page.svelte:144-168` | WR-04: Clearing the search box does not advance `searchRequestSeq`, so a stale in-flight search response is not fully guarded | ⚠️ Warning | No visible effect today (`searchVariant` gates rendering); internal state can go inconsistent |
+| `plugins/proton/plugin.go:459-462` | WR-05: Cold `mailboxCache` post-restart is indistinguishable from a genuinely deleted message | ⚠️ Warning | Transient UX regression on kernel restart, not a data-correctness issue |
+| `plugins/proton/plugin.go:190-214`, `plugins/proton/body.go:29,112-121`, `plugins/proton/client.go:22-44`, `web/src/lib/api.ts:121-161` | IN-01 through IN-04: unused fetched field, unused `Snippet` helper, dead sentinel errors, duplicated `getJSON`/`postJSON` logic | ℹ️ Info | Code-quality only, carried over from an earlier review round, not blocking any success criterion |
+
+Only CR-01 is treated as a phase-blocking gap in this report: it sits directly in the code path SC1 depends on, is independently confirmed present in the current tree, and has a mechanical, low-effort fix (a `go.mod` version bump). The WR-*/IN-* items are recorded for completeness but do not falsify any of the five stated success criteria and are left to the project's own backlog process.
 
 ### Human Verification Required
 
-See frontmatter `human_verification` for the four items in full detail (unchanged in substance from the prior verification, all still blocked on the same Proton Bridge account credential rejection documented in 03-01-SUMMARY.md). Summary:
-
-1. **Live browser walkthrough of a real email in the stream and detail pane** — now additionally worth checking against a second, non-last-synced webspace once the CR-01 gap is closed, to directly confirm the fix.
-2. **Run `TestSeenFlagUnchanged_LiveBridge` to a PASS against the real Bridge** — unchanged blocker.
-3. **Confirm in the real Proton client that an opened email stays unread** — unchanged blocker.
-4. **Live browser walkthrough of the search UI** — unchanged, not run this session.
+See the `human_verification` block in this report's frontmatter (four items, all environment-blocked by the unchanged Proton Mail Bridge credential issue first recorded in 03-01-SUMMARY.md, now unchanged across three verification passes).
 
 ### Gaps Summary
 
-The one BLOCKER confirmed in the prior verification (`Item.TimestampUnix` never set from INTERNALDATE) is genuinely closed by 03-05: `matched.internalDate` now carries the fetched value through to a guarded `toItem()` assignment, proven by two new passing regression tests and confirmed by re-reading the code end to end through `kernel/item/item.go` and `kernel/index/store.go`. The related minor issue (counted-but-unlogged empty-Message-Id skip) and the TLS-comment hygiene row are also both genuinely closed, each confirmed by reading the code and by a passing test or grep.
+Both functional blockers identified in the prior verification round are genuinely closed: the Proton plugin's mailbox resolution state now accumulates across every configured webspace's `Match` call instead of being replaced by the most recently processed one (so opening an email now works for every webspace in a multi-webspace deployment, not just the last one synced), and the detail pane's date now agrees with the stream row's date in every timezone. Both fixes are locked by regression tests that were observed failing for the right reason before the fix landed, and the full Go and frontend suites pass cleanly.
 
-However, this re-verification surfaces a **new, confirmed BLOCKER** that was not part of the prior gap list: `plugins/proton/plugin.go`'s `mailboxCache` is replaced, not merged, on every `Match` call, while `kernel/correlate/correlate.go`'s `SyncSource` calls `Match` once per configured webspace within a single sync cycle against the one long-lived Proton plugin instance. This means `Fetch` (and therefore "render their body inline in the detail pane," this phase's own ROADMAP Success Criterion 1) only reliably works for whichever webspace happened to be processed last in that cycle — a real, deterministic, code-verifiable defect, not a live-Bridge-environment limitation, that reproduces on any deployment with two or more webspaces sharing the Proton source (the project's documented core use case). This was first surfaced by an independent code review pass (03-REVIEW.md, CR-01) committed after 03-05's own commits, and is independently re-confirmed here by re-reading `plugin.go`, `correlate.go`, and `pluginhost/host.go` directly. No test in the repository exercises this path. A second, lower-severity issue from the same review (`DetailPane.svelte`'s un-pinned local date formatter, WR-01) also remains unaddressed.
+One new gap was found by this round's independent code review and confirmed directly against the current codebase: `plugins/proton/go.mod` still pins `golang.org/x/net v0.26.0`, which predates the fix for CVE-2024-45338 (GO-2024-3333) — a tokenizer DoS reachable through `plugins/proton/body.go`'s `RenderSanitizedEmail`, the function that implements SC1's "render their body inline in the detail pane" clause, run directly against arbitrary attacker-controlled inbound email HTML. This is a mechanically simple fix (bump the dependency, regenerate `go.sum`, re-run the suite) but is unaddressed as of the current HEAD and is treated as a blocking gap given its severity and direct relevance to this phase's core deliverable.
 
-**Recommended fix for the blocking gap:** change `setMailboxCache` to merge entries into the existing map under lock instead of replacing it wholesale, and remove the "reset to empty map" call on `Match`'s zero-mailboxes-matched path (that path has nothing new for its own webspace but must not erase what an earlier webspace's `Match` call in the same cycle already contributed). Add a regression test that runs two sequential `Match` calls against one plugin instance for disjoint keyword sets, then a `Fetch` for a `source_id` only the first call discovered, asserting it still resolves. Separately, have `DetailPane.svelte` import and use the shared `formatItemDate` from `$lib/format` instead of its own local `formatDate`.
+The phase's four environment-blocked human-verification items (live Proton Bridge account required) remain unchanged across three verification rounds and are not new to this round.
 
 ---
 
-*Verified: 2026-07-31T15:05:27Z*
-*Verifier: Claude (gsd-verifier)*
+_Verified: 2026-07-31T18:15:00Z_
+_Verifier: Claude (gsd-verifier)_
