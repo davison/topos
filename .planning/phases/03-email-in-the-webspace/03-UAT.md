@@ -1,14 +1,22 @@
 ---
-status: diagnosed
+status: testing
 phase: 03-email-in-the-webspace
 source: [03-VERIFICATION.md]
 started: 2026-07-31T16:57:00Z
-updated: 2026-07-31T20:40:00Z
+updated: 2026-07-31T23:36:34Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 5
+name: Corrected red-dot diagnostic text after credential fix
+expected: |
+  After correcting PROTON_BRIDGE_PASS in .env, if a sync still fails for any reason,
+  the red-dot detail shows the server's own message plus (only if the new token is
+  still shape-suspect) the actionable bridgeTokenShapeWarningText advice — never the
+  old username-pointing "not a code defect" / 03-01-SUMMARY.md framing, which no
+  longer exists in the codebase.
+awaiting: user response (blocked on the same .env correction as Tests 1-3)
 
 ## Tests
 
@@ -41,12 +49,23 @@ expected: Typing a word present in a document, a note, and an email into the web
 result: pass
 note: "User caveat: email hits could not be verified — Proton source is down (same Bridge blocker as Tests 1–3). Document/note search, ranking, snippet emphasis, detail-pane open, clear-restore, and malformed-query handling all confirmed working."
 
+### 5. Corrected red-dot diagnostic text after credential fix
+expected: |
+  After correcting PROTON_BRIDGE_PASS in .env, if a sync still fails for any reason,
+  the surfaced error (Health and the UI red-dot detail) is the server's own message
+  plus — only if the configured token is still shape-suspect — the actionable
+  bridgeTokenShapeWarningText advice pointing at the Bridge app password. It never
+  shows the old username-pointing "credential finding — not a code defect" /
+  03-01-SUMMARY.md framing, since that text no longer exists in the codebase
+  (closed by 03-08; code-level guarantee verified, rendered appearance is not).
+result: [pending]
+
 ## Summary
 
-total: 4
+total: 5
 passed: 1
 issues: 1
-pending: 0
+pending: 1
 skipped: 0
 blocked: 2
 
@@ -66,6 +85,6 @@ blocked: 2
       issue: "Hint text at ~line 160 steers diagnosis to the username ('credential finding — not a code defect') but Bridge checks the password first — misleading, caused four verification rounds of misdiagnosis"
   missing:
     - "USER ACTION (not plannable): read the real Bridge credentials on monroe (Bridge GUI → account → Mailbox details, or `protonmail-bridge --cli` then `info`; sign in first if signed out), replace PROTON_BRIDGE_PASS in .env with the ~20–22 char [A-Za-z0-9-_] app password, wait out Bridge's login jail, restart kernel, re-run live test"
-    - "Correct the misleading 'no such user' hint in live_bridge_test.go: Bridge rejects the (username, password) pair with password checked first — do not point at the username"
-    - "Make this misconfig class self-diagnosing: plugin Health path flags a configured token containing characters outside base64url [A-Za-z0-9-_] as 'not a Bridge-generated app password'"
+    - "CLOSED by 03-08 (verified 2026-08-01): live_bridge_test.go hint corrected — now states Bridge validates the password before the username via the shared bridgeAuthOrderNote constant, pointing at the password"
+    - "CLOSED by 03-08 (verified 2026-08-01): shape check self-diagnosing — bridgeTokenShapeWarning in plugins/proton/credentials.go appends actionable advice at client.connect's LOGIN-failure branch, reaching both HealthResponse.LastError and the UI red-dot detail via Match → sync_runs; never blocks a connection attempt, never echoes the token"
   debug_session: .planning/debug/proton-bridge-no-such-user.md
