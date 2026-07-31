@@ -157,7 +157,11 @@ func liveDialLiveIT(t *testing.T, addr, user, pass string, tlsConfig *tls.Config
 	conn.Timeout = 10 * time.Second
 	if err := conn.Login(user, pass); err != nil {
 		conn.Close()
-		t.Fatalf("live login: %v (if this says \"no such user\", see 03-01-SUMMARY.md's documented Bridge-account credential finding — not a code defect)", err)
+		// The hint references credentials.go's shared authentication-order
+		// constant by value rather than restating it, so this test's
+		// diagnosis and the shipped runtime advice can never again drift
+		// apart (03-08).
+		t.Fatalf("live login: %v (%s)", err, bridgeAuthOrderNote)
 	}
 	return conn
 }
