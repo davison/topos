@@ -141,7 +141,7 @@ Plans:
 
 **Wave 4** *(gap closure from the 03-VERIFICATION.md re-verification; blocked on Wave 3)*
 
-- [ ] 03-06-PLAN.md — Gap closure: the Proton plugin's `source_id`→mailbox state accumulates across webspaces instead of being replaced per `Match`, so email bodies render for every webspace and not just the last-synced one; plus the detail pane's date comes from the shared UTC-pinned formatter
+- [x] 03-06-PLAN.md — Gap closure: the Proton plugin's `source_id`→mailbox state accumulates across webspaces instead of being replaced per `Match`, so email bodies render for every webspace and not just the last-synced one; plus the detail pane's date comes from the shared UTC-pinned formatter
 
 **UI hint**: yes
 
@@ -203,7 +203,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 5/5 | Complete   | 2026-07-31 |
+| 3. Email in the Webspace | 6/6 | Complete   | 2026-07-31 |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 

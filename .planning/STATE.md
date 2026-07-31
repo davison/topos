@@ -2,18 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: email-in-the-webspace
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-07-31T15:32:48.665Z"
+last_updated: "2026-07-31T15:51:31.583Z"
 last_activity: 2026-07-31
-last_activity_desc: Phase 03 planning complete
 progress:
-  total_phases: 3
+  total_phases: 5
   completed_phases: 3
   total_plans: 18
-  completed_plans: 17
+  completed_plans: 18
   percent: 60
 ---
 
@@ -29,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-29)
 ## Current Position
 
 Phase: 03 (email-in-the-webspace) — EXECUTING
-Plan: 2 of 5
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-07-31 — Phase 03 planning complete
+Last activity: 2026-07-31
 
 Progress: [██████████] 100%
 
@@ -73,6 +69,7 @@ Progress: [██████████] 100%
 | Phase 02 P05 | 5min | 2 tasks | 2 files |
 | Phase 02 P06 | 15min | 2 tasks | 3 files |
 | Phase 03 P05 | 21min | 3 tasks | 4 files |
+| Phase 03 P06 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -119,6 +116,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 02-06]: Deleted the seven --spacing-<key> theme entries outright rather than renaming/relocating them — zero utilities in web/src reference them
 - [Phase ?]: [Phase 02-06]: assert-stylesheet.sh accepts either --container-<key> custom property or an inlined rem value for each named width, since Tailwind v4's @theme inline block inlines resolved values
 - [Phase ?]: [Phase 03-05]: Zero-guard test's RED signal produced deliberately against a temporary unguarded implementation (TimestampUnix: m.internalDate.Unix(), no IsZero() check), not the original code — the original code's output (0, by field omission) is bit-identical to the correctly-guarded output (0, by design), so the assertion cannot distinguish them at the original-code state
+- [Phase ?]: [Phase 03-06]: mergeMailboxCache is last-writer-wins per key (not insert-only) — a moved message is refreshed by whichever Match rediscovers it
+- [Phase ?]: [Phase 03-06]: Added web/src/lib/node-builtins.d.ts (narrow ambient node:fs/node:path/node:url types) to satisfy svelte-check's 0 ERRORS without installing @types/node
 
 ### Pending Todos
 
@@ -149,6 +148,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-31T14:50:57.978Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-07-31T15:51:31.575Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
