@@ -149,7 +149,7 @@ Plans:
 
 **Wave 6** *(gap closure from 03-UAT.md gap G-03-1; blocked on Wave 5)*
 
-- [ ] 03-08-PLAN.md — Gap closure (code-side half of G-03-1; the `.env` credential correction remains a user action): a rejected Bridge LOGIN whose configured token cannot be a Bridge-generated app password now says so and says where the real one lives, wired once in `client.connect` so it reaches both `HealthResponse.LastError` and the `sync_runs`-fed `last_error` behind the UI's red dot — warning-grade, never blocking a connection attempt — plus the live-Bridge test's misleading username-pointing hint replaced by a reference to that same shared constant
+- [x] 03-08-PLAN.md — Gap closure (code-side half of G-03-1; the `.env` credential correction remains a user action): a rejected Bridge LOGIN whose configured token cannot be a Bridge-generated app password now says so and says where the real one lives, wired once in `client.connect` so it reaches both `HealthResponse.LastError` and the `sync_runs`-fed `last_error` behind the UI's red dot — warning-grade, never blocking a connection attempt — plus the live-Bridge test's misleading username-pointing hint replaced by a reference to that same shared constant
 
 **UI hint**: yes
 
@@ -211,7 +211,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 7/7 | Complete   | 2026-07-31 |
+| 3. Email in the Webspace | 8/8 | Complete   | 2026-07-31 |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
