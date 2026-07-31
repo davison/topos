@@ -123,7 +123,7 @@ Notes:
   4. User can type a query inside a webspace and get ranked, clickable matches across every source in that webspace
   5. The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when the bridge is unreachable
 
-**Plans**: 4 plans
+**Plans**: 5 plans
 Plans:
 **Wave 1** *(both plans run in parallel — zero file overlap)*
 
@@ -134,6 +134,10 @@ Plans:
 
 - [x] 03-02-PLAN.md — Email bodies render inline (sanitized HTML rendition + detail-pane sender), plus four independent read-only proofs incl. the `\Seen`-unchanged test
 - [x] 03-04-PLAN.md — Search UI: search box, ranked results reusing StreamRow with highlighted snippets, and the full state matrix
+
+**Wave 3** *(gap closure from 03-VERIFICATION.md; blocked on Wave 2)*
+
+- [ ] 03-05-PLAN.md — Gap closure: the fetched INTERNALDATE reaches `Item.TimestampUnix` so emails carry a date and interleave chronologically, plus the logged empty-Message-Id skip and TLS-comment hygiene
 
 **UI hint**: yes
 
