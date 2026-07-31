@@ -53,7 +53,8 @@ var ErrNoMessageID = errors.New("proton: message has no Message-Id header")
 // fixed value (rather than the dialed forwarder host) is what makes
 // hostname verification succeed while still verifying the full chain via
 // the pinned RootCAs pool below — this is never a substitute for
-// verification (no InsecureSkipVerify anywhere in this file).
+// verification: certificate verification is never disabled anywhere in
+// this file.
 const bridgeCertServerName = "127.0.0.1"
 
 const (
