@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: First Webspace, End to End** - Kernel spine, plugin contract, and web UI proven by real paperless-ngx documents in a browsable stream (completed 2026-07-28)
 - [x] **Phase 2: Two Sources, One Trustworthy Stream** - SilverBullet joins the stream; filter, health, refresh, staleness states, and default-deny agent permissions (completed 2026-07-29)
-- [ ] **Phase 3: Email in the Webspace** - Proton/IMAP mail appears in the stream, never marked read, with full-text search across the webspace
+- [x] **Phase 3: Email in the Webspace** - Proton/IMAP mail appears in the stream, never marked read, with full-text search across the webspace (completed 2026-07-31)
 - [ ] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety
 - [ ] **Phase 5: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
 
@@ -137,7 +137,7 @@ Plans:
 
 **Wave 3** *(gap closure from 03-VERIFICATION.md; blocked on Wave 2)*
 
-- [ ] 03-05-PLAN.md — Gap closure: the fetched INTERNALDATE reaches `Item.TimestampUnix` so emails carry a date and interleave chronologically, plus the logged empty-Message-Id skip and TLS-comment hygiene
+- [x] 03-05-PLAN.md — Gap closure: the fetched INTERNALDATE reaches `Item.TimestampUnix` so emails carry a date and interleave chronologically, plus the logged empty-Message-Id skip and TLS-comment hygiene
 
 **UI hint**: yes
 
@@ -199,7 +199,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 4/4 | Complete   | 2026-07-31 |
+| 3. Email in the Webspace | 5/5 | Complete   | 2026-07-31 |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
