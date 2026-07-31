@@ -1,0 +1,21 @@
+// This file is a negative-control fixture for
+// internal/audit/module_pins_test.go — it deliberately contains a
+// below-floor golang.org/x/net declaration and must NEVER be brought up
+// to the recorded floor by a well-meaning future dependency sweep: doing
+// so would silently disarm the non-vacuity proof this fixture provides
+// for TestNoModuleDeclaresAKnownVulnerablePin. It is kept under testdata
+// (the Go tool never compiles anything there, and this package's own
+// repo-wide walk skips testdata directories too via shouldSkipDir) and
+// named with a .go.mod.txt suffix, mirroring
+// testdata/foreign_host_violation.go.txt's role for the egress scanner,
+// so no editor or Go tool ever treats it as a real module manifest.
+module github.com/example/vulnerable-fixture
+
+go 1.25.0
+
+require (
+	github.com/some/legitimate-dep v1.2.3
+	golang.org/x/text v0.38.0 // indirect
+)
+
+require golang.org/x/net v0.26.0 // indirect
