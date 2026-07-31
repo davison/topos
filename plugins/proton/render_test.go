@@ -133,3 +133,49 @@ func TestWrapDocument_StyleNeverReprocessedThroughSanitizer(t *testing.T) {
 		t.Errorf("expected the literal stylesheet text to survive unmodified, got: %s", doc)
 	}
 }
+
+// TestRenderSanitizedEmail_EmptyAndNilInputYieldNoOutput pins the
+// input-boundary behaviour of the swapped HTML tokenizer (03-07-PLAN.md,
+// CVE-2024-45338 / GO-2024-3333 fix bump): RenderSanitizedEmail called with
+// a nil slice must not panic and must return a zero-length result, and
+// called with an empty non-nil slice must likewise return a zero-length
+// result. A tokenizer swap is exactly the change that can move boundary
+// behaviour while leaving every mid-range case intact, and this file
+// previously asserted nothing about nil or empty input for either
+// RenderSanitizedEmail or WrapDocument.
+func TestRenderSanitizedEmail_EmptyAndNilInputYieldNoOutput(t *testing.T) {
+	nilOut := RenderSanitizedEmail(nil)
+	if len(nilOut) != 0 {
+		t.Errorf("expected a nil input to yield a zero-length result, got %d bytes: %q", len(nilOut), nilOut)
+	}
+
+	emptyOut := RenderSanitizedEmail([]byte{})
+	if len(emptyOut) != 0 {
+		t.Errorf("expected an empty non-nil input to yield a zero-length result, got %d bytes: %q", len(emptyOut), emptyOut)
+	}
+}
+
+// TestWrapDocument_NilFragmentStillYieldsADocument pins WrapDocument's
+// nil-input boundary: a nil fragment must not panic, and the theme
+// wrapper (doctype, <style> block, structural markers) must still be
+// emitted even with no fragment content to wrap. An exact byte length is
+// deliberately not asserted — the wrapper's stylesheet is legitimately
+// edited by other work, and an exact-length assertion would be brittle
+// rather than protective.
+func TestWrapDocument_NilFragmentStillYieldsADocument(t *testing.T) {
+	doc := WrapDocument(nil)
+	got := string(doc)
+
+	if len(got) == 0 {
+		t.Fatal("expected WrapDocument(nil) to still emit a non-empty wrapped document")
+	}
+	if !strings.HasPrefix(got, "<!doctype html>") {
+		t.Errorf("expected the wrapped document to start with a doctype even with a nil fragment, got: %s", got)
+	}
+	if !strings.Contains(got, "<style>") {
+		t.Error("expected a <style> block in the wrapped document even with a nil fragment")
+	}
+	if !strings.Contains(got, "<body>") || !strings.Contains(got, "</body>") {
+		t.Errorf("expected the body wrapper markers to still be present with a nil fragment, got: %s", got)
+	}
+}

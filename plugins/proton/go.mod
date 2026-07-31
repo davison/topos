@@ -11,7 +11,7 @@ require (
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
-	golang.org/x/net v0.26.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 )
 
 // golang.org/x/text is pulled in transitively by github.com/emersion/go-message's
@@ -24,4 +24,4 @@ require (
 // because github.com/davison/webspaces/sdk has no published remote
 // (mirrors plugins/silverbullet and plugins/mock's go.mod, which have
 // the same limitation).
-require golang.org/x/text v0.16.0 // indirect
+require golang.org/x/text v0.38.0 // indirect
