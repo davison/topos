@@ -192,7 +192,13 @@ func (c *Client) realDial(timeout time.Duration) (*imapclient.Client, error) {
 // applies timeout as the connection's command timeout, and logs in.
 // Login failures are wrapped with the operation name and the server's
 // own message only — the password is never included in an error string,
-// a log line, or a HealthResponse.LastError (T-03-03).
+// a log line, or a HealthResponse.LastError (T-03-03). When the
+// configured token's shape rules it out as a Bridge-generated app
+// password, credentials.go's shape-warning helper appends a fixed-text
+// warning after the server's own message; the warning is a compile-time
+// constant carrying no runtime data, so this does not weaken the
+// guarantee above — it only ever adds words to a login that has already
+// failed.
 func (c *Client) connect(timeout time.Duration) (*imapclient.Client, error) {
 	conn, err := c.dial(timeout)
 	if err != nil {
@@ -202,6 +208,9 @@ func (c *Client) connect(timeout time.Duration) (*imapclient.Client, error) {
 
 	if err := conn.Login(c.username, c.password); err != nil {
 		conn.Close()
+		if warning := bridgeTokenShapeWarning(c.password); warning != "" {
+			return nil, fmt.Errorf("proton: login: %v — %s", err, warning)
+		}
 		return nil, fmt.Errorf("proton: login: %v", err)
 	}
 	return conn, nil
