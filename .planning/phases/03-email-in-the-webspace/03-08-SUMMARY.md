@@ -324,3 +324,12 @@ None — no external service configuration required. (The unrelated, still-outst
 ---
 *Phase: 03-email-in-the-webspace*
 *Completed: 2026-08-01*
+
+## Self-Check: PASSED
+
+- FOUND: plugins/proton/credentials.go
+- FOUND: plugins/proton/credentials_test.go
+- FOUND: .planning/phases/03-email-in-the-webspace/03-08-SUMMARY.md
+- FOUND: 0999d5d (Task 1 commit)
+- FOUND: 765e87a (Task 2 commit)
+- FOUND: 9de1feb (SUMMARY commit)
