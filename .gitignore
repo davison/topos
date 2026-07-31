@@ -18,4 +18,5 @@ kernel/webui/build/*
 /plugins/paperless/paperless
 /plugins/silverbullet/silverbullet
 /plugins/mock/mock
+/plugins/proton/proton
 /paperless

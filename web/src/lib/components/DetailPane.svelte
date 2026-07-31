@@ -68,6 +68,11 @@
 	<!-- Stage one: instant metadata, synchronous — never waits on a network call. -->
 	<header class="flex shrink-0 flex-col gap-2">
 		<h2 class="text-[20px] leading-[1.2] font-semibold text-foreground">{item.title}</h2>
+		{#if item.group_label}
+			<p class="truncate text-[14px] leading-[1.4] text-muted-foreground" title={item.group_label}>
+				{item.group_label}
+			</p>
+		{/if}
 		<div class="flex flex-wrap items-center gap-2 text-[14px] text-muted-foreground">
 			<span>{formatDate(item.timestamp_unix)}</span>
 			{#each item.labels as label (label)}

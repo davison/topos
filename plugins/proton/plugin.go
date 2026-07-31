@@ -451,15 +451,37 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
 	}
+	htmlPart, err := HTMLPart(raw)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
+	}
 
-	return &webspacesv1.FetchResponse{
+	resp := &webspacesv1.FetchResponse{
 		Available: true,
 		Text:      text,
 		Provenance: map[string]string{
 			"source_type": sourceType,
 			"source_id":   sourceID,
 		},
-	}, nil
+	}
+
+	// When an HTML part was extracted, sanitize it, wrap it in the fixed
+	// dark-theme document, and return it as a text/html rendition — the
+	// one rendition type the kernel's fixed allowlist already permits
+	// (kernel/httpapi/item.go), so this reuses SilverBullet's exact
+	// sandboxed-iframe rendition path with zero kernel change. When no
+	// HTML part exists, resp keeps 03-01's plain-text-only behaviour
+	// unchanged: Available true with only Text populated, which the
+	// detail pane's existing extracted-text branch already handles.
+	if len(htmlPart) > 0 {
+		sanitized := RenderSanitizedEmail([]byte(htmlPart))
+		doc := WrapDocument(sanitized)
+		resp.MimeType = "text/html"
+		resp.SizeBytes = int64(len(doc))
+		resp.Data = doc
+	}
+
+	return resp, nil
 }
 
 // Health opens a connection with the (shorter) health dial timeout,
@@ -479,4 +501,3 @@ func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest)
 		LastSyncUnix: time.Now().Unix(),
 	}, nil
 }
-
