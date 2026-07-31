@@ -501,4 +501,3 @@ func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest)
 		LastSyncUnix: time.Now().Unix(),
 	}, nil
 }
-
