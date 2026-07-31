@@ -110,12 +110,33 @@ func waitForRelayIdle(t *testing.T, relay *recordingRelay) {
 	}
 }
 
+// seedInternalDate is the fixed IMAP INTERNALDATE newTestIMAPServer seeds
+// every message with, distinct from seedEnvelopeDate by exactly one day so
+// the two can never be confused for one another in an assertion. Package-
+// level so every test in this package shares one source of truth (03-05
+// Task 1).
+var seedInternalDate = time.Date(2016, time.May, 12, 9, 15, 30, 0, time.UTC) // unix 1463044530
+
+// seedEnvelopeDate matches the "Date:" header already present in
+// sharedMessage below (Wed, 11 May 2016 14:31:59 +0000) — the message's own
+// envelope Date, distinct from seedInternalDate, feeding
+// Item.SecondaryTimestampUnix rather than the primary TimestampUnix.
+var seedEnvelopeDate = time.Date(2016, time.May, 11, 14, 31, 59, 0, time.UTC) // unix 1462977119
+
 // newTestIMAPServer starts a real github.com/emersion/go-imap server
 // (server + backend/memory) on a loopback listener with insecure auth
 // enabled, seeded with two mailboxes ("Labels/AlphaTeam",
 // "Labels/BetaTeam") that both contain the SAME message (identical
 // Message-Id) — exercising Match's dedup-by-Message-ID-merge-labels path
 // (03-RESEARCH.md Pattern 2) alongside the read-only wire assertions.
+//
+// Every seeded message's IMAP INTERNALDATE is explicit (seedInternalDate),
+// never the zero time.Time: go-imap v1's memory backend (CreateMessage)
+// substitutes time.Now() whenever the date argument is the zero value, so
+// passing the zero value here would make any later "is the primary
+// timestamp non-zero" assertion pass for a reason that has nothing to do
+// with INTERNALDATE — a trap for the very regression this fixture exists to
+// catch (03-05 Task 1).
 func newTestIMAPServer(t *testing.T) (addr string) {
 	t.Helper()
 
@@ -145,7 +166,7 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		if err != nil {
 			t.Fatalf("seed backend: get mailbox %q: %v", name, err)
 		}
-		if err := mbox.CreateMessage(nil, time.Time{}, bytes.NewReader([]byte(sharedMessage))); err != nil {
+		if err := mbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(sharedMessage))); err != nil {
 			t.Fatalf("seed backend: create message in %q: %v", name, err)
 		}
 	}

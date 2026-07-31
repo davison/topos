@@ -41,8 +41,16 @@ const noThumbnailReason = "Proton Mail messages have no thumbnail rendition"
 // overwrite.
 type matched struct {
 	envelope *imap.Envelope
-	mailbox  string   // the FIRST mailbox this message was found in — Fetch's mailbox-lookup cache target
-	labels   []string // every matched mailbox's leaf name, deduplicated
+	mailbox  string // the FIRST mailbox this message was found in — Fetch's mailbox-lookup cache target
+	// internalDate is the message's IMAP INTERNALDATE — the primary
+	// chronological sort key for the resulting item (Item.TimestampUnix),
+	// distinct from the envelope's own Date header (which feeds
+	// SecondaryTimestampUnix instead). Set from the FIRST mailbox this
+	// message was found in, exactly like mailbox and envelope above: the
+	// merge branch for an already-seen Message-Id deliberately leaves it
+	// untouched.
+	internalDate time.Time
+	labels       []string // every matched mailbox's leaf name, deduplicated
 }
 
 // SourcePlugin implements sdk.SourcePlugin against a Proton Mail Bridge
@@ -167,9 +175,10 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 				continue
 			}
 			byMessageID[id] = &matched{
-				envelope: msg.Envelope,
-				mailbox:  mbox.name,
-				labels:   []string{mbox.leaf},
+				envelope:     msg.Envelope,
+				mailbox:      mbox.name,
+				internalDate: msg.InternalDate,
+				labels:       []string{mbox.leaf},
 			}
 		}
 		if err := <-done; err != nil {
@@ -309,6 +318,11 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 
 	groupLabel, groupID := formatSender(m.envelope)
 
+	var primary int64
+	if !m.internalDate.IsZero() {
+		primary = m.internalDate.Unix()
+	}
+
 	var secondary int64
 	if !m.envelope.Date.IsZero() {
 		secondary = m.envelope.Date.Unix()
@@ -325,6 +339,7 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 		SourceType:             sourceType,
 		Title:                  title,
 		Preview:                "", // Match must not open message bodies (a body read per message would multiply sync cost by mailbox size)
+		TimestampUnix:          primary,
 		SecondaryTimestampUnix: secondary,
 		GroupId:                groupID,
 		GroupLabel:             groupLabel,
