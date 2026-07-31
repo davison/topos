@@ -22,7 +22,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 ### Source Plugins
 
-- [ ] **SRC-01**: Email plugin (IMAP) works against Proton Mail Bridge (self-signed cert handling); uses `BODY.PEEK` so mail is never marked read; matches webspace keyword against folders/labels; dedups by Message-ID
+- [x] **SRC-01**: Email plugin (IMAP) works against Proton Mail Bridge (self-signed cert handling); uses `BODY.PEEK` so mail is never marked read; matches webspace keyword against folders/labels; dedups by Message-ID
 - [ ] **SRC-02**: Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown
 - [ ] **SRC-03**: WhatsApp plugin runs as a whatsmeow linked device with its own persistent message store; degrades gracefully on de-link/ban; matches on group names
 - [x] **SRC-04**: paperless-ngx plugin via REST API; matches on tags; exact deep links to documents
@@ -77,7 +77,7 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase â€
 | PLUG-03 | Phase 1 | Complete |
 | PLUG-04 | Phase 2 | Gaps Found |
 | PLUG-05 | Phase 2 | Gaps Found |
-| SRC-01 | Phase 3 | Pending |
+| SRC-01 | Phase 3 | Complete |
 | SRC-02 | Phase 4 | Pending |
 | SRC-03 | Phase 5 | Pending |
 | SRC-04 | Phase 1 | Complete |
