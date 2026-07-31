@@ -62,14 +62,32 @@ type SourcePlugin struct {
 	webmailBaseURL string
 
 	// mailboxCache maps a source_id (the Task 2 encoding of a normalized
-	// Message-ID) to the mailbox name Fetch should SELECT to resolve it,
-	// rebuilt on every Match call (03-RESEARCH.md "Critical Architecture
-	// Finding: Fetch-time mailbox lookup"). This is sound because the
-	// kernel launches plugin subprocesses once at startup and only kills
-	// them at shutdown, and the scheduler always runs a startup sync
-	// before the UI can show any item to click — the one narrow exception
-	// (a Fetch immediately after kernel restart, before the first sync
-	// completes) surfaces as a clear NotFound below, not a silent failure.
+	// Message-ID) to the mailbox name Fetch should SELECT to resolve it.
+	// Entries ACCUMULATE across Match calls and are never discarded
+	// wholesale (03-06 Task 1, closing 03-REVIEW.md CR-01): kernel/
+	// correlate.SyncSource calls Match once per configured webspace within
+	// a single sync cycle, sequentially, against the ONE long-lived plugin
+	// instance kernel/pluginhost launches per source — so a per-call
+	// rebuild (03-RESEARCH.md's original "Fetch-time mailbox lookup"
+	// finding, whose reasoning covered only the fresh-process case) would
+	// leave only the last-processed webspace's items resolvable, which is
+	// the defect this comment now exists to prevent recurring. Two
+	// consequences of accumulating instead:
+	//   (a) growth is bounded and steady-state stable: each entry is two
+	//       short strings, and a repeat sync cycle upserts the same keys
+	//       rather than appending, so size tracks the number of distinct
+	//       messages across all keyword-matched mailboxes, not the number
+	//       of cycles that have run.
+	//   (b) a stale entry for a message that has moved to a different
+	//       mailbox or been deleted is harmless: fetchFull re-resolves the
+	//       UID via UID SEARCH HEADER Message-Id inside the EXAMINEd
+	//       mailbox, so a stale entry yields a clean NotFound rather than
+	//       another message's body, and the next Match that rediscovers
+	//       the message overwrites the entry with its current mailbox
+	//       (last-writer-wins per key — see mergeMailboxCache).
+	// A Fetch issued before the first sync completes (e.g. immediately
+	// after a kernel restart) still surfaces as a clear NotFound below,
+	// not a silent failure.
 	mailboxMu    sync.RWMutex
 	mailboxCache map[string]string
 
@@ -143,7 +161,12 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		// successful, empty sync — never an error, and never a wipe of a
 		// sibling source's already-indexed rows for this webspace (the
 		// caller, kernel/correlate, replaces only THIS source's rows).
-		p.setMailboxCache(map[string]string{})
+		// This webspace has nothing to contribute, and the resolution
+		// state below is shared across every webspace this one plugin
+		// instance serves, so clearing it here would erase entries an
+		// earlier webspace's Match call added moments ago in the same
+		// sync cycle — no cache mutation of any kind happens on this
+		// branch.
 		return &webspacesv1.MatchResponse{}, nil
 	}
 
@@ -194,14 +217,14 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		}
 	}
 
-	newCache := make(map[string]string, len(byMessageID))
+	discovered := make(map[string]string, len(byMessageID))
 	items := make([]*webspacesv1.Item, 0, len(byMessageID))
 	for msgID, m := range byMessageID {
 		sourceID := encodeSourceID(msgID)
-		newCache[sourceID] = m.mailbox
+		discovered[sourceID] = m.mailbox
 		items = append(items, p.toItem(sourceID, m))
 	}
-	p.setMailboxCache(newCache)
+	p.mergeMailboxCache(discovered)
 
 	if skippedNoMessageID > 0 {
 		// Count-only: never a subject, sender, Message-Id, mailbox name,
@@ -378,10 +401,22 @@ func pathEscapeSegment(s string) string {
 	return url.PathEscape(s)
 }
 
-func (p *SourcePlugin) setMailboxCache(cache map[string]string) {
+// mergeMailboxCache upserts discovered's entries into the plugin's
+// accumulated resolution state under the write lock. The field itself is
+// never re-bound to a different map, and no key already present is ever
+// deleted — this is deliberately an accumulate, not a replace (03-06 Task
+// 1). Semantics are last-writer-wins PER KEY: a message that has moved to
+// a different mailbox since it was last discovered is refreshed by
+// whichever Match call rediscovers it, while every key no Match call in
+// this invocation touched is preserved untouched. This is deliberately
+// not "insert only if absent", which would pin a moved message to a
+// mailbox it has already left.
+func (p *SourcePlugin) mergeMailboxCache(discovered map[string]string) {
 	p.mailboxMu.Lock()
 	defer p.mailboxMu.Unlock()
-	p.mailboxCache = cache
+	for sourceID, mailbox := range discovered {
+		p.mailboxCache[sourceID] = mailbox
+	}
 }
 
 // mailboxForSourceID resolves sourceID to the mailbox name Fetch should

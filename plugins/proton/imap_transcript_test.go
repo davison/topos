@@ -128,6 +128,19 @@ var seedEnvelopeDate = time.Date(2016, time.May, 11, 14, 31, 59, 0, time.UTC) //
 // appears in the plugin's log output for the skip it causes (03-05 Task 2).
 const noMessageIDSubject = "Unroutable seed subject"
 
+// sharedMessageID and gammaMessageID are the normalized (angle-bracket-free)
+// Message-Id values seeded below, extracted as package-level consts so
+// mailbox_cache_test.go's regression tests share one source of truth with
+// this fixture rather than re-deriving the encoded source_id from a literal
+// header string (03-06 Task 1). sharedMessage's own Message-Id header is
+// built from sharedMessageID by literal-string concatenation between angle
+// brackets — Go permits const-to-const concatenation, so sharedMessage
+// below stays a const.
+const (
+	sharedMessageID = "shared-message@example.com"
+	gammaMessageID  = "gamma-message@example.com"
+)
+
 // newTestIMAPServer starts a real github.com/emersion/go-imap server
 // (server + backend/memory) on a loopback listener with insecure auth
 // enabled, seeded with two mailboxes ("Labels/AlphaTeam",
@@ -135,10 +148,18 @@ const noMessageIDSubject = "Unroutable seed subject"
 // Message-Id) — exercising Match's dedup-by-Message-ID-merge-labels path
 // (03-RESEARCH.md Pattern 2) alongside the read-only wire assertions — plus
 // a third mailbox, "Labels/NoMessageID", holding a single message that
-// deliberately omits the Message-Id header (03-05 Task 2). Adding this
-// third mailbox does not affect TestIMAPTranscript_ExamineAndPeekOnly: that
-// test's keyword list is "AlphaTeam" and "BetaTeam" only, so
-// "Labels/NoMessageID" is listed but never EXAMINEd there.
+// deliberately omits the Message-Id header (03-05 Task 2), plus a fourth
+// mailbox, "Labels/GammaTeam", holding a single message with a DISTINCT
+// Message-Id (gammaMessageID) so two Match calls over disjoint keyword sets
+// (e.g. "AlphaTeam" then "GammaTeam") discover disjoint source_ids — the
+// precondition mailbox_cache_test.go's regression tests need and which
+// AlphaTeam/BetaTeam alone cannot express, since those two mailboxes
+// deliberately share one Message-Id (03-06 Task 1). Adding this fourth
+// mailbox does not affect TestIMAPTranscript_ExamineAndPeekOnly or
+// TestMatch_ItemTimestampIsInternalDate: both use the keyword list
+// "AlphaTeam"/"BetaTeam" only, so "Labels/GammaTeam" (like
+// "Labels/NoMessageID") is LISTed but never EXAMINEd there, and both still
+// see exactly one item.
 //
 // Every seeded message's IMAP INTERNALDATE is explicit (seedInternalDate),
 // never the zero time.Time: go-imap v1's memory backend (CreateMessage)
@@ -156,7 +177,7 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		t.Fatalf("seed backend: login: %v", err)
 	}
 
-	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam", "Labels/NoMessageID"} {
+	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam", "Labels/NoMessageID", "Labels/GammaTeam"} {
 		if err := user.CreateMailbox(name); err != nil {
 			t.Fatalf("seed backend: create mailbox %q: %v", name, err)
 		}
@@ -166,7 +187,7 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		"To: bob@example.com\r\n" +
 		"Subject: Cross-label message\r\n" +
 		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
-		"Message-Id: <shared-message@example.com>\r\n" +
+		"Message-Id: <" + sharedMessageID + ">\r\n" +
 		"Content-Type: text/plain\r\n" +
 		"\r\n" +
 		"Hello from both labels."
@@ -194,6 +215,22 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 	}
 	if err := noMessageIDMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(noMessageIDMsg))); err != nil {
 		t.Fatalf("seed backend: create message in %q: %v", "Labels/NoMessageID", err)
+	}
+
+	gammaMessage := "From: Dana <dana@example.com>\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: Gamma team message\r\n" +
+		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
+		"Message-Id: <" + gammaMessageID + ">\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"Hello from the gamma label."
+	gammaMbox, err := user.GetMailbox("Labels/GammaTeam")
+	if err != nil {
+		t.Fatalf("seed backend: get mailbox %q: %v", "Labels/GammaTeam", err)
+	}
+	if err := gammaMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(gammaMessage))); err != nil {
+		t.Fatalf("seed backend: create message in %q: %v", "Labels/GammaTeam", err)
 	}
 
 	s := imapserver.New(bkd)
