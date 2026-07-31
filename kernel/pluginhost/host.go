@@ -112,10 +112,12 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 	}
 
 	sourceConfig, err := json.Marshal(map[string]string{
-		"base_url":    src.BaseURL,
-		"token":       src.Token,
-		"api_version": src.APIVersion,
-		"ca_cert":     src.CACert,
+		"base_url":         src.BaseURL,
+		"token":            src.Token,
+		"api_version":      src.APIVersion,
+		"ca_cert":          src.CACert,
+		"username":         src.Username,
+		"webmail_base_url": src.WebmailBaseURL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal source config: %w", err)

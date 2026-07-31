@@ -63,6 +63,15 @@
 		<div
 			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground"
 		>
+			<!-- Sender (item.group_label — "chat thread / mail conversation"
+			     in the wire contract): plain text, no "From" prefix, never
+			     the accent color, omitted entirely when empty so paperless
+			     and SilverBullet rows (which never populate this field) are
+			     visually unchanged. Rendered as the FIRST entry, before the
+			     date, per 03-UI-SPEC.md's E3 resolution. -->
+			{#if item.group_label}
+				<span class="shrink-0">{item.group_label}</span>
+			{/if}
 			<span class="shrink-0">{formatItemDate(item.timestamp_unix)}</span>
 			{#if stale}
 				<!-- D-10: tertiary, per-row proof the affected source's items

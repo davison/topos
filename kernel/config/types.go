@@ -42,6 +42,24 @@ type Source struct {
 	BaseURL    string `toml:"base_url"`    // "${PAPERLESS_URL}" style env reference
 	Token      string `toml:"token"`       // "${PAPERLESS_TOKEN}" style env reference — never a literal secret (D-04)
 	APIVersion string `toml:"api_version"` // e.g. "10"
+	// Username is the IMAP login username for a source using SRC-01's
+	// Proton Mail plugin (Phase 3 deviation, Rule 2: paperless-ngx and
+	// SilverBullet both authenticate with a bearer token alone; IMAP
+	// authenticates with username+password, so a generic Source needs a
+	// second identity field). Token is reused as the IMAP password for
+	// this source type — there is no separate password field. Left empty
+	// for a bearer-token source (paperless, SilverBullet), which never
+	// reads this field.
+	Username string `toml:"username,omitempty"`
+	// WebmailBaseURL is the Proton webmail root for this account,
+	// including the account index (e.g. "https://mail.proton.me/u/0") —
+	// required by SRC-01's email plugin to build an ANCHORED deep link
+	// into the matched mailbox's webmail view (03-RESEARCH.md Pitfall 5:
+	// no verified mapping from an IMAP Message-Id/UID to Proton's
+	// internal webmail message id exists, so the plugin never fetches
+	// this URL itself — it only ever builds a link from it). Left empty
+	// for any source that has no equivalent webmail concept.
+	WebmailBaseURL string `toml:"webmail_base_url,omitempty"`
 	// CACert is an optional filesystem path to a PEM-encoded CA
 	// certificate a source plugin's HTTP client should trust in addition
 	// to (by replacing, for that plugin's client only) the system trust

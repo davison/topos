@@ -145,6 +145,62 @@ token = "${SB_AUTH_TOKEN}"
 # error rather than a load-time error.
 # ca_cert = "~/.config/webspaces/silverbullet-ca.pem"
 
+[sources.proton]
+# plugin: the plugin binary's filename, resolved inside [plugins] dir.
+# Validation: none at load time; a missing file fails at startup, by path.
+plugin = "webspaces-plugin-proton"
+
+# base_url: "imaps://host:port" for implicit TLS, or "imap://host:port"
+# for a plaintext connect immediately followed by a mandatory STARTTLS —
+# the scheme you use MUST match what Proton Mail Bridge -> Settings
+# reports as this account's IMAP connection security. ${PROTON_BRIDGE_ADDR}
+# is the LAN address:port of the socat/stunnel forwarder set up on the
+# home server running Bridge (Bridge itself only ever binds
+# 127.0.0.1 — see 03-RESEARCH.md Pitfall 2 — so this forwarder step is
+# not optional).
+# Validation: must be non-empty after expansion, and the scheme must be
+# exactly "imap" or "imaps"; anything else fails plugin startup, naming
+# the invalid scheme.
+base_url = "imaps://${PROTON_BRIDGE_ADDR}"
+
+# username: the Bridge-generated Bridge username for this account (Bridge
+# -> Settings) — NOT your real Proton account email address, and never a
+# literal secret value here (${VAR} only, D-04).
+# Validation: must be non-empty after expansion; same missing-variable
+# error shape as base_url.
+username = "${PROTON_BRIDGE_USER}"
+
+# token: the Bridge-generated Bridge password (Bridge -> Settings) —
+# reused as the IMAP LOGIN password. This is scoped to Bridge alone and
+# cannot be used to sign in to the Proton account itself, even if leaked.
+# Validation: must be non-empty after expansion; same missing-variable
+# error shape as base_url.
+token = "${PROTON_BRIDGE_PASS}"
+
+# ca_cert: filesystem path to Bridge's exported TLS certificate (Bridge ->
+# Settings -> Advanced -> "Export TLS certificates"). Required in
+# practice — Bridge's certificate is self-signed, so the system trust
+# store will not verify it. A leading "~" is expanded to your home
+# directory.
+# Validation: none enforced at config-load time; an unreadable or
+# unparsable file falls back to the system trust store, and TLS
+# verification then fails at sync/health time with a clear "unavailable"
+# error rather than a load-time error.
+ca_cert = "~/.config/webspaces/proton-bridge-cert.pem"
+
+# webmail_base_url: this account's Proton webmail root, INCLUDING the
+# account index (e.g. "https://mail.proton.me/u/0") — read from the
+# address bar while a label/folder view is open in Proton webmail. Used
+# only to build a clickable link to the matched mailbox's webmail view
+# (LINK_FIDELITY_ANCHORED); the plugin never fetches this URL itself.
+# Validation: must be non-empty after expansion; same missing-variable
+# error shape as base_url.
+webmail_base_url = "${PROTON_WEBMAIL_BASE}"
+
+[sources.proton.agent]
+read = false
+handoff = false
+
 # [sources.<name>.agent] — this source's per-plugin agent grant (AGENT-01,
 # D-11): whether an automated caller through /agent/v1 may read this
 # source's items, and whether it may hand actions off through this
