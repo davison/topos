@@ -123,7 +123,7 @@ Notes:
   4. User can type a query inside a webspace and get ranked, clickable matches across every source in that webspace
   5. The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when the bridge is unreachable
 
-**Plans**: 5 plans
+**Plans**: 6 plans
 Plans:
 **Wave 1** *(both plans run in parallel — zero file overlap)*
 
@@ -138,6 +138,10 @@ Plans:
 **Wave 3** *(gap closure from 03-VERIFICATION.md; blocked on Wave 2)*
 
 - [x] 03-05-PLAN.md — Gap closure: the fetched INTERNALDATE reaches `Item.TimestampUnix` so emails carry a date and interleave chronologically, plus the logged empty-Message-Id skip and TLS-comment hygiene
+
+**Wave 4** *(gap closure from the 03-VERIFICATION.md re-verification; blocked on Wave 3)*
+
+- [ ] 03-06-PLAN.md — Gap closure: the Proton plugin's `source_id`→mailbox state accumulates across webspaces instead of being replaced per `Match`, so email bodies render for every webspace and not just the last-synced one; plus the detail pane's date comes from the shared UTC-pinned formatter
 
 **UI hint**: yes
 
