@@ -6,7 +6,7 @@
 	import OpenInSource from '$lib/components/OpenInSource.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
-	import { detailPaneState } from '$lib/format';
+	import { detailPaneState, formatItemDate } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
 	// renders from it synchronously, before getItem(id) resolves (stage
@@ -29,15 +29,6 @@
 	// states this pane shows (D-10) — see format.ts for the full
 	// precedence rule and staleness.test.ts for its unit tests.
 	let paneState = $derived(detailPaneState(content, fetchErrorCode, sourceReachable));
-
-	function formatDate(unix: number): string {
-		if (!unix) return '';
-		return new Date(unix * 1000).toLocaleDateString(undefined, {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
-	}
 
 	async function loadContent(id: string) {
 		loadingContent = true;
@@ -74,7 +65,7 @@
 			</p>
 		{/if}
 		<div class="flex flex-wrap items-center gap-2 text-[14px] text-muted-foreground">
-			<span>{formatDate(item.timestamp_unix)}</span>
+			<span>{formatItemDate(item.timestamp_unix)}</span>
 			{#each item.labels as label (label)}
 				<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
 			{/each}
