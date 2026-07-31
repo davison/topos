@@ -258,3 +258,26 @@ export function searchVariant(
 	if (state === 'ready') return resultCount === 0 ? 'empty' : 'populated';
 	return 'idle';
 }
+
+// The four locked search strings (03-UI-SPEC.md Copywriting Contract),
+// frozen so this is their one definition — SearchBox.svelte and
+// SearchResults.svelte render from this object (and noMatchesHeading
+// below) rather than from inline literals, so the copy can never drift
+// between the two components or between a component and its test.
+export const searchCopy = Object.freeze({
+	placeholder: 'Search this webspace',
+	clearLabel: 'Clear search',
+	emptyBody: 'Try a different word, or clear the search to see the full stream.',
+	errorInline: 'Search is unavailable right now — try again in a moment.'
+});
+
+/**
+ * The no-matches heading, with the raw query interpolated verbatim —
+ * including any character that would be markup if this were ever
+ * rendered as HTML. Callers must render this through Svelte's default
+ * text binding (never `{@html}`); this function itself does no escaping
+ * because it produces plain text content, not markup (T-03-21).
+ */
+export function noMatchesHeading(query: string): string {
+	return `No matches for "${query}"`;
+}

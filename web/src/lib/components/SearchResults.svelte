@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import StreamRow from './StreamRow.svelte';
-	import { searchVariant } from '$lib/format';
+	import { searchVariant, searchCopy, noMatchesHeading } from '$lib/format';
 	import type { SearchResult, SourceStatus } from '$lib/api';
 
 	// The results region (E2, 03-UI-SPEC.md): renders in place of
@@ -47,7 +47,7 @@
 	     row, E2 error). -->
 	<div class="flex h-full flex-col items-center justify-center px-6 py-12 text-center">
 		<p class="max-w-md text-[16px] leading-[1.5] text-foreground">
-			Search is unavailable right now — try again in a moment.
+			{searchCopy.errorInline}
 		</p>
 	</div>
 {:else if variant === 'empty'}
@@ -57,10 +57,10 @@
 	     default text binding), never markup (T-03-21). -->
 	<div class="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
 		<p class="text-[20px] leading-[1.2] font-semibold text-foreground">
-			No matches for "{query}"
+			{noMatchesHeading(query)}
 		</p>
 		<p class="max-w-md text-[16px] leading-[1.5] text-muted-foreground">
-			Try a different word, or clear the search to see the full stream.
+			{searchCopy.emptyBody}
 		</p>
 	</div>
 {:else}

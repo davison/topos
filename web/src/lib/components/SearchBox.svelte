@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
+	import { searchCopy } from '$lib/format';
 
 	// The search box (E1, 03-UI-SPEC.md): a persistent header-tier control,
 	// debounced as-you-type, never disabled and never carrying a spinner of
@@ -74,7 +75,7 @@
 	/>
 	<Input
 		type="text"
-		placeholder="Search this webspace"
+		placeholder={searchCopy.placeholder}
 		value={inputValue}
 		oninput={(e) => handleInput(e.currentTarget.value)}
 		class="pr-9 pl-8"
@@ -85,7 +86,7 @@
 			variant="ghost"
 			size="icon"
 			class="absolute top-1/2 right-0 size-11 -translate-y-1/2"
-			aria-label="Clear search"
+			aria-label={searchCopy.clearLabel}
 			onclick={handleClear}
 		>
 			<X class="size-4" />

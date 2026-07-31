@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { formatItemDate, formatFidelity, formatRelativeTime, healthTone, parseSnippet, searchVariant } from './format';
+import {
+	formatItemDate,
+	formatFidelity,
+	formatRelativeTime,
+	healthTone,
+	parseSnippet,
+	searchVariant,
+	searchCopy,
+	noMatchesHeading
+} from './format';
 import { SNIPPET_OPEN, SNIPPET_CLOSE } from './api';
 import type { SourceStatus } from './api';
 
@@ -139,6 +148,49 @@ describe('parseSnippet', () => {
 			expect(segment.text).not.toContain(SNIPPET_CLOSE);
 		}
 	});
+
+	it('handles a snippet that begins with a matched region (no leading unmatched segment)', () => {
+		const snippet = `${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE} trail`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: 'MATCH', match: true },
+			{ text: ' trail', match: false }
+		]);
+	});
+
+	it('handles a snippet that ends with a matched region (no trailing unmatched segment)', () => {
+		const snippet = `lead ${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE}`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: 'lead ', match: false },
+			{ text: 'MATCH', match: true }
+		]);
+	});
+
+	it('handles a snippet that is entirely a matched region', () => {
+		const snippet = `${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE}`;
+		expect(parseSnippet(snippet)).toEqual([{ text: 'MATCH', match: true }]);
+	});
+
+	it('handles an elision-adjacent match without splitting or leaking the ellipsis character', () => {
+		const snippet = `…lead ${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE} trail…`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: '…lead ', match: false },
+			{ text: 'MATCH', match: true },
+			{ text: ' trail…', match: false }
+		]);
+	});
+
+	it('never splits a multi-byte character adjacent to a delimiter', () => {
+		// A surrogate-pair emoji directly touching both delimiters — if the
+		// parser cut mid-character, one of these segments would carry a
+		// lone unpaired surrogate instead of the intact emoji.
+		const emoji = '😀';
+		const snippet = `${emoji}${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE}${emoji}`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: emoji, match: false },
+			{ text: 'MATCH', match: true },
+			{ text: emoji, match: false }
+		]);
+	});
 });
 
 describe('searchVariant', () => {
@@ -166,5 +218,65 @@ describe('searchVariant', () => {
 
 	it('returns populated for a non-empty query whose completed request returned at least one result', () => {
 		expect(searchVariant('boiler', 'ready', 1)).toBe('populated');
+	});
+});
+
+describe('searchVariant state matrix (one assertion per row)', () => {
+	it('an empty query is idle whatever the request state, so clearing the box always returns the stream', () => {
+		expect(searchVariant('', 'idle', 0)).toBe('idle');
+		expect(searchVariant('', 'loading', 0)).toBe('idle');
+		expect(searchVariant('', 'error', 0)).toBe('idle');
+		expect(searchVariant('', 'ready', 5)).toBe('idle');
+	});
+
+	it('a whitespace-only query is idle whatever the request state', () => {
+		expect(searchVariant('   ', 'loading', 0)).toBe('idle');
+		expect(searchVariant('   ', 'ready', 5)).toBe('idle');
+	});
+
+	it('a non-empty query in flight is loading — the variant that drives the skeleton rows, never a disabled input', () => {
+		expect(searchVariant('boiler', 'loading', 0)).toBe('loading');
+	});
+
+	it('a failed request for the current query is error', () => {
+		expect(searchVariant('boiler', 'error', 0)).toBe('error');
+	});
+
+	it('a completed request with zero results is empty, distinct from idle and from error', () => {
+		const empty = searchVariant('boiler', 'ready', 0);
+		expect(empty).toBe('empty');
+		expect(empty).not.toBe('idle');
+		expect(empty).not.toBe('error');
+	});
+
+	it('a completed request with exactly one result is populated, and fifty results is still populated with no additional state', () => {
+		expect(searchVariant('boiler', 'ready', 1)).toBe('populated');
+		expect(searchVariant('boiler', 'ready', 50)).toBe('populated');
+	});
+});
+
+describe('searchCopy', () => {
+	it('matches the UI-SPEC Copywriting Contract character for character', () => {
+		expect(searchCopy.placeholder).toBe('Search this webspace');
+		expect(searchCopy.clearLabel).toBe('Clear search');
+		expect(searchCopy.emptyBody).toBe(
+			'Try a different word, or clear the search to see the full stream.'
+		);
+		// The em dash (U+2014) between "now" and "try again" is load-bearing —
+		// a plain hyphen would silently diverge from the locked copy.
+		expect(searchCopy.errorInline).toBe(
+			'Search is unavailable right now — try again in a moment.'
+		);
+	});
+});
+
+describe('noMatchesHeading', () => {
+	it('interpolates the query verbatim between straight double quotes', () => {
+		expect(noMatchesHeading('boiler')).toBe('No matches for "boiler"');
+	});
+
+	it('interpolates the query verbatim even when it carries markup-like characters', () => {
+		expect(noMatchesHeading('<script>')).toBe('No matches for "<script>"');
+		expect(noMatchesHeading('a "quoted" term')).toBe('No matches for "a "quoted" term"');
 	});
 });
