@@ -123,7 +123,7 @@ Notes:
   4. User can type a query inside a webspace and get ranked, clickable matches across every source in that webspace
   5. The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when the bridge is unreachable
 
-**Plans**: 7 plans
+**Plans**: 8 plans
 Plans:
 **Wave 1** *(both plans run in parallel — zero file overlap)*
 
@@ -146,6 +146,10 @@ Plans:
 **Wave 5** *(gap closure from the second 03-VERIFICATION.md re-verification; blocked on Wave 4)*
 
 - [x] 03-07-PLAN.md — Gap closure: `plugins/proton`'s declared `golang.org/x/net` is raised past the CVE-2024-45338 fix boundary (the HTML tokenizer `RenderSanitizedEmail` runs over arbitrary inbound email), with the workspace-selected version and the rendered output both proven unchanged, plus a repo-wide audit test that fails if any of the six workspace modules declares a below-floor dependency again
+
+**Wave 6** *(gap closure from 03-UAT.md gap G-03-1; blocked on Wave 5)*
+
+- [ ] 03-08-PLAN.md — Gap closure (code-side half of G-03-1; the `.env` credential correction remains a user action): a rejected Bridge LOGIN whose configured token cannot be a Bridge-generated app password now says so and says where the real one lives, wired once in `client.connect` so it reaches both `HealthResponse.LastError` and the `sync_runs`-fed `last_error` behind the UI's red dot — warning-grade, never blocking a connection attempt — plus the live-Bridge test's misleading username-pointing hint replaced by a reference to that same shared constant
 
 **UI hint**: yes
 
