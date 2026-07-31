@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +72,12 @@ type SourcePlugin struct {
 	// completes) surfaces as a clear NotFound below, not a silent failure.
 	mailboxMu    sync.RWMutex
 	mailboxCache map[string]string
+
+	// logOut is the plugin's log sink — os.Stderr in production, which
+	// go-plugin parses and re-emits through the kernel's hclog so plugin
+	// and kernel logs interleave sanely. Overridable in tests, mirroring
+	// Client.dial.
+	logOut io.Writer
 }
 
 // NewSourcePlugin builds a SourcePlugin. baseURL, username, token and
@@ -87,6 +94,7 @@ func NewSourcePlugin(baseURL, username, token, caCertPath, webmailBaseURL string
 		baseURL:        baseURL,
 		webmailBaseURL: strings.TrimRight(webmailBaseURL, "/"),
 		mailboxCache:   make(map[string]string),
+		logOut:         os.Stderr,
 	}, nil
 }
 
@@ -195,7 +203,14 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 	}
 	p.setMailboxCache(newCache)
 
-	_ = skippedNoMessageID // counted for the Match log line below
+	if skippedNoMessageID > 0 {
+		// Count-only: never a subject, sender, Message-Id, mailbox name,
+		// base URL or credential. This log is forwarded verbatim into the
+		// kernel's log stream, and everything written there outlives the
+		// process (T-03-05-03).
+		fmt.Fprintf(p.logOut, "webspaces-plugin-proton: match: skipped %d message(s) with no Message-Id header\n", skippedNoMessageID)
+	}
+
 	return &webspacesv1.MatchResponse{Items: items}, nil
 }
 

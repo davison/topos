@@ -123,12 +123,22 @@ var seedInternalDate = time.Date(2016, time.May, 12, 9, 15, 30, 0, time.UTC) // 
 // Item.SecondaryTimestampUnix rather than the primary TimestampUnix.
 var seedEnvelopeDate = time.Date(2016, time.May, 11, 14, 31, 59, 0, time.UTC) // unix 1462977119
 
+// noMessageIDSubject is the distinctive subject seeded on
+// "Labels/NoMessageID"'s single message — a test asserts this string never
+// appears in the plugin's log output for the skip it causes (03-05 Task 2).
+const noMessageIDSubject = "Unroutable seed subject"
+
 // newTestIMAPServer starts a real github.com/emersion/go-imap server
 // (server + backend/memory) on a loopback listener with insecure auth
 // enabled, seeded with two mailboxes ("Labels/AlphaTeam",
 // "Labels/BetaTeam") that both contain the SAME message (identical
 // Message-Id) — exercising Match's dedup-by-Message-ID-merge-labels path
-// (03-RESEARCH.md Pattern 2) alongside the read-only wire assertions.
+// (03-RESEARCH.md Pattern 2) alongside the read-only wire assertions — plus
+// a third mailbox, "Labels/NoMessageID", holding a single message that
+// deliberately omits the Message-Id header (03-05 Task 2). Adding this
+// third mailbox does not affect TestIMAPTranscript_ExamineAndPeekOnly: that
+// test's keyword list is "AlphaTeam" and "BetaTeam" only, so
+// "Labels/NoMessageID" is listed but never EXAMINEd there.
 //
 // Every seeded message's IMAP INTERNALDATE is explicit (seedInternalDate),
 // never the zero time.Time: go-imap v1's memory backend (CreateMessage)
@@ -146,7 +156,7 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		t.Fatalf("seed backend: login: %v", err)
 	}
 
-	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam"} {
+	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam", "Labels/NoMessageID"} {
 		if err := user.CreateMailbox(name); err != nil {
 			t.Fatalf("seed backend: create mailbox %q: %v", name, err)
 		}
@@ -169,6 +179,21 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		if err := mbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(sharedMessage))); err != nil {
 			t.Fatalf("seed backend: create message in %q: %v", name, err)
 		}
+	}
+
+	noMessageIDMsg := "From: Carol <carol@example.com>\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: " + noMessageIDSubject + "\r\n" +
+		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"This message deliberately has no Message-Id header."
+	noMessageIDMbox, err := user.GetMailbox("Labels/NoMessageID")
+	if err != nil {
+		t.Fatalf("seed backend: get mailbox %q: %v", "Labels/NoMessageID", err)
+	}
+	if err := noMessageIDMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(noMessageIDMsg))); err != nil {
+		t.Fatalf("seed backend: create message in %q: %v", "Labels/NoMessageID", err)
 	}
 
 	s := imapserver.New(bkd)

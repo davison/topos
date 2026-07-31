@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,5 +98,36 @@ func TestToItem_ZeroInternalDateYieldsZeroTimestamp(t *testing.T) {
 
 	if got := item.GetTimestampUnix(); got != 0 {
 		t.Errorf("item.TimestampUnix = %d, want 0 for a zero internalDate (got the zero time.Time's negative Unix seconds instead of the guarded sentinel)", got)
+	}
+}
+
+// TestMatch_EmptyMessageIDSkipIsLogged is the 03-05 Task 2 regression: a
+// Match run over a mailbox holding one message with no Message-Id header
+// must skip it (zero items, nil error — 03-RESEARCH.md Pitfall 6) and log
+// exactly one count-only line naming the skip — closing the half-
+// implemented 03-01 must-have ("a counted, logged skip"). The log line must
+// never carry the message's own content.
+func TestMatch_EmptyMessageIDSkipIsLogged(t *testing.T) {
+	serverAddr := newTestIMAPServer(t)
+	plugin := newTestPluginDialingServer(t, serverAddr)
+
+	var logBuf bytes.Buffer
+	plugin.logOut = &logBuf
+
+	ctx := context.Background()
+	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"NoMessageID"}})
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(matchResp.GetItems()) != 0 {
+		t.Fatalf("Match: got %d items, want 0 (a message with no Message-Id must be skipped, never indexed under an empty-string key)", len(matchResp.GetItems()))
+	}
+
+	logged := logBuf.String()
+	if !strings.Contains(logged, "skipped 1 message") {
+		t.Errorf("plugin log output = %q, want it to contain %q", logged, "skipped 1 message")
+	}
+	if strings.Contains(logged, noMessageIDSubject) {
+		t.Errorf("plugin log output = %q, must NOT contain the seeded message subject %q (T-03-05-03)", logged, noMessageIDSubject)
 	}
 }
