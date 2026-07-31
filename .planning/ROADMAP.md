@@ -145,7 +145,7 @@ Plans:
 
 **Wave 5** *(gap closure from the second 03-VERIFICATION.md re-verification; blocked on Wave 4)*
 
-- [ ] 03-07-PLAN.md — Gap closure: `plugins/proton`'s declared `golang.org/x/net` is raised past the CVE-2024-45338 fix boundary (the HTML tokenizer `RenderSanitizedEmail` runs over arbitrary inbound email), with the workspace-selected version and the rendered output both proven unchanged, plus a repo-wide audit test that fails if any of the six workspace modules declares a below-floor dependency again
+- [x] 03-07-PLAN.md — Gap closure: `plugins/proton`'s declared `golang.org/x/net` is raised past the CVE-2024-45338 fix boundary (the HTML tokenizer `RenderSanitizedEmail` runs over arbitrary inbound email), with the workspace-selected version and the rendered output both proven unchanged, plus a repo-wide audit test that fails if any of the six workspace modules declares a below-floor dependency again
 
 **UI hint**: yes
 
@@ -207,7 +207,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 6/6 | Complete   | 2026-07-31 |
+| 3. Email in the Webspace | 7/7 | Complete   | 2026-07-31 |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
