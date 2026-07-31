@@ -1,5 +1,5 @@
 ---
-status: partial
+status: diagnosed
 phase: 03-email-in-the-webspace
 source: [03-VERIFICATION.md]
 started: 2026-07-31T16:57:00Z
@@ -58,5 +58,14 @@ blocked: 2
   reason: "User reported: proton mail shows as unavailable in the UI (red dot). Corroborating evidence from Test 2: live IMAP LOGIN to the Bridge returns 'no such user' even with the correct account email address and several aliases (user has ruled out credential-entry error). The long-standing 'Bridge-account credential finding' from 03-01-SUMMARY.md is now in question — diagnosis must cover Bridge-side config (Bridge username/password semantics, combined vs split address mode, LAN exposure/proxy of the localhost-bound Bridge) AND the plugin/test LOGIN handling."
   severity: major
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "ENVIRONMENTAL, not a code defect: PROTON_BRIDGE_PASS in .env (desktop) is not the Bridge-generated app password — it is a 37-char symbol-heavy string impossible in Bridge's base64url password alphabet [A-Za-z0-9-_] (likely the Proton account password). Bridge's CheckAuth base64url-decodes the password BEFORE comparing the username, and gluon returns its single auth-failure string 'no such user' for every rejected (username, password) pair — which is why the correct address and every alias fail identically. Live probe confirmed the LAN forwarder and Bridge itself are healthy (genuine Bridge 03.25.00 greeting at monroe:1143). Plugin/kernel pass credentials through verbatim — code path audited clean."
+  artifacts:
+    - path: ".env"
+      issue: "PROTON_BRIDGE_PASS holds a non-Bridge password; user must replace it with the Bridge app password (user-side action, not plannable)"
+    - path: "plugins/proton/live_bridge_test.go"
+      issue: "Hint text at ~line 160 steers diagnosis to the username ('credential finding — not a code defect') but Bridge checks the password first — misleading, caused four verification rounds of misdiagnosis"
+  missing:
+    - "USER ACTION (not plannable): read the real Bridge credentials on monroe (Bridge GUI → account → Mailbox details, or `protonmail-bridge --cli` then `info`; sign in first if signed out), replace PROTON_BRIDGE_PASS in .env with the ~20–22 char [A-Za-z0-9-_] app password, wait out Bridge's login jail, restart kernel, re-run live test"
+    - "Correct the misleading 'no such user' hint in live_bridge_test.go: Bridge rejects the (username, password) pair with password checked first — do not point at the username"
+    - "Make this misconfig class self-diagnosing: plugin Health path flags a configured token containing characters outside base64url [A-Za-z0-9-_] as 'not a Bridge-generated app password'"
+  debug_session: .planning/debug/proton-bridge-no-such-user.md
