@@ -59,6 +59,28 @@ export interface StreamResponse {
 	items: StreamItem[];
 }
 
+// SearchResult extends StreamItem so it is directly usable anywhere a
+// StreamItem is expected — this is what lets StreamRow render a search
+// result unchanged, with `snippet` swapped in for the preview region.
+export interface SearchResult extends StreamItem {
+	snippet: string;
+}
+
+export interface SearchResponse {
+	schema_version: number;
+	webspace: string;
+	query: string;
+	results: SearchResult[];
+}
+
+// SNIPPET_OPEN/SNIPPET_CLOSE mirror kernel/index/store.go's SnippetOpen/
+// SnippetClose constants exactly (03-03-SUMMARY.md) — the ASCII STX/ETX
+// control characters the kernel wraps a matched term between in a
+// search result's `snippet` field. These characters cannot occur in real
+// subject lines or preview text, so a consumer can split on them safely.
+export const SNIPPET_OPEN = '\u0002';
+export const SNIPPET_CLOSE = '\u0003';
+
 export interface Rendition {
 	mime_type: string;
 	size_bytes: number;
@@ -148,6 +170,13 @@ export function getStream(webspace: string): Promise<StreamResponse> {
 	return getJSON<StreamResponse>(`/api/webspaces/${encodeURIComponent(webspace)}/stream`);
 }
 
+/** GET /api/webspaces/{webspace}/search?q= */
+export function searchWebspace(webspace: string, query: string): Promise<SearchResponse> {
+	return getJSON<SearchResponse>(
+		`/api/webspaces/${encodeURIComponent(webspace)}/search?q=${encodeURIComponent(query)}`
+	);
+}
+
 /** GET /api/items/{id} */
 export function getItem(id: string): Promise<ItemDetail> {
 	return getJSON<ItemDetail>(`/api/items/${encodeURIComponent(id)}`);
@@ -233,7 +262,8 @@ export function refreshAll(): Promise<SyncRefreshResponse> {
 // raw source_type) for any source not yet listed here.
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
 	paperless: 'paperless-ngx',
-	silverbullet: 'SilverBullet'
+	silverbullet: 'SilverBullet',
+	proton: 'Proton Mail'
 };
 
 /** Human-friendly display name for a source_type. */

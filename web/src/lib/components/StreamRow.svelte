@@ -7,22 +7,30 @@
 		TooltipTrigger
 	} from '$lib/components/ui/tooltip/index.js';
 	import Thumbnail from './Thumbnail.svelte';
-	import { formatItemDate } from '$lib/format';
+	import { formatItemDate, parseSnippet } from '$lib/format';
 	import { cn } from '$lib/utils.js';
 	import type { StreamItem } from '$lib/api';
 
+	// `snippet` (03-04, search results): when a non-empty string, replaces
+	// the preview region with parseSnippet's segmented rendering instead of
+	// item.preview, with matched segments in the existing semibold weight
+	// — never a new color. Absent, this component is byte-identical to
+	// Phase 1/2. Present but empty, the preview region is omitted entirely,
+	// the same degrade the plain item.preview branch already applies.
 	let {
 		item,
 		selected = false,
 		onselect,
 		stale = false,
-		sourceDisplayName = ''
+		sourceDisplayName = '',
+		snippet
 	}: {
 		item: StreamItem;
 		selected?: boolean;
 		onselect: () => void;
 		stale?: boolean;
 		sourceDisplayName?: string;
+		snippet?: string;
 	} = $props();
 </script>
 
@@ -105,7 +113,15 @@
 		  to title + metadata only, not an empty or zero-height block. The
 		  row keeps its fixed height regardless (.stream-row-surface).
 		-->
-		{#if item.preview}
+		{#if snippet !== undefined}
+			{#if snippet}
+				<p class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground">
+					{#each parseSnippet(snippet) as segment, i (i)}
+						<span class={segment.match ? 'font-semibold' : undefined}>{segment.text}</span>
+					{/each}
+				</p>
+			{/if}
+		{:else if item.preview}
 			<p class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground">
 				{item.preview}
 			</p>

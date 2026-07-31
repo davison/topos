@@ -6,13 +6,16 @@
 		getSources,
 		refreshSource,
 		refreshAll,
+		searchWebspace,
 		sourceDisplayName,
 		type StreamResponse,
-		type SourceStatus
+		type SourceStatus,
+		type SearchResult
 	} from '$lib/api';
 	import { resolveSourceFilter, staleSourceTypes } from '$lib/format';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
+	import SearchResults from '$lib/components/SearchResults.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 
 	// The [webspace] dynamic segment always matches for this route, so
@@ -28,7 +31,25 @@
 	// its declaration" compiler error).
 	let loadState: 'loading' | 'error' | 'ready' = $state('loading');
 	let selectedId = $state<string | null>(null);
-	let selectedItem = $derived(response?.items.find((i) => i.id === selectedId) ?? null);
+
+	// Search state (KERN-05 browser half, 03-04): kept in component state
+	// rather than the URL — the UI-SPEC specifies no URL persistence for
+	// it, unlike the `?source=` filter param below. `searchRequestSeq` is
+	// a monotonically increasing sequence number captured before each
+	// await and compared after, so a slower earlier request can never
+	// overwrite a faster later one (T-03-25) — reachable in normal use
+	// with a 300ms debounce and as-you-type searching, not a theoretical
+	// edge.
+	let searchQuery = $state('');
+	let searchState: 'idle' | 'loading' | 'error' | 'ready' = $state('idle');
+	let searchResults = $state<SearchResult[]>([]);
+	let searchRequestSeq = 0;
+
+	let selectedItem = $derived(
+		response?.items.find((i) => i.id === selectedId) ??
+			searchResults.find((r) => r.id === selectedId) ??
+			null
+	);
 
 	// Sources: fetched (and polled while any source is syncing)
 	// independently of the stream, so a sources-request failure can never
@@ -120,10 +141,39 @@
 		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
-	// Re-fetch (and drop any stale selection) whenever the webspace route
-	// param changes.
+	async function handleSearch(query: string) {
+		searchQuery = query;
+
+		// An empty or whitespace-only query resets to idle and clears the
+		// results without issuing a request — clearing the box always
+		// returns the untouched stream.
+		if (query.trim() === '') {
+			searchState = 'idle';
+			searchResults = [];
+			return;
+		}
+
+		searchState = 'loading';
+		const seq = ++searchRequestSeq;
+		try {
+			const res = await searchWebspace(webspace, query);
+			if (seq !== searchRequestSeq) return; // a newer request has since superseded this one
+			searchResults = res.results;
+			searchState = 'ready';
+		} catch {
+			if (seq !== searchRequestSeq) return;
+			searchResults = [];
+			searchState = 'error';
+		}
+	}
+
+	// Re-fetch (and drop any stale selection/search) whenever the webspace
+	// route param changes.
 	$effect(() => {
 		selectedId = null;
+		searchQuery = '';
+		searchState = 'idle';
+		searchResults = [];
 		load();
 		loadSources();
 	});
@@ -142,6 +192,8 @@
 		onfilter={setFilter}
 		onrefresh={handleRefreshSource}
 		onrefreshall={handleRefreshAll}
+		{searchQuery}
+		onsearch={handleSearch}
 	/>
 
 	<main class="flex min-h-0 flex-1 gap-8 px-6 py-8">
@@ -149,19 +201,35 @@
 		  The stream pane owns its own independent scroll region
 		  (overflow-y-auto, min-h-0) and never scrolls horizontally
 		  (overflow-x-hidden) — scrolling it never moves the detail pane's
-		  scroll position, which lives in its own region below.
+		  scroll position, which lives in its own region below. SearchResults
+		  renders in place of StreamList whenever the trimmed query is
+		  non-empty, inside this same pane, so search introduces no second
+		  scroll region; the source-filter chips keep governing the stream,
+		  which returns exactly as it was when the query is cleared.
 		-->
 		<div class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-			<StreamList
-				state={loadState}
-				{response}
-				{selectedId}
-				onselect={(id) => (selectedId = id)}
-				onretry={load}
-				staleSourceTypes={staleTypes}
-				{selectedSource}
-				{sourcesByType}
-			/>
+			{#if searchQuery.trim()}
+				<SearchResults
+					query={searchQuery}
+					state={searchState}
+					results={searchResults}
+					{selectedId}
+					onselect={(id) => (selectedId = id)}
+					staleSourceTypes={staleTypes}
+					{sourcesByType}
+				/>
+			{:else}
+				<StreamList
+					state={loadState}
+					{response}
+					{selectedId}
+					onselect={(id) => (selectedId = id)}
+					onretry={load}
+					staleSourceTypes={staleTypes}
+					{selectedSource}
+					{sourcesByType}
+				/>
+			{/if}
 		</div>
 
 		{#if selectedItem}

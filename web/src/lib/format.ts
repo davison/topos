@@ -11,6 +11,7 @@
 // clock, so `timeZone: 'UTC'` is pinned unconditionally here rather than
 // left to the locale's default.
 
+import { SNIPPET_OPEN, SNIPPET_CLOSE } from './api';
 import type { ItemContent, SourceStatus, StreamItem, StreamResponse } from './api';
 
 /** Formats a unix timestamp (seconds) as a UTC calendar day, e.g. "1 Jan 2024". */
@@ -171,4 +172,89 @@ export function detailPaneState(
 	if (content !== null && content.available === false) return 'deleted';
 	if (fetchErrorCode !== null) return sourceReachable ? 'error' : 'unreachable';
 	return 'loaded';
+}
+
+// --- Search (KERN-05 browser half, 03-04) ---
+
+export interface SnippetSegment {
+	text: string;
+	match: boolean;
+}
+
+/**
+ * Splits a kernel search-result `snippet` string (03-03-SUMMARY.md's
+ * SnippetOpen/SnippetClose STX/ETX delimiter contract) into an ordered
+ * list of plain-text/matched segments a template renders as one span
+ * each. Never emits a segment carrying a delimiter character, and never
+ * throws — a malformed or unpaired delimiter run degrades the whole
+ * snippet to a single plain-text (non-matched) segment with every
+ * delimiter character stripped, rather than propagating a parse error
+ * into the render path (T-03-22).
+ */
+export function parseSnippet(snippet: string): SnippetSegment[] {
+	if (snippet === '') return [];
+
+	const positions: { index: number; open: boolean }[] = [];
+	let i = 0;
+	while (i < snippet.length) {
+		if (snippet.startsWith(SNIPPET_OPEN, i)) {
+			positions.push({ index: i, open: true });
+			i += SNIPPET_OPEN.length;
+		} else if (snippet.startsWith(SNIPPET_CLOSE, i)) {
+			positions.push({ index: i, open: false });
+			i += SNIPPET_CLOSE.length;
+		} else {
+			i += 1;
+		}
+	}
+
+	// A well-formed snippet alternates open, close, open, close, ...
+	// starting with an open. Any other shape (an unpaired trailing open,
+	// two opens in a row, a stray leading close) is malformed — degrade
+	// the entire snippet to one unmatched segment with every delimiter
+	// character stripped, rather than guessing at intent.
+	const wellFormed =
+		positions.length % 2 === 0 && positions.every((p, idx) => p.open === (idx % 2 === 0));
+
+	if (!wellFormed) {
+		const plain = snippet.split(SNIPPET_OPEN).join('').split(SNIPPET_CLOSE).join('');
+		return plain.length > 0 ? [{ text: plain, match: false }] : [];
+	}
+
+	const segments: SnippetSegment[] = [];
+	let cursor = 0;
+	let match = false;
+	for (const p of positions) {
+		const text = snippet.slice(cursor, p.index);
+		if (text.length > 0) segments.push({ text, match });
+		cursor = p.index + (p.open ? SNIPPET_OPEN.length : SNIPPET_CLOSE.length);
+		match = p.open;
+	}
+	const trailing = snippet.slice(cursor);
+	if (trailing.length > 0) segments.push({ text: trailing, match: false });
+
+	return segments;
+}
+
+export type SearchVariant = 'idle' | 'loading' | 'error' | 'empty' | 'populated';
+
+/**
+ * The single decision SearchResults.svelte renders from. An empty or
+ * whitespace-only query is always idle regardless of request state — the
+ * precedence check that lets clearing the box always return the
+ * unfiltered stream, even if a stale in-flight request resolves after the
+ * clear. Otherwise the variant follows the request lifecycle: loading
+ * while in flight, error on a failed request, and once ready, empty or
+ * populated depending on whether any rows came back.
+ */
+export function searchVariant(
+	query: string,
+	state: 'idle' | 'loading' | 'error' | 'ready',
+	resultCount: number
+): SearchVariant {
+	if (query.trim() === '') return 'idle';
+	if (state === 'loading') return 'loading';
+	if (state === 'error') return 'error';
+	if (state === 'ready') return resultCount === 0 ? 'empty' : 'populated';
+	return 'idle';
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import SourceHealthChip from './SourceHealthChip.svelte';
 	import SourceFilterChips from './SourceFilterChips.svelte';
+	import SearchBox from './SearchBox.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { shouldShowSourceRows } from '$lib/format';
 	import type { SourceStatus } from '$lib/api';
@@ -19,7 +20,9 @@
 		selectedSource,
 		onfilter,
 		onrefresh,
-		onrefreshall
+		onrefreshall,
+		searchQuery,
+		onsearch
 	}: {
 		webspace: string;
 		sources: SourceStatus[];
@@ -28,6 +31,8 @@
 		onfilter: (sourceType: string | null) => void;
 		onrefresh: (name: string) => void;
 		onrefreshall: () => void;
+		searchQuery: string;
+		onsearch: (q: string) => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
@@ -55,4 +60,14 @@
 			<SourceFilterChips {sources} {selectedSource} {onfilter} />
 		</div>
 	{/if}
+
+	<!--
+	  The search box renders whenever the webspace does — unlike the two
+	  rows above, it is NOT gated behind shouldShowSourceRows: searching
+	  the local index doesn't depend on any source being reachable, so a
+	  sourceless webspace or a sources-request failure never hides it.
+	-->
+	<div class="mt-3">
+		<SearchBox query={searchQuery} onquery={onsearch} />
+	</div>
 </header>

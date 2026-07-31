@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { formatItemDate, formatFidelity, formatRelativeTime, healthTone } from './format';
+import { formatItemDate, formatFidelity, formatRelativeTime, healthTone, parseSnippet, searchVariant } from './format';
+import { SNIPPET_OPEN, SNIPPET_CLOSE } from './api';
 import type { SourceStatus } from './api';
 
 function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
@@ -96,5 +97,74 @@ describe('healthTone', () => {
 	it('never renders the unknown state as success even when paired with reachable:false', () => {
 		const tone = healthTone(makeSource({ last_status: '', last_sync_unix: 0, reachable: false }));
 		expect(tone).not.toBe('success');
+	});
+});
+
+describe('parseSnippet', () => {
+	it('returns a single unmatched segment for a string with no delimiters', () => {
+		expect(parseSnippet('plain text, no match')).toEqual([
+			{ text: 'plain text, no match', match: false }
+		]);
+	});
+
+	it('returns three alternating segments for one delimited region', () => {
+		const snippet = `lead ${SNIPPET_OPEN}MATCH${SNIPPET_CLOSE} trail`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: 'lead ', match: false },
+			{ text: 'MATCH', match: true },
+			{ text: ' trail', match: false }
+		]);
+	});
+
+	it('returns five alternating segments for two delimited regions', () => {
+		const snippet = `a${SNIPPET_OPEN}ONE${SNIPPET_CLOSE}b${SNIPPET_OPEN}TWO${SNIPPET_CLOSE}c`;
+		expect(parseSnippet(snippet)).toEqual([
+			{ text: 'a', match: false },
+			{ text: 'ONE', match: true },
+			{ text: 'b', match: false },
+			{ text: 'TWO', match: true },
+			{ text: 'c', match: false }
+		]);
+	});
+
+	it('returns an empty array for an empty string', () => {
+		expect(parseSnippet('')).toEqual([]);
+	});
+
+	it('never emits a segment carrying a delimiter character', () => {
+		const snippet = `a${SNIPPET_OPEN}b${SNIPPET_OPEN}c${SNIPPET_CLOSE}d`; // malformed: two opens
+		const segments = parseSnippet(snippet);
+		for (const segment of segments) {
+			expect(segment.text).not.toContain(SNIPPET_OPEN);
+			expect(segment.text).not.toContain(SNIPPET_CLOSE);
+		}
+	});
+});
+
+describe('searchVariant', () => {
+	it('returns idle for an empty query regardless of state', () => {
+		expect(searchVariant('', 'ready', 5)).toBe('idle');
+		expect(searchVariant('', 'loading', 0)).toBe('idle');
+		expect(searchVariant('', 'error', 0)).toBe('idle');
+	});
+
+	it('returns idle for a whitespace-only query regardless of state', () => {
+		expect(searchVariant('   ', 'ready', 5)).toBe('idle');
+	});
+
+	it('returns loading while a request for a non-empty query is in flight', () => {
+		expect(searchVariant('boiler', 'loading', 0)).toBe('loading');
+	});
+
+	it('returns error when the last request for the current non-empty query failed', () => {
+		expect(searchVariant('boiler', 'error', 0)).toBe('error');
+	});
+
+	it('returns empty for a non-empty query whose completed request returned zero results', () => {
+		expect(searchVariant('boiler', 'ready', 0)).toBe('empty');
+	});
+
+	it('returns populated for a non-empty query whose completed request returned at least one result', () => {
+		expect(searchVariant('boiler', 'ready', 1)).toBe('populated');
 	});
 });
