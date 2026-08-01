@@ -123,7 +123,7 @@ Notes:
   4. User can type a query inside a webspace and get ranked, clickable matches across every source in that webspace
   5. The plugin reaches Proton Mail Bridge over LAN despite its self-signed certificate, and reports a clear, actionable health error rather than hanging when the bridge is unreachable
 
-**Plans**: 8 plans
+**Plans**: 10 plans
 Plans:
 **Wave 1** *(both plans run in parallel — zero file overlap)*
 
@@ -150,6 +150,14 @@ Plans:
 **Wave 6** *(gap closure from 03-UAT.md gap G-03-1; blocked on Wave 5)*
 
 - [x] 03-08-PLAN.md — Gap closure (code-side half of G-03-1; the `.env` credential correction remains a user action): a rejected Bridge LOGIN whose configured token cannot be a Bridge-generated app password now says so and says where the real one lives, wired once in `client.connect` so it reaches both `HealthResponse.LastError` and the `sync_runs`-fed `last_error` behind the UI's red dot — warning-grade, never blocking a connection attempt — plus the live-Bridge test's misleading username-pointing hint replaced by a reference to that same shared constant
+
+**Wave 7** *(gap closure from 03-UAT.md gap G-03-2, major; blocked on Wave 6)*
+
+- [ ] 03-09-PLAN.md — Gap closure: the email detail pane becomes readable — the plugin (never the shared pane, which SilverBullet's both-fields response rules out) returns the plain-text part as the content whenever a message has one, so no rendition is offered for it; the sanitized rendition is kept as the fallback for HTML-only mail and made readable there, with the theme's own colours outranking every email-supplied inline colour and images that can never load under the rendition CSP no longer painting as broken icons — sanitizer allowlist, CSP and every standing security assertion unchanged
+
+**Wave 8** *(gap closure from 03-UAT.md gap G-03-3, minor; blocked on Wave 7 — both plans edit `plugins/proton/plugin.go`)*
+
+- [ ] 03-10-PLAN.md — Gap closure: "Open in Proton Mail" stops landing on the bare inbox — the label-name path Proton cannot resolve (custom labels are addressed by internal id, not name) is replaced by a search over the account's All Mail view for the message's subject, built only from configured input, inert against any subject a sender can write, absent when there is no subject, rune-capped, and still honestly declared ANCHORED
 
 **UI hint**: yes
 
@@ -211,7 +219,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 8/8 | Complete   | 2026-07-31 |
+| 3. Email in the Webspace | 8/10 | Gap closure | - |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
