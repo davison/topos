@@ -1,29 +1,37 @@
 ---
-status: testing
+status: diagnosed
 phase: 03-email-in-the-webspace
 source: [03-VERIFICATION.md]
 started: 2026-07-31T16:57:00Z
-updated: 2026-07-31T23:36:34Z
+updated: 2026-08-01T17:30:00Z
 ---
 
 ## Current Test
 
-number: 5
-name: Corrected red-dot diagnostic text after credential fix
+number: 1
+name: Live stream and detail-pane rendering (re-test after G-03-2/G-03-3 closure)
 expected: |
-  After correcting PROTON_BRIDGE_PASS in .env, if a sync still fails for any reason,
-  the red-dot detail shows the server's own message plus (only if the new token is
-  still shape-suspect) the actionable bridgeTokenShapeWarningText advice — never the
-  old username-pointing "not a code defect" / 03-01-SUMMARY.md framing, which no
-  longer exists in the codebase.
-awaiting: user response (blocked on the same .env correction as Tests 1-3)
+  Detail pane body is readable (plain-text preferred when a text/plain part
+  exists; no dark-on-dark text, no broken-image litter) and "Open in Proton
+  Mail" lands somewhere useful (not the bare inbox). Re-test once the
+  gap-closure plans for G-03-2 and G-03-3 have executed.
+awaiting: gap closure, then user re-test
 
 ## Tests
 
 ### 1. Live stream and detail-pane rendering across multiple webspaces
 expected: The email is visible, correctly dated, and its body renders in the detail pane for every configured webspace that matches Proton mail — not just the one processed last in a sync cycle. This is the direct live confirmation of the mailboxCache fix (03-06) plus the CVE-remediated rendering path (03-07).
 result: issue
-reported: "proton mail shows as unavailable in the UI (red dot)"
+reported: |
+  PARTIAL PASS after .env credential fix + adding label leaf "house+home" to webspace
+  keywords: proton source green, items visible in the stream, correctly dated,
+  interleaved with paperless/SilverBullet. (Earlier red-dot report resolved — see
+  G-03-1.) Two NEW issues found in the detail pane:
+  (1) rich HTML rendering unreadable — all images broken (CSP default-src 'none'
+  blocks every fetch by design) and email inline color/background-color styles
+  clash with the fixed dark theme (dark-on-dark text). See G-03-2.
+  (2) "Open in Proton Mail" opens the inbox view with no email selected and no
+  label filter — label-name URL path is not addressable in Proton webmail. See G-03-3.
 severity: major
 
 ### 2. Live-Bridge \Seen flag test passes
@@ -34,15 +42,13 @@ expected: |
   passes, directly proving SRC-01's second success criterion (\Seen flag unchanged
   across a full Match+Fetch cycle) against the real mailbox, not just the
   wire-transcript proxy for it.
-result: blocked
-blocked_by: third-party
-reason: "TestSeenFlagUnchanged_LiveBridge FAIL — live login: no such user. User has since ruled out credential-entry error: correct account email AND several aliases all return the same 'no such user'. The 03-01-SUMMARY.md 'credential finding' explanation no longer holds as stated — same root cause under diagnosis as G-03-1."
+result: [pending]
+note: "Unblocked 2026-08-01: .env credential corrected (G-03-1 resolved); live login now succeeds. Test not yet re-run."
 
 ### 3. Email stays unread in Proton's own client
 expected: After running a webspaces sync and opening an email in the detail pane, the same email checked in the real Proton web or mobile client is still shown as unread there — the direct, human-observable proof of the never-mark-read guarantee end to end.
-result: blocked
-blocked_by: third-party
-reason: "blocked — same Bridge 'no such user' login failure as Tests 1–2; no live sync possible until it is resolved"
+result: [pending]
+note: "Unblocked 2026-08-01: live sync now works (proton items visible in stream). Cross-check in Proton's own client not yet performed."
 
 ### 4. Live in-webspace search UX
 expected: Typing a word present in a document, a note, and an email into the webspace search box shows ranked cross-source results with the matched word emboldened; a result opens the detail pane on click; clearing restores the unfiltered stream; and a nonsense or malformed (lone double-quote) query shows the no-matches state rather than an error.
@@ -65,15 +71,16 @@ result: [pending]
 total: 5
 passed: 1
 issues: 1
-pending: 1
+pending: 3
 skipped: 0
-blocked: 2
+blocked: 0
 
 ## Gaps
 
 - gap_id: G-03-1
   truth: "The email is visible, correctly dated, and its body renders in the detail pane for every configured webspace that matches Proton mail — not just the one processed last in a sync cycle."
-  status: failed
+  status: resolved
+  resolution: "2026-08-01: user replaced PROTON_BRIDGE_PASS in .env with the real Bridge app password (retrieved via containerized Bridge CLI: stop daemon, run `docker run --rm -it -v <vol>:/root <image> init`, `info`). Also added Proton label leaf 'house+home' to [webspaces.house-move] keywords — matching is exact-leaf-equality (D-03), and no existing label equaled the original keywords. Confirmed live: proton source green, items visible, correctly dated, interleaved in the stream. Code-side items were closed by 03-08 previously."
   reason: "User reported: proton mail shows as unavailable in the UI (red dot). Corroborating evidence from Test 2: live IMAP LOGIN to the Bridge returns 'no such user' even with the correct account email address and several aliases (user has ruled out credential-entry error). The long-standing 'Bridge-account credential finding' from 03-01-SUMMARY.md is now in question — diagnosis must cover Bridge-side config (Bridge username/password semantics, combined vs split address mode, LAN exposure/proxy of the localhost-bound Bridge) AND the plugin/test LOGIN handling."
   severity: major
   test: 1
@@ -88,3 +95,54 @@ blocked: 2
     - "CLOSED by 03-08 (verified 2026-08-01): live_bridge_test.go hint corrected — now states Bridge validates the password before the username via the shared bridgeAuthOrderNote constant, pointing at the password"
     - "CLOSED by 03-08 (verified 2026-08-01): shape check self-diagnosing — bridgeTokenShapeWarning in plugins/proton/credentials.go appends actionable advice at client.connect's LOGIN-failure branch, reaching both HealthResponse.LastError and the UI red-dot detail via Match → sync_runs; never blocks a connection attempt, never echoes the token"
   debug_session: .planning/debug/proton-bridge-no-such-user.md
+
+- gap_id: G-03-2
+  truth: "An email opened in the detail pane is readable: no dark-on-dark text, no broken-image litter. When a text/plain part exists it is shown in preference to the HTML rendition; the HTML rendition remains the fallback for HTML-only emails."
+  status: failed
+  reason: "User reported (with screenshot): rich HTML rendition shows every image as a broken icon and email-supplied text colours are often unreadable against the dark pane background."
+  severity: major
+  test: 1
+  root_cause: |
+    Two deliberate security choices compound: (1) emailSanitizePolicy
+    (plugins/proton/body.go:159) allows color/background-color inline styles
+    through on styledElements, so light-background email designs set
+    near-black text inside the fixed dark themeStyle wrapper; (2) the
+    kernel rendition route serves under CSP default-src 'none'; sandbox
+    (tracking-pixel defense, T-03-10/T-03-11), so <img> survives
+    sanitization but every fetch is blocked. Meanwhile Fetch ALREADY
+    extracts the text/plain part into FetchResponse.Text for every message
+    (plugins/proton/plugin.go:515,526), but DetailPane.svelte:126 prefers
+    the text/html rendition whenever one exists, so the plain text is
+    never displayed. User direction: prefer plain text when available or
+    computable.
+  artifacts:
+    - path: "plugins/proton/plugin.go"
+      issue: "fetchFull always emits the HTML rendition when an HTML part exists, even when a readable text/plain part was extracted"
+    - path: "web/src/lib/components/DetailPane.svelte"
+      issue: "prefers rendition over extracted text whenever mime_type is text/html"
+  missing:
+    - "Prefer the text/plain part in the detail pane when non-empty (plugin-side selection or UI-side preference — decide in gap planning)"
+    - "For HTML-only emails, either keep the sanitized dark-theme rendition as fallback or compute plain text from the HTML part"
+    - "Preserve the standing security posture: CSP sandbox, no remote fetches, sanitizer allowlist unchanged in scope"
+
+- gap_id: G-03-3
+  truth: "The detail pane's 'Open in Proton Mail' affordance lands the user somewhere useful in Proton webmail — at minimum a view adjacent to the message (ANCHORED fidelity), never silently the bare inbox."
+  status: failed
+  reason: "User reported: clicking 'Open in Proton Mail' opens https://mail.proton.me/u/1/inbox — inbox view, no email selected, no label filter."
+  severity: minor
+  test: 1
+  root_cause: |
+    toItem (plugins/proton/plugin.go:373) builds {webmail_base}/{label-leaf},
+    e.g. /u/1/house%2Bhome. Proton webmail addresses custom labels/folders by
+    internal ID, not name (only system folders have name paths), so the
+    unknown path is redirected to the inbox. 03-RESEARCH.md Pitfall 5 already
+    ruled out per-message URLs (no Message-ID -> webmail id mapping); the
+    label-name URL chosen as the ANCHORED fallback was never actually
+    addressable. Candidate fix: hash-based search deep link that Proton
+    webmail does honor, e.g. {base}/all-mail#keyword=<subject>, still
+    declared ANCHORED.
+  artifacts:
+    - path: "plugins/proton/plugin.go"
+      issue: "deepLink uses a label-name URL path that Proton webmail cannot resolve; redirects to inbox"
+  missing:
+    - "Replace the label-name deep link with a form Proton webmail honors (e.g. all-mail#keyword=<subject> search link), keeping ANCHORED fidelity declared"
