@@ -174,6 +174,47 @@ export function detailPaneState(
 	return 'loaded';
 }
 
+export type DetailBodyVariant = 'html' | 'media' | 'text' | 'empty';
+
+/**
+ * The single decision the detail pane's body region renders from (once
+ * `detailPaneState` above has resolved to `loaded`) — evaluated in this
+ * order, mirroring `detailPaneState`'s own documented precedence:
+ *  1. a `null` content is `empty`;
+ *  2. an unavailable content (`available === false`) is `empty`
+ *     regardless of its other fields — the pane routes that case to its
+ *     own `deleted` state before ever asking for a body variant, but this
+ *     function stays total anyway;
+ *  3. a `text/html` rendition is `html` — checked BEFORE text precisely
+ *     because a source may legitimately return both simultaneously (the
+ *     SilverBullet shape: a rendered-markdown iframe alongside raw
+ *     markdown `text`), and the rendered document is that source's
+ *     chosen representation, so it must win;
+ *  4. an `application/pdf` rendition, or a mime type beginning with
+ *     `image/`, is `media` — also checked alongside non-empty text (the
+ *     paperless shape: a fixed-height preview box plus text below,
+ *     unchanged by this decision);
+ *  5. text that is non-empty after trimming is `text` — the branch a
+ *     Proton email carrying a plain-text alternative lands on, because
+ *     its plugin (03-09-PLAN.md Task 1) declines to emit a rendition at
+ *     all when the message has readable plain text, so this decision
+ *     needs no source identity to reach the right outcome;
+ *  6. everything else — no rendition and no (or whitespace-only) text, or
+ *     a rendition of an unrecognised mime type with no text either — is
+ *     `empty`, so an unknown rendition type never blanks a pane that has
+ *     readable text (it falls through to rule 5 first).
+ */
+export function detailBodyVariant(content: ItemContent | null): DetailBodyVariant {
+	if (content === null) return 'empty';
+	if (!content.available) return 'empty';
+
+	const mimeType = content.rendition?.mime_type ?? '';
+	if (mimeType === 'text/html') return 'html';
+	if (mimeType === 'application/pdf' || mimeType.startsWith('image/')) return 'media';
+
+	return content.text.trim() !== '' ? 'text' : 'empty';
+}
+
 // --- Search (KERN-05 browser half, 03-04) ---
 
 export interface SnippetSegment {

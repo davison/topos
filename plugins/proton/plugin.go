@@ -516,10 +516,6 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
 	}
-	htmlPart, err := HTMLPart(raw)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
-	}
 
 	resp := &webspacesv1.FetchResponse{
 		Available: true,
@@ -530,14 +526,37 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 		},
 	}
 
-	// When an HTML part was extracted, sanitize it, wrap it in the fixed
-	// dark-theme document, and return it as a text/html rendition — the
-	// one rendition type the kernel's fixed allowlist already permits
-	// (kernel/httpapi/item.go), so this reuses SilverBullet's exact
-	// sandboxed-iframe rendition path with zero kernel change. When no
-	// HTML part exists, resp keeps 03-01's plain-text-only behaviour
-	// unchanged: Available true with only Text populated, which the
-	// detail pane's existing extracted-text branch already handles.
+	// The plugin — not the shared detail pane — decides which
+	// representation IS the message (03-09-PLAN.md gap G-03-2). When the
+	// extracted plain-text part carries anything a reader can see, it IS
+	// the content: return it alone, with no rendition at all, and skip
+	// the second MIME walk for an HTML part entirely. Skipping that walk
+	// also means a message with a malformed HTML part but a readable
+	// text part now renders instead of failing the whole fetch with an
+	// internal error. The preference is resolved HERE, in the producer,
+	// for two reasons: the rendition is served under a CSP that blocks
+	// every subresource (kernel/httpapi/item.go), so an image-bearing
+	// HTML design fetched instead could only ever render as broken
+	// images; and the detail pane is shared by every source, so one
+	// source's preference must not become a rule that reshapes another's
+	// pane — plugins/silverbullet/plugin.go's fetchFull legitimately
+	// returns a rendition AND text together, which a UI-side "prefer
+	// text" rule would have silently broken.
+	if HasRenderableText(text) {
+		return resp, nil
+	}
+
+	// No renderable plain text: fall back to the HTML part, sanitized and
+	// wrapped in the fixed dark-theme document, as a text/html rendition
+	// — the one rendition type the kernel's fixed allowlist already
+	// permits (kernel/httpapi/item.go), reusing SilverBullet's exact
+	// sandboxed-iframe rendition path with zero kernel change. When
+	// neither part yields anything, resp is returned unchanged: Available
+	// true, empty Text, no rendition — a normal outcome, not an error.
+	htmlPart, err := HTMLPart(raw)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
+	}
 	if len(htmlPart) > 0 {
 		sanitized := RenderSanitizedEmail([]byte(htmlPart))
 		doc := WrapDocument(sanitized)
