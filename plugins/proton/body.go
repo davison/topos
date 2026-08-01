@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"strings"
 	"unicode/utf8"
 
 	message "github.com/emersion/go-message"
@@ -107,6 +108,18 @@ func extractPart(raw []byte, wantContentType string) (string, error) {
 // mail.CreateReader and mail.Reader.NextPart.
 func isBenignParseError(err error) bool {
 	return message.IsUnknownCharset(err) || message.IsUnknownEncoding(err)
+}
+
+// HasRenderableText reports whether s carries content a reader can
+// actually see once whitespace is trimmed. fetchFull uses this to decide
+// whether a message's extracted text/plain part IS the message's
+// content: a present-but-blank part (a common multipart/alternative
+// artifact) must not suppress the HTML fallback that follows it.
+// Whitespace is defined by strings.TrimSpace (unicode.IsSpace), not ASCII
+// spaces only, so a no-break-space-only part is correctly treated as
+// blank.
+func HasRenderableText(s string) bool {
+	return strings.TrimSpace(s) != ""
 }
 
 // Snippet truncates s to at most previewRuneCap runes, by rune count

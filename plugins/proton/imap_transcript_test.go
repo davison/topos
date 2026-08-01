@@ -141,6 +141,19 @@ const (
 	gammaMessageID  = "gamma-message@example.com"
 )
 
+// deltaMessageID, epsilonMessageID and zetaMessageID are the three
+// fixtures 03-09-PLAN.md Task 1 adds to exercise the representation
+// choice fetchFull makes: which of an extracted plain-text part or a
+// sanitized HTML rendition IS a message's content. No existing test is
+// affected — every existing test passes a keyword list naming only the
+// older mailboxes above, so DeltaTeam/EpsilonTeam/ZetaTeam are LISTed but
+// never EXAMINEd there.
+const (
+	deltaMessageID   = "delta-message@example.com"
+	epsilonMessageID = "epsilon-message@example.com"
+	zetaMessageID    = "zeta-message@example.com"
+)
+
 // newTestIMAPServer starts a real github.com/emersion/go-imap server
 // (server + backend/memory) on a loopback listener with insecure auth
 // enabled, seeded with two mailboxes ("Labels/AlphaTeam",
@@ -161,6 +174,15 @@ const (
 // "Labels/NoMessageID") is LISTed but never EXAMINEd there, and both still
 // see exactly one item.
 //
+// Three more mailboxes — "Labels/DeltaTeam", "Labels/EpsilonTeam" and
+// "Labels/ZetaTeam" — exist only to exercise fetchFull's representation
+// choice (03-09-PLAN.md Task 1): DeltaTeam holds a multipart/alternative
+// message (both a plain-text and an HTML part), EpsilonTeam holds a
+// text/html-only message, and ZetaTeam holds a message whose only part is
+// whitespace. No existing test is affected: every existing test's keyword
+// list names only the older mailboxes, so these three are LISTed but
+// never EXAMINEd there.
+//
 // Every seeded message's IMAP INTERNALDATE is explicit (seedInternalDate),
 // never the zero time.Time: go-imap v1's memory backend (CreateMessage)
 // substitutes time.Now() whenever the date argument is the zero value, so
@@ -177,7 +199,7 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 		t.Fatalf("seed backend: login: %v", err)
 	}
 
-	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam", "Labels/NoMessageID", "Labels/GammaTeam"} {
+	for _, name := range []string{"Labels/AlphaTeam", "Labels/BetaTeam", "Labels/NoMessageID", "Labels/GammaTeam", "Labels/DeltaTeam", "Labels/EpsilonTeam", "Labels/ZetaTeam"} {
 		if err := user.CreateMailbox(name); err != nil {
 			t.Fatalf("seed backend: create mailbox %q: %v", name, err)
 		}
@@ -231,6 +253,78 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 	}
 	if err := gammaMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(gammaMessage))); err != nil {
 		t.Fatalf("seed backend: create message in %q: %v", "Labels/GammaTeam", err)
+	}
+
+	// deltaMessage: a multipart/alternative message carrying both a
+	// text/plain part (the marker sentence Task 1's test asserts on) and
+	// a text/html part with a near-black-on-white inline colour style and
+	// a remote-src img — the exact shape the readability gap was
+	// reported against, and the shape 03-09-PLAN.md Task 1's
+	// TestFetch_PrefersPlainTextOverHTMLRendition proves resolves to the
+	// plain-text part alone.
+	deltaMessage := "From: Erin <erin@example.com>\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: Delta team multipart message\r\n" +
+		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
+		"Message-Id: <" + deltaMessageID + ">\r\n" +
+		"Content-Type: multipart/alternative; boundary=\"delta-boundary\"\r\n" +
+		"\r\n" +
+		"--delta-boundary\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"This distinctive plain text marker sentence identifies the delta fixture.\r\n" +
+		"--delta-boundary\r\n" +
+		"Content-Type: text/html\r\n" +
+		"\r\n" +
+		"<p style=\"color: #000000; background-color: #ffffff;\">Delta HTML paragraph.</p><img src=\"https://example.com/tracker-delta.png\">\r\n" +
+		"--delta-boundary--\r\n"
+	deltaMbox, err := user.GetMailbox("Labels/DeltaTeam")
+	if err != nil {
+		t.Fatalf("seed backend: get mailbox %q: %v", "Labels/DeltaTeam", err)
+	}
+	if err := deltaMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(deltaMessage))); err != nil {
+		t.Fatalf("seed backend: create message in %q: %v", "Labels/DeltaTeam", err)
+	}
+
+	// epsilonMessage: a Content-Type: text/html single-part message with
+	// no plain-text alternative — the HTML-only case whose sanitized
+	// rendition must remain the fallback (Task 1) and must render
+	// readably (Task 3).
+	epsilonMessage := "From: Frank <frank@example.com>\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: Epsilon team HTML-only message\r\n" +
+		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
+		"Message-Id: <" + epsilonMessageID + ">\r\n" +
+		"Content-Type: text/html\r\n" +
+		"\r\n" +
+		"<h1>Epsilon heading</h1><p style=\"color: #111111;\">Epsilon paragraph text.</p><img src=\"https://example.com/tracker-epsilon.png\">"
+	epsilonMbox, err := user.GetMailbox("Labels/EpsilonTeam")
+	if err != nil {
+		t.Fatalf("seed backend: get mailbox %q: %v", "Labels/EpsilonTeam", err)
+	}
+	if err := epsilonMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(epsilonMessage))); err != nil {
+		t.Fatalf("seed backend: create message in %q: %v", "Labels/EpsilonTeam", err)
+	}
+
+	// zetaMessage: a Content-Type: text/plain single-part message whose
+	// only body is whitespace (spaces and a CRLF) and which has no HTML
+	// part — the "nothing renderable" edge that must resolve as
+	// available-and-empty, never an error and never a fabricated
+	// rendition.
+	zetaMessage := "From: Grace <grace@example.com>\r\n" +
+		"To: bob@example.com\r\n" +
+		"Subject: Zeta team whitespace-only message\r\n" +
+		"Date: Wed, 11 May 2016 14:31:59 +0000\r\n" +
+		"Message-Id: <" + zetaMessageID + ">\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"   \r\n"
+	zetaMbox, err := user.GetMailbox("Labels/ZetaTeam")
+	if err != nil {
+		t.Fatalf("seed backend: get mailbox %q: %v", "Labels/ZetaTeam", err)
+	}
+	if err := zetaMbox.CreateMessage(nil, seedInternalDate, bytes.NewReader([]byte(zetaMessage))); err != nil {
+		t.Fatalf("seed backend: create message in %q: %v", "Labels/ZetaTeam", err)
 	}
 
 	s := imapserver.New(bkd)
