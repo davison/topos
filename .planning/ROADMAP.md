@@ -157,7 +157,7 @@ Plans:
 
 **Wave 8** *(gap closure from 03-UAT.md gap G-03-3, minor; blocked on Wave 7 — both plans edit `plugins/proton/plugin.go`)*
 
-- [ ] 03-10-PLAN.md — Gap closure: "Open in Proton Mail" stops landing on the bare inbox — the label-name path Proton cannot resolve (custom labels are addressed by internal id, not name) is replaced by a search over the account's All Mail view for the message's subject, built only from configured input, inert against any subject a sender can write, absent when there is no subject, rune-capped, and still honestly declared ANCHORED
+- [x] 03-10-PLAN.md — Gap closure: "Open in Proton Mail" stops landing on the bare inbox — the label-name path Proton cannot resolve (custom labels are addressed by internal id, not name) is replaced by a search over the account's All Mail view for the message's subject, built only from configured input, inert against any subject a sender can write, absent when there is no subject, rune-capped, and still honestly declared ANCHORED
 
 **UI hint**: yes
 
@@ -219,7 +219,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 9/10 | In Progress|  |
+| 3. Email in the Webspace | 10/10 | Complete   | 2026-08-01 |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
