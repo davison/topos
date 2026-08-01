@@ -218,9 +218,44 @@ pre { background: #1e293b; padding: 12px; border-radius: 8px; overflow-x: auto; 
 pre code { background: none; padding: 0; }
 blockquote { border-left: 3px solid #1e293b; margin: 0.75em 0; padding-left: 1em; color: #94a3b8; }
 hr { border: none; border-top: 1px solid #1e293b; margin: 1.5em 0; }
-img { max-width: 100%; }
+/* Images in an email body can never load: the rendition is served under
+   a policy that permits no subresource of any kind — remote, data-URI or
+   otherwise (kernel/httpapi/item.go's Content-Security-Policy). Hiding
+   them removes broken-image litter without hiding anything that could
+   ever have been displayed, and changes nothing about the
+   tracking-pixel defence, which is the blocked request itself, not the
+   element (T-03-09-01/T-03-09-05). */
+img { display: none !important; }
 table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
 th, td { border: 1px solid #1e293b; padding: 6px 10px; text-align: left; }
+
+/* Readability layer (03-09-PLAN.md Task 3, gap G-03-2): the theme wins
+   over the email by construction, not by luck. bluemonday's style
+   sanitizer re-emits every surviving declaration as "property: value"
+   only — douceur parses the CSS important marker into a separate field
+   bluemonday never writes back (proven by
+   TestRenderSanitizedEmail_EmailCannotMarkADeclarationImportant) — so an
+   email's inline style can never mark itself as taking priority that
+   way. That leaves two CSS rules deciding who wins when a non-priority
+   email declaration and a priority-marked author declaration disagree:
+   origin (a priority-marked author declaration always beats a
+   non-priority one, regardless of specificity) and, among priority-
+   marked declarations, specificity. The neutralizer selector below is
+   therefore always authoritative over any inline colour/background-color
+   that survives sanitization, and the three restoring rules that follow
+   it each use a more specific selector (an anchor, a code/pre pair, a
+   blockquote, versus the body-and-every-descendant selector), so they
+   win among priority-marked declarations without depending on being
+   placed last in this file. Only theme tokens already declared above are
+   reused: no new colour value and no additional external reference of
+   any kind is introduced by this block. */
+body, body * {
+  color: #f1f5f9 !important;
+  background-color: transparent !important;
+}
+body a, body a * { color: #60a5fa !important; }
+body code, body pre { background-color: #1e293b !important; }
+body blockquote { color: #94a3b8 !important; }
 `
 
 // WrapDocument wraps an already-sanitized HTML fragment

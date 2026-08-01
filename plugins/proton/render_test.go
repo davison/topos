@@ -94,6 +94,22 @@ func TestRenderSanitizedEmail_OrdinaryHTMLSurvives(t *testing.T) {
 	}
 }
 
+// TestRenderSanitizedEmail_EmailCannotMarkADeclarationImportant proves the
+// property that makes the readability fix (below) a proof rather than an
+// assumption: bluemonday's style sanitizer re-emits every surviving
+// declaration as "property: value" only (dec.Property + ": " + dec.Value)
+// — douceur parses the CSS `!important` marker into a separate field that
+// bluemonday never writes back — so an email's own inline style can never
+// outrank the wrapper stylesheet's important declarations, however the
+// email author tries to mark it.
+func TestRenderSanitizedEmail_EmailCannotMarkADeclarationImportant(t *testing.T) {
+	out := RenderSanitizedEmail([]byte(`<p style="color: #000000 !important;">hi</p>`))
+	got := string(out)
+	if strings.Contains(got, "!important") {
+		t.Errorf("expected no !important marker to survive sanitization, got: %s", got)
+	}
+}
+
 // TestWrapDocument_InjectsThemeStyleAndPreservesFragment mirrors
 // plugins/silverbullet/render_test.go's own regression test: WrapDocument
 // must produce a full document carrying the fixed theme stylesheet in
@@ -131,6 +147,50 @@ func TestWrapDocument_StyleNeverReprocessedThroughSanitizer(t *testing.T) {
 	doc := WrapDocument([]byte("<p>plain</p>"))
 	if !strings.Contains(string(doc), "font-family:") {
 		t.Errorf("expected the literal stylesheet text to survive unmodified, got: %s", doc)
+	}
+}
+
+// TestWrapDocument_NeutralizesEmailSuppliedColours proves the wrapper's
+// readability layer (03-09-PLAN.md Task 3, gap G-03-2): the wrapped
+// document declares an important foreground colour and an important
+// transparent background for the body and its descendants — the
+// neutralizer that outranks every email-supplied inline colour and
+// background-color that survives sanitization — and still declares the
+// readable link, code and blockquote colours, which must survive that
+// neutralization by virtue of their own higher-specificity selectors.
+func TestWrapDocument_NeutralizesEmailSuppliedColours(t *testing.T) {
+	doc := WrapDocument([]byte(`<p style="color: #000000; background-color: #ffffff;">hi</p>`))
+	got := string(doc)
+
+	if !strings.Contains(got, "color: #f1f5f9 !important") {
+		t.Errorf("expected an important theme foreground colour declaration in the wrapper, got: %s", got)
+	}
+	if !strings.Contains(got, "background-color: transparent !important") {
+		t.Errorf("expected an important transparent background declaration in the wrapper, got: %s", got)
+	}
+	if !strings.Contains(got, "body, body *") {
+		t.Errorf("expected the neutralizer to apply to the body and every descendant, not a hand-picked element list, got: %s", got)
+	}
+	// The restoring rules (links, code/pre, blockquote) must still
+	// declare their own readable theme colours so they survive the
+	// neutralizer above.
+	for _, want := range []string{"#60a5fa", "#1e293b", "#94a3b8"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected the wrapper to still declare readable theme token %q for links/code/blockquote, got: %s", want, got)
+		}
+	}
+}
+
+// TestWrapDocument_HidesImagesThatCanNeverLoad proves the second half of
+// the readability fix: an email body's img elements are hidden with an
+// important declaration, because the rendition is served under a CSP
+// that permits no subresource of any kind, so an image can never load
+// and can only ever paint as a broken-image placeholder.
+func TestWrapDocument_HidesImagesThatCanNeverLoad(t *testing.T) {
+	doc := WrapDocument([]byte(`<img src="https://example.com/tracker.png">`))
+	got := string(doc)
+	if !strings.Contains(got, "display: none !important") {
+		t.Errorf("expected images to be hidden with an important declaration, got: %s", got)
 	}
 }
 
