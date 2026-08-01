@@ -170,3 +170,15 @@ Task 1's `<verify><human-check>` step — restarting the kernel, refreshing the 
 ---
 *Phase: 03-email-in-the-webspace*
 *Completed: 2026-08-01*
+
+## Self-Check: PASSED
+
+- FOUND: plugins/proton/deeplink.go
+- FOUND: plugins/proton/deeplink_test.go
+- FOUND: plugins/proton/plugin.go
+- FOUND: config.example.toml
+- FOUND: kernel/config/types.go
+- FOUND: .planning/phases/03-email-in-the-webspace/03-10-SUMMARY.md
+- FOUND commit: 74ad381 (feat(03-10): replace label-name email deep link with an All Mail search link)
+- FOUND commit: 44afe2a (docs(03-10): correct webmail_base_url descriptions to describe the All Mail search link)
+- FOUND commit: 9744fcc (docs(03-10): complete deep-link All Mail search plan)
