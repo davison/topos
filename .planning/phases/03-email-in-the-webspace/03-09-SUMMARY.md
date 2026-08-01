@@ -243,3 +243,7 @@ None - no external service configuration required.
 ---
 *Phase: 03-email-in-the-webspace*
 *Completed: 2026-08-01*
+
+## Self-Check: PASSED
+
+All created/modified files verified present on disk (`plugins/proton/fetch_rendition_test.go`, `web/src/lib/components/detail-body.test.ts`, plus every modified file in "Files Created/Modified"). All four task/summary commit hashes (`211f7f5`, `70ffbba`, `df240b4`, `99e3997`) verified present in `git log --oneline`.
