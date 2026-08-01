@@ -153,7 +153,7 @@ Plans:
 
 **Wave 7** *(gap closure from 03-UAT.md gap G-03-2, major; blocked on Wave 6)*
 
-- [ ] 03-09-PLAN.md — Gap closure: the email detail pane becomes readable — the plugin (never the shared pane, which SilverBullet's both-fields response rules out) returns the plain-text part as the content whenever a message has one, so no rendition is offered for it; the sanitized rendition is kept as the fallback for HTML-only mail and made readable there, with the theme's own colours outranking every email-supplied inline colour and images that can never load under the rendition CSP no longer painting as broken icons — sanitizer allowlist, CSP and every standing security assertion unchanged
+- [x] 03-09-PLAN.md — Gap closure: the email detail pane becomes readable — the plugin (never the shared pane, which SilverBullet's both-fields response rules out) returns the plain-text part as the content whenever a message has one, so no rendition is offered for it; the sanitized rendition is kept as the fallback for HTML-only mail and made readable there, with the theme's own colours outranking every email-supplied inline colour and images that can never load under the rendition CSP no longer painting as broken icons — sanitizer allowlist, CSP and every standing security assertion unchanged
 
 **Wave 8** *(gap closure from 03-UAT.md gap G-03-3, minor; blocked on Wave 7 — both plans edit `plugins/proton/plugin.go`)*
 
@@ -219,7 +219,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
-| 3. Email in the Webspace | 8/10 | Gap closure | - |
+| 3. Email in the Webspace | 9/10 | In Progress|  |
 | 4. Signal Conversations | 0/TBD | Not started | - |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
