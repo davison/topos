@@ -190,9 +190,14 @@ ca_cert = "~/.config/webspaces/proton-bridge-cert.pem"
 
 # webmail_base_url: this account's Proton webmail root, INCLUDING the
 # account index (e.g. "https://mail.proton.me/u/0") — read from the
-# address bar while a label/folder view is open in Proton webmail. Used
-# only to build a clickable link to the matched mailbox's webmail view
-# (LINK_FIDELITY_ANCHORED); the plugin never fetches this URL itself.
+# address bar with any Proton view open (not specifically a label view;
+# the value is no longer used to build one). Used only to build a
+# clickable ANCHORED link into that account's All Mail view, pre-filled
+# with a search for the message's subject. Proton addresses custom
+# labels and folders by an internal id rather than by name, so a link
+# built from a label's NAME is not addressable and lands on the inbox —
+# All Mail is the name-addressable system view this plugin targets
+# instead. The plugin never fetches this URL itself.
 # Validation: must be non-empty after expansion; same missing-variable
 # error shape as base_url.
 webmail_base_url = "${PROTON_WEBMAIL_BASE}"

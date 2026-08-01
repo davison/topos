@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -345,9 +344,16 @@ func formatSender(envelope *imap.Envelope) (label, address string) {
 // toItem builds a webspacesv1.Item from one merged matched entry.
 // Fidelity is always ANCHORED: no verified mapping exists from an IMAP
 // Message-ID/UID to Proton's internal webmail message id (03-RESEARCH.md
-// Pitfall 5), so DeepLink points at the matched mailbox's webmail label
-// view rather than a per-message URL that could 404 or open the wrong
-// message.
+// Pitfall 5), so DeepLink cannot point AT the matched message. It also
+// cannot point at the matched mailbox's own webmail view: Proton
+// addresses custom labels and folders by an internal id, not by name, so
+// a link built from a label's leaf name resolves to nothing and Proton
+// redirects to the inbox. Instead DeepLink is a search over the
+// account's All Mail view for the message's own subject (see
+// deeplink.go's webmailSearchDeepLink), which lands the reader in a
+// short filtered list containing the message — still honestly ANCHORED,
+// because the target is adjacent to the message rather than the message
+// itself.
 func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 	title := m.envelope.Subject
 	if title == "" {
@@ -366,11 +372,7 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 		secondary = m.envelope.Date.Unix()
 	}
 
-	firstLabel := ""
-	if len(m.labels) > 0 {
-		firstLabel = m.labels[0]
-	}
-	deepLink := fmt.Sprintf("%s/%s", p.webmailBaseURL, pathEscapeSegment(firstLabel))
+	deepLink := webmailSearchDeepLink(p.webmailBaseURL, m.envelope.Subject)
 
 	return &webspacesv1.Item{
 		SourceId:               sourceID,
@@ -393,12 +395,6 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 			"contract_version": contractVersion,
 		},
 	}
-}
-
-// pathEscapeSegment percent-escapes s for use as one path segment of a
-// deep link URL.
-func pathEscapeSegment(s string) string {
-	return url.PathEscape(s)
 }
 
 // mergeMailboxCache upserts discovered's entries into the plugin's

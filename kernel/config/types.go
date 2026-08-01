@@ -54,10 +54,14 @@ type Source struct {
 	// WebmailBaseURL is the Proton webmail root for this account,
 	// including the account index (e.g. "https://mail.proton.me/u/0") —
 	// required by SRC-01's email plugin to build an ANCHORED deep link
-	// into the matched mailbox's webmail view (03-RESEARCH.md Pitfall 5:
-	// no verified mapping from an IMAP Message-Id/UID to Proton's
-	// internal webmail message id exists, so the plugin never fetches
-	// this URL itself — it only ever builds a link from it). Left empty
+	// into that account's All Mail view, pre-filled with a search for the
+	// message's subject (03-RESEARCH.md Pitfall 5: no verified mapping
+	// from an IMAP Message-Id/UID to Proton's internal webmail message id
+	// exists, so the plugin never fetches this URL itself — it only ever
+	// builds a link from it). All Mail, not the matched mailbox's own
+	// view, is the target: Proton addresses custom labels and folders by
+	// an internal id rather than by name, so a link built from a label's
+	// name is not addressable and lands on the inbox instead. Left empty
 	// for any source that has no equivalent webmail concept.
 	WebmailBaseURL string `toml:"webmail_base_url,omitempty"`
 	// CACert is an optional filesystem path to a PEM-encoded CA
