@@ -6,7 +6,7 @@
 	import OpenInSource from '$lib/components/OpenInSource.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
-	import { detailPaneState, formatItemDate } from '$lib/format';
+	import { detailPaneState, detailBodyVariant, formatItemDate } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
 	// renders from it synchronously, before getItem(id) resolves (stage
@@ -29,6 +29,12 @@
 	// states this pane shows (D-10) — see format.ts for the full
 	// precedence rule and staleness.test.ts for its unit tests.
 	let paneState = $derived(detailPaneState(content, fetchErrorCode, sourceReachable));
+
+	// The one place that decides which of the body region's four mutually
+	// exclusive branches to render, once paneState has resolved to
+	// 'loaded' — see format.ts for the full precedence rule and
+	// detail-body.test.ts for its unit tests.
+	let bodyVariant = $derived(detailBodyVariant(content));
 
 	async function loadContent(id: string) {
 		loadingContent = true;
@@ -72,6 +78,18 @@
 		</div>
 		<OpenInSource link={item.link} sourceType={item.source_type} />
 	</header>
+
+	<!-- The one physical rendering of loaded extracted text — shared by
+	     the media branch (below a fixed-height preview box) and the
+	     text-only branch (alone, taking the pane's full remaining
+	     height), so the typography can never drift between the two. -->
+	{#snippet loadedTextBlock()}
+		<div
+			class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
+		>
+			{content?.text}
+		</div>
+	{/snippet}
 
 	<!-- Stage two: live-fetched preview + extracted text, or one of the
 	     three failure states below — never a blank pane (D-10). -->
@@ -123,42 +141,56 @@
 				<Button variant="outline" size="sm" onclick={() => loadContent(item.id)}>Retry</Button>
 			</AlertAction>
 		</Alert>
-	{:else if content && content.available && content.rendition?.mime_type === 'text/html'}
-		<!-- Rendered markdown (SilverBullet, D-04) IS the item's content, not
-		     a preview thumbnail alongside separate extracted text — unlike
-		     the PDF/image branch below, it occupies the pane's full
-		     remaining body (min-h-0 flex-1), never the small fixed-height
-		     preview box. Content still scrolls inside the iframe's own
-		     document and never pushes this pane's own layout (UI-SPEC). The
+	{:else if bodyVariant === 'html'}
+		<!-- Rendered markdown (SilverBullet, D-04) or a sanitized HTML
+		     email rendition (Proton, 03-09) IS the item's content, not a
+		     preview thumbnail alongside separate extracted text — unlike
+		     the media branch below, it occupies the pane's full remaining
+		     body (min-h-0 flex-1), never the small fixed-height preview
+		     box. Content still scrolls inside the iframe's own document
+		     and never pushes this pane's own layout (UI-SPEC). The
 		     sanitized HTML is served through the kernel's own hardened,
 		     sandboxed rendition route and rendered inside this iframe —
 		     never injected into the SPA document via Svelte's raw-HTML
-		     directive, which would discard the sandbox boundary this iframe
-		     provides for free (RESEARCH.md's explicit anti-pattern). -->
+		     directive, which would discard the sandbox boundary this
+		     iframe provides for free (RESEARCH.md's explicit
+		     anti-pattern). -->
 		<div class="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
 			<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
 		</div>
-	{:else if content}
+	{:else if bodyVariant === 'media'}
 		<div class="flex min-h-0 flex-1 flex-col gap-6">
 			<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
-				{#if content.available && content.rendition?.mime_type === 'application/pdf'}
+				{#if content?.rendition?.mime_type === 'application/pdf'}
 					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
-				{:else if content.available && content.rendition?.mime_type.startsWith('image/')}
-					<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
 				{:else}
-					<div class="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-						<FileText class="size-10" />
-						<p class="text-[14px]">No preview available</p>
-					</div>
+					<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
 				{/if}
 			</div>
-			{#if content.text}
-				<div
-					class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
-				>
-					{content.text}
-				</div>
+			{#if content?.text}
+				{@render loadedTextBlock()}
 			{/if}
+		</div>
+	{:else if bodyVariant === 'text'}
+		<!-- Text is the whole content — no rendition was offered for this
+		     item (03-09: a Proton email whose plugin declined to emit one
+		     because the plain-text part was already renderable), so the
+		     text block takes the pane's full remaining height, with no
+		     fixed-height preview box announcing an absent preview above
+		     it. Renders the SAME loadedTextBlock snippet the media branch
+		     uses above, so the typography can never drift between the two
+		     surfaces that show extracted text. -->
+		{@render loadedTextBlock()}
+	{:else}
+		<!-- Nothing at all to show — reuses the placeholder icon and copy
+		     verbatim from the former media-branch placeholder case
+		     (03-UI-SPEC.md Copywriting Contract: this phase's detail-pane
+		     copy is unchanged from Phase 1/2). Given the pane's remaining
+		     body rather than a fixed-height box, matching the other
+		     branches. -->
+		<div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+			<FileText class="size-10" />
+			<p class="text-[14px]">No preview available</p>
 		</div>
 	{/if}
 </div>
