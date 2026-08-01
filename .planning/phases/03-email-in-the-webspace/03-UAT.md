@@ -1,21 +1,22 @@
 ---
-status: diagnosed
+status: testing
 phase: 03-email-in-the-webspace
 source: [03-VERIFICATION.md]
 started: 2026-07-31T16:57:00Z
-updated: 2026-08-01T17:30:00Z
+updated: 2026-08-01T19:05:00Z
 ---
 
 ## Current Test
 
 number: 1
-name: Live stream and detail-pane rendering (re-test after G-03-2/G-03-3 closure)
+name: Live stream and detail-pane rendering (round-3 re-test after G-03-2/G-03-3 closure)
 expected: |
   Detail pane body is readable (plain-text preferred when a text/plain part
   exists; no dark-on-dark text, no broken-image litter) and "Open in Proton
-  Mail" lands somewhere useful (not the bare inbox). Re-test once the
-  gap-closure plans for G-03-2 and G-03-3 have executed.
-awaiting: gap closure, then user re-test
+  Mail" opens an All Mail search for the message's subject (not the bare
+  inbox). Gap-closure plans 03-09 (G-03-2) and 03-10 (G-03-3) executed and
+  merged 2026-08-01; all automated suites green on the merged tree.
+awaiting: user re-test
 
 ## Tests
 
@@ -33,6 +34,7 @@ reported: |
   (2) "Open in Proton Mail" opens the inbox view with no email selected and no
   label filter — label-name URL path is not addressable in Proton webmail. See G-03-3.
 severity: major
+note: "Code side closed 2026-08-01 by 03-09 (plain-text preferred rendition; readable HTML fallback with theme colours outranking email colours; unloadable images no longer painted as broken icons) and 03-10 (deep link now an All Mail subject-search URL). Awaiting live round-3 re-test."
 
 ### 2. Live-Bridge \Seen flag test passes
 expected: |
@@ -121,9 +123,10 @@ blocked: 0
     - path: "web/src/lib/components/DetailPane.svelte"
       issue: "prefers rendition over extracted text whenever mime_type is text/html"
   missing:
-    - "Prefer the text/plain part in the detail pane when non-empty (plugin-side selection or UI-side preference — decide in gap planning)"
-    - "For HTML-only emails, either keep the sanitized dark-theme rendition as fallback or compute plain text from the HTML part"
-    - "Preserve the standing security posture: CSP sandbox, no remote fetches, sanitizer allowlist unchanged in scope"
+    - "CLOSED by 03-09 (verified 2026-08-01): plugin-side selection — Fetch returns the plain-text part as content whenever one exists, so no rendition is offered for it; DetailPane renders from one named decision (detailBodyVariant)"
+    - "CLOSED by 03-09 (verified 2026-08-01): sanitized rendition kept as fallback for HTML-only mail and made readable — theme colours outrank email-supplied inline colours; images that can never load under the rendition CSP no longer paint as broken icons"
+    - "CLOSED by 03-09 (verified 2026-08-01): sanitizer allowlist, CSP, and every standing security assertion unchanged — confirmed by the full plugins/proton suite and internal/audit"
+    - "REMAINING (human): live browser confirmation of readability — backstop-verified truth, only confirmable via 03-UAT.md Test 1 re-run"
 
 - gap_id: G-03-3
   truth: "The detail pane's 'Open in Proton Mail' affordance lands the user somewhere useful in Proton webmail — at minimum a view adjacent to the message (ANCHORED fidelity), never silently the bare inbox."
@@ -145,4 +148,5 @@ blocked: 0
     - path: "plugins/proton/plugin.go"
       issue: "deepLink uses a label-name URL path that Proton webmail cannot resolve; redirects to inbox"
   missing:
-    - "Replace the label-name deep link with a form Proton webmail honors (e.g. all-mail#keyword=<subject> search link), keeping ANCHORED fidelity declared"
+    - "CLOSED by 03-10 (verified 2026-08-01): label-name path replaced by webmailSearchDeepLink — percent-encoded, rune-capped All Mail search over the message's subject (plugins/proton/deeplink.go), absent when there is no subject, still declared ANCHORED; config descriptions corrected to match"
+    - "REMAINING (human): live click-through confirming Proton webmail honors the search-link form — backstop-verified truth, only confirmable via 03-UAT.md Test 1 re-run"
