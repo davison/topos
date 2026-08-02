@@ -1,28 +1,22 @@
 ---
-status: testing
+status: complete
 phase: 03-email-in-the-webspace
 source: [03-VERIFICATION.md]
 started: 2026-07-31T16:57:00Z
-updated: 2026-08-01T19:05:00Z
+updated: 2026-08-02T09:30:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Live stream and detail-pane rendering (round-3 re-test after G-03-2/G-03-3 closure)
-expected: |
-  Detail pane body is readable (plain-text preferred when a text/plain part
-  exists; no dark-on-dark text, no broken-image litter) and "Open in Proton
-  Mail" opens an All Mail search for the message's subject (not the bare
-  inbox). Gap-closure plans 03-09 (G-03-2) and 03-10 (G-03-3) executed and
-  merged 2026-08-01; all automated suites green on the merged tree.
-awaiting: user re-test
+[testing complete]
 
 ## Tests
 
 ### 1. Live stream and detail-pane rendering across multiple webspaces
-expected: The email is visible, correctly dated, and its body renders in the detail pane for every configured webspace that matches Proton mail — not just the one processed last in a sync cycle. This is the direct live confirmation of the mailboxCache fix (03-06) plus the CVE-remediated rendering path (03-07).
-result: issue
+expected: The email is visible, correctly dated, and its body renders in the detail pane for every configured webspace that matches Proton mail — not just the one processed last in a sync cycle. Round 3 adds: detail pane body readable (plain-text preferred; no dark-on-dark, no broken-image litter) and "Open in Proton Mail" opens an All Mail subject search, not the bare inbox.
+result: pass
+round2_result: issue
+round3_note: "2026-08-02: user confirmed pass — detail pane readable and deep link opens All Mail subject search (G-03-2/G-03-3 fixes verified live)"
 reported: |
   PARTIAL PASS after .env credential fix + adding label leaf "house+home" to webspace
   keywords: proton source green, items visible in the stream, correctly dated,
@@ -44,13 +38,13 @@ expected: |
   passes, directly proving SRC-01's second success criterion (\Seen flag unchanged
   across a full Match+Fetch cycle) against the real mailbox, not just the
   wire-transcript proxy for it.
-result: [pending]
-note: "Unblocked 2026-08-01: .env credential corrected (G-03-1 resolved); live login now succeeds. Test not yet re-run."
+result: pass
+note: "2026-08-02: user ran the live test against the real Bridge account — pass. \\Seen flag unchanged across full Match+Fetch cycle, proven live."
 
 ### 3. Email stays unread in Proton's own client
 expected: After running a webspaces sync and opening an email in the detail pane, the same email checked in the real Proton web or mobile client is still shown as unread there — the direct, human-observable proof of the never-mark-read guarantee end to end.
-result: [pending]
-note: "Unblocked 2026-08-01: live sync now works (proton items visible in stream). Cross-check in Proton's own client not yet performed."
+result: pass
+note: "2026-08-02: user cross-checked in Proton's own client after sync + detail-pane open — email still unread. Never-mark-read guarantee confirmed end to end."
 
 ### 4. Live in-webspace search UX
 expected: Typing a word present in a document, a note, and an email into the webspace search box shows ranked cross-source results with the matched word emboldened; a result opens the detail pane on click; clearing restores the unfiltered stream; and a nonsense or malformed (lone double-quote) query shows the no-matches state rather than an error.
@@ -66,14 +60,15 @@ expected: |
   shows the old username-pointing "credential finding — not a code defect" /
   03-01-SUMMARY.md framing, since that text no longer exists in the codebase
   (closed by 03-08; code-level guarantee verified, rendered appearance is not).
-result: [pending]
+result: pass
+note: "2026-08-02: user confirmed pass."
 
 ## Summary
 
 total: 5
-passed: 1
-issues: 1
-pending: 3
+passed: 5
+issues: 0
+pending: 0
 skipped: 0
 blocked: 0
 
@@ -100,7 +95,9 @@ blocked: 0
 
 - gap_id: G-03-2
   truth: "An email opened in the detail pane is readable: no dark-on-dark text, no broken-image litter. When a text/plain part exists it is shown in preference to the HTML rendition; the HTML rendition remains the fallback for HTML-only emails."
-  status: failed
+  status: resolved
+  resolved_by: 03-09-PLAN.md
+  resolved_at: 2026-08-02
   reason: "User reported (with screenshot): rich HTML rendition shows every image as a broken icon and email-supplied text colours are often unreadable against the dark pane background."
   severity: major
   test: 1
@@ -130,7 +127,9 @@ blocked: 0
 
 - gap_id: G-03-3
   truth: "The detail pane's 'Open in Proton Mail' affordance lands the user somewhere useful in Proton webmail — at minimum a view adjacent to the message (ANCHORED fidelity), never silently the bare inbox."
-  status: failed
+  status: resolved
+  resolved_by: 03-10-PLAN.md
+  resolved_at: 2026-08-02
   reason: "User reported: clicking 'Open in Proton Mail' opens https://mail.proton.me/u/1/inbox — inbox view, no email selected, no label filter."
   severity: minor
   test: 1

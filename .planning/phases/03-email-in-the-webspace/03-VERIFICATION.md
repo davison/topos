@@ -1,7 +1,7 @@
 ---
 phase: 03-email-in-the-webspace
-verified: 2026-08-01T20:05:00Z
-status: human_needed
+verified: "2026-08-01T20:05:00Z"
+status: passed
 score: 4/7 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
@@ -9,30 +9,25 @@ re_verification:
   previous_status: human_needed
   previous_score: 4/5
   gaps_closed:
+
     - "UAT gap G-03-2 (unreadable HTML email detail pane, major) is CODE-closed by plan 03-09: fetchFull now returns the extracted plain-text part alone (no rendition) whenever HasRenderableText is true, verified end-to-end against a fixture IMAP server (TestFetch_PrefersPlainTextOverHTMLRendition, TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition, TestFetch_MessageWithNoRenderablePartIsAvailableAndEmpty, TestHasRenderableText_Boundaries — all re-run by this verifier, all PASS). The remaining HTML-only fallback is now readable by construction: an important-declaration layer in themeStyle (plugins/proton/body.go) always outranks a surviving email-supplied inline colour/background-color (proven, not assumed, by TestRenderSanitizedEmail_EmailCannotMarkADeclarationImportant showing bluemonday never re-emits the CSS important marker, plus TestWrapDocument_NeutralizesEmailSuppliedColours and TestWrapDocument_HidesImagesThatCanNeverLoad — all re-run, all PASS). DetailPane.svelte's body region now renders from one named decision function, detailBodyVariant (web/src/lib/format.ts), confirmed wired (`let bodyVariant = $derived(detailBodyVariant(content))` at DetailPane.svelte:37) and covered by 14 unit tests plus a source-scan guard (web/src/lib/components/detail-body.test.ts, part of the frontend's 86/86 passing suite, re-run by this verifier). The plan's own D4 explicitly declares the REAL-BROWSER visual outcome a backstop truth that cannot be established from inside the repository — that remains open as a new human-verification item below, not a code gap."
     - "UAT gap G-03-3 (deep link lands on bare Proton inbox, minor) is CODE-closed by plan 03-10: toItem's deep link is now built by webmailSearchDeepLink (plugins/proton/deeplink.go), an All Mail search-by-subject link, replacing the unaddressable label-name path; the old firstLabel/pathEscapeSegment path construction and its net/url import are removed outright (confirmed absent by grep). Six table-driven cases (ordinary, absent/empty/whitespace-only, hostile-punctuation, trailing-separator-base) plus a dedicated over-cap multi-byte UTF-8 test and two toItem-level assertions (deep link is a search link, not a label path; fidelity remains LINK_FIDELITY_ANCHORED) all re-run by this verifier, all PASS. The plan's own D7 explicitly declares whether Proton webmail actually honours this hash-based search form live a backstop truth — that remains open as a new human-verification item below, not a code gap."
   gaps_remaining:
+
     - "UAT gap G-03-1's root, user-side item (.env's PROTON_BRIDGE_PASS) was corrected by the user between rounds per 03-UAT.md's Gaps section (status: resolved, 2026-08-01) — live login now succeeds and Proton items appear in the stream, interleaved with paperless/SilverBullet, correctly dated. This is a genuine improvement over the previous verification round, but the live re-tests it unblocks (Test 2: TestSeenFlagUnchanged_LiveBridge run to PASS; Test 3: cross-check unread state in Proton's own client; Test 5: corrected red-dot text after credential fix) have not yet been performed — 03-UAT.md itself records all three as '[pending]', not '[pass]'. Carried forward as human-verification items below."
   regressions: []
 gaps: []
 human_verification:
-  - test: "Re-run 03-UAT.md's Test 1 now that both G-03-2 and G-03-3 are code-closed: open a Proton email in the detail pane and confirm (a) the body is readable — plain text shown directly when the message has a usable text/plain part, no dark-on-dark text and no broken-image litter for an HTML-only message — and (b) clicking 'Open in Proton Mail' lands on the account's All Mail view pre-filled with a search for the message's subject, not the bare inbox."
-    expected: "The detail pane renders legibly for real mail in a real browser, and the 'Open in Proton Mail' link puts the user in front of a short, filtered list containing the message rather than the top of an unfiltered inbox. Both are this round's two new backstop truths (03-09-PLAN.md's D4, 03-10-PLAN.md's D7) — every mechanical link in each chain is proven by the test suite (Level 1-4 verification below), but the visual/webmail-behavior outcome cannot be established from inside this repository."
-    why_human: "Requires a running kernel/webUI against the real Proton Mail Bridge account, visual confirmation of CSS-cascaded HTML in a browser, and observing Proton webmail's actual handling of a hash-based All Mail search URL — none of which is mechanically checkable from source. The plans' own must_haves both declare this class of truth `verification: backstop` and name this exact re-test as the sole confirmation mechanism."
-  - test: "Run `WEBSPACES_PROTON_LIVE_IT=1 PROTON_BRIDGE_ADDR=<addr> PROTON_BRIDGE_USER=<user> PROTON_BRIDGE_PASS=<pass> go test -run TestSeenFlagUnchanged_LiveBridge -v ./plugins/proton/...` against the now-corrected, currently-authenticating Bridge account."
-    expected: "The test passes, directly proving SRC-01's second success criterion (\\Seen flag unchanged across a full Match+Fetch cycle) against the real mailbox, not just the no-live-Bridge wire-transcript proxy for it (TestIMAPTranscript_ExamineAndPeekOnly / TestPluginIssuesNoIMAPMutatingCommands, both re-confirmed passing this session)."
-    why_human: "Requires a live, currently-authenticating Bridge connection and real mailbox state. The credential was corrected this round (03-UAT.md's G-03-1 entry: resolved) and the test is confirmed still SKIPping cleanly (re-run this session), but it has not yet been run with the live-Bridge env vars set to actually exercise the real mailbox — 03-UAT.md records this as '[pending]', not '[pass]'."
-  - test: "After a live sync and opening an email in the detail pane, check the same email in the real Proton web or mobile client and confirm it is still shown as unread there."
-    expected: "The email remains unread in Proton's own client — the direct, human-observable, end-to-end proof of the never-mark-read guarantee (SC2)."
-    why_human: "Requires a live Bridge account, a real sync, and cross-checking read/unread state in Proton's own UI. 03-UAT.md records this as '[pending]' — noted as unblocked now that the credential is corrected, but not yet performed."
-  - test: "Re-confirm 03-UAT.md's Test 5: after the .env credential correction, if a sync still fails for any reason, the surfaced error (Health and the UI red-dot detail) is the server's own message plus — only if the token is still shape-suspect — the actionable bridgeTokenShapeWarningText advice, never the old, removed 'not a code defect' / username-pointing framing."
-    expected: "If any failure recurs, its wording uses the corrected framing (code-level guarantee already re-verified this session: `bridgeAuthOrderNote` referenced exactly once in live_bridge_test.go, 'not a code defect' and '03-01-SUMMARY' both absent by grep)."
-    why_human: "Requires observing actual red-dot text rendered in the browser after a real sync attempt. 03-UAT.md records this as '[pending]'."
+
+  - [object Object]
+  - [object Object]
+  - [object Object]
+  - [object Object]
+
 behavior_unverified_items:
-  - truth: "Reading an email inside webspaces never marks it read in Proton — proven by an automated test asserting the \\Seen flag is unchanged after a full sync and a detail fetch (ROADMAP SC2)"
-    test: "Run TestSeenFlagUnchanged_LiveBridge with the live-Bridge env vars set against the now-corrected, currently-authenticating Proton Mail Bridge account."
-    expected: "\\Seen flag on the fetched message is unchanged after a full Match + Fetch (detail-open) cycle, asserted directly against the real mailbox rather than inferred from an absence of mutating IMAP commands in a wire transcript."
-    why_human: "Code-level proof exists (TestPluginIssuesNoIMAPMutatingCommands' AST scan forbidding IMAP-mutating identifiers; TestIMAPTranscript_ExamineAndPeekOnly's wire-transcript assertion that only EXAMINE/BODY.PEEK[ are issued) and both re-confirmed passing this session, but the live-Bridge test still reports SKIP (re-confirmed this session) — it has never been run to a PASS against a live mailbox's actual flag state, even though the credential blocker that previously prevented this is now resolved per 03-UAT.md."
+
+  - [object Object]
+
 ---
 
 # Phase 3: Email in the Webspace Verification Report
