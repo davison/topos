@@ -2,8 +2,8 @@
 phase: 03-email-in-the-webspace
 verified: "2026-08-01T20:05:00Z"
 status: passed
-score: 4/7 must-haves verified
-behavior_unverified: 1
+score: 7/7 must-haves verified (4 mechanically; 3 confirmed live via 03-UAT.md round 3, 2026-08-02)
+behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
@@ -18,15 +18,19 @@ re_verification:
   regressions: []
 gaps: []
 human_verification:
-
-  - [object Object]
-  - [object Object]
-  - [object Object]
-  - [object Object]
-
-behavior_unverified_items:
-
-  - [object Object]
+  - item: "Re-run 03-UAT.md Test 1 live — detail pane readable (G-03-2) and deep link opens All Mail subject search (G-03-3)"
+    status: confirmed
+    confirmed_at: 2026-08-02
+  - item: "Run TestSeenFlagUnchanged_LiveBridge against the real Bridge account to PASS"
+    status: confirmed
+    confirmed_at: 2026-08-02
+  - item: "Cross-check unread state in Proton's own client after sync + detail-pane open"
+    status: confirmed
+    confirmed_at: 2026-08-02
+  - item: "Corrected red-dot diagnostic text if a sync failure recurs"
+    status: confirmed
+    confirmed_at: 2026-08-02
+behavior_unverified_items: []
 
 ---
 
@@ -34,7 +38,7 @@ behavior_unverified_items:
 
 **Phase Goal:** User's Proton mail for a topic appears in the webspace stream and stays readable there, and the volume it brings is navigable by searching within the webspace
 **Verified:** 2026-08-01T20:05:00Z
-**Status:** human_needed
+**Status:** passed — human verification completed 2026-08-02 via 03-UAT.md round 3 (5/5 tests passed, 0 issues)
 **Re-verification:** Yes — after gap-closure plans 03-09 (G-03-2, unreadable detail pane) and 03-10 (G-03-3, deep link lands on inbox), both merged to main
 
 **Note on MVP mode:** ROADMAP.md marks this phase `Mode: mvp`, but its `Goal:` line is not phrased as a User Story (`As a … I want to … so that …`). Consistent with all prior verification rounds for this phase, this report uses standard goal-backward verification rather than the MVP User Flow Coverage format.

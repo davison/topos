@@ -18,14 +18,15 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Kernel + plugin architecture: source connectors are plugins with a documented contract — Phase 2 (source-agnosticism proven by a second, structurally different source; PLUG-05 fresh-context test showed a third party can build a plugin from contract + mock alone)
 - ✓ Trustworthy multi-source stream: per-source health chips with diagnostic tooltips, source filter chips, manual refresh, staleness states, per-(webspace, source) sync integrity — Phase 2
 - ✓ Default-deny agent permission model (AGENT-01): read-only agent routes gated by per-source grants — Phase 2
+- ✓ Email plugin (SRC-01) — Proton Mail Bridge over LAN with self-signed cert, exact-leaf label/folder keyword matching, Message-ID dedup, never-marks-read proven live against the real account, readable detail pane (plain-text preferred, sanitized theme-wrapped HTML fallback), All Mail search deep link — Phase 3
+- ✓ Full-text search within a webspace (KERN-05): FTS5 index, ranked cross-source results with highlighted snippets — Phase 3
 
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–2: proven for paperless-ngx tags and SilverBullet tags/pages; IMAP and chat silos pending)*
-- [ ] Email plugin (IMAP) — working against Proton Mail Bridge, generic enough for any IMAP provider
+- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–3: proven for paperless-ngx tags, SilverBullet tags/pages, and IMAP labels/folders; chat silos pending)*
 - [ ] Signal plugin — reads Signal Desktop's local database on the same machine
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 2: two-source interleaved stream with source filter shipped; email/chat previews pending)*
+- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 3: email body preview and in-webspace search shipped; chat previews pending)*
 
 ### Out of Scope
 
@@ -63,7 +64,9 @@ Open one webspace and instantly see and grok all related information across ever
 | Hybrid data model (local metadata/preview index, live fetch on open) | Fast browsing and uniform search without full duplication or staleness of content | Phase 1: validated — instant metadata from index, live preview fill via plugin Fetch |
 | Chat access via desktop app local databases | Least infra of the workaround options; no cloud, no bridges to run | — Pending |
 | Deploy to desktop, reach server services over LAN | Chat DBs live on the desktop; bridge/paperless/SilverBullet are network-reachable anyway | — Pending |
-| MVP sources: IMAP email, Signal, WhatsApp, paperless-ngx, SilverBullet | The user's actual silos; filesystem and others deferred | — Pending |
+| MVP sources: IMAP email, Signal, WhatsApp, paperless-ngx, SilverBullet | The user's actual silos; filesystem and others deferred | Phase 3: three of five shipped (paperless-ngx, SilverBullet, Proton/IMAP) |
+| Email readability decided in the plugin, never the shared pane | A UI-side "prefer text over rendition" rule would have flipped SilverBullet's rendered markdown to raw; the producing plugin returns plain text alone when a usable text/plain part exists | Phase 3: shipped — DetailPane stays source-agnostic, branches only on content shape |
+| Proton deep link = All Mail subject-search URL, declared ANCHORED | Proton webmail addresses custom labels by internal id (not name) and offers no Message-ID→webmail-id mapping; a search link is the only addressable form | Phase 3: confirmed working live |
 
 ## Evolution
 
@@ -83,4 +86,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-29 after Phase 2*
+*Last updated: 2026-08-02 after Phase 3*
