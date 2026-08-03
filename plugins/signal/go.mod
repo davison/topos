@@ -4,6 +4,12 @@ go 1.25.0
 
 require github.com/mattn/go-sqlite3 v1.14.49
 
+require (
+	github.com/keybase/dbus v0.0.0-20220506165403-5aa21ea2c23a
+	github.com/keybase/go-keychain v0.0.1
+	golang.org/x/crypto v0.54.0
+)
+
 // go.mod replace (Task 1 checkpoint, 04-01-PLAN.md, option-a): the
 // libsqlcipher build tag that dynamically links the system's own
 // SQLCipher library — the driver strategy the checkpoint authorised over
