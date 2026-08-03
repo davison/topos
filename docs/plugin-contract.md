@@ -17,12 +17,15 @@ If those four are all you have, you should be able to write a working
 plugin — `plugins/mock` is the proof: it was built and validated against
 this document with no access to any real-source plugin implementation.
 
-**Other implementations (aside, not required reading):** two fuller,
+**Other implementations (aside, not required reading):** three fuller,
 real-source examples also ship in this repository —
-`plugins/paperless` (a REST API source) and `plugins/silverbullet` (an
-HTTP-with-frontmatter source) — useful once you're past "Build your first
-plugin" and want to see how a plugin structures a real HTTP client, but
-neither is needed to understand or apply anything in this document.
+`plugins/paperless` (a REST API source), `plugins/silverbullet` (an
+HTTP-with-frontmatter source), and `plugins/signal` (a **local-path**
+source: no network endpoint at all, reads a local Signal Desktop database
+file directly) — useful once you're past "Build your first plugin" and
+want to see how a plugin structures a real HTTP client or a local-file
+source, but none of the three is needed to understand or apply anything
+in this document.
 
 ## A plugin is read-only by construction
 
@@ -171,6 +174,26 @@ The exact key set is source-specific (a chat plugin has no `base_url`; a
 local-database plugin needs a filesystem path instead) — a plugin defines
 and documents whatever keys it needs, and reads them out of this one
 environment variable at startup.
+
+**The `path` key — a local-path source, no network endpoint at all.** A
+source that reads a local file or directory rather than a remote API
+declares `path` instead of `base_url`/`token`: the local filesystem
+location that source reads from. `plugins/signal` is this repository's
+reference implementation of the shape — its config is just
+
+```json
+{ "path": "~/.config/Signal" }
+```
+
+with no `base_url`, `token`, or any credential at all, because the
+"connection detail" a local-path source needs is a filesystem location,
+not network coordinates. A source declaring `path` is exempt from the
+`base_url`/`token` requirement every other source must satisfy; a source
+declaring none of `base_url`, `token`, or `path` still fails config load
+— every source must declare at least one recognized connection-detail
+shape. `~` in a `path` value is expanded by the plugin itself, not by the
+kernel (`kernel/pluginhost` passes the configured string through
+unexpanded); see `plugins/signal/README.md` for the fully worked example.
 
 A plugin **must fail startup loudly** when a required key is empty (for
 example, because the operator's config referenced an unset `${VAR}` that

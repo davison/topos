@@ -22,6 +22,28 @@ import "net/url"
 // particular conversation. Both are still an honest, non-empty deep
 // link: PLUG-03's sync-time validation rejects an item with an empty
 // deep_link.
+//
+// 04-RESEARCH.md assumption A4, closed 2026-08-03: both forms were
+// invoked against this machine's installed, running Signal Desktop via
+// its own registered scheme handler (`gio open`, confirmed the handler
+// is `signal.desktop` via `gio mime x-scheme-handler/sgnl` /
+// `xdg-mime query default x-scheme-handler/sgnl`). The bare "sgnl://"
+// form's behavior was already visually confirmed by the developer during
+// 04-01-PLAN.md's own human-verify checkpoint (04-01-SUMMARY.md: raises
+// Signal Desktop, does not navigate to a specific conversation for a
+// group — the accepted, intended conversation-only fidelity limit, not a
+// defect). This task additionally invoked the
+// "sgnl://signal.me/#p/<e164>" contact form: `gio open` returned exit 0
+// with no error, and Signal Desktop's own single-instance-lock IPC
+// handoff was directly observable (its startup diagnostic output printed
+// as the second launch attempt detected the running instance and forwarded
+// the URI to it) — consistent with the handler correctly receiving and
+// routing the request. Both forms survive; no fallback substitution was
+// needed. A pixel-level "did the correct contact's window actually raise
+// and focus" re-confirmation for the contact form specifically is
+// deferred to this phase's end-of-phase human verification pass
+// (workflow.human_verify_mode = "end-of-phase" — 04-01's checkpoint
+// already set this precedent for the bare form).
 func conversationDeepLink(conversationType, e164 string) string {
 	if conversationType == "private" && e164 != "" {
 		return "sgnl://signal.me/#p/" + encodePhoneFragment(e164)
