@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-03T19:36:52.387Z"
+last_updated: "2026-08-03T20:03:00.867Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 60
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 ## Current Position
 
 Phase: 04 (signal-conversations) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-08-03
 
-Progress: [█████████░] 92%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [█████████░] 92%
 | Phase 03 P05 | 21min | 3 tasks | 4 files |
 | Phase 03 P06 | 20min | 2 tasks | 6 files |
 | Phase 04 P01 | 3h | 2 tasks | 20 files |
+| Phase 04 P02 | 2h | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 03-06]: Added web/src/lib/node-builtins.d.ts (narrow ambient node:fs/node:path/node:url types) to satisfy svelte-check's 0 ERRORS without installing @types/node
 - [Phase ?]: [Phase 04-01]: Task 1 checkpoint authorised dynamically linking the system SQLCipher via a libsqlcipher-tagged mattn/go-sqlite3 fork (option-a), pinned by go.mod replace to jgiannuzzi/go-sqlite3 v1.14.17-0.20230327162135-f208443ec79d (branch sqlcipher, upstream PR mattn/go-sqlite3#1109, commit f208443ec79de7edaf1b80276806005a5c0cf340) over CLAUDE.md's mutecomm/go-sqlcipher/v4, which bundles a pre-3.51.3 SQLite core and fails the phase's WAL-corruption-fix floor
 - [Phase ?]: [Phase 04-01]: PRAGMA user_version ceiling pinned to 1730, read live off the real Signal Desktop database — not 04-RESEARCH.md's unconfirmed placeholder of 1640
+- [Phase ?]: encryptedKey is hex-encoded (confirmed against Signal Desktop's live source), not base64 as illustrated in research
+- [Phase ?]: Secret Service application attribute value pinned to 'Signal' (traced from Chromium os_crypt + Electron app.getName()), unverifiable on this machine (never safeStorage-migrated) — flagged for re-verification
+- [Phase ?]: kwallet/kwallet5/kwallet6 route through freedesktop Secret Service (not native org.kde.KWallet), a documented scope limitation per plan instruction
 
 ### Pending Todos
 
@@ -150,6 +154,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-03T19:36:52.379Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-08-03T20:03:00.859Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
