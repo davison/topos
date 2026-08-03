@@ -14,10 +14,17 @@ func localMs(year int, month time.Month, day, hour, min int) int64 {
 	return time.Date(year, month, day, hour, min, 0, 0, time.Local).UnixMilli()
 }
 
+// rec is a tiny messageRecord fixture builder for this file's own tests
+// — a plain, non-deleted, non-edited, richness-free message unless a
+// test explicitly sets a field afterward.
+func rec(convID, sender, body string, sentAtUnixMs int64) messageRecord {
+	return messageRecord{ConversationID: convID, SenderName: sender, Body: body, SentAtUnixMs: sentAtUnixMs}
+}
+
 func TestBuildDigests_TwoLocalDaysProduceTwoDigests(t *testing.T) {
-	msgs := []message{
-		{ConversationID: "c1", SentAtUnixMs: localMs(2026, 8, 1, 9, 0), SenderName: "Dad", Body: "morning"},
-		{ConversationID: "c1", SentAtUnixMs: localMs(2026, 8, 2, 9, 0), SenderName: "Dad", Body: "next day"},
+	msgs := []messageRecord{
+		rec("c1", "Dad", "morning", localMs(2026, 8, 1, 9, 0)),
+		rec("c1", "Dad", "next day", localMs(2026, 8, 2, 9, 0)),
 	}
 	got := buildDigests(msgs, map[string]string{"c1": "Dad"})
 	if len(got) != 2 {
@@ -28,9 +35,9 @@ func TestBuildDigests_TwoLocalDaysProduceTwoDigests(t *testing.T) {
 func TestBuildDigests_TimestampIsDaysLastMessageNotFirst(t *testing.T) {
 	first := localMs(2026, 8, 1, 8, 0)
 	last := localMs(2026, 8, 1, 22, 0)
-	msgs := []message{
-		{ConversationID: "c1", SentAtUnixMs: first, SenderName: "Dad", Body: "morning"},
-		{ConversationID: "c1", SentAtUnixMs: last, SenderName: "Dad", Body: "night"},
+	msgs := []messageRecord{
+		rec("c1", "Dad", "morning", first),
+		rec("c1", "Dad", "night", last),
 	}
 	got := buildDigests(msgs, map[string]string{"c1": "Dad"})
 	if len(got) != 1 {
@@ -38,6 +45,22 @@ func TestBuildDigests_TimestampIsDaysLastMessageNotFirst(t *testing.T) {
 	}
 	if got[0].LastMessageUnix != last/1000 {
 		t.Errorf("expected timestamp to be the day's LAST message (%d), got %d", last/1000, got[0].LastMessageUnix)
+	}
+}
+
+func TestBuildDigests_MessageCountIncludesDeletedMessages(t *testing.T) {
+	deleted := rec("c1", "Dad", "", localMs(2026, 8, 1, 9, 0))
+	deleted.Deleted = true
+	msgs := []messageRecord{
+		rec("c1", "Dad", "morning", localMs(2026, 8, 1, 8, 0)),
+		deleted,
+	}
+	got := buildDigests(msgs, map[string]string{"c1": "Dad"})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 digest, got %d", len(got))
+	}
+	if got[0].MessageCount != 2 {
+		t.Errorf("expected the day's message count to include the deleted message, got %d", got[0].MessageCount)
 	}
 }
 
@@ -86,11 +109,11 @@ func TestDigestTitle_SingularAndPluralGrammar(t *testing.T) {
 }
 
 func TestTailSnippet_LastMessagesChronologicalSenderPrefixedNoEarlierLeak(t *testing.T) {
-	msgs := []message{
-		{SenderName: "Alice", Body: "one", SentAtUnixMs: 1},
-		{SenderName: "Bob", Body: "two", SentAtUnixMs: 2},
-		{SenderName: "Alice", Body: "three", SentAtUnixMs: 3},
-		{SenderName: "Bob", Body: "four", SentAtUnixMs: 4},
+	msgs := []messageRecord{
+		rec("c1", "Alice", "one", 1),
+		rec("c1", "Bob", "two", 2),
+		rec("c1", "Alice", "three", 3),
+		rec("c1", "Bob", "four", 4),
 	}
 	got := tailSnippet(msgs)
 	want := "Bob: two\nAlice: three\nBob: four"
@@ -107,13 +130,11 @@ func TestTailSnippet_TruncatesByRuneCountNotByteCount(t *testing.T) {
 	// previewRuneCap runes — truncating by byte count would cut mid-rune
 	// and corrupt the string; truncating by rune count never does.
 	long := strings.Repeat("é", previewRuneCap+50)
-	msgs := []message{{SenderName: "A", Body: long, SentAtUnixMs: 1}}
+	msgs := []messageRecord{rec("c1", "A", long, 1)}
 	got := tailSnippet(msgs)
 	if !strings.HasPrefix(got, "A: ") {
 		t.Fatalf("expected sender prefix, got %q", got[:min(20, len(got))])
 	}
-	// The truncated result must itself be valid UTF-8 (no partial rune)
-	// and its rune count must not exceed previewRuneCap.
 	body := strings.TrimPrefix(got, "A: ")
 	runeCount := 0
 	for range body {
@@ -128,13 +149,75 @@ func TestTailSnippet_TruncatesByRuneCountNotByteCount(t *testing.T) {
 }
 
 func TestTailSnippet_AllMessagesSameSenderStillPrefixedEachLine(t *testing.T) {
-	msgs := []message{
-		{SenderName: "Dad", Body: "one", SentAtUnixMs: 1},
-		{SenderName: "Dad", Body: "two", SentAtUnixMs: 2},
+	msgs := []messageRecord{
+		rec("c1", "Dad", "one", 1),
+		rec("c1", "Dad", "two", 2),
 	}
 	got := tailSnippet(msgs)
 	want := "Dad: one\nDad: two"
 	if got != want {
 		t.Errorf("expected each line prefixed even for a single sender, got %q", got)
+	}
+}
+
+func TestTailSnippet_AttachmentOnlyLastMessageRendersPlaceholder(t *testing.T) {
+	withAttachment := rec("c1", "Dad", "", 2)
+	withAttachment.Attachments = []attachment{{Filename: "photo.jpg"}}
+	msgs := []messageRecord{
+		rec("c1", "Dad", "one", 1),
+		withAttachment,
+	}
+	got := tailSnippet(msgs)
+	want := "Dad: one\nDad: 📎 photo.jpg"
+	if got != want {
+		t.Errorf("expected the attachment-only tail line to render the placeholder, got %q", got)
+	}
+}
+
+func TestTailSnippet_AttachmentWithNoFilenameUsesFallback(t *testing.T) {
+	withAttachment := rec("c1", "Dad", "", 1)
+	withAttachment.Attachments = []attachment{{}}
+	got := tailSnippet([]messageRecord{withAttachment})
+	if got != "Dad: 📎 Attachment" {
+		t.Errorf("expected the fallback Attachment placeholder, got %q", got)
+	}
+}
+
+func TestTailSnippet_DeletedTailMessageIsOmittedNotTombstoned(t *testing.T) {
+	deleted := rec("c1", "Dad", "", 2)
+	deleted.Deleted = true
+	msgs := []messageRecord{
+		rec("c1", "Dad", "one", 1),
+		deleted,
+	}
+	got := tailSnippet(msgs)
+	if got != "Dad: one" {
+		t.Errorf("expected the deleted tail message to be omitted entirely (no tombstone line), got %q", got)
+	}
+}
+
+func TestTailSnippet_AllTailMessagesDeletedYieldsEmptyPreview(t *testing.T) {
+	d1 := rec("c1", "Dad", "", 1)
+	d1.Deleted = true
+	d2 := rec("c1", "Mum", "", 2)
+	d2.Deleted = true
+	got := tailSnippet([]messageRecord{d1, d2})
+	if got != "" {
+		t.Errorf("expected an empty preview when every tail message was deleted, got %q", got)
+	}
+}
+
+func TestBuildDigests_FullyDeletedTailStillProducesADigestWithEmptyPreview(t *testing.T) {
+	deleted := rec("c1", "Dad", "", localMs(2026, 8, 1, 9, 0))
+	deleted.Deleted = true
+	got := buildDigests([]messageRecord{deleted}, map[string]string{"c1": "Dad"})
+	if len(got) != 1 {
+		t.Fatalf("expected 1 digest even when its only message was deleted, got %d", len(got))
+	}
+	if got[0].Preview != "" {
+		t.Errorf("expected an empty preview, got %q", got[0].Preview)
+	}
+	if got[0].MessageCount != 1 {
+		t.Errorf("expected the deleted message to still count toward the day's total, got %d", got[0].MessageCount)
 	}
 }

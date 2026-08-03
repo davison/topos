@@ -52,15 +52,39 @@ func buildFixtureDatabase(t *testing.T, path string, userVersion int) {
 			json TEXT
 		)`,
 		`CREATE TABLE messages (
+			id TEXT PRIMARY KEY,
 			conversationId TEXT,
 			sent_at INTEGER,
 			type TEXT,
 			sourceServiceId TEXT,
-			body TEXT
+			body TEXT,
+			isErased INTEGER,
+			json TEXT
 		)`,
 		`CREATE TABLE items (
 			id TEXT PRIMARY KEY,
 			json TEXT
+		)`,
+		// message_attachments/reactions: real Signal Desktop keeps
+		// attachments and reactions in these dedicated tables, never in
+		// the message row's own json blob (message.go's
+		// messageBlobFields doc comment) — schema-only here since none
+		// of this file's fixture messages carry either.
+		`CREATE TABLE message_attachments (
+			messageId TEXT,
+			conversationId TEXT,
+			editHistoryIndex INTEGER,
+			attachmentType TEXT,
+			orderInMessage INTEGER,
+			fileName TEXT,
+			contentType TEXT
+		)`,
+		`CREATE TABLE reactions (
+			messageId TEXT,
+			conversationId TEXT,
+			emoji TEXT,
+			fromId TEXT,
+			timestamp INTEGER
 		)`,
 	}
 	for _, stmt := range schemaStmts {
@@ -86,18 +110,19 @@ func buildFixtureDatabase(t *testing.T, path string, userVersion int) {
 	day2 := time.Date(2026, 1, 8, 12, 0, 0, 0, time.Local).UnixMilli()
 
 	messages := []struct {
+		id             string
 		conversationID string
 		sentAt         int64
 		body           string
 	}{
-		{"conv-group", day1, "let's book the van"},
-		{"conv-group", day2, "van is booked"},
-		{"conv-private", day1, "see you at 3pm"},
+		{"msg-1", "conv-group", day1, "let's book the van"},
+		{"msg-2", "conv-group", day2, "van is booked"},
+		{"msg-3", "conv-private", day1, "see you at 3pm"},
 	}
 	for _, m := range messages {
 		if _, err := db.Exec(
-			`INSERT INTO messages (conversationId, sent_at, type, sourceServiceId, body) VALUES (?, ?, 'incoming', ?, ?)`,
-			m.conversationID, m.sentAt, "svc-alice", m.body,
+			`INSERT INTO messages (id, conversationId, sent_at, type, sourceServiceId, body, isErased, json) VALUES (?, ?, ?, 'incoming', ?, ?, 0, '{}')`,
+			m.id, m.conversationID, m.sentAt, "svc-alice", m.body,
 		); err != nil {
 			t.Fatalf("insert fixture message: %v", err)
 		}

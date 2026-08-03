@@ -386,29 +386,37 @@ func buildSenderNames(convs []conversation, ownAci string) map[string]string {
 	return out
 }
 
-// unknownSenderName is the fallback digest.go's tail snippet uses when a
-// message's sourceServiceId has no entry in senderNames (a sender Signal
-// Desktop has no conversation record for at all — rare, but not
-// impossible for an old/orphaned message).
+// unknownSenderName is the fallback readMessages uses when a message's
+// sourceServiceId has no entry in senderNames (a sender Signal Desktop
+// has no conversation record for at all — rare, but not impossible for
+// an old/orphaned message).
 const unknownSenderName = "Unknown"
 
-// readMessages reads every real chat message (type IN
-// ('incoming','outgoing') — excluding system/notification event rows
-// such as 'profile-change', 'group-v2-change', 'call-history', which are
-// not messages a day's "N messages" count should include) for every
-// conversation in conversationIDs, with NO time window (D-08: full
-// history backfill), resolving each row's sender display name via
-// senderNames (buildSenderNames' output).
-//
-// sourceServiceId is empty for an OUTGOING message in a 1:1 (private)
-// conversation — Signal Desktop leaves the sender implicit there (the
-// conversationId itself already identifies the pairing), unlike a GROUP
-// conversation's own outgoing rows, which DO carry the account's own
-// service id (confirmed against this task's real, live db.sqlite for
-// both conversation shapes). readMessages therefore falls back to the
-// fixed "You" label for any outgoing row with no sourceServiceId, rather
-// than misreporting it as unknownSenderName.
-func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]string) ([]message, error) {
+// realAttachmentTypes is the set of message_attachments.attachmentType
+// values this plugin treats as a genuine file the message's OWN sender
+// attached — confirmed by direct, hands-on introspection of a real, live
+// db.sqlite during this task. Excluded deliberately: "preview" (a link-
+// preview thumbnail describing a URL in the body, not a file the sender
+// attached), "quote" (a thumbnail copied from the message THIS one is
+// replying to, describing that OTHER message, not this one) and
+// "long-message" (Signal's own body-overflow mechanism for messages
+// exceeding its inline length limit — the message's own text stored as
+// an attachment, not a user-facing file). "contact" (a shared vCard) is
+// included: it is a genuine attachment the sender chose to send.
+var realAttachmentTypes = map[string]bool{
+	"attachment": true,
+	"sticker":    true,
+	"contact":    true,
+}
+
+// readAttachments reads every real attachment (message_attachments,
+// current revision only — editHistoryIndex = -1 excludes a PRIOR edit
+// revision's now-superseded attachments — and attachmentType in
+// realAttachmentTypes) for every conversation in conversationIDs,
+// grouped by messageId, ordered within a message by orderInMessage.
+// message.go's messageBlobFields doc comment records why this reads a
+// dedicated SQL table rather than the message row's own json blob.
+func readAttachments(db *sql.DB, conversationIDs []string) (map[string][]attachment, error) {
 	if len(conversationIDs) == 0 {
 		return nil, nil
 	}
@@ -421,7 +429,127 @@ func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]s
 	}
 
 	query := fmt.Sprintf(`
-		SELECT conversationId, sent_at, type, sourceServiceId, body
+		SELECT messageId, fileName, contentType, attachmentType
+		FROM message_attachments
+		WHERE conversationId IN (%s)
+		  AND editHistoryIndex = -1
+		ORDER BY orderInMessage ASC
+	`, strings.Join(placeholders, ","))
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query message_attachments: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string][]attachment)
+	for rows.Next() {
+		var messageID string
+		var fileName, contentType, attachmentType sql.NullString
+		if err := rows.Scan(&messageID, &fileName, &contentType, &attachmentType); err != nil {
+			return nil, fmt.Errorf("scan message_attachments row: %w", err)
+		}
+		if !realAttachmentTypes[attachmentType.String] {
+			continue
+		}
+		out[messageID] = append(out[messageID], attachment{
+			Filename:    fileName.String,
+			ContentType: contentType.String,
+		})
+	}
+	return out, rows.Err()
+}
+
+// readReactions reads every reaction (the dedicated reactions table —
+// message.go's messageBlobFields doc comment records why this, not the
+// message row's json blob, is this plugin's source of truth for
+// reactions) for every conversation in conversationIDs, grouped by
+// messageId, with each reactor's identifier resolved to a display name
+// via senderNames the identical way a message's own sender is resolved
+// (senderDisplayName, message.go) — a self-reaction therefore correctly
+// resolves to "You" via the same senderNames entry buildSenderNames sets
+// for the account's own service id.
+func readReactions(db *sql.DB, conversationIDs []string, senderNames map[string]string) (map[string][]reaction, error) {
+	if len(conversationIDs) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(conversationIDs))
+	args := make([]any, 0, len(conversationIDs))
+	for i, id := range conversationIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT messageId, emoji, fromId
+		FROM reactions
+		WHERE conversationId IN (%s)
+		ORDER BY timestamp ASC
+	`, strings.Join(placeholders, ","))
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query reactions: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string][]reaction)
+	for rows.Next() {
+		var messageID, emoji string
+		var fromID sql.NullString
+		if err := rows.Scan(&messageID, &emoji, &fromID); err != nil {
+			return nil, fmt.Errorf("scan reactions row: %w", err)
+		}
+		out[messageID] = append(out[messageID], reaction{
+			Emoji:       emoji,
+			ReactorName: senderDisplayName(senderNames, fromID.String),
+		})
+	}
+	return out, rows.Err()
+}
+
+// readMessages reads every real chat message (type IN
+// ('incoming','outgoing') — excluding system/notification event rows
+// such as 'profile-change', 'group-v2-change', 'call-history', which are
+// not messages a day's "N messages" count should include) for every
+// conversation in conversationIDs, with NO time window (D-08: full
+// history backfill), parsing each row into a messageRecord (message.go)
+// via parseMessage — resolving sender display name via senderNames
+// (buildSenderNames' output), and attaching that message's own
+// attachments/reactions (readAttachments/readReactions above).
+//
+// sourceServiceId is empty for an OUTGOING message in a 1:1 (private)
+// conversation — Signal Desktop leaves the sender implicit there (the
+// conversationId itself already identifies the pairing), unlike a GROUP
+// conversation's own outgoing rows, which DO carry the account's own
+// service id (confirmed against this task's real, live db.sqlite for
+// both conversation shapes). readMessages therefore falls back to the
+// fixed "You" label for any outgoing row with no sourceServiceId, rather
+// than misreporting it as unknownSenderName.
+func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]string) ([]messageRecord, error) {
+	if len(conversationIDs) == 0 {
+		return nil, nil
+	}
+
+	attachmentsByMsg, err := readAttachments(db, conversationIDs)
+	if err != nil {
+		return nil, err
+	}
+	reactionsByMsg, err := readReactions(db, conversationIDs, senderNames)
+	if err != nil {
+		return nil, err
+	}
+
+	placeholders := make([]string, len(conversationIDs))
+	args := make([]any, 0, len(conversationIDs))
+	for i, id := range conversationIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, conversationId, sent_at, type, sourceServiceId, body, isErased, json
 		FROM messages
 		WHERE conversationId IN (%s)
 		  AND type IN ('incoming', 'outgoing')
@@ -435,12 +563,13 @@ func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]s
 	}
 	defer rows.Close()
 
-	var out []message
+	var out []messageRecord
 	for rows.Next() {
-		var conversationID, msgType string
+		var id, conversationID, msgType string
 		var sentAt int64
-		var sourceServiceID, body sql.NullString
-		if err := rows.Scan(&conversationID, &sentAt, &msgType, &sourceServiceID, &body); err != nil {
+		var isErased int
+		var sourceServiceID, body, rawJSON sql.NullString
+		if err := rows.Scan(&id, &conversationID, &sentAt, &msgType, &sourceServiceID, &body, &isErased, &rawJSON); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 
@@ -454,12 +583,15 @@ func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]s
 			senderName = unknownSenderName
 		}
 
-		out = append(out, message{
-			ConversationID: conversationID,
-			SentAtUnixMs:   sentAt,
-			SenderName:     senderName,
-			Body:           body.String,
-		})
+		rec, err := parseMessage(id, conversationID, sentAt, senderName, body.String, isErased != 0, rawJSON.String, attachmentsByMsg[id], reactionsByMsg[id])
+		if err != nil {
+			// parseMessage never actually returns a non-nil error today
+			// (see its own doc comment) — handled anyway so a future
+			// change to that contract fails loudly here rather than
+			// silently dropping a row.
+			return nil, fmt.Errorf("parse message %q: %w", id, err)
+		}
+		out = append(out, rec)
 	}
 	return out, rows.Err()
 }

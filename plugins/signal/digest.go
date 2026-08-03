@@ -9,15 +9,6 @@ import (
 	"unicode/utf8"
 )
 
-// message is this plugin's own normalized view of one row from Signal
-// Desktop's messages table — only the fields digest.go needs.
-type message struct {
-	ConversationID string
-	SentAtUnixMs   int64 // messages.sent_at, epoch milliseconds
-	SenderName     string
-	Body           string
-}
-
 // digest is one (conversation, local calendar day) unit (D-01) — the
 // item this plugin's Match ultimately returns one webspacesv1.Item per.
 type digest struct {
@@ -54,7 +45,9 @@ func sourceIDForDigest(conversationID, day string) string {
 }
 
 // decodeSourceID reverses sourceIDForDigest, recovering the
-// (conversationID, day) pair a source_id was built from.
+// (conversationID, day) pair a source_id was built from. Used both by
+// Match (never, today) and by Fetch (plan 04-03) to re-derive which
+// conversation and day a digest's transcript belongs to.
 func decodeSourceID(sourceID string) (conversationID, day string, err error) {
 	b, err := base64.RawURLEncoding.DecodeString(sourceID)
 	if err != nil {
@@ -84,13 +77,17 @@ func localDayKey(sentAtUnixMs int64) string {
 // buildDigests groups msgs by (ConversationID, local calendar day) and
 // returns one digest per group with at least one message, in no
 // particular order. conversationNames maps a conversation id to its
-// display name for the digest's title.
-func buildDigests(msgs []message, conversationNames map[string]string) []digest {
+// display name for the digest's title. The day's message count includes
+// EVERY message with activity that day, including a deleted-for-everyone
+// one — so the digest title (which reads this count) never disagrees
+// with what the thread view (which renders every one of these records,
+// including the deleted ones as a tombstone bubble) actually shows.
+func buildDigests(msgs []messageRecord, conversationNames map[string]string) []digest {
 	type key struct {
 		conversationID string
 		day            string
 	}
-	grouped := map[key][]message{}
+	grouped := map[key][]messageRecord{}
 	var order []key
 	for _, m := range msgs {
 		k := key{conversationID: m.ConversationID, day: localDayKey(m.SentAtUnixMs)}
@@ -129,12 +126,29 @@ func digestTitle(conversationName string, count int) string {
 	return fmt.Sprintf("%s — %d messages", conversationName, count)
 }
 
-// tailSnippet renders the LAST tailMessageCount messages of
-// chronologically-sorted-ascending sortedMsgs, each prefixed with the
-// sender's name, newline-joined, then truncated by Snippet (D-02). This
-// is the ONLY message text this plugin ever returns — D-03 permits
-// nothing beyond it.
-func tailSnippet(sortedMsgs []message) string {
+// tailSnippet renders a richness-aware preview line for each of the LAST
+// tailMessageCount messages of chronologically-sorted-ascending
+// sortedMsgs (D-02), prefixed with the sender's name, newline-joined,
+// then truncated by Snippet. This is the ONLY message text this plugin
+// ever returns to the index — D-03 permits nothing beyond it, and
+// reactions/quotes are deliberately never surfaced here (the compact row
+// has no space for that chrome — that richness is transcript-only, see
+// render.go).
+//
+// Richness rules (04-UI-SPEC.md's E1 `partial` row, 04-03-PLAN.md Task
+// 1's own action text):
+//   - A tail message with no body but at least one attachment renders as
+//     the attachment placeholder: the paperclip glyph, a space, and the
+//     filename — or the paperclip glyph and the word "Attachment" when
+//     no filename is available (attachmentPlaceholder, message.go).
+//   - A deleted-for-everyone tail message is OMITTED from the snippet
+//     entirely — never rendered as a tombstone line — because the
+//     compact row has no space for that chrome.
+//   - If omitting every deleted tail message empties the snippet
+//     completely, tailSnippet returns "" and StreamRow's EXISTING
+//     empty-preview degrade (title + metadata only) handles the rest —
+//     no new fallback rule is added here.
+func tailSnippet(sortedMsgs []messageRecord) string {
 	start := 0
 	if len(sortedMsgs) > tailMessageCount {
 		start = len(sortedMsgs) - tailMessageCount
@@ -143,7 +157,14 @@ func tailSnippet(sortedMsgs []message) string {
 
 	lines := make([]string, 0, len(tail))
 	for _, m := range tail {
-		lines = append(lines, fmt.Sprintf("%s: %s", m.SenderName, m.Body))
+		if m.Deleted {
+			continue
+		}
+		body := m.Body
+		if body == "" && len(m.Attachments) > 0 {
+			body = attachmentPlaceholder(m.Attachments[0])
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", m.SenderName, body))
 	}
 	return Snippet(strings.Join(lines, "\n"))
 }
