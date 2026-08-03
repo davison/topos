@@ -2,17 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 4
 status: executing
-stopped_at: Phase 4 UI-SPEC approved
-last_updated: "2026-08-03T12:48:28.769Z"
+last_updated: "2026-08-03T19:36:52.387Z"
 last_activity: 2026-08-03
-last_activity_desc: Phase 4 planning complete
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
   total_plans: 25
-  completed_plans: 22
+  completed_plans: 23
+  percent: 60
 ---
 
 # Project State
@@ -22,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-02)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 4 — signal conversations
+**Current focus:** Phase 04 — signal-conversations
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
+Phase: 04 (signal-conversations) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-08-03 — Phase 4 planning complete
+Last activity: 2026-08-03
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -73,6 +71,7 @@ Progress: [██████████] 100%
 | Phase 02 P06 | 15min | 2 tasks | 3 files |
 | Phase 03 P05 | 21min | 3 tasks | 4 files |
 | Phase 03 P06 | 20min | 2 tasks | 6 files |
+| Phase 04 P01 | 3h | 2 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -121,6 +120,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 03-05]: Zero-guard test's RED signal produced deliberately against a temporary unguarded implementation (TimestampUnix: m.internalDate.Unix(), no IsZero() check), not the original code — the original code's output (0, by field omission) is bit-identical to the correctly-guarded output (0, by design), so the assertion cannot distinguish them at the original-code state
 - [Phase ?]: [Phase 03-06]: mergeMailboxCache is last-writer-wins per key (not insert-only) — a moved message is refreshed by whichever Match rediscovers it
 - [Phase ?]: [Phase 03-06]: Added web/src/lib/node-builtins.d.ts (narrow ambient node:fs/node:path/node:url types) to satisfy svelte-check's 0 ERRORS without installing @types/node
+- [Phase ?]: [Phase 04-01]: Task 1 checkpoint authorised dynamically linking the system SQLCipher via a libsqlcipher-tagged mattn/go-sqlite3 fork (option-a), pinned by go.mod replace to jgiannuzzi/go-sqlite3 v1.14.17-0.20230327162135-f208443ec79d (branch sqlcipher, upstream PR mattn/go-sqlite3#1109, commit f208443ec79de7edaf1b80276806005a5c0cf340) over CLAUDE.md's mutecomm/go-sqlcipher/v4, which bundles a pre-3.51.3 SQLite core and fails the phase's WAL-corruption-fix floor
+- [Phase ?]: [Phase 04-01]: PRAGMA user_version ceiling pinned to 1730, read live off the real Signal Desktop database — not 04-RESEARCH.md's unconfirmed placeholder of 1640
 
 ### Pending Todos
 
@@ -149,6 +150,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-03T12:14:21.721Z
-Stopped at: Phase 4 UI-SPEC approved
-Resume file: /home/darren/projects/davison/webspaces/.planning/phases/04-signal-conversations/04-UI-SPEC.md
+Last session: 2026-08-03T19:36:52.379Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None

@@ -186,7 +186,7 @@ Notes:
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: a real Signal conversation-day digest reaches the stream, read-only, through a local-path source the kernel config now accepts
+- [x] 04-01-PLAN.md — Tracer: a real Signal conversation-day digest reaches the stream, read-only, through a local-path source the kernel config now accepts
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -233,7 +233,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
-| 4. Signal Conversations | 0/TBD | Not started | - |
+| 4. Signal Conversations | 1/3 | In Progress|  |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
