@@ -118,6 +118,10 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		"ca_cert":          src.CACert,
 		"username":         src.Username,
 		"webmail_base_url": src.WebmailBaseURL,
+		// path: the local filesystem path source config field (Source.Path
+		// — kernel/config/types.go), needed by a local-path source like
+		// SRC-02's Signal plugin, which has no base_url/token at all.
+		"path": src.Path,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal source config: %w", err)

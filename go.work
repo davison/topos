@@ -5,6 +5,7 @@ use (
 	./plugins/mock
 	./plugins/paperless
 	./plugins/proton
+	./plugins/signal
 	./plugins/silverbullet
 	./sdk
 )

@@ -366,6 +366,43 @@ handoff = true
 	}
 }
 
+// TestLoad_PathOnlySourceValidatesCleanly proves a source declaring only
+// plugin and path (no base_url, no token) validates without error —
+// SRC-02's Signal plugin is the first source of this shape (04-01-PLAN.md
+// Task 2).
+func TestLoad_PathOnlySourceValidatesCleanly(t *testing.T) {
+	path := writeTempConfig(t, `
+[sources.signal]
+plugin = "webspaces-plugin-signal"
+path = "~/.config/Signal"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Sources["signal"].Path != "~/.config/Signal" {
+		t.Errorf("expected path to be preserved, got %q", cfg.Sources["signal"].Path)
+	}
+}
+
+// TestLoad_SourceWithNeitherPathNorBaseURLTokenFailsNamingBothShapes
+// proves a source declaring none of path/base_url/token fails config
+// load with an error naming BOTH accepted shapes, not just the first
+// missing field.
+func TestLoad_SourceWithNeitherPathNorBaseURLTokenFailsNamingBothShapes(t *testing.T) {
+	path := writeTempConfig(t, `
+[sources.broken]
+plugin = "webspaces-plugin-broken"
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a source declaring none of path/base_url/token, got nil")
+	}
+	if !strings.Contains(err.Error(), "base_url") || !strings.Contains(err.Error(), "path") {
+		t.Errorf("expected error to name both accepted shapes (base_url and path), got: %v", err)
+	}
+}
+
 func TestLoad_ExpandsHomeInIndexPath(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

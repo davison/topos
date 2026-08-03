@@ -233,6 +233,32 @@ handoff = false
 read = true
 handoff = false
 
+[sources.signal]
+# plugin: the plugin binary's filename, resolved inside [plugins] dir.
+# Validation: none at load time; a missing file fails at startup, by path.
+plugin = "webspaces-plugin-signal"
+
+# path: Signal Desktop's own config directory — the source of both
+# config.json (SQLCipher key resolution) and sql/db.sqlite (the message
+# database itself, opened strictly read-only). A leading "~" is expanded
+# by the plugin subprocess itself, not the kernel (kernel/config/types.go's
+# Path doc comment).
+#
+# This source needs NO base_url, NO token, and NO environment variable at
+# all — unlike every other source in this file, the SQLCipher decryption
+# key is resolved entirely at runtime from files inside this directory
+# (Signal Desktop's own config.json), never stored in this project's own
+# config or environment (SRC-02).
+# Validation: kernel/config.Validate accepts a source declaring only
+# path, in place of base_url+token; a source declaring none of the three
+# fails config load naming both accepted shapes.
+# Default Signal Desktop location on Linux: "~/.config/Signal".
+path = "~/.config/Signal"
+
+[sources.signal.agent]
+read = false
+handoff = false
+
 # [sources.mock] — the reference "mock" plugin (plugins/mock, PLUG-05):
 # a working SourcePlugin built entirely from docs/plugin-contract.md, the
 # proto/webspaces/v1/plugin.proto wire contract, and the sdk module, with
@@ -248,13 +274,13 @@ handoff = false
 # base_url / token: the mock plugin's own main.go does NOT require
 # WEBSPACES_SOURCE_CONFIG to be set at all — it has no connection details
 # to configure. The two placeholder lines below exist only because
-# kernel/config.Validate currently requires base_url and token to be
+# kernel/config.Validate requires EITHER base_url+token OR path to be
 # non-empty for every configured source, regardless of whether the
-# plugin itself needs them — a pre-existing kernel-level constraint that
-# predates this plugin (it will need relaxing for a genuinely
-# configless real source, e.g. Signal or WhatsApp reading a local
-# database, in a later phase). Any non-empty placeholder value works;
-# the mock plugin ignores both.
+# plugin itself needs them — a pre-existing kernel-level constraint
+# (relaxed in 04-01-PLAN.md for a genuinely configless local-path source;
+# see the signal source block above, the first source to use the path
+# shape).
+# Any non-empty placeholder value works; the mock plugin ignores both.
 # base_url = "unused"
 # token = "unused"
 #

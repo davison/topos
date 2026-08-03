@@ -180,11 +180,25 @@ func (cfg *Config) Validate(missing []string) error {
 	}
 
 	for name, src := range cfg.Sources {
-		if strings.TrimSpace(src.BaseURL) == "" {
-			return fmt.Errorf("config: source %q has empty base_url%s", name, missingSuffix(missing))
-		}
-		if strings.TrimSpace(src.Token) == "" {
-			return fmt.Errorf("config: source %q has empty token%s", name, missingSuffix(missing))
+		// A local-path source (Signal, SRC-02, and any future local-
+		// database source) resolves everything it needs to open its
+		// source directly from Path, so base_url/token are not required
+		// and this branch skips both checks below entirely — see
+		// kernel/config/types.go's Path doc comment.
+		if strings.TrimSpace(src.Path) == "" {
+			if strings.TrimSpace(src.BaseURL) == "" && strings.TrimSpace(src.Token) == "" {
+				// Neither shape is present at all: name both accepted
+				// shapes so a misconfigured local-path source (e.g. a
+				// typo'd "path" key) gets an actionable message, rather
+				// than only naming the first missing field.
+				return fmt.Errorf("config: source %q must declare either base_url and token, or path%s", name, missingSuffix(missing))
+			}
+			if strings.TrimSpace(src.BaseURL) == "" {
+				return fmt.Errorf("config: source %q has empty base_url%s", name, missingSuffix(missing))
+			}
+			if strings.TrimSpace(src.Token) == "" {
+				return fmt.Errorf("config: source %q has empty token%s", name, missingSuffix(missing))
+			}
 		}
 		if src.SyncInterval != "" {
 			if err := validatePositiveDuration(src.SyncInterval); err != nil {

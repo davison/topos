@@ -81,6 +81,21 @@ type Source struct {
 	// every other configured source. A Go duration string; empty means
 	// "use the global [sync] interval".
 	SyncInterval string `toml:"sync_interval,omitempty"`
+	// Path is the filesystem path a local-path source reads from —
+	// Signal Desktop's own config directory (default "~/.config/Signal")
+	// for SRC-02's Signal plugin, the first source with no network
+	// endpoint at all (04-01-PLAN.md; closes the relaxation STATE.md
+	// logged as deferred from 02-04-SUMMARY.md). Left empty by every
+	// network source (paperless, SilverBullet, Proton), which never read
+	// it. A source declaring Path is validated differently: Validate
+	// accepts it in place of BaseURL+Token rather than requiring both,
+	// and kernel/pluginhost.launch adds it to WEBSPACES_SOURCE_CONFIG
+	// under the "path" key so the plugin subprocess can locate its
+	// source directory. Unlike CACert, a leading "~" here is expanded by
+	// the plugin subprocess itself (plugins/signal/main.go), not by the
+	// kernel — the kernel never needs to open this path itself, only
+	// pass it through.
+	Path string `toml:"path,omitempty"`
 	// Agent declares this source's per-plugin agent grants (AGENT-01,
 	// D-11): whether an automated caller through /agent/v1 may read this
 	// source's items at all, and whether it may hand actions off through

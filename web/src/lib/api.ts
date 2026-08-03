@@ -263,7 +263,8 @@ export function refreshAll(): Promise<SyncRefreshResponse> {
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
 	paperless: 'paperless-ngx',
 	silverbullet: 'SilverBullet',
-	proton: 'Proton Mail'
+	proton: 'Proton Mail',
+	signal: 'Signal'
 };
 
 /** Human-friendly display name for a source_type. */
