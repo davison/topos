@@ -2,7 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -43,10 +46,7 @@ import (
 // hands-on: the unquoted form failed with "file is not a database" while
 // the x'...' form opened correctly against the same real key.
 func openReadOnly(dbPath, rawHexKey string) (*sql.DB, error) {
-	dsn := fmt.Sprintf(
-		"file:%s?mode=ro&_key=x'%s'&_cipher_page_size=4096",
-		dbPath, rawHexKey,
-	)
+	dsn := buildReadOnlyDSN(dbPath, rawHexKey)
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("signal: open %s read-only: %w", dbPath, err)
@@ -59,5 +59,95 @@ func openReadOnly(dbPath, rawHexKey string) (*sql.DB, error) {
 		return nil, fmt.Errorf("signal: verify key by reading schema version: %w", err)
 	}
 
+	// The SQLite version floor (04-RESEARCH.md assumption A2, ROADMAP.md's
+	// spike note): runs immediately after the trivial key-proving read
+	// above and before the caller's schema-version guard
+	// (plugin.go's openGuarded calls guardSchemaVersion only after this
+	// function returns) — a distro whose packaged SQLCipher lags must
+	// refuse to run rather than silently reintroduce the WAL-reset
+	// corruption exposure this floor exists to close.
+	if err := checkSQLiteVersionFloor(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	return db, nil
+}
+
+// buildReadOnlyDSN constructs the mode=ro URI DSN openReadOnly uses —
+// factored out so dsn_test.go can assert on its exact shape without
+// needing a real database file. See openReadOnly's doc comment for the
+// DSN parameter-naming and raw-key-literal rationale this mirrors.
+func buildReadOnlyDSN(dbPath, rawHexKey string) string {
+	return fmt.Sprintf(
+		"file:%s?mode=ro&_key=x'%s'&_cipher_page_size=4096",
+		dbPath, rawHexKey,
+	)
+}
+
+// minSQLiteVersion is the floor this plugin refuses to run below: SQLite
+// 3.51.3 (2026-03-13) fixed a critical WAL-reset database-corruption bug
+// [sqlite.org/releaselog/3_51_3.html] — ROADMAP.md's mandatory spike note
+// pins this floor by name, and this plugin reads a live, actively-written
+// WAL database (Signal Desktop sets journal_mode=WAL) every time it runs.
+// Below this floor, whatever links the driver at build time silently
+// reintroduces the exact exposure the spike existed to close.
+var minSQLiteVersion = [3]int{3, 51, 3}
+
+// errSQLiteVersionBelowFloor is the named, wrapped sentinel
+// checkSQLiteVersionFloor returns — callers can errors.Is against it.
+var errSQLiteVersionBelowFloor = errors.New("signal: linked SQLite version is below the WAL-reset-corruption-fix floor")
+
+// checkSQLiteVersionFloor reads sqlite_version() off the already-open
+// connection db and fails loudly, naming the version found and the
+// floor required, if it is below minSQLiteVersion.
+func checkSQLiteVersionFloor(db *sql.DB) error {
+	var versionStr string
+	if err := db.QueryRow(`SELECT sqlite_version()`).Scan(&versionStr); err != nil {
+		return fmt.Errorf("signal: read linked SQLite version: %w", err)
+	}
+	found, err := parseSQLiteVersion(versionStr)
+	if err != nil {
+		return fmt.Errorf("signal: parse linked SQLite version %q: %w", versionStr, err)
+	}
+	if compareSQLiteVersions(found, minSQLiteVersion) < 0 {
+		return fmt.Errorf(
+			"%w: found %s, require at least %d.%d.%d (fixes a WAL-reset database-corruption bug; this plugin reads a live WAL database)",
+			errSQLiteVersionBelowFloor, versionStr, minSQLiteVersion[0], minSQLiteVersion[1], minSQLiteVersion[2],
+		)
+	}
+	return nil
+}
+
+// parseSQLiteVersion parses a "MAJOR.MINOR.PATCH"-shaped sqlite_version()
+// result (SQLite's own version string format) into its three integer
+// components.
+func parseSQLiteVersion(v string) ([3]int, error) {
+	var out [3]int
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) != 3 {
+		return out, fmt.Errorf("expected MAJOR.MINOR.PATCH, got %q", v)
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return out, fmt.Errorf("non-numeric version component %q: %w", p, err)
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+// compareSQLiteVersions returns -1/0/1 for a<b, a==b, a>b, comparing
+// MAJOR then MINOR then PATCH in order.
+func compareSQLiteVersions(a, b [3]int) int {
+	for i := 0; i < 3; i++ {
+		if a[i] != b[i] {
+			if a[i] < b[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
 }
