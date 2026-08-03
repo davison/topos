@@ -1,25 +1,30 @@
 ---
 phase: 04-signal-conversations
-verified: 2026-08-03T21:00:00Z
+verified: 2026-08-03T23:52:12Z
 status: human_needed
-score: 5/5 truths verified (ROADMAP success criteria); 2 items routed to human verification
+score: 5/5 truths verified (ROADMAP success criteria)
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: human_needed
+  previous_score: "5/5 truths verified (ROADMAP success criteria); 2 items routed to human verification"
+  gaps_closed:
+    - "G-04-1: Signal contact-form sgnl:// deep link now emits a literal '+' (E.164 allowlist, validate-and-refuse) instead of percent-encoding it to %2B — root cause fixed in plugins/signal/deeplink.go, regression guard rewritten in deeplink_test.go, end-to-end shape guard added to scripts/signal-readonly-smoke.sh, live index re-synced (105/105 rows carry the corrected shape, 0 rows carry the rejected shape), 04-SECURITY.md corrected (T-04-14 superseded, T-04-17/18/19 added)"
+    - "Judgment-tier prohibitions sign-off (privacy/safety: log hygiene, no on-disk plaintext copy, profile-name anti-spoofing) — 04-UAT.md test 2 recorded human pass 2026-08-03"
+  gaps_remaining: []
+  regressions: []
 human_verification:
-  - test: "Click the 'Open in Signal' button on a Signal digest for a 1:1 conversation whose contact has an E.164 number (the sgnl://signal.me/#p/<e164> contact-form deep link), and confirm Signal Desktop visibly raises/focuses on that contact's conversation."
-    expected: "Signal Desktop window raises or gains focus, showing the correct contact's conversation (or at minimum the app, given conversation-only fidelity)."
-    why_human: "04-03-SUMMARY.md's own D4 coverage entry explicitly defers this: the agent session confirmed the sgnl:// invocation exits 0 and observed the Signal Desktop single-instance-lock IPC handoff in terminal output, but has no way to observe the desktop's actual rendered window state. The bare-scheme (group) form's visual raise WAS confirmed by the developer during 04-01's own human-verify checkpoint (already APPROVED this session) — only the E.164 contact-form's pixel-level confirmation is outstanding, per workflow.human_verify_mode = end-of-phase."
-  - test: "Confirm the three judgment-tier prohibitions in 04-01-PLAN.md's must_haves.prohibitions hold: (1) no SQLCipher key / config.json key-field value / message body text ever appears in a log line or returned error string; (2) no second on-disk copy of Signal message plaintext is ever created (no temp-file copy, no decrypted export, no cache file beyond the D-03 tail snippet); (3) 1:1 conversation matching never uses the contact's self-chosen profile name as a match candidate."
-    expected: "All three hold with no exceptions found."
-    why_human: "These are authored as judgment-tier prohibitions with no wired mechanical enforcement (per the plan's own flagged_assumptions), so per the verification protocol they dispose 'unverified' and require human sign-off rather than an automated pass. This verifier's own code-level inspection (grep across plugins/signal/*.go for os.WriteFile/io.Copy/CopyFile calls, and reading every fmt.Errorf/log line in keyresolve.go, safestorage_linux.go, secretservice.go, dsn.go, plugin.go) found no violation of any of the three — every returned error names steps/paths/booleans/backend names only, no code path writes db.sqlite anywhere, and match.go's D-06 test (TestEligibleConversations_PrivateProfileNameOnlyDoesNotMatch) passes — but this is a non-authoritative LLM-judge finding, not a substitute for the human sign-off the plan's own verification tier requires."
+  - test: "Click 'Open in Signal' on a Signal digest for a 1:1 conversation whose contact has a known E.164 number, with the rebuilt server running."
+    expected: "Signal Desktop raises and shows that contact's conversation; no 'Something went wrong! Sorry, that sgnl:// link didn't make sense!' error modal appears."
+    why_human: "This verifier confirmed the emitted link's byte shape is correct (literal '+', no percent sign — proven by the unit boundary matrix and by direct sqlite3 queries against the developer's live index: 105 rows match the corrected glob, 0 rows match the rejected glob) and confirmed the running server is serving the rebuilt binary (bin/webspaces, built 00:47, server process started 00:49, identical file by cmp). It cannot itself observe Signal Desktop's rendered window state or click the button. 04-UAT.md tracks this as gap G-04-1 (status: diagnosed) — this is the only remaining check needed to close it."
 ---
 
 # Phase 4: Signal Conversations Verification Report
 
 **Phase Goal:** User's Signal conversations for a topic appear in the webspace stream, read from Signal Desktop's local database without any risk of corrupting or altering it.
-**Verified:** 2026-08-03T21:00:00Z
+**Verified:** 2026-08-03T23:52:12Z
 **Status:** human_needed
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap closure (04-04-PLAN.md, G-04-1)
 
 ## Goal Achievement
 
@@ -27,95 +32,80 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Messages from Signal conversations/groups whose names match the webspace keyword appear in the stream chronologically alongside documents, notes and mail | ✓ VERIFIED | `./scripts/signal-readonly-smoke.sh` synced 1467 real digests against `~/.config/Signal/sql/db.sqlite` and asserted at least one `source_type:"signal"` item in `GET /api/webspaces/{ws}/stream`. `plugins/signal/digest_test.go` covers day-grouping, timestamp = last message, deterministic `source_id`. The digest-row rendering (correct singular/plural title, sender-prefixed preview, standard `StreamRow`) was already visually confirmed and APPROVED by the developer during 04-01's human-verify checkpoint this session. |
-| 2 | Detail pane shows the surrounding conversation thread, with an "open in Signal" affordance declared conversation-only fidelity | ✓ VERIFIED (bare-scheme form) / ? HUMAN NEEDED (E.164 contact form) | `Fetch`'s FULL/PREVIEW variants (`plugins/signal/plugin.go` `fetchTranscript`) return `MimeType: "text/html"`, routed with zero frontend change into `DetailPane.svelte`'s existing generic `html` body-variant iframe (confirmed: `git diff --stat` of `web/` across the whole phase touches only one line in `api.ts`). `render_test.go`/`fetch_test.go` cover run-grouping, tombstones, edited-suffix, sanitization-before-wrap, single-bubble day. `Fidelity: LINK_FIDELITY_CONVERSATION_ONLY` and non-empty `DeepLink` confirmed in `toItem`. The bare `sgnl://` scheme (groups, and 1:1s without E.164) was visually confirmed raising Signal Desktop during 04-01's approved checkpoint. The E.164 contact form was invoked hands-on this session (exit 0, IPC handoff observed) but its visual window-raise was never observed by any agent — routed to human verification below. |
-| 3 | Signal Desktop's database is opened strictly read-only (`mode=ro`) and is byte-identical after a full sync, including while Signal Desktop is running | ✓ VERIFIED | `dsn.go` builds the DSN with `mode=ro` (`grep -c 'mode=ro' plugins/signal/dsn.go` ≥ 1) and deliberately never sets `immutable=1` (0 occurrences, with a doc comment explaining why). `readonly_test.go`'s AST scan (`TestPluginIssuesNoWriteShapedSQL`, verified passing) rejects any `Exec`/`ExecContext` call and any write-shaped SQL keyword hidden in a string literal, proven non-vacuous by two negative-control fixtures. `byte_identical_test.go`'s fixture test and the opt-in live test both pass. Empirically re-run by this verifier: `./scripts/signal-readonly-smoke.sh` against the real, live `~/.config/Signal/sql/db.sqlite` (with Signal Desktop running) hashed the file before (`ef6d2099...`) and after sync — unchanged. |
-| 4 | The decryption key is obtained from whichever keyring backend the user's install actually uses, detected at runtime rather than assumed | ✓ VERIFIED | `keyresolve.go`'s `resolveSafeStorageKey` dispatches strictly on the literal `safeStorageBackend` string read from `config.json` (`gnome_libsecret`/`kwallet` family → Secret Service, `basic_text` → fixed password with zero D-Bus, anything else → named failure). Doc comment and code both confirm no `$XDG_CURRENT_DESKTOP` or desktop-environment probing exists anywhere in `keyresolve.go`/`secretservice.go` (grep confirms zero non-comment occurrences). `TestResolveKey_*` (legacy-only, neither, both, basic_text, keyring-routing, unrecognised-backend) all pass. This machine's real install uses the legacy plaintext-key shape only, so the safeStorage branch is fixture-tested rather than live-tested — expected per the execution-context notes, not a gap. |
-| 5 | An unrecognised Signal database schema version fails loudly, naming the version it found, instead of silently importing nothing | ✓ VERIFIED | `schemaguard.go`'s `guardSchemaVersion` reads `PRAGMA user_version`, and for `found > highestSupportedSchemaVersion` (pinned to `1730`, read live off the real database) returns an error naming both the version found and the ceiling, stating it "refuses to import, not silently skipping." `TestSchemaVersionCeiling` (above/at/below-ceiling, re-run by this verifier — PASS) proves the guard is not vacuous, asserting both decimal versions appear in the message. |
+| 1 | Messages from Signal conversations/groups whose names match the webspace keyword appear in the stream chronologically alongside documents, notes and mail | ✓ VERIFIED | Unchanged by this plan. Regression check: `make test-signal` passes; live index holds 111 Signal rows (`sqlite3 ... select count(*) from items where source_type='signal'` = 111); no code in digest.go/plugin.go touched by 04-04. |
+| 2 | Detail pane shows the surrounding conversation thread, with an "open in Signal" affordance declared conversation-only fidelity | ✓ VERIFIED (both link forms) | **This is the criterion G-04-1 blocked.** Now closed at the code/data level: `plugins/signal/deeplink.go`'s `conversationDeepLink` emits `sgnl://signal.me/#p/+15551234567` verbatim (no percent-encoding) for a valid E.164, confirmed by direct read of the file and by running `TestDeepLink_PlusSignEmittedLiterally` and the 14-case `TestDeepLink_E164BoundaryMatrix` (all pass). Live index re-sync confirmed independently by this verifier: `sqlite3 -readonly ~/.local/share/webspaces/index.db` — 105 rows glob `sgnl://signal.me/#p/+*` (literal plus), 0 rows glob the contact-form prefix without a literal plus. `web/src/lib/components/OpenInSource.svelte` passes `link.url` through unmodified into `href` — no client-side re-encoding. The one remaining piece — the visual confirmation that Signal Desktop actually raises and navigates correctly — is a human click, routed below as the sole human-verification item. The bare-scheme (group) form was already visually approved during 04-01's checkpoint. |
+| 3 | Signal Desktop's database is opened strictly read-only (`mode=ro`) and is byte-identical after a full sync, including while Signal Desktop is running | ✓ VERIFIED | Unchanged by this plan (deeplink.go performs no DB I/O). Regression check: `./scripts/signal-readonly-smoke.sh` ran through its hash-before/sync/hash-after steps before exiting on an unrelated port conflict (see Anti-Patterns/Notes below) and reported `db.sqlite hash unchanged: 3f95392690faafa395ff3adf6a544fc2cc2973551d55286059ae381eab1b2474` — confirms criterion 3 still holds. `dsn.go`/`readonly_test.go`/`byte_identical_test.go` untouched by 04-04 and still pass under `make test-signal`. |
+| 4 | The decryption key is obtained from whichever keyring backend the user's install actually uses, detected at runtime rather than assumed | ✓ VERIFIED | Unchanged by this plan. `keyresolve.go`/`secretservice.go` untouched by 04-04; `make test-signal` (which includes `TestResolveKey_*`) passes. |
+| 5 | An unrecognised Signal database schema version fails loudly, naming the version it found, instead of silently importing nothing | ✓ VERIFIED | Unchanged by this plan. `schemaguard.go` untouched by 04-04; `make test-signal` (which includes `TestSchemaVersionCeiling`) passes. |
 
-**Score:** 5/5 ROADMAP success criteria verified by automated evidence and/or an already-approved human checkpoint; 2 items (a sub-facet of criterion 2, and the phase's 3 judgment-tier prohibitions) are routed to human verification below rather than closed automatically.
+**Score:** 5/5 ROADMAP success criteria verified. Criterion 2's remaining gap (G-04-1) is closed at every automatable layer; only the human window-raise click remains, tracked as the sole human-verification item below.
+
+### Gap Closure Verification (G-04-1)
+
+| Must-have (04-04-PLAN.md frontmatter) | Status | Evidence |
+|---|---|---|
+| "Clicking 'Open in Signal' on a 1:1 Signal digest whose contact has an E.164 raises Signal Desktop and lands on that contact's conversation — no error modal" | ⚠️ Awaiting human click | Everything an automated check can prove is proven (see below); the visual confirmation is the one item that must come from the developer. |
+| "The contact-form link the plugin emits carries a literal '+' immediately after '#p/'" | ✓ VERIFIED | `plugins/signal/deeplink.go` line 71: `return "sgnl://signal.me/#p/" + e164` — direct string concatenation, no escaping function in the call path (confirmed `encodePhoneFragment` and its `net/url` import are deleted: `grep -n 'net/url' plugins/signal/deeplink.go` = no match). `TestDeepLink_PlusSignEmittedLiterally` asserts the exact literal string and asserts no `%` appears. |
+| "A private conversation whose stored number is not a valid E.164 gets the bare 'sgnl://' link, never a contact-form link Signal would reject" | ✓ VERIFIED | `TestDeepLink_NonE164FallsBackToBareForm` plus 12 of the 14 `TestDeepLink_E164BoundaryMatrix` cases (metacharacters, leading zero, wrong length, no leading plus, whitespace padding) all pass — all resolve to the bare `sgnl://` form. |
+| "Every Signal row already in the developer's live index carries the corrected link — no stale row keeps the rejected form" | ✓ VERIFIED (independently re-run by this verifier, not just trusted from SUMMARY) | `sqlite3 -readonly ~/.local/share/webspaces/index.db "select count(*) from items where source_type='signal' and deep_link glob 'sgnl://signal.me/#p/+*';"` → **105**. `sqlite3 -readonly ~/.local/share/webspaces/index.db "select count(*) from items where source_type='signal' and deep_link glob 'sgnl://signal.me/#p/*' and not deep_link glob 'sgnl://signal.me/#p/+*';"` → **0**. Total Signal rows: 111 (105 contact-form + 6 bare-form, consistent with a mix of groups and E.164-less 1:1s). |
+| "No test in the repo asserts the rejected payload shape any more" | ✓ VERIFIED | `grep -c 'func TestEncodePhoneFragment_PlusSignEscaped' plugins/signal/deeplink_test.go` = 0; `grep -c 'func TestDeepLink_UnsafeCharactersAreEscapedNotEmittedRaw' plugins/signal/deeplink_test.go` = 0. |
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `plugins/signal/dsn.go` | Read-only SQLCipher DSN (`mode=ro`) + key-proving read | ✓ VERIFIED | Contains `mode=ro`, no `immutable=`, SQLite version-floor check (`checkSQLiteVersionFloor`) added in 04-02 |
-| `plugins/signal/schemaguard.go` | `PRAGMA user_version` ceiling guard, fails loudly naming both versions | ✓ VERIFIED | `highestSupportedSchemaVersion = 1730`, documented with source/date; guard tested with negative control |
-| `plugins/signal/keyresolve.go` | Dual-shape key resolution | ✓ VERIFIED | Legacy + safeStorage branches both fully implemented and tested |
-| `plugins/signal/safestorage_linux.go` | Electron os_crypt unwrap (PBKDF2 + AES-128-CBC) | ✓ VERIFIED | Chromium constants (`saltysalt`, PBKDF2, v10/v11 prefix) present; round-trip + wrong-password rejection tested |
-| `plugins/signal/secretservice.go` | freedesktop Secret Service client | ✓ VERIFIED | Uses `AuthenticationDHAES` (encrypted session, never plaintext) |
-| `plugins/signal/match.go` | D-05/D-06 conversation matching | ✓ VERIFIED | Own-name-only 1:1 candidates; profile-name-only case has a dedicated negative test |
-| `plugins/signal/digest.go` | Conversation-day grouping, tail snippet, deterministic `source_id` | ✓ VERIFIED | Richness-aware (attachments, deleted, edited) as of plan 03; tested |
-| `plugins/signal/plugin.go` | Describe/Match/Fetch/Health over the published contract | ✓ VERIFIED | `Fetch` FULL/PREVIEW implemented (no longer a stub); `Health` names each of 3 failure causes |
-| `plugins/signal/render.go` | Sanitized chat-transcript HTML renderer | ✓ VERIFIED | `bluemonday.UGCPolicy()`-derived policy, sanitize-before-wrap, no accent colour on bubbles/names/timestamps |
-| `plugins/signal/deeplink.go` | `sgnl://` deep-link construction | ✓ VERIFIED | Validated hands-on 2026-08-03 (doc comment records the observed forms and date) |
-| `plugins/signal/readonly_test.go`, `byte_identical_test.go`, `outbound_hosts_test.go` | Mechanical read-only/egress enforcement | ✓ VERIFIED | All three re-run by this verifier — PASS, each with a non-vacuous negative control |
-| `scripts/signal-readonly-smoke.sh` | End-to-end read-only + stream-presence guard | ✓ VERIFIED | Re-run by this verifier against the real live database — PASS |
-| `kernel/config/types.go` (`Source.Path`) | Local-path source field | ✓ VERIFIED | `toml:"path,omitempty"`; validated in `kernel/config/config_test.go` |
-| `docs/plugin-contract.md` | Local-path source shape documented | ✓ VERIFIED | `path` key documented in source-config section; `plugins/signal` added to reference-plugin list |
+| `plugins/signal/deeplink.go` | E.164 allowlist validation, verbatim emission, no fragment re-encoding | ✓ VERIFIED | Read in full. `e164Pattern = regexp.MustCompile(`^\+[1-9][0-9]{1,14}$`)`, `isValidE164`, `conversationDeepLink` refuses-and-falls-back per the plan. `net/url` import gone; `regexp` import present. |
+| `plugins/signal/deeplink_test.go` | Literal-'+' regression guard plus non-E.164 fallback matrix | ✓ VERIFIED | Read in full; 7 test functions, including the 14-case `TestDeepLink_E164BoundaryMatrix`. All pass (`go test -run TestDeepLink ./plugins/signal/...`). |
+| `scripts/signal-readonly-smoke.sh` | End-to-end deep-link shape assertion over real stream JSON | ✓ VERIFIED (present + wired; not independently re-run to completion this session — see Notes) | `grep`-confirmed the new block exists after the existing zero-items assertion, iterates `.link.url` for `source_type=="signal"` contact-form links, fails naming offending URLs on a missing literal `+`, and prints a non-vacuity note when the count is 0. |
+| `.planning/phases/04-signal-conversations/04-SECURITY.md` | T-04-14 marked superseded, T-04-17/18/19 recorded | ✓ VERIFIED | Read in full. T-04-14 row kept, disposition text names the supersession and points at T-04-17. T-04-17 (mitigate/closed), T-04-18 (accept/closed), T-04-19 (accept/closed) all present with the argued evidence. Audit trail table has a 2026-08-04 row. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `kernel/pluginhost/host.go` | `plugins/signal/main.go` | `WEBSPACES_SOURCE_CONFIG` JSON carries `"path"` | ✓ WIRED | `grep -c '"path"' kernel/pluginhost/host.go` = 1 |
-| `plugins/signal/digest.go` | `kernel/index` (`ReplaceWebspaceSourceItems`) | Deterministic `source_id` upserts in place | ✓ WIRED | `TestDatabaseByteIdenticalAfterMatchAndFetch` and the live smoke run confirm repeated syncs don't duplicate; `sourceIDForDigest`/`decodeSourceID` round-trip tested |
-| `plugins/signal/plugin.go` | `web/src/lib/api.ts` | `source_type` `"signal"` has a `SOURCE_DISPLAY_NAMES` entry | ✓ WIRED | `signal: 'Signal'` present |
-| `plugins/signal/keyresolve.go` | `plugins/signal/secretservice.go` | Literal `safeStorageBackend` selects retrieval path | ✓ WIRED | Confirmed by code read + `TestResolveKey_RoutesToSecretServiceForKeyringBackends` |
-| `plugins/signal/safestorage_linux.go` | `plugins/signal/dsn.go` | Unwrapped key validated by an actual read-only open | ✓ WIRED | `openReadOnly` called immediately after key resolution in `plugin.go`'s `openGuarded` |
-| `plugins/signal/plugin.go` (`Health`) | `web/src/lib/components/SourceHealthChip.svelte` | `last_error` rendered verbatim | ✓ WIRED | Confirmed no frontend change needed (`git diff --stat web/` empty for that task); e2e-verified this session per 04-02-SUMMARY.md |
-| `plugins/signal/plugin.go` (`Fetch`) | `web/src/lib/components/DetailPane.svelte` | `MimeType text/html` routes into existing `html` iframe branch | ✓ WIRED | Confirmed by reading `DetailPane.svelte`'s generic, mime-type-driven `detailBodyVariant()` — no Signal-specific branch exists |
+| `plugins/signal/plugin.go:226` `toItem` | `plugins/signal/deeplink.go` `conversationDeepLink` | Single construction site, unchanged by this plan | ✓ WIRED | Confirmed by reading `deeplink.go`'s doc comment cross-reference and by the fact 04-04 touched no other Signal file besides deeplink.go/deeplink_test.go/SECURITY.md/smoke-script — fixing the builder alone reaches every item, as the plan claimed. |
+| `kernel/index` `items.deep_link` | Live index rows | Written at sync time, overwritten only by a later sync | ✓ WIRED | Independently confirmed: 105/111 Signal rows carry the corrected shape (queried directly above), consistent with a completed re-sync after the rebuild. |
+| `kernel/pluginhost/host.go` `launch()` | Running `webspaces serve` process | Spawns plugin subprocess once per kernel process | ✓ WIRED, confirmed current build | The one running `webspaces serve` process (PID 3218549) started at 00:49:30, after `bin/webspaces` was last built (00:47). `cmp /proc/3218549/exe bin/webspaces` reports the running binary is byte-identical to the current `bin/webspaces` on disk — the live server is not running a stale pre-fix build. |
+| `web/src/lib/components/OpenInSource.svelte` | `href={link.url}` → OS `sgnl://` scheme handler | String passed through unmodified | ✓ WIRED | Read the component in full: `<Button href={link.url} ...>` — no transformation, no re-encoding, no `encodeURIComponent` call anywhere in the file. |
 
 ### Behavioral Spot-Checks / Probe Execution
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Kernel builds cgo-free | `CGO_ENABLED=0 go build ./...` | exit 0 | ✓ PASS |
-| Kernel config + audit tests | `go test ./kernel/config/... ./internal/audit/...` | exit 0 | ✓ PASS |
-| Full Signal plugin test suite | `make test-signal` | exit 0, `ok ... plugins/signal 2.9s` | ✓ PASS |
-| Whole-workspace test suite | `make test` (single run) | exit 0 across every module including `test-signal` | ✓ PASS |
-| Web typecheck | `npm --prefix web run check` | 0 errors, 1 pre-existing unrelated warning (`SearchBox.svelte`) | ✓ PASS |
-| SDK contract unchanged | `go test ./sdk/...` | exit 0 — RPC allowlist untouched | ✓ PASS |
-| Read-only-by-construction AST scan | `go test -run TestPluginIssuesNoWriteShapedSQL ./plugins/signal/...` | PASS (non-vacuous, 2 negative controls) | ✓ PASS |
-| Byte-identical fixture proof | `go test -run TestDatabaseByteIdenticalAfterMatchAndFetch ./plugins/signal/...` | PASS | ✓ PASS |
-| Zero-egress proof | `go test -run TestNoOutboundNetworkHosts ./plugins/signal/...` | PASS | ✓ PASS |
-| Schema-ceiling negative control | `go test -run TestSchemaVersionCeiling ./plugins/signal/...` | PASS (above/at/below) | ✓ PASS |
-| Health three-cause naming | `go test -run TestHealth ./plugins/signal/...` | PASS (5 subtests) | ✓ PASS |
-| D-06 anti-spoofing matcher | `go test -run TestEligibleConversations ./plugins/signal/...` | PASS (8 subtests) | ✓ PASS |
-| Message parsing (deleted/edited/attachments/reactions/quote) | `go test -run TestParseMessage ./plugins/signal/...` | PASS (11 subtests) | ✓ PASS |
-| **Live end-to-end guard** | `./scripts/signal-readonly-smoke.sh` against real `~/.config/Signal/sql/db.sqlite` | 1467 real digests synced; SHA-256 `ef6d2099...` unchanged before/after; stream contains `source_type:"signal"` items | ✓ PASS |
+| Full workspace test suite (single run) | `make test` | exit 0 — kernel, sdk, every plugin including cgo Signal module | ✓ PASS |
+| Signal plugin build (cgo) | `make signal` | exit 0 — confirms `net/url` import removal doesn't break compilation and no new unused import lingers | ✓ PASS |
+| Deep-link unit tests, named run | `CGO_ENABLED=1 go test -tags libsqlcipher -run TestDeepLink ./plugins/signal/...` | exit 0, 7 top-level funcs / 14+3 subtests all PASS | ✓ PASS |
+| Superseded test names absent | `grep -c 'func TestEncodePhoneFragment_PlusSignEscaped\|func TestDeepLink_UnsafeCharactersAreEscapedNotEmittedRaw' deeplink_test.go` | both 0 | ✓ PASS |
+| Live index shape query 1 (literal-plus rows exist) | `sqlite3 -readonly index.db "select count(*) from items where source_type='signal' and deep_link glob 'sgnl://signal.me/#p/+*';"` | 105 | ✓ PASS |
+| Live index shape query 2 (no rejected-shape rows) | `sqlite3 -readonly index.db "select count(*) from items where source_type='signal' and deep_link glob 'sgnl://signal.me/#p/*' and not deep_link glob 'sgnl://signal.me/#p/+*';"` | 0 | ✓ PASS |
+| `scripts/signal-readonly-smoke.sh` | `./scripts/signal-readonly-smoke.sh` | Ran through hash-before → sync (1467 items) → hash-after (unchanged) → **stopped**: `FAIL: something is already listening on 127.0.0.1:7777` | ? SKIPPED (see Notes) |
 
-No separately-declared `scripts/*/tests/probe-*.sh` files exist for this phase — `scripts/signal-readonly-smoke.sh` is the plan-declared, phase-specific probe and was executed directly above.
+**Notes on the smoke-script run:** the script's own port-conflict guard correctly refused to proceed once it detected the developer's live `webspaces serve` (the one intentionally left running, rebuilt, for the pending human click) already bound to :7777 — exactly the vacuity guard the smoke script is designed to enforce (it will not let its checks pass against a server it didn't start itself). Stopping that server to force the smoke script through would have undone the exact state (rebuilt server, ready for the human click) this re-verification run was asked to preserve. The parts of the smoke script that did run before the guard fired (hash-before, sync, hash-after) independently reconfirm criterion 3 (byte-identical). The specific new assertion this task added — the contact-form literal-'+' shape guard over `STREAM_JSON` — was not executed end-to-end in this session, but its logic was read and confirmed correct, and equivalent evidence (the same shape assertion, run directly against the same live index data) was obtained via the two sqlite3 queries above. This is judged sufficient; not re-verified as a gap.
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|-----------------|-------------|--------|----------|
-| SRC-02 | 04-01, 04-02, 04-03 | Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown | ✓ SATISFIED | All 5 ROADMAP criteria verified above; REQUIREMENTS.md already marks SRC-02 `[x]` / "Phase 4 / Complete" |
+| SRC-02 | 04-01, 04-02, 04-03, 04-04 | Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown | ✓ SATISFIED | All 5 ROADMAP criteria verified above; REQUIREMENTS.md marks SRC-02 `[x]` / "Phase 4 / Complete". 04-04-PLAN.md declares `requirements: [SRC-02]` in frontmatter — consistent with the other three plans. |
 
-No orphaned requirements — SRC-02 is the only requirement ID mapped to Phase 4 in REQUIREMENTS.md, and all three plans declare it in frontmatter.
+No orphaned requirements — SRC-02 is the only requirement ID mapped to Phase 4 in REQUIREMENTS.md, and all four plans (including the gap-closure plan) declare it.
 
 ### Anti-Patterns Found
 
-None. `grep -rn -E "TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER" plugins/signal/*.go` (excluding test files) returned zero matches. No `os.WriteFile`/`io.Copy`/`CopyFile` calls exist anywhere in the non-test plugin source (no on-disk plaintext copy of the database is ever created). No log line or returned error string in `keyresolve.go`, `safestorage_linux.go`, `secretservice.go`, or `dsn.go` embeds a key, ciphertext, or config.json field value — every message names a step, a path, a backend, or a boolean.
+None. `grep -n -E "TBD|FIXME|XXX|TODO|HACK|PLACEHOLDER" plugins/signal/deeplink.go plugins/signal/deeplink_test.go scripts/signal-readonly-smoke.sh` returns only a `mktemp ... XXXXXX` template string (not a debt marker). No stub patterns, no empty handlers, no hardcoded-empty data flowing to rendering.
 
 ### Human Verification Required
 
-1. **E.164 contact-form `sgnl://` deep link — visual window-raise confirmation**
-   - **Test:** Click "Open in Signal" on a Signal digest for a 1:1 conversation whose contact has an E.164 number.
-   - **Expected:** Signal Desktop visibly raises/focuses.
-   - **Why human:** No agent session can observe rendered window state; this is the one item 04-03-SUMMARY.md itself explicitly defers to end-of-phase human verification (`workflow.human_verify_mode = end-of-phase`). The bare-scheme (group) form was already visually confirmed and approved during 04-01's checkpoint.
-
-2. **The phase's 3 judgment-tier prohibitions (04-01-PLAN.md `must_haves.prohibitions`)**
-   - **Test:** Confirm (a) no key/ciphertext/message-body value ever appears in a log or error string, (b) no second on-disk copy of Signal plaintext is ever created, (c) 1:1 matching never uses the contact's self-chosen profile name.
-   - **Expected:** All three hold.
-   - **Why human:** Authored as judgment-tier with no wired mechanical check (per the plan's own `flagged_assumptions`), so per the verification protocol these dispose "unverified" rather than an automated pass. This verifier's own code inspection found no violation of any of the three (see Anti-Patterns Found above, and the D-06 negative-control test), but that is a non-authoritative LLM-judge finding — human sign-off is what the plan's own tier requires.
+1. **UAT test 1 re-run — E.164 contact-form `sgnl://` deep link, visual confirmation**
+   - **Test:** With the rebuilt server running (confirmed current at time of this verification), open a webspace containing a 1:1 Signal digest whose contact has a phone number, open its detail pane, and click "Open in Signal".
+   - **Expected:** Signal Desktop raises and shows that contact's conversation. No "Something went wrong! Sorry, that sgnl:// link didn't make sense!" dialog appears.
+   - **Why human:** This verifier proved the emitted link's byte shape is correct at every layer it can inspect — the builder function, its unit tests, the live index data, and the DOM wiring that passes the URL through unmodified — and confirmed the running server process is the rebuilt binary, not a stale one. It cannot itself click a button or observe Signal Desktop's window state. 04-UAT.md's gap G-04-1 remains in `status: diagnosed` pending exactly this check.
 
 ### Gaps Summary
 
-No blocking gaps. Every ROADMAP success criterion has direct automated and/or already-approved-human evidence. The two items above are genuinely un-automatable (rendered window state; judgment-tier prohibitions with no wired mechanical check by the plan's own design) rather than missing or stubbed implementation — this verifier found no artifact missing, no stub, no broken wiring, and no anti-pattern in the phase's changed files. The phase's own code review (`04-REVIEW.md`) independently found 0 Critical, 2 Warning, 1 Info issues, none of which block goal achievement.
+No blocking gaps. G-04-1's root cause (percent-encoded `+` in the contact-form deep link) is fixed in code, proven by a rewritten unit boundary matrix, and independently confirmed against the developer's live index (105 corrected rows, 0 rejected-shape rows) by this verifier directly — not merely trusted from 04-04-SUMMARY.md's claims. `04-SECURITY.md`'s register is corrected to match. The phase's other four ROADMAP criteria are unaffected by this plan and remain verified by regression (`make test` passing, files untouched). The single remaining item — the human click confirming Signal Desktop's actual window-raise and navigation — is exactly the check 04-04-PLAN.md itself designated as the only thing that can close G-04-1, and it is now ready to perform against the current build.
 
 ---
 
-_Verified: 2026-08-03T21:00:00Z_
+_Verified: 2026-08-03T23:52:12Z_
 _Verifier: Claude (gsd-verifier)_

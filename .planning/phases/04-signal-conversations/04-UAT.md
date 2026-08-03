@@ -1,22 +1,27 @@
 ---
-status: diagnosed
+status: testing
 phase: 04-signal-conversations
 source: [04-VERIFICATION.md]
 started: 2026-08-03T20:49:56Z
-updated: 2026-08-03T23:19:26Z
+updated: 2026-08-03T23:52:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 1
+name: E.164 contact-form sgnl:// deep link raises the correct conversation (re-run after G-04-1 fix)
+expected: |
+  With Signal Desktop running, clicking "Open in Signal" on a 1:1 (E.164-bearing)
+  conversation's digest raises Signal Desktop and navigates to that contact's
+  conversation — no "Sorry, that sgnl:// link didn't make sense!" modal.
+awaiting: user response
 
 ## Tests
 
 ### 1. E.164 contact-form sgnl:// deep link raises the correct conversation
 expected: With Signal Desktop running, clicking "Open in Signal" on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop and navigates to that contact's conversation. (The bare-scheme group form was already visually confirmed and approved during 04-01's checkpoint.)
-result: issue
-reported: "signal desktop showed an error when activated (see ~/Pictures/.clip.png) — dialog: 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
-severity: blocker
+result: [pending]
+retest_context: "Re-run after 04-04 gap closure — deep-link builder now emits literal '+' (E.164 allowlist, verbatim); live index re-synced (111 rows corrected, 0 rejected-shape rows remain); server restarted from rebuilt main tree. Prior failure preserved in gap G-04-1 below."
 
 ### 2. Judgment-tier prohibitions sign-off (privacy/safety)
 expected: |
@@ -39,14 +44,15 @@ result: pass
 
 total: 2
 passed: 1
-issues: 1
-pending: 0
+issues: 0
+pending: 1
 skipped: 0
 blocked: 0
 
 ## Gaps
 
 - gap_id: G-04-1
+  fix_applied: "04-04 gap-closure plan, merged to main 2756532 (2026-08-04) — awaiting UAT test 1 re-run to confirm resolution"
   truth: "Clicking 'Open in Signal' on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop and navigates to that contact's conversation via the sgnl://signal.me/#p/+44... form"
   status: failed
   reason: "User reported: signal desktop showed an error when activated (see ~/Pictures/.clip.png) — dialog: 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
