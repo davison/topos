@@ -66,3 +66,48 @@ func TestDeepLink_NonE164FallsBackToBareForm(t *testing.T) {
 		t.Errorf("expected the non-E.164 value to fall back to the bare form, got %q, want %q", got, want)
 	}
 }
+
+// TestDeepLink_E164BoundaryMatrix pins each refusal/acceptance rule to a
+// named case, mirroring Signal Desktop's own shipped validator
+// (/^\+[1-9]\d{1,14}$/, mustStartWithPlus=true — see
+// .planning/debug/sgnl-link-didnt-make-sense.md Evidence).
+func TestDeepLink_E164BoundaryMatrix(t *testing.T) {
+	const bareForm = "sgnl://"
+
+	cases := []struct {
+		name   string
+		e164   string
+		accept bool
+	}{
+		{"one digit after plus is refused", "+1", false},
+		{"leading zero after plus is refused", "+0123456789", false},
+		{"sixteen digits is refused", "+1234567890123456", false},
+		{"fifteen digits is accepted", "+123456789012345", true},
+		{"no leading plus is refused", "15551234567", false},
+		{"space is refused", "+1 5551234567", false},
+		{"hash is refused", "+155512#34567", false},
+		{"ampersand is refused", "+155512&34567", false},
+		{"slash is refused", "+155512/34567", false},
+		{"question mark is refused", "+155512?34567", false},
+		{"percent sign is refused", "+155512%34567", false},
+		{"leading whitespace padding is refused (not trimmed)", " +15551234567", false},
+		{"trailing whitespace padding is refused (not trimmed)", "+15551234567 ", false},
+		{"two digits after plus is accepted", "+15", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := conversationDeepLink("private", tc.e164)
+			if tc.accept {
+				want := "sgnl://signal.me/#p/" + tc.e164
+				if got != want {
+					t.Errorf("expected %q to be accepted verbatim, got %q, want %q", tc.e164, got, want)
+				}
+				return
+			}
+			if got != bareForm {
+				t.Errorf("expected %q to be refused (bare form), got %q", tc.e164, got)
+			}
+		})
+	}
+}
