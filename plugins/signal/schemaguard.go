@@ -7,13 +7,17 @@ import (
 
 // highestSupportedSchemaVersion is the highest Signal Desktop database
 // schema PRAGMA user_version this plugin has been built and tested
-// against. Read directly off a real, live db.sqlite during this task's
-// own schema-introspection step (PRAGMA user_version = 1730) — NOT
-// carried over from 04-RESEARCH.md's illustrative "1640" snippet, which
-// its own doc comment flagged as never independently confirmed against a
-// real install. Raising this constant is a deliberate act, performed
-// only after re-verifying the digest/matching logic against a newer
-// Signal Desktop release's actual schema — never bumped speculatively.
+// against. Read directly off a real, live db.sqlite (PRAGMA user_version
+// = 1730) running Signal Desktop 8.21.0 (Arch package signal-desktop
+// 8.21.0-1), verified 2026-08-03 — NOT carried over from
+// 04-RESEARCH.md's illustrative "1640" snippet, which its own doc
+// comment flagged as never independently confirmed against a real
+// install. Raising this constant is a deliberate act, performed only
+// after re-verifying the digest/matching logic against a newer Signal
+// Desktop release's actual schema (re-run the same PRAGMA
+// user_version / table_info introspection this value was pinned from,
+// against that newer release's real database) — never bumped
+// speculatively, and never in response to a single failing sync alone.
 const highestSupportedSchemaVersion = 1730
 
 // guardSchemaVersion reads PRAGMA user_version on db and fails loudly,

@@ -83,18 +83,55 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeReques
 // the database needs, in the order 04-RESEARCH.md Pattern 2 requires (the
 // schema guard runs BEFORE any messages/conversations query). Callers
 // must Close() the returned *sql.DB.
+//
+// Each of the three ways this can fail returns a distinct, named,
+// actionable error — 04-02-PLAN.md Task 3, ROADMAP criterion 5's "fails
+// loudly, never confusingly" half: Health (below) renders whichever one
+// fires verbatim in LastError, with no per-cause branching anywhere else
+// in this codebase (04-UI-SPEC.md's Copywriting Contract note: the
+// specific wording is this function's responsibility, not a UI design
+// choice).
+//  1. The database file itself is missing — Signal Desktop may not be
+//     installed for this user, or has never been run. Checked first and
+//     independently of config.json, so this cause is never masked by a
+//     config-read failure that would otherwise fire first.
+//  2. Key resolution fails — either config.json itself is unreadable/
+//     unparsable, or resolveKey/resolveSafeStorageKey reject its
+//     contents, or (Pitfall 4) a safeStorage-resolved key decrypts to a
+//     plausible-looking value that still fails to actually open the
+//     database. All three collapse into the same "key resolution failed"
+//     message shape, naming the backend if one was declared.
+//  3. The schema version exceeds highestSupportedSchemaVersion —
+//     guardSchemaVersion's own message, unchanged here.
 func (p *SourcePlugin) openGuarded() (*sql.DB, error) {
+	dbPath := p.dbPath()
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil, fmt.Errorf(
+			"signal: Signal Desktop's database was not found at %s — Signal Desktop may not be installed for this user, or has not been run yet (%v)",
+			dbPath, err,
+		)
+	}
+
 	cfg, err := readSignalConfig(p.configPath())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("signal: key resolution failed reading %s: %w", p.configPath(), err)
 	}
 	rawHexKey, err := resolveKey(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("signal: key resolution failed (declared safeStorageBackend=%q): %w", cfg.SafeStorageBackend, err)
 	}
-	db, err := openReadOnly(p.dbPath(), rawHexKey)
+
+	db, err := openReadOnly(dbPath, rawHexKey)
 	if err != nil {
-		return nil, err
+		if cfg.EncryptedKey != "" {
+			// The safeStorage-resolved key looked plausible (passed
+			// resolveSafeStorageKey's length check) but still failed to
+			// actually open the database — Pitfall 4's backend-mismatch
+			// case. Named distinctly so this never reads as a generic
+			// "file is not a database"/corruption error.
+			return nil, fmt.Errorf("%w (declared backend=%s): %v", errSafeStorageBackendMismatch, cfg.SafeStorageBackend, err)
+		}
+		return nil, fmt.Errorf("signal: key resolution failed opening the database with the resolved key: %w", err)
 	}
 	if err := guardSchemaVersion(db); err != nil {
 		db.Close()
