@@ -131,4 +131,44 @@ echo "$STREAM_JSON" | jq -e '[.items[] | select(.source_type == "signal")] | len
   exit 1
 }
 
+# Contact-form deep-link shape guard (04-04-PLAN.md gap closure G-04-1):
+# the unit tests in deeplink_test.go passed continuously while the
+# emitted payload was being rejected by the real consumer (Signal
+# Desktop), because they asserted the builder against itself — the
+# expected value was re-derived by calling the same encoder under test,
+# so a bug in the encoder was invisible to the assertion. A shape check
+# taken from a real stream response, over the actual bytes a browser
+# would hand to the OS scheme handler, is the layer that would have
+# caught it. Deliberately no decoding or normalisation here: the
+# assertion is about the raw bytes that reach Signal Desktop's route.
+CONTACT_FORM_PREFIX='sgnl://signal.me/#p/'
+CONTACT_LINKS="$(echo "$STREAM_JSON" | jq -r --arg prefix "$CONTACT_FORM_PREFIX" \
+  '[.items[] | select(.source_type == "signal") | .link.url | select(startswith($prefix))] | .[]')"
+
+CONTACT_LINK_COUNT=0
+BAD_LINKS=""
+if [ -n "$CONTACT_LINKS" ]; then
+  while IFS= read -r link; do
+    [ -z "$link" ] && continue
+    CONTACT_LINK_COUNT=$((CONTACT_LINK_COUNT + 1))
+    fragment="${link#"$CONTACT_FORM_PREFIX"}"
+    first_char="${fragment:0:1}"
+    if [ "$first_char" != "+" ]; then
+      BAD_LINKS="$BAD_LINKS
+  $link"
+    fi
+  done <<< "$CONTACT_LINKS"
+fi
+
+if [ -n "$BAD_LINKS" ]; then
+  echo "FAIL: contact-form deep link(s) missing a literal '+' immediately after '#p/' — Signal Desktop's own validator rejects these:$BAD_LINKS" >&2
+  exit 1
+fi
+
+if [ "$CONTACT_LINK_COUNT" -eq 0 ]; then
+  echo "    note: zero contact-form links checked this run — SIGNAL_SMOKE_KEYWORD=\"$SIGNAL_SMOKE_KEYWORD\" matched no 1:1 conversation with a known E.164. This check was vacuous for this run; point SIGNAL_SMOKE_KEYWORD at a 1:1 conversation to exercise it. The deterministic non-vacuity guarantee for the literal-plus rule lives in plugins/signal/deeplink_test.go's unit matrix, not here."
+else
+  echo "    checked $CONTACT_LINK_COUNT contact-form link(s): all carry a literal '+' immediately after '#p/'"
+fi
+
 echo "==> signal-readonly-smoke test passed"
