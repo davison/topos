@@ -198,7 +198,7 @@ Plans:
 
 **Gap closure** *(from 04-UAT.md — G-04-1, blocker)*
 
-- [ ] 04-04-PLAN.md — Emit the E.164 verbatim so Signal Desktop accepts the contact-form deep link, replacing escape-the-plus with allowlist validation
+- [x] 04-04-PLAN.md — Emit the E.164 verbatim so Signal Desktop accepts the contact-form deep link, replacing escape-the-plus with allowlist validation
 
 Notes:
 
@@ -237,7 +237,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. First Webspace, End to End | 6/6 | Complete    | 2026-07-28 |
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
-| 4. Signal Conversations | 3/3 | Complete   | 2026-08-03 |
+| 4. Signal Conversations | 4/4 | Complete   | 2026-08-03 |
 | 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
