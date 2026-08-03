@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-08-03T20:03:00.867Z"
+status: verifying
+last_updated: "2026-08-03T20:32:26.166Z"
 last_activity: 2026-08-03
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 25
-  completed_plans: 24
-  percent: 60
+  completed_plans: 25
+  percent: 80
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-08-02)
 
 Phase: 04 (signal-conversations) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-03
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Progress: [██████████] 96%
 | Phase 03 P06 | 20min | 2 tasks | 6 files |
 | Phase 04 P01 | 3h | 2 tasks | 20 files |
 | Phase 04 P02 | 2h | 3 tasks | 18 files |
+| Phase 04 P03 | ~2.5h | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,8 @@ Recent decisions affecting current work:
 - [Phase ?]: encryptedKey is hex-encoded (confirmed against Signal Desktop's live source), not base64 as illustrated in research
 - [Phase ?]: Secret Service application attribute value pinned to 'Signal' (traced from Chromium os_crypt + Electron app.getName()), unverifiable on this machine (never safeStorage-migrated) — flagged for re-verification
 - [Phase ?]: kwallet/kwallet5/kwallet6 route through freedesktop Secret Service (not native org.kde.KWallet), a documented scope limitation per plan instruction
+- [Phase ?]: [Phase 04-03]: Attachments and reactions read from Signal Desktop's own dedicated message_attachments/reactions SQL tables, never the message row's json blob — corrects 04-RESEARCH.md's illustrative assumption, confirmed by direct schema introspection of the real, live database
+- [Phase ?]: [Phase 04-03]: Fetch's FULL and PREVIEW variants share one path (fetchTranscript) — a Signal digest has no separate richer-preview-vs-extracted-text distinction the way an email does
 
 ### Pending Todos
 
@@ -154,6 +157,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-03T20:03:00.859Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-08-03T20:32:26.157Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
