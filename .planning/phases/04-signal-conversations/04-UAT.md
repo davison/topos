@@ -1,22 +1,22 @@
 ---
-status: partial
+status: complete
 phase: 04-signal-conversations
 source: [04-VERIFICATION.md]
 started: 2026-08-03T20:49:56Z
-updated: 2026-08-03T23:02:44Z
+updated: 2026-08-03T23:12:29Z
 ---
 
 ## Current Test
 
-[testing paused — 1 item outstanding (test 1 blocked: server)]
+[testing complete]
 
 ## Tests
 
 ### 1. E.164 contact-form sgnl:// deep link raises the correct conversation
 expected: With Signal Desktop running, clicking "Open in Signal" on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop and navigates to that contact's conversation. (The bare-scheme group form was already visually confirmed and approved during 04-01's checkpoint.)
-result: blocked
-blocked_by: server
-reason: "server is not running for signal-smoke"
+result: issue
+reported: "signal desktop showed an error when activated (see ~/Pictures/.clip.png) — dialog: 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
+severity: blocker
 
 ### 2. Judgment-tier prohibitions sign-off (privacy/safety)
 expected: |
@@ -39,9 +39,20 @@ result: pass
 
 total: 2
 passed: 1
-issues: 0
+issues: 1
 pending: 0
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
+
+- gap_id: G-04-1
+  truth: "Clicking 'Open in Signal' on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop and navigates to that contact's conversation via the sgnl://signal.me/#p/+44... form"
+  status: failed
+  reason: "User reported: signal desktop showed an error when activated (see ~/Pictures/.clip.png) — dialog: 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
+  severity: blocker
+  test: 1
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
