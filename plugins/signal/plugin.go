@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,12 +32,13 @@ const (
 // content variant — a Signal digest has no image rendition, ever.
 const noThumbnailReason = "Signal digests have no thumbnail rendition"
 
-// fetchNotImplementedReason is the fixed unavailable_reason FULL/PREVIEW
-// Fetch returns in this build. Completed in plan 04-03 (04-01-PLAN.md
-// Task 2's own scope note): the Fetch entry point, its variant dispatch,
-// and this stub all already exist here, so this is a functionality gap,
-// not an architectural one.
-const fetchNotImplementedReason = "Signal thread rendering is not yet implemented in this build (see plan 04-03)"
+// transcriptMimeType is what Fetch's FULL/PREVIEW branch returns for a
+// Signal digest — a self-contained, sanitized HTML document (render.go)
+// routed by the kernel's existing rendition allowlist
+// (kernel/httpapi/item.go) into DetailPane's existing `html` body-variant
+// iframe branch, with zero proto change and zero new frontend branch
+// (04-RESEARCH.md Architecture).
+const transcriptMimeType = "text/html"
 
 // SourcePlugin implements sdk.SourcePlugin by reading Signal Desktop's
 // local SQLCipher database strictly read-only. plugins/proton/plugin.go's
@@ -234,19 +236,93 @@ func (p *SourcePlugin) toItem(d digest, conv conversation) *webspacesv1.Item {
 	}
 }
 
-// Fetch implements live content fetch on item-open — never called from
-// Match/sync. THUMBNAIL is always unavailable (a Signal digest has no
-// image rendition). FULL/PREVIEW are stubbed unavailable in this build —
-// completed in plan 04-03 (see fetchNotImplementedReason's doc comment).
+// Fetch implements live content fetch on item-open (KERN-03) — never
+// called from Match/sync. THUMBNAIL is always unavailable (a Signal
+// digest has no image rendition, ever). FULL and PREVIEW share one path
+// (fetchTranscript): a Signal digest has nothing FULL offers beyond what
+// PREVIEW already renders — there is no separate "extracted text plus a
+// richer inline preview" distinction for a chat transcript the way there
+// is for an email's plain-text-vs-HTML choice, so both variants return
+// the identical wrapped transcript document.
 func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
 	switch req.GetVariant() {
 	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
 		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
 	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
-		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: fetchNotImplementedReason}, nil
+		return p.fetchTranscript(req.GetSourceId())
 	default:
 		return nil, status.Error(codes.InvalidArgument, "signal: unspecified content variant")
 	}
+}
+
+// fetchTranscript re-derives sourceID's (conversationID, day) pair,
+// re-opens the database read-only (never a handle cached from Match, and
+// never a cached copy of the content itself — content is fetched live on
+// open, per the hybrid data model), re-reads that conversation's
+// messages for that day, renders them into a sanitized, self-contained
+// HTML transcript document (render.go), and returns it as MimeType
+// transcriptMimeType.
+func (p *SourcePlugin) fetchTranscript(sourceID string) (*webspacesv1.FetchResponse, error) {
+	conversationID, day, err := decodeSourceID(sourceID)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "signal: source_id %q is not a recognised digest id: %v", sourceID, err)
+	}
+
+	db, err := p.openGuarded()
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "signal: %v", err)
+	}
+	defer db.Close()
+
+	ownAci, err := readOwnAci(db)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "signal: %v", err)
+	}
+	convs, err := readConversations(db, ownAci)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "signal: %v", err)
+	}
+
+	found := false
+	for _, c := range convs {
+		if c.ID == conversationID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, status.Errorf(codes.NotFound, "signal: conversation %q (from source_id %q) was not found", conversationID, sourceID)
+	}
+
+	senderNames := buildSenderNames(convs, ownAci)
+	msgs, err := readMessages(db, []string{conversationID}, senderNames)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "signal: %v", err)
+	}
+
+	var dayMsgs []messageRecord
+	for _, m := range msgs {
+		if localDayKey(m.SentAtUnixMs) == day {
+			dayMsgs = append(dayMsgs, m)
+		}
+	}
+	if len(dayMsgs) == 0 {
+		return nil, status.Errorf(codes.NotFound, "signal: no messages found for conversation %q on day %q (source_id %q)", conversationID, day, sourceID)
+	}
+	sort.Slice(dayMsgs, func(i, j int) bool { return dayMsgs[i].SentAtUnixMs < dayMsgs[j].SentAtUnixMs })
+
+	doc := WrapDocument(renderTranscript(dayMsgs))
+
+	return &webspacesv1.FetchResponse{
+		Available: true,
+		MimeType:  transcriptMimeType,
+		SizeBytes: int64(len(doc)),
+		Data:      doc,
+		Provenance: map[string]string{
+			"source_type": sourceType,
+			"source_id":   sourceID,
+		},
+	}, nil
 }
 
 // Health attempts key resolution, a read-only open, and the schema guard
@@ -381,7 +457,7 @@ func buildSenderNames(convs []conversation, ownAci string) map[string]string {
 		out[c.ServiceID] = conversationDisplayName(c)
 	}
 	if ownAci != "" {
-		out[ownAci] = "You"
+		out[ownAci] = ownSenderLabel
 	}
 	return out
 }
@@ -578,7 +654,7 @@ func readMessages(db *sql.DB, conversationIDs []string, senderNames map[string]s
 		case senderName != "":
 			// resolved via senderNames.
 		case sourceServiceID.String == "" && msgType == "outgoing":
-			senderName = "You"
+			senderName = ownSenderLabel
 		default:
 			senderName = unknownSenderName
 		}
