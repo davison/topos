@@ -1,7 +1,7 @@
 ---
 phase: 4
 slug: signal-conversations
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1/2/3 — no re-init)"
 created: 2026-08-03
@@ -122,7 +122,7 @@ Accent reserved for: exactly the same list as Phase 2/3 — "Open in source" CTA
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Probe run (ui-consideration-probe engine) over 4 elements: **E1 Signal digest stream-row** (list-collection, extension of `StreamRow` — new source content only), **E2 chat-thread transcript** (media, the phase's one genuinely new visual pattern — plugin-rendered HTML document), **E3 "Open in Signal" affordance** (interactive-control, `OpenInSource.svelte` reused byte-for-byte, new `sourceType` value only), **E4 Signal health chip** (nav, inherited `SourceHealthChip` pattern, new source_type + 3 new failure causes). Element kinds and resolutions below. **24 applicable considerations: 17 covered, 0 backstop, 4 dismissed (with reasons), 3 dismissed-as-fully-inherited (E3, prose note).**
+Probe run (ui-consideration-probe engine, executed post-verification per ui-phase Step 9.5) over 4 elements: **E1 Signal digest stream-row** (list-collection, extension of `StreamRow` — new source content only), **E2 chat-thread transcript** (kinds author-confirmed as media + list-collection + static-content after the heuristic classifier returned `unclassified`; the phase's one genuinely new visual pattern — plugin-rendered HTML document), **E3 "Open in Signal" affordance** (interactive-control, `OpenInSource.svelte` reused byte-for-byte, new `sourceType` value only), **E4 Signal health chip** (nav, inherited `SourceHealthChip` pattern, new source_type + 3 new failure causes). Element kinds confirmed and resolutions adopted by the user in-session. **21 applicable considerations: 16 covered, 0 backstop, 5 dismissed (with reasons), 0 unresolved.**
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -140,10 +140,11 @@ Probe run (ui-consideration-probe engine) over 4 elements: **E1 Signal digest st
 | populated | E2 chat-thread transcript | ✅ covered | **The phase's core new visual pattern.** Bubble layout, not a flat transcript list: own messages right-aligned, background `#0f172a`, no sender-name label (ownership signaled by alignment/background alone, never the accent color — see Color); other-participant messages left-aligned, background `#1e293b`, sender name shown once per contiguous run (14px/600/`#f1f5f9`). Messages from the same sender within a 5-minute gap collapse into one run (no repeated name/timestamp chrome); a sender change or a >5 min gap starts a new run. Only that day's messages render (D-04's day boundary is the transcript's own scope — no cross-day context is pulled in, resolving the "how much surrounding context" discretion item explicitly in favor of "exactly the digest's day, never more"). No day-header divider is rendered (redundant — the pane's own header already shows the digest's date; a transcript never spans more than one day by construction). Bubble radius ~12px, padding 8px/16px (sm/md tokens), max-width ~75% of the transcript column, 4px gap within a run / 16px gap between runs. |
 | partial | E2 chat-thread transcript | ✅ covered | A deleted-for-everyone message renders as a muted italic tombstone bubble ("This message was deleted") in place of body text, keeping its sender/timestamp chrome; an edited message keeps its latest text with a muted "(edited)" suffix — never a before/after diff view (message richness discretion item, resolved). |
 | overflow | E2 chat-thread transcript | ✅ covered | The transcript fills the pane's full remaining scrollable body exactly like the existing `html` body-variant branch (iframe-internal scroll, never pushes pane layout, RESEARCH.md architecture); an individual long message wraps normally within its bubble's max-width — no truncation inside the full thread view, unlike the compact stream-row snippet. |
+| zero-one-many | E2 chat-thread transcript | ✅ covered | Zero messages is impossible by construction (a digest only exists for a day with activity, D-01/D-04 — see empty row); exactly one message renders as a single bubble with full sender/timestamp chrome, no special layout branch; many messages scroll within the iframe-internal scroll region (see overflow row). Singular/plural grammar lives in the digest title string, not the transcript. |
 | long-text | E2 chat-thread transcript | ✅ covered | Long individual messages wrap within their bubble's max-width rather than truncating or clamping — the full thread view never ellipsis-clamps message text (only the compact stream-row preview does). |
-| empty/loading/error/populated/partial/overflow/zero-one-many/long-text | E3 "Open in Signal" | ➖ dismissed (fully inherited) | `OpenInSource.svelte` is reused byte-for-byte — a stateless button with a fixed `"Open in {display_name}"` label and fidelity badge, parameterized only by `sourceType`/`link`; Signal adds a new `sourceType` string value (`"signal"`) through the existing `sourceDisplayName()` map, zero component code change, same treatment Phase 3's dedup note gave `StreamRow`'s label loop (no new rendering path to add a row for). |
+| long-text | E3 "Open in Signal" | ➖ dismissed | Only category raised for an interactive-control. `OpenInSource.svelte` is reused byte-for-byte — a stateless button with a fixed `"Open in Signal"` label and fixed `"conversation-only"` fidelity badge copy; no variable-length text renders through it. Signal adds a new `sourceType` string value (`"signal"`) through the existing `sourceDisplayName()` map, zero component code change, same treatment Phase 3's dedup note gave `StreamRow`'s label loop. |
 | error | E4 Signal health chip | ✅ covered | The three Signal-specific failure causes (keyring/key-resolution failure, Signal Desktop/`db.sqlite` not found, unrecognised schema version) all surface through the same existing destructive-tone dot + tooltip rendering `last_error` verbatim (Phase 2/3 pattern) — the UI adds no per-cause branching; the specific, actionable wording (e.g. naming the schema version found, per SRC-02 criterion 5) is entirely the plugin's `Health()` responsibility, not a UI design choice (identical note to Phase 3's SRC-01 criterion 5 row). |
-| empty/populated/loading/partial/zero-one-many/overflow/long-text | E4 Signal health chip | ➖ dismissed | Fully inherited from Phase 2's already-resolved rows, per Phase 3's own E5 precedent — Signal is simply a fourth `source_type` flowing through the same generic chip component; no per-source branching exists or is needed. Never-synced state renders Phase 2's neutral "unknown" dot until the first `Health()` resolve, never a false-green flash. |
+| loading/overflow/long-text | E4 Signal health chip | ➖ dismissed | The three other raised categories for a nav element, fully inherited from Phase 2's already-resolved rows, per Phase 3's own E5 precedent — Signal is simply a fourth `source_type` flowing through the same generic chip component; no per-source branching exists or is needed. Never-synced state renders Phase 2's neutral "unknown" dot until the first `Health()` resolve, never a false-green flash; tooltip text (`last_error`) wraps within the existing tooltip max-width. |
 
 **No independent row for D-06's profile-name-exclusion rule** — it is matching logic (backend `Match` behavior), not a UI state; nothing in the stream, digest, or transcript view renders differently based on how a conversation was matched.
 
@@ -161,11 +162,11 @@ No third-party registries declared for Phase 4. No new shadcn block is required 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved — gsd-ui-checker, 6/6 dimensions PASS, no recommendations (2026-08-03)
