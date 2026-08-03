@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 04-signal-conversations
 source: [04-VERIFICATION.md]
 started: 2026-08-03T20:49:56Z
-updated: 2026-08-03T23:12:29Z
+updated: 2026-08-03T23:19:26Z
 ---
 
 ## Current Test
@@ -52,7 +52,14 @@ blocked: 0
   reason: "User reported: signal desktop showed an error when activated (see ~/Pictures/.clip.png) — dialog: 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
   severity: blocker
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "plugins/signal/deeplink.go encodePhoneFragment() uses url.QueryEscape, which percent-encodes the E.164's mandatory leading '+' as %2B (sgnl://signal.me/#p/%2B44...). Signal Desktop never percent-decodes the hash-captured phone number and validates it against /^\\+[1-9]\\d{1,14}$/ requiring a literal '+', so validation fails and it shows the 'unknown-sgnl-link' error modal. The bug is test-enshrined: TestEncodePhoneFragment_PlusSignEscaped asserts the %2B encoding."
+  artifacts:
+    - path: "plugins/signal/deeplink.go"
+      issue: "encodePhoneFragment uses url.QueryEscape (form-encoding class), converting '+' to %2B; '+' is a legal RFC 3986 fragment sub-delim needing no encoding"
+    - path: "plugins/signal/deeplink_test.go"
+      issue: "TestEncodePhoneFragment_PlusSignEscaped and TestDeepLink_UnsafeCharactersAreEscapedNotEmittedRaw enshrine the broken escaping; both need inverting with the fix"
+  missing:
+    - "Validate the E.164 against ^\\+[1-9][0-9]{1,14}$ (Signal's accepted shape) and emit it verbatim (literal '+') when valid"
+    - "Fall back to the bare sgnl:// form when the value doesn't match (validate-and-fallback instead of escape)"
+    - "Rework the two tests so the regression guard asserts a literal '+' appears in the emitted fragment"
+  debug_session: ".planning/debug/sgnl-link-didnt-make-sense.md"
