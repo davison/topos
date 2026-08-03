@@ -36,6 +36,6 @@ The capability surface enumerated below is the `org.freedesktop.Secret.Service`,
 | `Item.SetSecret` | OPT-OUT | write path — the plugin never rewrites the stored master password |
 | `Item.Delete` | OPT-OUT | write path — destructive, never invoked |
 | `Item` property writes (`Label`, `Attributes`) | OPT-OUT | write path — item metadata is read for matching only, never modified |
-| Signals (`CollectionCreated`/`Changed`/`Deleted`, `ItemCreated`/`Changed`/`Deleted`) | OPT-OUT | the plugin holds no long-lived keyring subscription; the key is resolved on demand per sync, so there is no cached state a change signal would invalidate |
-| Native KWallet D-Bus API (`org.kde.kwalletd5`/`kwalletd6`) | OPT-OUT | out of scope per the locked stack (`.claude/CLAUDE.md`): KWallet has exposed the Secret Service API since KDE Frameworks 5.97, so a modern KDE session is served by the rows above. Sessions on older Frameworks are a documented, accepted gap (04-RESEARCH.md Open Question 2) |
+| Signals (Collection/Item Created/Changed/Deleted) | OPT-OUT | the plugin holds no long-lived keyring subscription; the key is resolved on demand per sync, so there is no cached state a change signal would invalidate |
+| Native KWallet D-Bus API (`org.kde.kwalletd5`/`kwalletd6`) | OPT-OUT | KWallet exposes the Secret Service API since KDE Frameworks 5.97, so modern KDE is served by the rows above; older Frameworks are a documented, accepted gap (04-RESEARCH.md Open Question 2) |
 | Signal Desktop `sgnl://` scheme handler (deep link) | INTEGRATE | |
