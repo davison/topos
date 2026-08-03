@@ -155,3 +155,15 @@ None - no external service configuration required.
 ---
 *Phase: 04-signal-conversations*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+- FOUND: plugins/signal/deeplink.go
+- FOUND: plugins/signal/deeplink_test.go
+- FOUND: scripts/signal-readonly-smoke.sh
+- FOUND: .planning/phases/04-signal-conversations/04-SECURITY.md
+- FOUND: .planning/phases/04-signal-conversations/04-04-SUMMARY.md
+- FOUND commit: eebfa2d (Task 1)
+- FOUND commit: 3a92206 (Task 2)
+- FOUND commit: 487f33b (Task 3)
+- FOUND commit: fd7827a (SUMMARY.md)
