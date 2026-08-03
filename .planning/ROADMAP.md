@@ -181,7 +181,7 @@ Notes:
   4. The decryption key is obtained from whichever keyring backend the user's install actually uses, detected at runtime rather than assumed
   5. An unrecognised Signal database schema version fails loudly, naming the version it found, instead of silently importing nothing
 
-**Plans**: 3 plans
+**Plans**: 4 plans
 
 Plans:
 **Wave 1**
@@ -195,6 +195,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 04-03-PLAN.md — The chat-thread transcript Phase 5 reuses, message richness, validated "open in Signal", and the published local-path contract
+
+**Gap closure** *(from 04-UAT.md — G-04-1, blocker)*
+
+- [ ] 04-04-PLAN.md — Emit the E.164 verbatim so Signal Desktop accepts the contact-form deep link, replacing escape-the-plus with allowlist validation
 
 Notes:
 
