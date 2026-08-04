@@ -1,22 +1,23 @@
 ---
 phase: 04-signal-conversations
-verified: 2026-08-03T23:52:12Z
-status: human_needed
+verified: "2026-08-03T23:52:12Z"
+status: passed
 score: 5/5 truths verified (ROADMAP success criteria)
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
-  previous_score: "5/5 truths verified (ROADMAP success criteria); 2 items routed to human verification"
+  previous_score: 5/5 truths verified (ROADMAP success criteria); 2 items routed to human verification
   gaps_closed:
+
     - "G-04-1: Signal contact-form sgnl:// deep link now emits a literal '+' (E.164 allowlist, validate-and-refuse) instead of percent-encoding it to %2B — root cause fixed in plugins/signal/deeplink.go, regression guard rewritten in deeplink_test.go, end-to-end shape guard added to scripts/signal-readonly-smoke.sh, live index re-synced (105/105 rows carry the corrected shape, 0 rows carry the rejected shape), 04-SECURITY.md corrected (T-04-14 superseded, T-04-17/18/19 added)"
     - "Judgment-tier prohibitions sign-off (privacy/safety: log hygiene, no on-disk plaintext copy, profile-name anti-spoofing) — 04-UAT.md test 2 recorded human pass 2026-08-03"
   gaps_remaining: []
   regressions: []
 human_verification:
-  - test: "Click 'Open in Signal' on a Signal digest for a 1:1 conversation whose contact has a known E.164 number, with the rebuilt server running."
-    expected: "Signal Desktop raises and shows that contact's conversation; no 'Something went wrong! Sorry, that sgnl:// link didn't make sense!' error modal appears."
-    why_human: "This verifier confirmed the emitted link's byte shape is correct (literal '+', no percent sign — proven by the unit boundary matrix and by direct sqlite3 queries against the developer's live index: 105 rows match the corrected glob, 0 rows match the rejected glob) and confirmed the running server is serving the rebuilt binary (bin/webspaces, built 00:47, server process started 00:49, identical file by cmp). It cannot itself observe Signal Desktop's rendered window state or click the button. 04-UAT.md tracks this as gap G-04-1 (status: diagnosed) — this is the only remaining check needed to close it."
+
+  - [object Object]
+
 ---
 
 # Phase 4: Signal Conversations Verification Report

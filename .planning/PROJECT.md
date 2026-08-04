@@ -20,13 +20,13 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Default-deny agent permission model (AGENT-01): read-only agent routes gated by per-source grants — Phase 2
 - ✓ Email plugin (SRC-01) — Proton Mail Bridge over LAN with self-signed cert, exact-leaf label/folder keyword matching, Message-ID dedup, never-marks-read proven live against the real account, readable detail pane (plain-text preferred, sanitized theme-wrapped HTML fallback), All Mail search deep link — Phase 3
 - ✓ Full-text search within a webspace (KERN-05): FTS5 index, ranked cross-source results with highlighted snippets — Phase 3
+- ✓ Signal plugin (SRC-02) — reads Signal Desktop's SQLCipher database strictly read-only (`mode=ro`, byte-identical after full sync, proven with Signal running), key unwrapped via runtime-detected keyring backend, unrecognised schema versions fail loudly by name, conversation-day digests in the stream with thread detail pane, deep links validated live (1:1 contact-form navigates via literal-'+' E.164; groups raise-only — Signal ships no group-navigation route) — Phase 4
 
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–3: proven for paperless-ngx tags, SilverBullet tags/pages, and IMAP labels/folders; chat silos pending)*
-- [ ] Signal plugin — reads Signal Desktop's local database on the same machine
+- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–4: proven for paperless-ngx tags, SilverBullet tags/pages, IMAP labels/folders, and Signal conversation/group names; WhatsApp pending)*
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phase 3: email body preview and in-webspace search shipped; chat previews pending)*
+- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phases 3–4: email body preview, in-webspace search, and Signal chat-thread preview shipped; WhatsApp previews pending. Follow-up captured in 04-UAT.md: differentiate raise-only vs navigating deep links in the UI)*
 
 ### Out of Scope
 
@@ -62,9 +62,10 @@ Open one webspace and instantly see and grok all related information across ever
 | Kernel + UI with per-source plugins | New sources addable later, including by third parties; mirrors proven connector architectures | Phase 1: shipped — go-plugin/gRPC contract documented and pinned by RPC-allowlist + read-only AST tests |
 | Config-mapped keyword correlation for v1; AI inference later | Deterministic, no false positives; magic can layer on top once the plumbing works | Phase 1: works — webspace keyword matched against paperless-ngx tags with per-item rejection on contract violations |
 | Hybrid data model (local metadata/preview index, live fetch on open) | Fast browsing and uniform search without full duplication or staleness of content | Phase 1: validated — instant metadata from index, live preview fill via plugin Fetch |
-| Chat access via desktop app local databases | Least infra of the workaround options; no cloud, no bridges to run | — Pending |
-| Deploy to desktop, reach server services over LAN | Chat DBs live on the desktop; bridge/paperless/SilverBullet are network-reachable anyway | — Pending |
-| MVP sources: IMAP email, Signal, WhatsApp, paperless-ngx, SilverBullet | The user's actual silos; filesystem and others deferred | Phase 3: three of five shipped (paperless-ngx, SilverBullet, Proton/IMAP) |
+| Chat access via desktop app local databases | Least infra of the workaround options; no cloud, no bridges to run | Phase 4: validated for Signal — SQLCipher DB read `mode=ro`, byte-identical after sync even with Signal running; keyring backend detected at runtime |
+| Deploy to desktop, reach server services over LAN | Chat DBs live on the desktop; bridge/paperless/SilverBullet are network-reachable anyway | Phase 4: validated — Signal Desktop's local DB read in place on the desktop |
+| MVP sources: IMAP email, Signal, WhatsApp, paperless-ngx, SilverBullet | The user's actual silos; filesystem and others deferred | Phase 4: four of five shipped (paperless-ngx, SilverBullet, Proton/IMAP, Signal) |
+| Signal deep links: E.164 allowlist, emitted verbatim; groups raise-only | Signal Desktop's validator demands a literal '+' (percent-encoding is rejected); its route table has no group-navigation route, so group links can only raise the window — conversation-only fidelity is the honest declaration | Phase 4: confirmed live (1:1 navigates; group raise-only diagnosed as upstream-hard, journal-verified) |
 | Email readability decided in the plugin, never the shared pane | A UI-side "prefer text over rendition" rule would have flipped SilverBullet's rendered markdown to raw; the producing plugin returns plain text alone when a usable text/plain part exists | Phase 3: shipped — DetailPane stays source-agnostic, branches only on content shape |
 | Proton deep link = All Mail subject-search URL, declared ANCHORED | Proton webmail addresses custom labels by internal id (not name) and offers no Message-ID→webmail-id mapping; a search link is the only addressable form | Phase 3: confirmed working live |
 
@@ -86,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-02 after Phase 3*
+*Last updated: 2026-08-04 after Phase 4*
