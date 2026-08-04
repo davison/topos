@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 04-signal-conversations
 source: [04-VERIFICATION.md]
 started: 2026-08-03T20:49:56Z
-updated: 2026-08-04T00:08:23Z
+updated: 2026-08-04T00:35:52Z
 ---
 
 ## Current Test
@@ -70,11 +70,20 @@ blocked: 0
 
 - gap_id: G-04-1b
   truth: "Clicking 'Open in Signal' on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop AND navigates to that contact's conversation"
-  status: failed
+  status: diagnosed
   reason: "User reported: the error dialog no longer appears, but the correct conversation is not opened, it remains on whatever was last opened in the UI"
   severity: major
   test: 1
   regression_of: G-04-1
   note: "New failure mode distinct from G-04-1 (validation rejection, now resolved): the literal-'+' link is accepted by Signal Desktop's validator (no error modal) but produces no navigation — window raises/stays on the previously open conversation."
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Not a deep-link defect — AND-gate of two conditions. (1) Proximate: the retest clicked GROUP digests. journalctl argv capture shows all four Signal launches in the retest window received the bare 'sgnl://' (the by-design group fallback, approved conversation-only fidelity at 04-01); the literal-'+' contact-form URL never entered Signal's argv after the 04-04 fix merged. Signal raises its window unconditionally BEFORE argv parse, then silently drops the routeless bare scheme — exactly 'window up, no dialog, no navigation'. Transport exonerated: portal OpenURI and gio both delivered a literal '+' verbatim and Signal logged 'Matched signal route: contactByPhoneNumber'. (2) Latent, actionable: OpenInSource.svelte renders raise-only and navigating links identically (same button copy, same conversation-only badge), making designed raise-only behavior indistinguishable from a bug. Upstream fact: Signal Desktop 8.21.0 has NO sgnl: route that can navigate to an existing group conversation — no emittable link can do it."
+  artifacts:
+    - path: "web/src/lib/components/OpenInSource.svelte"
+      issue: "Renders raise-only (bare sgnl://) and navigating (contact-form) links identically — the actual gap that turned intended behavior into a false blocker report"
+    - path: "plugins/signal/deeplink.go"
+      issue: "Correct as-is for this gap; optionally emit sgnl://show-window instead of bare sgnl:// (matches Signal's registered showWindow route rather than raising as a side effect of a null route parse)"
+  missing:
+    - "Re-run UAT test 1 against a 1:1 digest (webspace 'test', keyword 'Dad' — 105 contact-form rows) and verify mechanically: journalctl --user -o json _CMDLINE shows the +E.164 argv AND ~/.config/Signal/logs/main.log shows 'Matched signal route: contactByPhoneNumber'"
+    - "Differentiate raise-only vs navigating links in the UI: distinct fidelity flag/value surfaced through the API or link shape, different button copy, one-line explanation for raise-only"
+    - "Optional hardening: emit sgnl://show-window for the no-navigation fallback instead of bare sgnl://"
+  debug_session: ".planning/debug/sgnl-link-no-navigation.md"
