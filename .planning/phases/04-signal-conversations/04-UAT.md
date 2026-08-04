@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 04-signal-conversations
 source: [04-VERIFICATION.md]
 started: 2026-08-03T20:49:56Z
-updated: 2026-08-04T00:35:52Z
+updated: 2026-08-04T00:43:24Z
 ---
 
 ## Current Test
@@ -14,10 +14,8 @@ updated: 2026-08-04T00:35:52Z
 
 ### 1. E.164 contact-form sgnl:// deep link raises the correct conversation
 expected: With Signal Desktop running, clicking "Open in Signal" on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop and navigates to that contact's conversation. (The bare-scheme group form was already visually confirmed and approved during 04-01's checkpoint.)
-result: issue
-reported: "the error dialog no longer appears, but the correct conversation is not opened, it remains on whatever was last opened in the UI"
-severity: major
-retest_context: "Re-run after 04-04 gap closure — deep-link builder now emits literal '+' (E.164 allowlist, verbatim); live index re-synced (111 rows corrected, 0 rejected-shape rows remain); server restarted from rebuilt main tree. Prior validation-rejection failure preserved in gap G-04-1 below (resolved); this run surfaced a NEW failure mode: link accepted, no navigation."
+result: pass
+retest_context: "First re-run (01:08 BST) reported 'accepted but no navigation' — diagnosed as a test artifact: the clicks hit GROUP digests (bare sgnl://, raise-only by design, approved at 04-01); journalctl argv capture proved the 1:1 contact-form link was never exercised. Corrected re-run against webspace 'test' (1:1 'Dad' digests): PASS — Signal Desktop raised and navigated to the contact's conversation, no error modal. See gap G-04-1b diagnosis."
 
 ### 2. Judgment-tier prohibitions sign-off (privacy/safety)
 expected: |
@@ -39,11 +37,17 @@ result: pass
 ## Summary
 
 total: 2
-passed: 1
-issues: 1
+passed: 2
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
+
+## Deferred Follow-Ups
+
+- test: 1
+  idea: "Differentiate raise-only vs navigating deep links in the UI (OpenInSource.svelte renders both identically — this made designed group raise-only behavior look like a bug and produced a false blocker report). Include distinct button copy/explanation for raise-only links, and optionally emit sgnl://show-window instead of bare sgnl:// (matches Signal's registered showWindow route). Source: G-04-1b diagnosis, .planning/debug/sgnl-link-no-navigation.md fix directions B and C."
+  deferred_at: 2026-08-04
 
 ## Gaps
 
@@ -70,7 +74,9 @@ blocked: 0
 
 - gap_id: G-04-1b
   truth: "Clicking 'Open in Signal' on a 1:1 (E.164-bearing) conversation's digest raises Signal Desktop AND navigates to that contact's conversation"
-  status: diagnosed
+  status: resolved
+  resolved_by: "corrected UAT re-run (test artifact — no code change needed); latent UI-differentiation item captured in Deferred Follow-Ups"
+  resolved_at: 2026-08-04
   reason: "User reported: the error dialog no longer appears, but the correct conversation is not opened, it remains on whatever was last opened in the UI"
   severity: major
   test: 1
