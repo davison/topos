@@ -108,6 +108,21 @@
 
 	--border: #1e293b;
 	--input: #1e293b;
+
+	/*
+	 * Derived scrollbar tokens (Quick task 260805-j98). Each value is
+	 * computed via color-mix() from --muted-foreground — the only palette
+	 * token legible against BOTH the page background (--background) and
+	 * the card surface (--card) — rather than being a new literal color.
+	 * Unlike every palette token above, these three are declared once
+	 * here and deliberately NOT mirrored into .dark: .dark currently
+	 * mirrors :root's palette values verbatim, so mirroring these would
+	 * be pure duplication. If .dark ever diverges from :root, these three
+	 * must be mirrored there too.
+	 */
+	--scrollbar-thumb: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+	--scrollbar-thumb-hover: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+	--scrollbar-track: transparent;
 }
 
 .dark {
@@ -141,6 +156,46 @@
 	body {
 		@apply bg-background text-foreground;
 		font-family: var(--font-sans);
+	}
+
+	/*
+	 * scrollbar-width and scrollbar-color are INHERITED CSS properties —
+	 * this single root-element declaration is what reaches every scroll
+	 * container in the app (stream pane, detail pane, search results,
+	 * index route). This inheritance is the entire delivery mechanism: no
+	 * component may re-declare either property locally, or coverage
+	 * silently fragments for whichever region gets a local override.
+	 */
+	:root {
+		scrollbar-width: thin;
+		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+	}
+
+	/*
+	 * Pre-121-Chromium WebKit fallback. Chromium 121+ honours the
+	 * standards-track properties above and ignores this entire block on
+	 * the same element — that precedence is intended, not a conflict;
+	 * this block exists solely for older Chromium, which never applies
+	 * scrollbar-width/scrollbar-color at all.
+	 */
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	::-webkit-scrollbar-track {
+		background: var(--scrollbar-track);
+	}
+	::-webkit-scrollbar-thumb {
+		background: var(--scrollbar-thumb);
+		border-radius: 9999px;
+		border: 2px solid transparent;
+		background-clip: padding-box;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background: var(--scrollbar-thumb-hover);
+	}
+	::-webkit-scrollbar-corner {
+		background: var(--scrollbar-track);
 	}
 }
 
