@@ -206,8 +206,21 @@
 		  non-empty, inside this same pane, so search introduces no second
 		  scroll region; the source-filter chips keep governing the stream,
 		  which returns exactly as it was when the query is cleared.
+
+		  Sizing: the detail pane (below) is the reading surface, so it
+		  absorbs viewport width changes (flex-1). The stream pane holds a
+		  fixed width (w-[480px], the same width the detail pane used to
+		  own) whenever an item is selected and the detail pane is open --
+		  driven by the same `selectedItem` value that gates the detail
+		  pane's rendering, so the two can never disagree. With nothing
+		  selected there is no sibling to size against, so the stream pane
+		  falls back to flex-1 and keeps filling the full content width.
 		-->
-		<div class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+		<div
+			class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto {selectedItem
+				? 'w-[480px] shrink-0'
+				: 'flex-1'}"
+		>
 			{#if searchQuery.trim()}
 				<SearchResults
 					query={searchQuery}
@@ -233,7 +246,7 @@
 		</div>
 
 		{#if selectedItem}
-			<div class="flex w-[480px] shrink-0 flex-col overflow-hidden border-l border-border pl-8">
+			<div class="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border pl-8">
 				<DetailPane
 					item={selectedItem}
 					displayName={sourcesByType.get(selectedItem.source_type)?.display_name ??
