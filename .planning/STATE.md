@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-last_updated: "2026-08-05T12:45:50.652Z"
-last_activity: "2026-08-05 - Completed quick task 260805-irt: pane flex fix (stream fixed, detail flexes)"
+last_updated: "2026-08-05T13:51:16.717Z"
+last_activity: "2026-08-05 - Completed quick task 260805-j98: themed scrollbars incl. rendition iframes"
 progress:
   total_phases: 8
   completed_phases: 4
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-05 - Completed quick task 260805-irt: pane flex fix (stream fixed, detail flexes)
+Last activity: 2026-08-05 - Completed quick task 260805-j98: themed scrollbars incl. rendition iframes
 
 Progress: [██████████] 100%
 
@@ -143,6 +143,7 @@ Recent decisions affecting current work:
 [From .planning/todos/pending/ — ideas captured during sessions]
 
 - 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
+- 2026-08-05 — Centralize rendition theming (and sanitization) in the kernel content boundary (major, api; schedule with Phase 5 contract work or ecosystem milestone)
 
 ### Blockers/Concerns
 
@@ -155,6 +156,7 @@ Recent decisions affecting current work:
 |---|-------------|------|--------|-----------|
 | 260729-p2n | create a wrapper script that exposes the env vars in .env to the webspaces binary | 2026-07-29 | 7becca1 | [260729-p2n-create-a-wrapper-script-that-exposes-the](./quick/260729-p2n-create-a-wrapper-script-that-exposes-the/) |
 | 260805-irt | fix pane flex: stream pane fixed width, detail pane flexes on viewport resize | 2026-08-05 | 4e51006 | [260805-irt-fix-pane-flex-stream-pane-fixed-width-de](./quick/260805-irt-fix-pane-flex-stream-pane-fixed-width-de/) |
+| 260805-j98 | style scrollbars: thin, theme-matched app-wide (incl. rendition iframes) | 2026-08-05 | 2604de1 | [260805-j98-style-scrollbars-thin-theme-matched-app-](./quick/260805-j98-style-scrollbars-thin-theme-matched-app-/) |
 
 ## Deferred Items
 
