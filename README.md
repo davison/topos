@@ -88,10 +88,15 @@ environment, and a config file describing your webspaces.
 ## Build and run
 
 ```bash
-make build              # builds the SPA, the kernel binary, and the paperless plugin binary
+make build              # builds the SPA, the kernel binary, and all five plugin binaries
 ./bin/webspaces sync    # runs one sync cycle against your configured sources
 ./bin/webspaces serve   # starts the kernel's HTTP API + embedded web UI
 ```
+
+`make plugins` rebuilds only the plugin binaries (paperless, silverbullet,
+proton, mock, and the cgo-enabled signal plugin) — useful when you only
+changed plugin source and don't want to pay for a full SPA + kernel
+rebuild.
 
 If your credentials live in a repo-root `.env` (see Configure above), use the
 wrapper instead of exporting them by hand:
@@ -126,11 +131,33 @@ edits to either side hot-reload independently. The kernel binary built
 this way never embeds a built SPA — only `make build`'s production build
 does that.
 
+`make dev` rebuilds every plugin binary (including the cgo-enabled
+signal plugin, via `make plugins`) before starting the kernel, so a
+plugin source edit always takes effect — this is why `make dev` needs
+system sqlcipher, the same prerequisite `make signal`/`make build`
+already have.
+
+It also refuses to start when `127.0.0.1:7777` is already in use,
+naming the process already holding it and that process's PID, and it
+will not start the Vite dev server against a kernel it did not itself
+just start — this is the failure mode the guard exists to prevent: a
+working-looking UI silently proxying to a stale kernel running old
+code. A kernel that dies during startup for any other reason (compile
+error, config error, bind failure) produces the same loud, non-zero
+failure instead of a half-started stack.
+
+`DEV_PORT`, `DEV_HOST`, and `DEV_READY_TIMEOUT` can be overridden on
+the `make` command line (e.g. `make dev DEV_PORT=9999`) if your
+`[server] listen` config uses a non-default address — `DEV_PORT` must
+stay in step with `web/vite.config.ts`'s hardcoded proxy target if you
+change it.
+
 ## Testing
 
 ```bash
 make test               # go build + go test across all three workspace modules
 make smoke              # make build, then scripts/e2e-smoke.sh
+make dev-check           # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
 ```
 
 `make test` needs no network access or live credentials — every committed
@@ -140,7 +167,11 @@ temp SQLite file. `make smoke` is different: it's a real end-to-end run
 against your actual configured paperless-ngx instance (it needs
 `PAPERLESS_URL`/`PAPERLESS_TOKEN` set, and a config file with at least one
 webspace already matching real documents), so it needs network access to
-your paperless-ngx instance and a live account.
+your paperless-ngx instance and a live account. `make dev-check` is
+different again: like `make test`, it needs no network access and no
+live credentials — it proves `make dev`'s port-guard and readiness-gate
+behaviour hermetically, using ephemeral ports it selects itself, so it's
+safe to run even while a real kernel is up on `127.0.0.1:7777`.
 
 ## Where to look next
 

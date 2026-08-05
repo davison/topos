@@ -1,4 +1,4 @@
-.PHONY: build test proto smoke dev plugins signal test-signal
+.PHONY: build test proto smoke dev plugins signal test-signal dev-check
 
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
 # `dev` recipe's pre-flight port guard and readiness gate below. The
@@ -109,6 +109,16 @@ proto:
 
 smoke: build
 	./scripts/e2e-smoke.sh
+
+# dev-check runs the hermetic behavioural guard for the `dev` recipe
+# above (scripts/dev-guard-smoke.sh): squatter on the dev port, kernel
+# dying during startup for another reason, and the unregressed happy
+# path. Unlike `smoke`, this needs no network access, no live
+# credentials, and no config file — it is safe to run at any time,
+# including while a real kernel is up on 127.0.0.1:7777, since it only
+# ever binds ephemeral ports it selects itself.
+dev-check:
+	./scripts/dev-guard-smoke.sh
 
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
