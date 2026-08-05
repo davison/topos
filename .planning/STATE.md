@@ -2,12 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5
 status: planning
-stopped_at: "Quick task 260805-kt3 complete (all 3 tasks): narrowed Proton deep-link, TDD RED/GREEN, live-approved by user (bare approval, no corrections/drops), docs landed in step"
-last_updated: "2026-08-05T14:38:46.987Z"
-last_activity: 2026-08-05
-last_activity_desc: "Completed quick task 260805-j98: themed scrollbars incl. rendition iframes"
+last_updated: "2026-08-05T15:09:51.451Z"
+last_activity: "2026-08-05 - Completed quick task 260805-lry: Signal schema 1740 accepted, source recovered"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -29,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-05 - Completed quick task 260805-j98: themed scrollbars incl. rendition iframes
+Last activity: 2026-08-05 - Completed quick task 260805-lry: Signal schema 1740 accepted, source recovered
 
 Progress: [██████████] 100%
 
@@ -163,6 +160,7 @@ Recent decisions affecting current work:
 | 260805-irt | fix pane flex: stream pane fixed width, detail pane flexes on viewport resize | 2026-08-05 | 4e51006 | [260805-irt-fix-pane-flex-stream-pane-fixed-width-de](./quick/260805-irt-fix-pane-flex-stream-pane-fixed-width-de/) |
 | 260805-j98 | style scrollbars: thin, theme-matched app-wide (incl. rendition iframes) | 2026-08-05 | 2604de1 | [260805-j98-style-scrollbars-thin-theme-matched-app-](./quick/260805-j98-style-scrollbars-thin-theme-matched-app-/) |
 | 260805-kt3 | narrow Proton deep-link search with sender+date criteria (live-approved) | 2026-08-05 | 1fb1fa6 | [260805-kt3-narrow-proton-deep-link-search-for-gener](./quick/260805-kt3-narrow-proton-deep-link-search-for-gener/) |
+| 260805-lry | accept Signal schema 1740 after live read-set verification (source recovered) | 2026-08-05 | 9f000c3 | [260805-lry-accept-signal-desktop-schema-version-174](./quick/260805-lry-accept-signal-desktop-schema-version-174/) |
 
 ## Deferred Items
 
