@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-last_updated: "2026-08-05T12:27:46.177Z"
-last_activity: 2026-08-04
+last_updated: "2026-08-05T12:45:50.652Z"
+last_activity: "2026-08-05 - Completed quick task 260805-irt: pane flex fix (stream fixed, detail flexes)"
 progress:
   total_phases: 8
   completed_phases: 4
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 Phase: 5
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-04
+Last activity: 2026-08-05 - Completed quick task 260805-irt: pane flex fix (stream fixed, detail flexes)
 
 Progress: [██████████] 100%
 
@@ -154,6 +154,7 @@ Recent decisions affecting current work:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260729-p2n | create a wrapper script that exposes the env vars in .env to the webspaces binary | 2026-07-29 | 7becca1 | [260729-p2n-create-a-wrapper-script-that-exposes-the](./quick/260729-p2n-create-a-wrapper-script-that-exposes-the/) |
+| 260805-irt | fix pane flex: stream pane fixed width, detail pane flexes on viewport resize | 2026-08-05 | 4e51006 | [260805-irt-fix-pane-flex-stream-pane-fixed-width-de](./quick/260805-irt-fix-pane-flex-stream-pane-fixed-width-de/) |
 
 ## Deferred Items
 
