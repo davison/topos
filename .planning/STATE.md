@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+current_phase: 5
 status: planning
-last_updated: "2026-08-05T13:51:16.717Z"
-last_activity: "2026-08-05 - Completed quick task 260805-j98: themed scrollbars incl. rendition iframes"
+stopped_at: "Quick task 260805-kt3 complete (all 3 tasks): narrowed Proton deep-link, TDD RED/GREEN, live-approved by user (bare approval, no corrections/drops), docs landed in step"
+last_updated: "2026-08-05T14:38:46.987Z"
+last_activity: 2026-08-05
+last_activity_desc: "Completed quick task 260805-j98: themed scrollbars incl. rendition iframes"
 progress:
-  total_phases: 8
+  total_phases: 4
   completed_phases: 4
   total_plans: 26
   completed_plans: 26
-  percent: 50
 ---
 
 # Project State
@@ -75,6 +77,7 @@ Progress: [██████████] 100%
 | Phase 04 P01 | 3h | 2 tasks | 20 files |
 | Phase 04 P02 | 2h | 3 tasks | 18 files |
 | Phase 04 P03 | ~2.5h | 3 tasks | 13 files |
+| Phase 260805-kt3 P01 | ~20min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -137,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase ?]: kwallet/kwallet5/kwallet6 route through freedesktop Secret Service (not native org.kde.KWallet), a documented scope limitation per plan instruction
 - [Phase ?]: [Phase 04-03]: Attachments and reactions read from Signal Desktop's own dedicated message_attachments/reactions SQL tables, never the message row's json blob — corrects 04-RESEARCH.md's illustrative assumption, confirmed by direct schema introspection of the real, live database
 - [Phase ?]: [Phase 04-03]: Fetch's FULL and PREVIEW variants share one path (fetchTranscript) — a Signal digest has no separate richer-preview-vs-extracted-text distinction the way an email does
+- [Phase ?]: [Quick 260805-kt3]: webmailSearchDeepLink extended to a deepLinkCriteria struct (subject/sender/date) via strict RED->GREEN TDD, keeping all 03-10 assertions byte-identical; Task 2 (live Proton checkpoint) and Task 3 (land verdict, update docs) deliberately not executed this run
+- [Phase ?]: [Quick 260805-kt3 Task 3]: Task 2's live-Proton checkpoint returned a bare 'approved' verdict (no corrections, no drops, no address-bar URL) — assumption register rows A-2..A-7 recorded as CONFIRMED-BY-BEHAVIOR (not the stronger CONFIRMED-BY-CANONICALIZED-URL the plan hoped for); no source change needed, config.example.toml/kernel/config/types.go docs updated to match shipped behavior
 
 ### Pending Todos
 
@@ -157,6 +162,7 @@ Recent decisions affecting current work:
 | 260729-p2n | create a wrapper script that exposes the env vars in .env to the webspaces binary | 2026-07-29 | 7becca1 | [260729-p2n-create-a-wrapper-script-that-exposes-the](./quick/260729-p2n-create-a-wrapper-script-that-exposes-the/) |
 | 260805-irt | fix pane flex: stream pane fixed width, detail pane flexes on viewport resize | 2026-08-05 | 4e51006 | [260805-irt-fix-pane-flex-stream-pane-fixed-width-de](./quick/260805-irt-fix-pane-flex-stream-pane-fixed-width-de/) |
 | 260805-j98 | style scrollbars: thin, theme-matched app-wide (incl. rendition iframes) | 2026-08-05 | 2604de1 | [260805-j98-style-scrollbars-thin-theme-matched-app-](./quick/260805-j98-style-scrollbars-thin-theme-matched-app-/) |
+| 260805-kt3 | narrow Proton deep-link search with sender+date criteria (live-approved) | 2026-08-05 | 1fb1fa6 | [260805-kt3-narrow-proton-deep-link-search-for-gener](./quick/260805-kt3-narrow-proton-deep-link-search-for-gener/) |
 
 ## Deferred Items
 
@@ -168,6 +174,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T10:32:40.164Z
-Stopped at: Roadmap restructured 2026-08-05: Phases 5-7 inserted, WhatsApp shifted to Phase 8. Ready to discuss Phase 5.
+Last session: 2026-08-05T14:38:46.975Z
+Stopped at: Quick task 260805-kt3 complete (all 3 tasks): narrowed Proton deep-link, TDD RED/GREEN, live-approved by user (bare approval, no corrections/drops), docs landed in step
 Resume file: None
