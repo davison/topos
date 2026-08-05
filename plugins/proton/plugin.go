@@ -349,17 +349,21 @@ func formatSender(envelope *imap.Envelope) (label, address string) {
 // addresses custom labels and folders by an internal id, not by name, so
 // a link built from a label's leaf name resolves to nothing and Proton
 // redirects to the inbox. Instead DeepLink is a search over the
-// account's All Mail view for the message's own subject (see
-// deeplink.go's webmailSearchDeepLink), which lands the reader in a
-// short filtered list containing the message — still honestly ANCHORED,
-// because the target is adjacent to the message rather than the message
-// itself.
+// account's All Mail view narrowed by the message's own subject, sender
+// and date (see deeplink.go's webmailSearchDeepLink), which lands the
+// reader in a short filtered list containing the message — still
+// honestly ANCHORED, because the target is adjacent to the message
+// rather than the message itself.
 func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 	title := m.envelope.Subject
 	if title == "" {
 		title = noSubjectPlaceholder
 	}
 
+	// groupID is formatSender's bare-address return (its SECOND return
+	// value) — the same structured, selective term the deep link's sender
+	// criterion uses below. groupLabel is the sender-authored display
+	// name and must never feed the criterion.
 	groupLabel, groupID := formatSender(m.envelope)
 
 	var primary int64
@@ -372,7 +376,25 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 		secondary = m.envelope.Date.Unix()
 	}
 
-	deepLink := webmailSearchDeepLink(p.webmailBaseURL, m.envelope.Subject)
+	// The deep link's date criterion follows the same precedence toItem
+	// already applies for its own primary/secondary timestamps —
+	// internalDate first, falling back to the envelope Date header, zero
+	// when both are — so the link's date agrees with the timestamp the
+	// stream sorts by.
+	deepLinkDate := m.internalDate
+	if deepLinkDate.IsZero() {
+		deepLinkDate = m.envelope.Date
+	}
+
+	deepLink := webmailSearchDeepLink(p.webmailBaseURL, deepLinkCriteria{
+		// The envelope's own subject, NOT the local title variable above:
+		// title has already been substituted with the no-subject
+		// placeholder by this point, and feeding it in would make the
+		// placeholder itself a search term (L-3).
+		Subject: m.envelope.Subject,
+		Sender:  groupID,
+		Date:    deepLinkDate,
+	})
 
 	return &webspacesv1.Item{
 		SourceId:               sourceID,
