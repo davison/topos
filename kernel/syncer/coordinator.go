@@ -32,6 +32,12 @@ import (
 // Coordinator was built with).
 var ErrUnknownSource = errors.New("syncer: unknown source")
 
+// finishRunTimeout bounds the detached sync_runs finalize write in
+// syncOne. It is deliberately short: the write is a single indexed UPDATE
+// against a local SQLite file, so anything approaching this budget means
+// the DB is wedged, and blocking shutdown longer would not help.
+const finishRunTimeout = 5 * time.Second
+
 // RunResult is the caller-facing outcome of one Refresh call — a summary
 // of a sync run that may have coalesced into an already in-flight one.
 type RunResult struct {
@@ -167,7 +173,25 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 	}
 
 	finished := time.Now().Unix()
-	if err := c.store.FinishSyncRun(ctx, runID, status, errMsg, totalItems); err != nil {
+
+	// Finalize on a context detached from ctx's cancellation. The run's
+	// outcome has ALREADY happened by this point, so recording it must
+	// never be skipped merely because the context that triggered the sync
+	// was cancelled in the meantime. Passing ctx straight through here was
+	// a latent orphan bug: when the scheduler's ctx is cancelled at
+	// shutdown (runServe's cancel()) while a source is mid-sync — or when
+	// the HTTP client behind a manual refresh disconnects — database/sql
+	// rejects this UPDATE outright with "context canceled", leaving the
+	// sync_runs row permanently at status "running". Because nothing
+	// finalizes it afterwards, that source's syncing indicator stays
+	// pinned on forever, across restarts. Proton was the source that hit
+	// this in practice: as the slowest source (IMAP over the network to
+	// Bridge) it has by far the widest window to be mid-sync at shutdown.
+	// The timeout keeps a detached write from hanging shutdown.
+	finishCtx, cancelFinish := context.WithTimeout(context.WithoutCancel(ctx), finishRunTimeout)
+	defer cancelFinish()
+
+	if err := c.store.FinishSyncRun(finishCtx, runID, status, errMsg, totalItems); err != nil {
 		// A failure to record the finished run is worse than a normal
 		// sync error — surface it in preference to the sync's own outcome.
 		return RunResult{Source: src.Name(), SourceType: sourceType, Status: "error", Error: fmt.Sprintf("finish sync run: %v", err), StartedUnix: started, FinishedUnix: finished}

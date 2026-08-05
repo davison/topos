@@ -259,3 +259,55 @@ func TestRefresh_RepeatedRefreshDoesNotDuplicateItems(t *testing.T) {
 		t.Errorf("expected item count unchanged at 1 after a second unchanged refresh, got %d", len(items))
 	}
 }
+
+// TestRefresh_CancelledContextStillFinalisesSyncRun is the regression proof
+// for the orphaned-run bug behind the permanently-stuck "Syncing..."
+// indicator. syncOne used to finalise the sync_runs row using the same
+// cancellable ctx the sync itself ran under, so when the scheduler's ctx
+// was cancelled mid-sync at shutdown, database/sql rejected the finalising
+// UPDATE with "context canceled" and the row stayed at status "running"
+// forever — nothing else in the system ever finalises it.
+//
+// The source's Match cancels the context to simulate shutdown landing
+// mid-sync. Afterwards the run must be recorded as finished (with any
+// outcome), and the source must not still report as syncing. This test
+// MUST fail if the finalise write is put back on the cancellable ctx.
+func TestRefresh_CancelledContextStillFinalisesSyncRun(t *testing.T) {
+	store := newTestStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	src := &fakeSource{
+		name: "proton", sourceType: "proton",
+		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+			cancel() // shutdown arrives while this source is mid-sync
+			return okMatchResponse("1", "https://mail.proton.me/1")
+		},
+	}
+	engine := &correlate.Engine{Store: store, Config: testConfig()}
+	coord := NewCoordinator(store, engine, []correlate.Source{src})
+
+	if _, err := coord.Refresh(ctx, "proton"); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	// Query with a fresh context, exactly as a later HTTP request would.
+	fresh := context.Background()
+
+	syncing, err := store.SyncingSourceTypes(fresh)
+	if err != nil {
+		t.Fatalf("SyncingSourceTypes: %v", err)
+	}
+	if syncing["proton"] {
+		t.Error("expected proton to not be syncing after a cancelled sync: the run was left orphaned at status \"running\"")
+	}
+
+	runs, err := store.LatestSyncRunPerSource(fresh)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	run := runs["proton"]
+	if run.Status == "running" || run.FinishedUnix == 0 {
+		t.Errorf("expected the interrupted run to be finalised with an outcome and a finished time, got: %+v", run)
+	}
+}

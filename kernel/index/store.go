@@ -545,6 +545,37 @@ UPDATE sync_runs SET finished_unix = unixepoch(), status = ?, error = ?, item_co
 	return nil
 }
 
+// ReconcileInterruptedSyncRuns finalises every sync_runs row still left at
+// status "running" with a NULL finished_unix, marking it "error" with an
+// "interrupted" message, and returns how many rows it repaired.
+//
+// This is a startup-only repair and is safe precisely because the
+// coordinator (kernel/syncer) is the only writer of these rows and holds
+// its in-flight run IDs in memory: a freshly-started kernel has no
+// in-flight runs by definition, so any row still "running" at boot was
+// stranded by a previous process that died or was cancelled before it
+// could finalise. Without this, such a row survives every restart forever
+// — there is no other path in the system that ever finalises it.
+//
+// Rows are recorded as "error"/interrupted rather than deleted: the run
+// genuinely was attempted and genuinely did not complete, and silently
+// dropping it would misreport sync history as cleaner than it was.
+func (s *Store) ReconcileInterruptedSyncRuns(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE sync_runs
+SET finished_unix = unixepoch(), status = 'error', error = 'interrupted: kernel stopped before this sync run finished'
+WHERE status = 'running' AND finished_unix IS NULL
+`)
+	if err != nil {
+		return 0, fmt.Errorf("index: reconcile interrupted sync runs: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("index: reconcile interrupted sync runs rows affected: %w", err)
+	}
+	return n, nil
+}
+
 // LatestSyncRunPerSource returns the most recently started sync_runs row
 // for every source_type that has ever recorded one, keyed by source_type.
 // A still-running row (NULL finished_unix) scans as FinishedUnix 0,
@@ -576,11 +607,26 @@ WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source_type)
 	return out, nil
 }
 
-// SyncingSourceTypes returns the set of source types with an unfinished
-// (status "running", finished_unix still NULL) sync_runs row right now.
+// SyncingSourceTypes returns the set of source types whose LATEST sync_runs
+// row is unfinished (status "running", finished_unix still NULL) — i.e. the
+// sources syncing right now.
+//
+// The latest-row restriction is load-bearing, not an optimisation. This
+// query previously matched ANY running row (`WHERE status = 'running'`
+// alone), which meant a single orphaned row — one left unfinalised by an
+// interrupted sync — reported its source as syncing forever, outvoting
+// every subsequent successful run and pinning the UI's spinner on
+// permanently. A source's current sync state is a property of its current
+// run, so only the newest row can answer it: a started run inserts the
+// newest row (syncing true) and finishing updates that same row in place
+// (syncing false), while any older stranded row is correctly ignored.
+// ReconcileInterruptedSyncRuns clears such orphans at startup; this bounds
+// the damage if one is ever created while the kernel is running.
 func (s *Store) SyncingSourceTypes(ctx context.Context) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT DISTINCT source_type FROM sync_runs WHERE status = 'running' AND finished_unix IS NULL
+SELECT source_type FROM sync_runs
+WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source_type)
+  AND status = 'running' AND finished_unix IS NULL
 `)
 	if err != nil {
 		return nil, fmt.Errorf("index: syncing source types: %w", err)

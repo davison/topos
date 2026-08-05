@@ -418,6 +418,182 @@ func TestSyncingSourceTypes_UnrelatedSourceUnaffected(t *testing.T) {
 	}
 }
 
+// startOrphanedRun inserts a sync_runs row for sourceType and abandons it
+// unfinalised — reproducing a run stranded at status "running" by a kernel
+// that died or was cancelled before FinishSyncRun could record its outcome.
+func startOrphanedRun(t *testing.T, s *Store, sourceType string) {
+	t.Helper()
+	if _, err := s.StartSyncRun(context.Background(), sourceType); err != nil {
+		t.Fatalf("StartSyncRun(%s): %v", sourceType, err)
+	}
+}
+
+// TestSyncingSourceTypes_OrphanedRunDoesNotOutvoteLaterCompletedRun is the
+// regression proof for the permanently-stuck "Syncing..." indicator: a
+// source with one stranded "running" row followed by a COMPLETED run is not
+// syncing. The query previously matched any running row at all, so a single
+// orphan outvoted every later successful run and pinned the UI spinner on
+// forever, across restarts. This test MUST fail if SyncingSourceTypes drops
+// its latest-row-per-source restriction.
+func TestSyncingSourceTypes_OrphanedRunDoesNotOutvoteLaterCompletedRun(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	startOrphanedRun(t, s, "proton")
+
+	// One later run that starts AND finishes normally, exactly as every
+	// scheduled sync after the orphan did.
+	id, err := s.StartSyncRun(ctx, "proton")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id, "ok", "", 44); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	syncing, err := s.SyncingSourceTypes(ctx)
+	if err != nil {
+		t.Fatalf("SyncingSourceTypes: %v", err)
+	}
+	if syncing["proton"] {
+		t.Error("expected proton to not be syncing: its latest run completed, and an older orphaned row must not outvote it")
+	}
+}
+
+// TestSyncingSourceTypes_OrphanBoundaries pins the neighbours either side of
+// the fixed defect, so the latest-row restriction cannot be "fixed" into
+// simply never reporting a source as syncing.
+func TestSyncingSourceTypes_OrphanBoundaries(t *testing.T) {
+	t.Run("orphan as the only row still reports syncing", func(t *testing.T) {
+		s := openTestStore(t)
+		startOrphanedRun(t, s, "proton")
+
+		syncing, err := s.SyncingSourceTypes(context.Background())
+		if err != nil {
+			t.Fatalf("SyncingSourceTypes: %v", err)
+		}
+		if !syncing["proton"] {
+			t.Error("expected proton to be syncing: its only (latest) run is unfinished")
+		}
+	})
+
+	t.Run("a genuinely in-flight run after an orphan still reports syncing", func(t *testing.T) {
+		s := openTestStore(t)
+		ctx := context.Background()
+		startOrphanedRun(t, s, "proton")
+
+		id, err := s.StartSyncRun(ctx, "proton")
+		if err != nil {
+			t.Fatalf("StartSyncRun: %v", err)
+		}
+		syncing, err := s.SyncingSourceTypes(ctx)
+		if err != nil {
+			t.Fatalf("SyncingSourceTypes: %v", err)
+		}
+		if !syncing["proton"] {
+			t.Error("expected proton to be syncing: its latest run is genuinely in flight")
+		}
+
+		if err := s.FinishSyncRun(ctx, id, "ok", "", 1); err != nil {
+			t.Fatalf("FinishSyncRun: %v", err)
+		}
+		syncing, err = s.SyncingSourceTypes(ctx)
+		if err != nil {
+			t.Fatalf("SyncingSourceTypes: %v", err)
+		}
+		if syncing["proton"] {
+			t.Error("expected proton to stop syncing once its latest run finished")
+		}
+	})
+
+	t.Run("one source's orphan does not mark another source syncing", func(t *testing.T) {
+		s := openTestStore(t)
+		ctx := context.Background()
+		startOrphanedRun(t, s, "proton")
+
+		id, err := s.StartSyncRun(ctx, "paperless")
+		if err != nil {
+			t.Fatalf("StartSyncRun: %v", err)
+		}
+		if err := s.FinishSyncRun(ctx, id, "ok", "", 37); err != nil {
+			t.Fatalf("FinishSyncRun: %v", err)
+		}
+
+		syncing, err := s.SyncingSourceTypes(ctx)
+		if err != nil {
+			t.Fatalf("SyncingSourceTypes: %v", err)
+		}
+		if syncing["paperless"] {
+			t.Error("expected paperless to not be syncing: proton's orphan must not leak across sources")
+		}
+	})
+}
+
+// TestReconcileInterruptedSyncRuns proves the startup repair finalises
+// stranded "running" rows — the only path in the system that ever heals an
+// orphan left by a previous kernel session — without touching rows that
+// already recorded an outcome.
+func TestReconcileInterruptedSyncRuns(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	startOrphanedRun(t, s, "proton")
+	startOrphanedRun(t, s, "signal")
+
+	done, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, done, "ok", "", 37); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	n, err := s.ReconcileInterruptedSyncRuns(ctx)
+	if err != nil {
+		t.Fatalf("ReconcileInterruptedSyncRuns: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 stranded rows repaired, got %d", n)
+	}
+
+	syncing, err := s.SyncingSourceTypes(ctx)
+	if err != nil {
+		t.Fatalf("SyncingSourceTypes: %v", err)
+	}
+	if len(syncing) != 0 {
+		t.Errorf("expected no source to be syncing after reconciliation, got %v", syncing)
+	}
+
+	runs, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	for _, st := range []string{"proton", "signal"} {
+		run := runs[st]
+		if run.Status != "error" {
+			t.Errorf("%s: expected repaired status \"error\", got %q", st, run.Status)
+		}
+		if run.Error == "" {
+			t.Errorf("%s: expected a non-empty interrupted message on the repaired row", st)
+		}
+		if run.FinishedUnix == 0 {
+			t.Errorf("%s: expected the repaired row to record a finished time", st)
+		}
+	}
+	if runs["paperless"].Status != "ok" || runs["paperless"].Error != "" {
+		t.Errorf("reconciliation must not touch an already-finalised row, got: %+v", runs["paperless"])
+	}
+
+	// Idempotent: a second run with nothing stranded repairs nothing.
+	n, err = s.ReconcileInterruptedSyncRuns(ctx)
+	if err != nil {
+		t.Fatalf("ReconcileInterruptedSyncRuns (second call): %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 rows repaired on a second call, got %d", n)
+	}
+}
+
 // searchableItem builds an item whose title/preview are distinguishable
 // search targets, unlike sampleItem's fixed "Doc {id}"/"preview text".
 func searchableItem(sourceID string, ts int64, title, preview string) item.Item {

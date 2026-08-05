@@ -164,6 +164,19 @@ func runServe() error {
 	defer host.Shutdown()
 	defer store.Close()
 
+	// Repair sync_runs rows stranded at "running" by a previous kernel that
+	// died or was cancelled mid-sync. A freshly-started kernel has no
+	// in-flight runs, so any such row is orphaned by definition — and
+	// nothing else in the system ever finalises it, so without this it
+	// survives every restart and keeps reporting its source as syncing.
+	if n, err := store.ReconcileInterruptedSyncRuns(ctx); err != nil {
+		// A failed repair must not stop the kernel booting: the worst case
+		// is the pre-existing stale indicator, not a broken server.
+		logger.Error("could not reconcile interrupted sync runs", "error", err.Error())
+	} else if n > 0 {
+		logger.Info("reconciled interrupted sync runs from a previous kernel session", "rows", n)
+	}
+
 	coord := newCoordinator(store, cfg, host)
 
 	// Background scheduler (KERN-04, D-05): one goroutine per configured
