@@ -217,6 +217,33 @@ func renderBubble(m messageRecord, align string, showTimestamp bool) string {
 // exactly as Phase 3 protected it for search (04-UI-SPEC.md Color).
 const signalThemeStyle = `
 :root { color-scheme: dark; }
+/* Scrollbar styling (Quick task 260805-j98 follow-up). This document is
+   served through the kernel's own /content route and rendered inside the
+   detail pane's iframe (web/src/lib/components/DetailPane.svelte) — a
+   SEPARATE document from the SPA, so the SPA's own root-level
+   scrollbar-width/scrollbar-color (web/src/app.css) cannot inherit across
+   that document boundary. This block is the same thin, theme-matched
+   treatment applied independently, inside this self-contained
+   stylesheet. It cannot reference web/src/app.css's var(--muted-foreground)
+   custom property (that document doesn't exist here), so the color is the
+   resolved rgba() equivalent of that same file's derived scrollbar
+   tokens: --muted-foreground (#94a3b8 / rgb(148,163,184)) mixed to 35%/60%
+   opacity against transparent, matching color-mix(in srgb, X p%,
+   transparent)'s well-established same-RGB/alpha-only-scaled result. */
+:root {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
+::-webkit-scrollbar-corner { background: transparent; }
 html, body {
   margin: 0;
   padding: 16px;

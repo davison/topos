@@ -123,3 +123,33 @@ func TestWrapDocument_StyleNeverReprocessedThroughSanitizer(t *testing.T) {
 		t.Errorf("expected the literal stylesheet text to survive unmodified, got: %s", doc)
 	}
 }
+
+// TestWrapDocument_InjectsThinThemeMatchedScrollbar is the regression test
+// for the live-UAT-found gap (Quick task 260805-j98 follow-up): the
+// SPA's stream/detail scrollbar was restyled thin and theme-matched via
+// web/src/app.css's root-level scrollbar-width/scrollbar-color, but that
+// document-level CSS cannot cross the iframe boundary into THIS
+// self-contained document (the rendered-note's own themeStyle) — so a
+// SilverBullet note rendition kept the browser-default scrollbar until
+// this rule was added directly here.
+func TestWrapDocument_InjectsThinThemeMatchedScrollbar(t *testing.T) {
+	doc := WrapDocument([]byte("<p>hello</p>"))
+	got := string(doc)
+
+	if !strings.Contains(got, "scrollbar-width: thin") {
+		t.Errorf("expected the wrapped document's stylesheet to declare scrollbar-width: thin, got: %s", got)
+	}
+	if !strings.Contains(got, "scrollbar-color:") {
+		t.Errorf("expected the wrapped document's stylesheet to declare scrollbar-color, got: %s", got)
+	}
+	if !strings.Contains(got, "::-webkit-scrollbar-thumb") {
+		t.Errorf("expected the WebKit pseudo-element fallback (pre-121 Chromium) in the wrapped document, got: %s", got)
+	}
+	// rgba(148, 163, 184, ...) is the resolved equivalent of
+	// web/src/app.css's var(--muted-foreground) (#94a3b8) mixed via
+	// color-mix() — this document cannot reference that custom property,
+	// so the color must be this same resolved value, not a new one.
+	if !strings.Contains(got, "148, 163, 184") {
+		t.Errorf("expected the scrollbar color to resolve from the same --muted-foreground token as web/src/app.css (rgb 148,163,184), got: %s", got)
+	}
+}
