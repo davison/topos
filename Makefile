@@ -1,4 +1,4 @@
-.PHONY: build test proto smoke dev
+.PHONY: build test proto smoke dev plugins signal test-signal
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
 # the kernel binary, and the plugin binaries — webspaces-plugin-paperless,
@@ -8,11 +8,26 @@
 # the "signal" target below — the first cgo-enabled plugin in this repo)
 # — in that order. The kernel embed directive needs kernel/webui/build
 # populated before `go build` runs to embed anything beyond the committed
-# .gitkeep placeholder.
+# .gitkeep placeholder. The plugin set itself is built by the "plugins"
+# target below so `dev` and `build` share one definition and can never
+# drift apart.
 build:
 	npm --prefix web ci
 	npm --prefix web run build
 	CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
+	$(MAKE) plugins
+
+# plugins builds the full plugin set — the four CGO_ENABLED=0 binaries
+# plus the cgo signal plugin via its own isolated target — and nothing
+# else (no npm, no kernel build), so it is usable from the dev loop
+# without touching kernel/webui/build. It exists so `make dev` can
+# guarantee fresh plugin binaries before the kernel starts without
+# paying for a full `build`. It deliberately includes the cgo signal
+# plugin: a machine without system sqlcipher fails here rather than
+# starting a kernel with an incomplete plugin set. `build` delegates to
+# this target so the plugin set is defined once.
+plugins:
+	mkdir -p bin/plugins
 	go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
 	go build -o bin/plugins/webspaces-plugin-silverbullet ./plugins/silverbullet
 	go build -o bin/plugins/webspaces-plugin-proton ./plugins/proton
@@ -74,7 +89,7 @@ smoke: build
 # binary is never embedded here — Vite's dev server proxies /api to
 # 127.0.0.1:7777 (see web/vite.config.ts), so edits to either side hot
 # reload independently.
-dev:
+dev: plugins
 	@trap 'kill 0' EXIT INT TERM; \
 	go run ./cmd/webspaces serve & \
 	npm --prefix web run dev -- --open & \
