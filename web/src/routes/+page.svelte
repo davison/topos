@@ -21,11 +21,11 @@
 </script>
 
 <svelte:head>
-	<title>webspaces</title>
+	<title>topos</title>
 </svelte:head>
 
 <main class="mx-auto max-w-3xl px-6 py-12">
-	<h1 class="text-[28px] leading-[1.2] font-semibold text-foreground">webspaces</h1>
+	<h1 class="text-[28px] leading-[1.2] font-semibold text-foreground">topos</h1>
 
 	{#if loading}
 		<div class="mt-6 flex flex-col gap-3">
@@ -35,12 +35,12 @@
 		</div>
 	{:else if error}
 		<p class="mt-6 text-[16px] text-muted-foreground">
-			Couldn't load this webspace — the webspaces service didn't respond. Check that it's
+			Couldn't load this webspace — the topos service didn't respond. Check that it's
 			running, then retry.
 		</p>
 	{:else if webspaces.length === 0}
 		<p class="mt-6 text-[16px] text-muted-foreground">
-			No webspaces are configured yet. Add one to ~/.config/webspaces/config.toml.
+			No webspaces are configured yet. Add one to ~/.config/topos/config.toml.
 		</p>
 	{:else}
 		<div class="mt-6 flex flex-col gap-3">

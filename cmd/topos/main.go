@@ -1,5 +1,5 @@
-// Command webspaces is the kernel binary: `webspaces serve` and
-// `webspaces sync`.
+// Command topos is the kernel binary: `topos serve` and
+// `topos sync`.
 package main
 
 import (
@@ -42,23 +42,23 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: webspaces <serve|sync>")
+	fmt.Fprintln(os.Stderr, "usage: topos <serve|sync>")
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "webspaces:", err)
+	fmt.Fprintln(os.Stderr, "topos:", err)
 	os.Exit(1)
 }
 
 func configPath() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "webspaces", "config.toml")
+		return filepath.Join(xdg, "topos", "config.toml")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "config.toml"
 	}
-	return filepath.Join(home, ".config", "webspaces", "config.toml")
+	return filepath.Join(home, ".config", "topos", "config.toml")
 }
 
 // pluginsDir resolves cfg.Plugins.Dir relative to the running executable
@@ -76,7 +76,7 @@ func pluginsDir(cfg *config.Config) (string, error) {
 
 func setupLogger() hclog.Logger {
 	return hclog.New(&hclog.LoggerOptions{
-		Name:  "webspaces",
+		Name:  "topos",
 		Level: hclog.Info,
 	})
 }
@@ -193,7 +193,7 @@ func runServe() error {
 		logger.Warn("kernel HTTP listener is not bound to loopback — this exposes the API beyond this machine", "listen", listen)
 	}
 
-	logger.Info("webspaces serving", "listen", listen)
+	logger.Info("topos serving", "listen", listen)
 	return http.ListenAndServe(listen, router)
 }
 

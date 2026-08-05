@@ -1,4 +1,4 @@
-// Command webspaces-plugin-signal is the Signal (local Signal Desktop
+// Command topos-plugin-signal is the Signal (local Signal Desktop
 // SQLCipher database) source plugin subprocess, launched by the kernel's
 // plugin host over the go-plugin gRPC handshake — the first cgo-enabled
 // plugin in this repo (see go.mod's replace directive and this repo's
@@ -88,6 +88,6 @@ func expandHome(path string) (string, error) {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "webspaces-plugin-signal:", err)
+	fmt.Fprintln(os.Stderr, "topos-plugin-signal:", err)
 	os.Exit(1)
 }

@@ -3,7 +3,7 @@
 // RPC once and persists the resulting items into the local index. This is
 // the ONLY package in the repository permitted to call a plugin's Match
 // RPC — kernel/httpapi's stream handler reads exclusively from
-// kernel/index. Its only non-test callers are cmd/webspaces/main.go
+// kernel/index. Its only non-test callers are cmd/topos/main.go
 // (source-list construction) and kernel/syncer.Coordinator, which is the
 // only caller of SyncSource — see kernel/syncer/coordinator.go's package
 // doc for why.

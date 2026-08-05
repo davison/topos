@@ -1,4 +1,4 @@
-// Command webspaces-plugin-silverbullet is the SilverBullet source plugin
+// Command topos-plugin-silverbullet is the SilverBullet source plugin
 // subprocess, launched by the kernel's plugin host over the go-plugin
 // gRPC handshake.
 package main
@@ -61,6 +61,6 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "webspaces-plugin-silverbullet:", err)
+	fmt.Fprintln(os.Stderr, "topos-plugin-silverbullet:", err)
 	os.Exit(1)
 }

@@ -2,9 +2,9 @@
 
 ## Project
 
-**Webspaces**
+**topos**
 
-Webspaces is a locally-run service that pulls together related information from disparate personal data silos — email accounts, Signal and WhatsApp chats, document storage, note-taking apps, wikis, and project directories — into per-topic "webspaces". Instead of visiting each application to piece together the state of a project or topic, you open its webspace and see all related objects in one rich, view-only interface, with deep links back to the original application for anything beyond viewing.
+topos is a locally-run service that pulls together related information from disparate personal data silos — email accounts, Signal and WhatsApp chats, document storage, note-taking apps, wikis, and project directories — into per-topic "webspaces". Instead of visiting each application to piece together the state of a project or topic, you open its webspace and see all related objects in one rich, view-only interface, with deep links back to the original application for anything beyond viewing.
 
 **Core Value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
 

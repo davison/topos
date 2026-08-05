@@ -14,7 +14,7 @@ kernel/webui/build/*
 # compile to a binary named after their directory in the cwd when no -o is
 # given) — always build via `make build` (which passes explicit -o paths)
 # or scripts/e2e-smoke.sh instead.
-/webspaces
+/topos
 /plugins/paperless/paperless
 /plugins/silverbullet/silverbullet
 /plugins/mock/mock

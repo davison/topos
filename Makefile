@@ -3,7 +3,7 @@
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
 # `dev` recipe's pre-flight port guard and readiness gate below. The
 # default MUST match web/vite.config.ts's hardcoded proxy target and
-# the [server] listen value in ~/.config/webspaces/config.toml — if one
+# the [server] listen value in ~/.config/topos/config.toml — if one
 # moves, the other must move. Override on the command line
 # (`make dev DEV_PORT=9999`) if your config uses a non-default port;
 # this is the supported escape valve, not a way to skip the guard.
@@ -22,14 +22,14 @@ DEV_READY_TIMEOUT ?= 60
 # real Vite server. Overriding them changes WHICH children run — it
 # never disables any guard; the pre-flight port check and readiness
 # gate run identically regardless of what these point at.
-DEV_KERNEL_CMD ?= go run ./cmd/webspaces serve
+DEV_KERNEL_CMD ?= go run ./cmd/topos serve
 DEV_UI_CMD ?= npm --prefix web run dev -- --open
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
-# the kernel binary, and the plugin binaries — webspaces-plugin-paperless,
-# webspaces-plugin-silverbullet, webspaces-plugin-proton,
-# webspaces-plugin-mock (the reference plugin PLUG-05 validates
-# docs/plugin-contract.md against), and webspaces-plugin-signal (built by
+# the kernel binary, and the plugin binaries — topos-plugin-paperless,
+# topos-plugin-silverbullet, topos-plugin-proton,
+# topos-plugin-mock (the reference plugin PLUG-05 validates
+# docs/plugin-contract.md against), and topos-plugin-signal (built by
 # the "signal" target below — the first cgo-enabled plugin in this repo)
 # — in that order. The kernel embed directive needs kernel/webui/build
 # populated before `go build` runs to embed anything beyond the committed
@@ -39,7 +39,7 @@ DEV_UI_CMD ?= npm --prefix web run dev -- --open
 build:
 	npm --prefix web ci
 	npm --prefix web run build
-	CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
+	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	$(MAKE) plugins
 
 # plugins builds the full plugin set — the four CGO_ENABLED=0 binaries
@@ -53,10 +53,10 @@ build:
 # this target so the plugin set is defined once.
 plugins:
 	mkdir -p bin/plugins
-	go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
-	go build -o bin/plugins/webspaces-plugin-silverbullet ./plugins/silverbullet
-	go build -o bin/plugins/webspaces-plugin-proton ./plugins/proton
-	go build -o bin/plugins/webspaces-plugin-mock ./plugins/mock
+	go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
+	go build -o bin/plugins/topos-plugin-silverbullet ./plugins/silverbullet
+	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
+	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	$(MAKE) signal
 
 # signal builds the Signal plugin binary (SRC-02). Unlike every other
@@ -72,7 +72,7 @@ plugins:
 # cgo-enabled build in the repo, isolated to this one target so a build
 # of everything else never needs a C toolchain or this system package.
 signal:
-	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/webspaces-plugin-signal ./plugins/signal
+	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
 # test runs the test suite across all six workspace modules (sdk,
 # paperless, silverbullet, proton, mock, signal) plus the root kernel

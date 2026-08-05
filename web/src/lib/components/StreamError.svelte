@@ -19,7 +19,7 @@
 	<Alert variant="destructive" class="max-w-md">
 		<AlertTitle>Couldn't load this webspace</AlertTitle>
 		<AlertDescription>
-			<p>The webspaces service didn't respond — check that it's running, then retry.</p>
+			<p>The topos service didn't respond — check that it's running, then retry.</p>
 			{#if syncError}
 				<p class="mt-2 text-[14px] leading-[1.4]">{syncError}</p>
 			{/if}

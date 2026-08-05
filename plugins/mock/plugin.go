@@ -145,7 +145,7 @@ func provenanceFor(sourceID string) map[string]string {
 		"source_type":      sourceType,
 		"source_system":    sourceSystem,
 		"source_id":        sourceID,
-		"plugin":           "webspaces-plugin-mock",
+		"plugin":           "topos-plugin-mock",
 		"contract_version": contractVersion,
 	}
 }

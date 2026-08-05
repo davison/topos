@@ -1,4 +1,4 @@
-// Command webspaces-plugin-mock is the reference "mock" source plugin
+// Command topos-plugin-mock is the reference "mock" source plugin
 // subprocess (PLUG-05): a working SourcePlugin built entirely from the
 // published contract (docs/plugin-contract.md), the wire contract
 // (proto/topos/v1/plugin.proto) and the sdk module — with no network

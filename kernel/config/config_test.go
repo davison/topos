@@ -30,7 +30,7 @@ listen = "127.0.0.1:7777"
 path = "/tmp/webspaces-index.db"
 
 [sources.paperless]
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 base_url = "${TEST_PAPERLESS_URL}"
 token = "${TEST_PAPERLESS_TOKEN}"
 api_version = "10"
@@ -116,7 +116,7 @@ func TestLoad_MissingEnvVarNamedInError(t *testing.T) {
 
 	path := writeTempConfig(t, `
 [sources.paperless]
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 base_url = "${TEST_UNSET_PAPERLESS_URL}"
 token = "${TEST_UNSET_PAPERLESS_TOKEN}"
 api_version = "10"
@@ -156,7 +156,7 @@ func TestSyncIntervalFor_GlobalOverrideAppliesToEverySource(t *testing.T) {
 interval = "5m"
 
 [sources.paperless]
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 base_url = "${TEST_SYNC_URL}"
 token = "${TEST_SYNC_TOKEN}"
 `)
@@ -183,12 +183,12 @@ func TestSyncIntervalFor_PerSourceOverrideAppliesOnlyToThatSource(t *testing.T) 
 interval = "5m"
 
 [sources.paperless]
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 base_url = "${TEST_SYNC_URL}"
 token = "${TEST_SYNC_TOKEN}"
 
 [sources.silverbullet]
-plugin = "webspaces-plugin-silverbullet"
+plugin = "topos-plugin-silverbullet"
 base_url = "${TEST_SYNC_URL2}"
 token = "${TEST_SYNC_TOKEN2}"
 sync_interval = "1m"
@@ -263,7 +263,7 @@ func TestLoad_UnparseablePerSourceIntervalFailsNamingTheKey(t *testing.T) {
 	t.Setenv("TEST_SYNC_TOKEN3", "tok")
 	path := writeTempConfig(t, `
 [sources.paperless]
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 base_url = "${TEST_SYNC_URL3}"
 token = "${TEST_SYNC_TOKEN3}"
 sync_interval = "soon"
@@ -373,7 +373,7 @@ handoff = true
 func TestLoad_PathOnlySourceValidatesCleanly(t *testing.T) {
 	path := writeTempConfig(t, `
 [sources.signal]
-plugin = "webspaces-plugin-signal"
+plugin = "topos-plugin-signal"
 path = "~/.config/Signal"
 `)
 	cfg, err := Load(path)
@@ -392,7 +392,7 @@ path = "~/.config/Signal"
 func TestLoad_SourceWithNeitherPathNorBaseURLTokenFailsNamingBothShapes(t *testing.T) {
 	path := writeTempConfig(t, `
 [sources.broken]
-plugin = "webspaces-plugin-broken"
+plugin = "topos-plugin-broken"
 `)
 	_, err := Load(path)
 	if err == nil {
@@ -410,13 +410,13 @@ func TestLoad_ExpandsHomeInIndexPath(t *testing.T) {
 	}
 	path := writeTempConfig(t, `
 [index]
-path = "~/.local/share/webspaces/index.db"
+path = "~/.local/share/topos/index.db"
 `)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := home + "/.local/share/webspaces/index.db"
+	want := home + "/.local/share/topos/index.db"
 	if cfg.Index.Path != want {
 		t.Errorf("expected index path %q, got %q", want, cfg.Index.Path)
 	}

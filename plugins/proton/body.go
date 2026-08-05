@@ -1,4 +1,4 @@
-// Command webspaces-plugin-proton: MIME part extraction from a peeked
+// Command topos-plugin-proton: MIME part extraction from a peeked
 // RFC822 message, plus (03-02) the bluemonday-based sanitize-and-wrap
 // pipeline for the text/html rendition path — the HTML-body counterpart
 // to plugins/silverbullet/render.go's markdown-based one.

@@ -143,8 +143,8 @@ chmod +x "$WORK/ui.sh"
 # real dev recipe body still ignores every override below:
 #   - BROWSER=none suppresses Vite's --open browser launch.
 #   - XDG_CONFIG_HOME points at a directory this script controls that
-#     never contains a webspaces/config.toml. If the real
-#     `go run ./cmd/webspaces serve` command is ever actually invoked
+#     never contains a topos/config.toml. If the real
+#     `go run ./cmd/topos serve` command is ever actually invoked
 #     (only possible pre-guard, since every guarded case replaces it
 #     with a fake), config.Load fails immediately — before any plugin
 #     subprocess launches, before any real sync starts, before any bind
@@ -229,7 +229,7 @@ P1="$(free_port)"
 "$WORK/hold.sh" "$P1" 300 &
 SQUATTER_PID=$!
 sleep 0.5
-rm -f bin/plugins/webspaces-plugin-mock
+rm -f bin/plugins/topos-plugin-mock
 
 run_case 300 dev "DEV_PORT=$P1"
 RC1=$?
@@ -265,11 +265,11 @@ kill "$SQUATTER_PID" 2>/dev/null || true
 wait "$SQUATTER_PID" 2>/dev/null || true
 SQUATTER_PID=""
 
-if [ ! -x bin/plugins/webspaces-plugin-mock ]; then
-  echo "FAIL: case 1 expected bin/plugins/webspaces-plugin-mock to have been rebuilt by the plugins prerequisite" >&2
+if [ ! -x bin/plugins/topos-plugin-mock ]; then
+  echo "FAIL: case 1 expected bin/plugins/topos-plugin-mock to have been rebuilt by the plugins prerequisite" >&2
   exit 1
 fi
-if [ "bin/plugins/webspaces-plugin-mock" -ot "$WORK/marker" ]; then
+if [ "bin/plugins/topos-plugin-mock" -ot "$WORK/marker" ]; then
   echo "FAIL: case 1 mock plugin binary is not newer than the run's start marker — it was not rebuilt" >&2
   exit 1
 fi

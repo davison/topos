@@ -1,4 +1,4 @@
-# The webspaces kernel HTTP API
+# The topos kernel HTTP API
 
 This is the complete JSON contract the kernel serves over its loopback
 HTTP listener. There are **two route namespaces sharing one JSON
@@ -116,7 +116,7 @@ $ curl -s http://127.0.0.1:7777/api/webspaces/house-move/stream | jq
         "source_type": "paperless",
         "source_system": "https://paperless.example.lan",
         "source_id": "528",
-        "plugin": "webspaces-plugin-paperless",
+        "plugin": "topos-plugin-paperless",
         "contract_version": "topos.v1",
         "synced_at_unix": "1785000000"
       }
@@ -364,7 +364,7 @@ source's own `reachable: false`, never a `500`.
 Trigger a manual sync of one configured source, or every configured
 source, through the exact same coordinator entry point the background
 scheduler uses (`KERN-04`) — a manual refresh, a scheduled tick, and the
-`webspaces sync` CLI command all dedupe against each other via the same
+`topos sync` CLI command all dedupe against each other via the same
 single-flight guarantee. A refresh request for a source that is already
 syncing **coalesces** into that in-flight run and reports its outcome; it
 is never queued behind it and never starts a second concurrent sync for
@@ -520,7 +520,7 @@ Every item's `provenance` object carries exactly these six keys:
 | `source_type` | Matches the item's own `source_type` / id prefix. |
 | `source_system` | The specific source instance this item came from (e.g. a paperless-ngx base URL) — distinguishes "which paperless-ngx" if you ever configure more than one. |
 | `source_id` | Matches the item's own `source_id`. |
-| `plugin` | The plugin binary name that produced this item (e.g. `"webspaces-plugin-paperless"`). |
+| `plugin` | The plugin binary name that produced this item (e.g. `"topos-plugin-paperless"`). |
 | `contract_version` | The plugin's own `Describe`-reported contract version (e.g. `"topos.v1"`). |
 | `synced_at_unix` | When the kernel's index last wrote this row, as a Unix timestamp string — set by the kernel itself at read time, never by a plugin. |
 

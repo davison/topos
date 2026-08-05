@@ -1,4 +1,4 @@
-// Command webspaces-plugin-proton is the Proton Mail (IMAP, via Proton
+// Command topos-plugin-proton is the Proton Mail (IMAP, via Proton
 // Mail Bridge) source plugin subprocess, launched by the kernel's plugin
 // host over the go-plugin gRPC handshake. Follows the exact shape of
 // plugins/silverbullet/main.go — see that file for the pattern this one
@@ -74,6 +74,6 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "webspaces-plugin-proton:", err)
+	fmt.Fprintln(os.Stderr, "topos-plugin-proton:", err)
 	os.Exit(1)
 }

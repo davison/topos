@@ -98,7 +98,7 @@ func (p *SourcePlugin) toItem(d Document, allTags map[int]Tag) *toposv1.Item {
 			"source_type":      sourceType,
 			"source_system":    p.baseURL,
 			"source_id":        sourceID,
-			"plugin":           "webspaces-plugin-paperless",
+			"plugin":           "topos-plugin-paperless",
 			"contract_version": contractVersion,
 		},
 		HasThumbnail: true,

@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Sources become named instances and matching becomes typed. The same plugin type can be configured multiple times under user-chosen display names ("Home email" / "Work email"), and source identity throughout the kernel — index rows, sync runs, agent grants, HTTP API, UI display — becomes the named instance, never the bare plugin type (KERN-06). The single shared per-webspace keyword list is replaced by per-instance matching config typed to each plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), with all five existing sources migrated (KERN-07). The contract change is published across `docs/plugin-contract.md`, `proto/webspaces/v1/`, `config.example.toml`, and the mock plugin, with all standing contract tests (read-only AST, RPC allowlist, egress pinning) still passing.
+Sources become named instances and matching becomes typed. The same plugin type can be configured multiple times under user-chosen display names ("Home email" / "Work email"), and source identity throughout the kernel — index rows, sync runs, agent grants, HTTP API, UI display — becomes the named instance, never the bare plugin type (KERN-06). The single shared per-webspace keyword list is replaced by per-instance matching config typed to each plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), with all five existing sources migrated (KERN-07). The contract change is published across `docs/plugin-contract.md`, `proto/topos/v1/`, `config.example.toml`, and the mock plugin, with all standing contract tests (read-only AST, RPC allowlist, egress pinning) still passing.
 
 **Folded into this phase (rides the same contract break):** rendition presentation moves from plugins to the kernel — plugins return content, the kernel sanitizes (per content-shape policy), wraps, and themes the iframe documents it serves. This removes the per-plugin hardcoded `themeStyle` duplication (see Folded Todos below).
 
@@ -27,7 +27,7 @@ This phase deliberately reverses Phase 1 D-02/D-03's shared-keyword-list shape (
 - **D-05:** **Each plugin declares its match-field vocabulary** (e.g. `folders`, `tags`, `conversations`, `pages`) in its Describe response; the kernel validates config against the declared vocabulary and an unknown field **fails loudly at startup, naming the field and the plugin**. Ecosystem-ready: external plugins bring their own vocabulary, no kernel table to update. — **Reversibility:** costly — becomes part of the published contract third parties implement.
 
 ### Migration & compatibility
-- **D-06:** **Clean break** on config: the kernel rejects an old-shape config with a clear error pointing at the documented new shape. No auto-migration code, no dual-shape support. The user's real `~/.config/webspaces/config.toml` is hand-migrated as part of this phase's delivery. — **Reversibility:** one-way — the old shape's code path is deleted; restoring it would be a rewrite, and the published contract moves on.
+- **D-06:** **Clean break** on config: the kernel rejects an old-shape config with a clear error pointing at the documented new shape. No auto-migration code, no dual-shape support. The user's real `~/.config/topos/config.toml` is hand-migrated as part of this phase's delivery. — **Reversibility:** one-way — the old shape's code path is deleted; restoring it would be a rewrite, and the published contract moves on.
 - **D-07:** **Index is dropped and fully re-synced** on upgrade rather than migrated in place — the index is a cache by design (hybrid model); source identity on rows re-derives from the new instance identity at first sync. One full backfill accepted (Proton re-scan is the slow one, minutes).
 
 ### Instance identity & lifecycle
@@ -69,7 +69,7 @@ This phase deliberately reverses Phase 1 D-02/D-03's shared-keyword-list shape (
 ### Published contracts (this phase breaks and republishes them)
 - `docs/plugin-contract.md` — the third-party-facing contract; must be rewritten for instance identity, declared match vocabulary, and the new Fetch content shape.
 - `docs/api.md` — HTTP envelope; source identity in responses changes to instance; rendition serving behavior changes (kernel wraps/themes).
-- `proto/webspaces/v1/` — `MatchRequest{keywords}` and `DescribeResponse` are the primary change sites; RPC-allowlist test gates any addition.
+- `proto/topos/v1/` — `MatchRequest{keywords}` and `DescribeResponse` are the primary change sites; RPC-allowlist test gates any addition.
 - `config.example.toml` — full rewrite to the new shape; it is the de facto config documentation.
 
 ### Code the folded rendition work moves or replaces
@@ -87,7 +87,7 @@ This phase deliberately reverses Phase 1 D-02/D-03's shared-keyword-list shape (
 
 ### Reusable Assets
 - `kernel/config/types.go` — `Sources map[string]Source` already keys sources by name; the map key becomes the instance id (D-08). `Webspace` type and validation live here too.
-- `proto/webspaces/v1/plugin.proto` — `DescribeResponse` (source_type, display_name, contract_version) is the natural carrier for the declared match vocabulary (D-05); `MatchRequest{repeated string keywords}` is the field being replaced.
+- `proto/topos/v1/plugin.proto` — `DescribeResponse` (source_type, display_name, contract_version) is the natural carrier for the declared match vocabulary (D-05); `MatchRequest{repeated string keywords}` is the field being replaced.
 - `kernel/httpapi/item.go` — already owns the rendition Content-Security-Policy; the wrap/sanitize/theme pipeline lands beside it.
 - The three plugin sanitizer policies (bluemonday-based) are working per-shape references for the kernel's policy profiles: email narrow-style-allowlist (proton), chat no-styles (signal), markdown (silverbullet).
 

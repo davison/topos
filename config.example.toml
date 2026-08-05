@@ -1,4 +1,4 @@
-# webspaces config — copy to ~/.config/webspaces/config.toml (or
+# webspaces config — copy to ~/.config/topos/config.toml (or
 # $XDG_CONFIG_HOME/webspaces/config.toml if XDG_CONFIG_HOME is set) and
 # fill in your own values.
 #
@@ -38,16 +38,16 @@ listen = "127.0.0.1:7777"
 # path: filesystem location of the local SQLite index (the hybrid data
 # model's persisted metadata+preview store — KERN-03). A leading "~" is
 # expanded to the current user's home directory.
-# Default: "~/.local/share/webspaces/index.db" if omitted.
+# Default: "~/.local/share/topos/index.db" if omitted.
 # Validation: the parent directory is created on demand; no other
 # validation.
-path = "~/.local/share/webspaces/index.db"
+path = "~/.local/share/topos/index.db"
 
 [plugins]
 # dir: where the kernel looks for plugin binaries at startup. A relative
 # path is resolved relative to the running "webspaces" executable's own
 # directory, not the current working directory — so "make build"'s
-# bin/webspaces and bin/plugins/ layout works regardless of where you run
+# bin/topos and bin/plugins/ layout works regardless of where you run
 # the binary from.
 # Default: "plugins" if omitted.
 # Validation: none at config-load time; a missing binary for a configured
@@ -74,7 +74,7 @@ interval = "15m"
 [sources.paperless]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
-plugin = "webspaces-plugin-paperless"
+plugin = "topos-plugin-paperless"
 
 # base_url: the paperless-ngx instance's base URL. ${PAPERLESS_URL} is
 # expanded from the environment — never hardcode a real URL/host here if
@@ -100,7 +100,7 @@ api_version = "10"
 [sources.silverbullet]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
-plugin = "webspaces-plugin-silverbullet"
+plugin = "topos-plugin-silverbullet"
 
 # base_url: the SilverBullet instance's base URL. ${SILVERBULLET_URL} is
 # expanded from the environment, same as paperless's base_url above.
@@ -143,12 +143,12 @@ token = "${SB_AUTH_TOKEN}"
 # unparsable file falls back to the system trust store, and TLS
 # verification then fails at sync/health time with a clear "unavailable"
 # error rather than a load-time error.
-# ca_cert = "~/.config/webspaces/silverbullet-ca.pem"
+# ca_cert = "~/.config/topos/silverbullet-ca.pem"
 
 [sources.proton]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
-plugin = "webspaces-plugin-proton"
+plugin = "topos-plugin-proton"
 
 # base_url: "imaps://host:port" for implicit TLS, or "imap://host:port"
 # for a plaintext connect immediately followed by a mandatory STARTTLS —
@@ -186,7 +186,7 @@ token = "${PROTON_BRIDGE_PASS}"
 # unparsable file falls back to the system trust store, and TLS
 # verification then fails at sync/health time with a clear "unavailable"
 # error rather than a load-time error.
-ca_cert = "~/.config/webspaces/proton-bridge-cert.pem"
+ca_cert = "~/.config/topos/proton-bridge-cert.pem"
 
 # webmail_base_url: this account's Proton webmail root, INCLUDING the
 # account index (e.g. "https://mail.proton.me/u/0") — read from the
@@ -240,7 +240,7 @@ handoff = false
 [sources.signal]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
-plugin = "webspaces-plugin-signal"
+plugin = "topos-plugin-signal"
 
 # path: Signal Desktop's own config directory — the source of both
 # config.json (SQLCipher key resolution) and sql/db.sqlite (the message
@@ -271,9 +271,9 @@ handoff = false
 # see it in action without any real source system to connect to.
 #
 # plugin: the plugin binary's filename, resolved inside [plugins] dir —
-# `make build` produces bin/plugins/webspaces-plugin-mock alongside the
+# `make build` produces bin/plugins/topos-plugin-mock alongside the
 # other two plugin binaries.
-# plugin = "webspaces-plugin-mock"
+# plugin = "topos-plugin-mock"
 #
 # base_url / token: the mock plugin's own main.go does NOT require
 # WEBSPACES_SOURCE_CONFIG to be set at all — it has no connection details

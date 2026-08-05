@@ -1,7 +1,7 @@
-# The Webspaces plugin contract
+# The topos plugin contract
 
 This document is the published, third-party-facing contract for a
-webspaces **source plugin**: a subprocess that reads one personal data
+topos **source plugin**: a subprocess that reads one personal data
 silo (paperless-ngx, an IMAP mailbox, a Signal database, a SilverBullet
 space, ...) and hands normalized items back to the kernel. It is written
 for a reader with no access to this repository beyond four things:
@@ -29,7 +29,7 @@ in this document.
 
 ## A plugin is read-only by construction
 
-Webspaces never mutates a source. This is not a policy a plugin author is
+topos never mutates a source. This is not a policy a plugin author is
 asked to follow — it is a property of the contract's shape:
 
 - `SourcePlugin`, the gRPC service every plugin implements, declares
@@ -146,7 +146,7 @@ The kernel discovers plugins by scanning a plugins directory for binaries,
 not from a compile-time list — this is what lets a kernel build ship
 without a Signal-plugin's cgo/C-toolchain requirement for a user who
 doesn't configure Signal. The directory defaults to `plugins`, resolved
-relative to the running `webspaces` executable, and is overridable via the
+relative to the running `topos` executable, and is overridable via the
 `[plugins] dir` config key (see `config.example.toml`).
 
 For each configured `[sources.<name>]` entry, the kernel launches
@@ -419,7 +419,7 @@ Provenance: map[string]string{
 	"source_type":      sourceType,           // matches Describe's source_type
 	"source_system":    p.baseURL,             // the source instance this came from
 	"source_id":        sourceID,              // matches Item.source_id
-	"plugin":            "webspaces-plugin-<yours>",
+	"plugin":            "topos-plugin-<yours>",
 	"contract_version": contractVersion,       // matches Describe's contract_version
 },
 ```
@@ -517,11 +517,11 @@ shape and the `goplugin` import alias).
 **5. Build it.**
 
 ```
-CGO_ENABLED=0 go build -o bin/plugins/webspaces-plugin-yourplugin ./plugins/yourplugin
+CGO_ENABLED=0 go build -o bin/plugins/topos-plugin-yourplugin ./plugins/yourplugin
 ```
 
 **6. Configure the kernel to launch it.** The kernel's config file
-(`~/.config/webspaces/config.toml` by default; `config.example.toml` in
+(`~/.config/topos/config.toml` by default; `config.example.toml` in
 this repository is a fully-commented reference for every key) needs two
 blocks: one `[sources.<name>]` entry naming your plugin, and one
 `[webspaces.<name>]` entry with a keyword your `Match` implementation
@@ -530,7 +530,7 @@ so you don't need any file beyond this document to write it:
 
 ```toml
 [sources.yourplugin]
-plugin = "webspaces-plugin-yourplugin"   # your binary's filename, resolved inside [plugins] dir (default "plugins")
+plugin = "topos-plugin-yourplugin"   # your binary's filename, resolved inside [plugins] dir (default "plugins")
 # ... plus whatever connection-detail keys your plugin's own main.go
 # reads out of WEBSPACES_SOURCE_CONFIG (see "Configuration", above) — a
 # plugin with nothing to configure, like plugins/mock, needs none.
@@ -544,7 +544,7 @@ a plain TOML table — nothing plugin-specific about the file format
 itself, only the key set under `[sources.<name>]`, which your own plugin
 defines and documents (see "Configuration", above).
 
-**7. Run it.** `webspaces sync` (a one-shot sync) or `webspaces serve`
+**7. Run it.** `topos sync` (a one-shot sync) or `topos serve`
 (sync-on-schedule plus the HTTP API) both launch every configured plugin,
 call `Describe` immediately after the handshake, and then drive `Match`
 at sync time and `Fetch`/`Health` at request time, exactly per "RPC

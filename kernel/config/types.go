@@ -1,8 +1,8 @@
-// Package config loads and validates the webspaces TOML config file.
+// Package config loads and validates the topos TOML config file.
 package config
 
-// Config is the root of ~/.config/webspaces/config.toml (or
-// $XDG_CONFIG_HOME/webspaces/config.toml). One file holds kernel settings,
+// Config is the root of ~/.config/topos/config.toml (or
+// $XDG_CONFIG_HOME/topos/config.toml). One file holds kernel settings,
 // source connections, and webspace definitions (D-04).
 type Config struct {
 	Server    ServerConfig        `toml:"server"`
@@ -20,7 +20,7 @@ type ServerConfig struct {
 
 // IndexConfig configures the local SQLite index file location.
 type IndexConfig struct {
-	Path string `toml:"path"` // default "~/.local/share/webspaces/index.db"
+	Path string `toml:"path"` // default "~/.local/share/topos/index.db"
 }
 
 // PluginsConfig configures where plugin binaries are discovered.
@@ -38,7 +38,7 @@ type SyncConfig struct {
 // Source configures a single source plugin: which binary to launch and the
 // connection details injected into its subprocess environment.
 type Source struct {
-	Plugin     string `toml:"plugin"`      // plugin binary name, e.g. "webspaces-plugin-paperless"
+	Plugin     string `toml:"plugin"`      // plugin binary name, e.g. "topos-plugin-paperless"
 	BaseURL    string `toml:"base_url"`    // "${PAPERLESS_URL}" style env reference
 	Token      string `toml:"token"`       // "${PAPERLESS_TOKEN}" style env reference — never a literal secret (D-04)
 	APIVersion string `toml:"api_version"` // e.g. "10"
@@ -139,7 +139,7 @@ type Webspace struct {
 
 const (
 	DefaultListen       = "127.0.0.1:7777"
-	DefaultIndexPath    = "~/.local/share/webspaces/index.db"
+	DefaultIndexPath    = "~/.local/share/topos/index.db"
 	DefaultPluginsDir   = "plugins"
 	DefaultSyncInterval = "15m"
 )

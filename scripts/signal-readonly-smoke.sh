@@ -15,7 +15,7 @@
 #      "signal".
 #
 # This script deliberately never touches your real
-# ~/.config/webspaces/config.toml: it builds its own throwaway config
+# ~/.config/topos/config.toml: it builds its own throwaway config
 # under a temp XDG_CONFIG_HOME, with [sources.signal] pointing at your
 # REAL (read-only) Signal Desktop directory, so it can prove the
 # pipeline end to end without risking any change to your real
@@ -51,13 +51,13 @@ fi
 
 echo "==> Building binaries"
 mkdir -p bin/plugins
-CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
-CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/webspaces-plugin-signal ./plugins/signal
+CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
+CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
 echo "==> Hashing $SIGNAL_DB before sync"
 HASH_BEFORE="$(sha256sum "$SIGNAL_DB" | awk '{print $1}')"
 
-TMP_XDG="$(mktemp -d /tmp/webspaces-signal-smoke.XXXXXX)"
+TMP_XDG="$(mktemp -d /tmp/topos-signal-smoke.XXXXXX)"
 cleanup() {
   kill "${SERVER_PID:-}" 2>/dev/null || true
   wait "${SERVER_PID:-}" 2>/dev/null || true
@@ -65,8 +65,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$TMP_XDG/webspaces"
-cat > "$TMP_XDG/webspaces/config.toml" <<EOF
+mkdir -p "$TMP_XDG/topos"
+cat > "$TMP_XDG/topos/config.toml" <<EOF
 [index]
 path = "$TMP_XDG/index.db"
 
@@ -74,7 +74,7 @@ path = "$TMP_XDG/index.db"
 dir = "$REPO_ROOT/bin/plugins"
 
 [sources.signal]
-plugin = "webspaces-plugin-signal"
+plugin = "topos-plugin-signal"
 path = "$SIGNAL_CONFIG_DIR"
 
 [sources.signal.agent]
@@ -87,8 +87,8 @@ EOF
 
 export XDG_CONFIG_HOME="$TMP_XDG"
 
-echo "==> Running webspaces sync (XDG_CONFIG_HOME=$TMP_XDG, isolated from your real config)"
-./bin/webspaces sync
+echo "==> Running topos sync (XDG_CONFIG_HOME=$TMP_XDG, isolated from your real config)"
+./bin/topos sync
 
 echo "==> Re-hashing $SIGNAL_DB after sync"
 HASH_AFTER="$(sha256sum "$SIGNAL_DB" | awk '{print $1}')"
@@ -106,8 +106,8 @@ if curl -fsS -o /dev/null --max-time 2 "$BASE/api/webspaces"; then
   exit 1
 fi
 
-echo "==> Starting webspaces serve"
-./bin/webspaces serve &
+echo "==> Starting topos serve"
+./bin/topos serve &
 SERVER_PID=$!
 
 echo "==> Waiting for the server to accept connections"

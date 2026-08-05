@@ -1,4 +1,4 @@
-// Command webspaces-plugin-paperless: this file implements the hand-rolled
+// Command topos-plugin-paperless: this file implements the hand-rolled
 // paperless-ngx REST client half of the plugin (see plugin.go for the
 // toposv1.SourcePlugin adapter and main.go for the subprocess
 // entrypoint).

@@ -49,7 +49,7 @@ required key is `path`, Signal Desktop's own config directory:
 
 ```toml
 [sources.signal]
-plugin = "webspaces-plugin-signal"
+plugin = "topos-plugin-signal"
 path = "~/.config/Signal"   # Signal Desktop's own config directory — "~" is expanded by this plugin
 
 [sources.signal.agent]
@@ -89,7 +89,7 @@ WEBSPACES_SIGNAL_LIVE_IT=1 go test -tags libsqlcipher -run TestLiveDatabaseByteI
 
 # Full end-to-end sync + serve smoke test against your real database,
 # using a throwaway config that never touches your real
-# ~/.config/webspaces/config.toml
+# ~/.config/topos/config.toml
 SIGNAL_SMOKE_KEYWORD="your-real-conversation-or-group-name" ./scripts/signal-readonly-smoke.sh
 ```
 

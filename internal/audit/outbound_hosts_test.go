@@ -72,7 +72,7 @@ var outboundHTTPTypes = map[string]bool{
 }
 
 // Deliberately NOT flagged (inbound-server usage, out of this scan's
-// scope): http.ListenAndServe (cmd/webspaces/main.go), and
+// scope): http.ListenAndServe (cmd/topos/main.go), and
 // kernel/httpapi's use of http.Handler, http.HandlerFunc, http.Request,
 // http.ResponseWriter, http.FileServer, http.FS, http.Error, and the
 // http.StatusXxx / header constants — none of those names appear in

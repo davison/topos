@@ -1,4 +1,4 @@
-// Command webspaces-plugin-paperless is the paperless-ngx source plugin
+// Command topos-plugin-paperless is the paperless-ngx source plugin
 // subprocess, launched by the kernel's plugin host over the go-plugin
 // gRPC handshake.
 package main
@@ -55,6 +55,6 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "webspaces-plugin-paperless:", err)
+	fmt.Fprintln(os.Stderr, "topos-plugin-paperless:", err)
 	os.Exit(1)
 }

@@ -230,7 +230,7 @@ func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*t
 		// base URL or credential. This log is forwarded verbatim into the
 		// kernel's log stream, and everything written there outlives the
 		// process (T-03-05-03).
-		fmt.Fprintf(p.logOut, "webspaces-plugin-proton: match: skipped %d message(s) with no Message-Id header\n", skippedNoMessageID)
+		fmt.Fprintf(p.logOut, "topos-plugin-proton: match: skipped %d message(s) with no Message-Id header\n", skippedNoMessageID)
 	}
 
 	return &toposv1.MatchResponse{Items: items}, nil
@@ -413,7 +413,7 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *toposv1.Item {
 			"source_type":      sourceType,
 			"source_system":    p.baseURL,
 			"source_id":        sourceID,
-			"plugin":           "webspaces-plugin-proton",
+			"plugin":           "topos-plugin-proton",
 			"contract_version": contractVersion,
 		},
 	}

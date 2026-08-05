@@ -174,7 +174,7 @@ func (p *SourcePlugin) toItem(f FileMeta, tags []string, body []byte) *toposv1.I
 			"source_type":      sourceType,
 			"source_system":    p.baseURL,
 			"source_id":        sourceID,
-			"plugin":           "webspaces-plugin-silverbullet",
+			"plugin":           "topos-plugin-silverbullet",
 			"contract_version": contractVersion,
 		},
 		HasThumbnail: false,

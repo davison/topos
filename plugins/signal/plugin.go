@@ -25,7 +25,7 @@ const (
 
 	// pluginName identifies this plugin in Item.Provenance's "plugin" key
 	// and in this process's own log lines.
-	pluginName = "webspaces-plugin-signal"
+	pluginName = "topos-plugin-signal"
 )
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL

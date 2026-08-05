@@ -38,7 +38,7 @@ func contractFixtureProvenance(sourceID string) map[string]string {
 		"source_type":      "paperless",
 		"source_system":    "http://paperless.lan:8000",
 		"source_id":        sourceID,
-		"plugin":           "webspaces-plugin-paperless",
+		"plugin":           "topos-plugin-paperless",
 		"contract_version": "topos.v1",
 	}
 }

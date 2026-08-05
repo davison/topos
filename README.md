@@ -1,6 +1,6 @@
-# Webspaces
+# topos
 
-Webspaces pulls together related information from your disparate personal
+topos pulls together related information from your disparate personal
 data silos — email, chats, document storage, notes, wikis — into per-topic
 "webspaces," so you can open one view and see everything related to a
 topic instead of hunting across apps. It runs entirely on your own
@@ -34,7 +34,7 @@ model, no health UI. What's coming, in order:
 ## Repository layout
 
 ```
-cmd/webspaces/        kernel binary entrypoint (serve, sync)
+cmd/topos/        kernel binary entrypoint (serve, sync)
 kernel/                config, index (SQLite), correlate (sync-time matching), httpapi, pluginhost, webui (embed)
 proto/topos/v1/    the published plugin contract (source of truth)
 sdk/                    the plugin-author-facing Go module (handshake, interfaces, generated stubs)
@@ -53,7 +53,7 @@ module later without re-checking that isolation still holds.
 
 ## Configure
 
-Webspaces needs two things from you: your paperless-ngx credentials in the
+topos needs two things from you: your paperless-ngx credentials in the
 environment, and a config file describing your webspaces.
 
 1. Set your source connection details as environment variables (put these
@@ -74,8 +74,8 @@ environment, and a config file describing your webspaces.
 2. Copy the example config and edit it:
 
    ```bash
-   mkdir -p ~/.config/webspaces
-   cp config.example.toml ~/.config/webspaces/config.toml
+   mkdir -p ~/.config/topos
+   cp config.example.toml ~/.config/topos/config.toml
    ```
 
    `config.example.toml` is a fully-commented reference — every key
@@ -89,8 +89,8 @@ environment, and a config file describing your webspaces.
 
 ```bash
 make build              # builds the SPA, the kernel binary, and all five plugin binaries
-./bin/webspaces sync    # runs one sync cycle against your configured sources
-./bin/webspaces serve   # starts the kernel's HTTP API + embedded web UI
+./bin/topos sync    # runs one sync cycle against your configured sources
+./bin/topos serve   # starts the kernel's HTTP API + embedded web UI
 ```
 
 `make plugins` rebuilds only the plugin binaries (paperless, silverbullet,
@@ -106,8 +106,8 @@ wrapper instead of exporting them by hand:
 ```
 
 `scripts/run-with-env.sh` sources the gitignored repo-root `.env`, exports
-its keys, and `exec`s `bin/webspaces` with whatever arguments follow — so it
-works from a fresh shell with nothing pre-exported, and any `webspaces`
+its keys, and `exec`s `bin/topos` with whatever arguments follow — so it
+works from a fresh shell with nothing pre-exported, and any `topos`
 subcommand works the same way (`./scripts/run-with-env.sh sync` as well as
 `serve`). It prints no credential value on any code path.
 
@@ -125,7 +125,7 @@ non-loopback bind, but does not refuse to start.
 make dev
 ```
 
-Runs the kernel (`go run ./cmd/webspaces serve`) and the SvelteKit dev
+Runs the kernel (`go run ./cmd/topos serve`) and the SvelteKit dev
 server together; Vite proxies `/api` requests to `127.0.0.1:7777`, so
 edits to either side hot-reload independently. The kernel binary built
 this way never embeds a built SPA — only `make build`'s production build

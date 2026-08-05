@@ -16,7 +16,7 @@
 //	go test -run TestSeenFlagUnchanged_LiveBridge -v ./...
 //
 // Optionally set PROTON_BRIDGE_CACERT to the exported Bridge certificate's
-// path; it defaults to ~/.config/webspaces/proton-bridge-cert.pem (the path
+// path; it defaults to ~/.config/topos/proton-bridge-cert.pem (the path
 // 03-01's Task 1 documented). With WEBSPACES_PROTON_LIVE_IT unset (the
 // default for every other test run, including CI), this test reports
 // "skipped", never "failed".
@@ -109,7 +109,7 @@ func TestSeenFlagUnchanged_LiveBridge(t *testing.T) {
 	}
 }
 
-// defaultBridgeCertPathLiveIT returns ~/.config/webspaces/proton-bridge-cert.pem
+// defaultBridgeCertPathLiveIT returns ~/.config/topos/proton-bridge-cert.pem
 // with "~" expanded to the current user's home directory — the path
 // 03-01's Task 1 documented as where the exported Bridge certificate lives.
 func defaultBridgeCertPathLiveIT(t *testing.T) string {

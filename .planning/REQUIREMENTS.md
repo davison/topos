@@ -1,4 +1,4 @@
-# Requirements — Webspaces
+# Requirements — topos
 
 Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the roadmap.
 

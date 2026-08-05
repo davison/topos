@@ -24,11 +24,11 @@ fi
 
 echo "==> Building binaries"
 mkdir -p bin/plugins
-CGO_ENABLED=0 go build -o bin/webspaces ./cmd/webspaces
-go build -o bin/plugins/webspaces-plugin-paperless ./plugins/paperless
+CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
+go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
 
-echo "==> Running webspaces sync"
-./bin/webspaces sync
+echo "==> Running topos sync"
+./bin/topos sync
 
 BASE="http://127.0.0.1:7777"
 
@@ -38,8 +38,8 @@ if curl -fsS -o /dev/null --max-time 2 "$BASE/api/webspaces"; then
   exit 1
 fi
 
-echo "==> Starting webspaces serve"
-./bin/webspaces serve &
+echo "==> Starting topos serve"
+./bin/topos serve &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
 
@@ -69,7 +69,7 @@ case "$CSS_PATH" in
   /*) ;;
   *) CSS_PATH="/$CSS_PATH" ;;
 esac
-CSS_TMP="$(mktemp /tmp/webspaces-smoke-css.XXXXXX)"
+CSS_TMP="$(mktemp /tmp/topos-smoke-css.XXXXXX)"
 trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; rm -f "$CSS_TMP"' EXIT
 curl -fsS "$BASE$CSS_PATH" -o "$CSS_TMP" || {
   echo "FAIL: stylesheet linked at $CSS_HREF did not fetch successfully" >&2
@@ -104,12 +104,12 @@ echo "==> GET /api/webspaces/does-not-exist/stream returns 404"
 # Deliberately no -f here: curl -f suppresses writing the response body to
 # -o on an HTTP error status, and this check needs the 404 error envelope
 # body, not just the status code.
-CODE="$(curl -sS -o /tmp/webspaces-404-body.json -w '%{http_code}' "$BASE/api/webspaces/does-not-exist/stream")"
+CODE="$(curl -sS -o /tmp/topos-404-body.json -w '%{http_code}' "$BASE/api/webspaces/does-not-exist/stream")"
 if [ "$CODE" != "404" ]; then
   echo "FAIL: expected 404 for unknown webspace, got $CODE" >&2
-  cat /tmp/webspaces-404-body.json >&2 || true
+  cat /tmp/topos-404-body.json >&2 || true
   exit 1
 fi
-jq -e '.error.code == "webspace_not_found"' /tmp/webspaces-404-body.json >/dev/null
+jq -e '.error.code == "webspace_not_found"' /tmp/topos-404-body.json >/dev/null
 
 echo "==> e2e smoke test passed"
