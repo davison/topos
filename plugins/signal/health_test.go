@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // writeFixtureConfigDir builds a configDir/sql/db.sqlite (via
@@ -39,7 +39,7 @@ func TestHealth_MissingDatabase(t *testing.T) {
 	configDir := t.TempDir() // deliberately empty: no sql/db.sqlite, no config.json
 
 	plugin := NewSourcePlugin(configDir)
-	resp, err := plugin.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health must never return a gRPC error, got: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestHealth_KeyResolutionFailure(t *testing.T) {
 	}
 
 	plugin := NewSourcePlugin(configDir)
-	resp, err := plugin.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health must never return a gRPC error, got: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestHealth_SchemaVersionCeiling(t *testing.T) {
 	configDir := writeFixtureConfigDir(t, highestSupportedSchemaVersion+1)
 
 	plugin := NewSourcePlugin(configDir)
-	resp, err := plugin.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health must never return a gRPC error, got: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestHealth_Healthy(t *testing.T) {
 	configDir := writeFixtureConfigDir(t, highestSupportedSchemaVersion)
 
 	plugin := NewSourcePlugin(configDir)
-	resp, err := plugin.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestHealth_NeverLeaksSecretMaterial(t *testing.T) {
 	}
 
 	plugin := NewSourcePlugin(configDir)
-	resp, err := plugin.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}

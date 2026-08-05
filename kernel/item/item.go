@@ -1,14 +1,14 @@
 // Package item holds the kernel's normalized Item type, mirroring
-// webspaces.v1.Item, and the conversion helpers between the two.
+// topos.v1.Item, and the conversion helpers between the two.
 package item
 
 import (
 	"fmt"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
-// Fidelity mirrors webspacesv1.LinkFidelity as a lowercase-hyphenated
+// Fidelity mirrors toposv1.LinkFidelity as a lowercase-hyphenated
 // string, matching the kernel HTTP JSON contract.
 type Fidelity string
 
@@ -19,15 +19,15 @@ const (
 	FidelityConversationOnly Fidelity = "conversation-only"
 )
 
-// FidelityFromProto converts a webspacesv1.LinkFidelity to the kernel's
+// FidelityFromProto converts a toposv1.LinkFidelity to the kernel's
 // string representation.
-func FidelityFromProto(f webspacesv1.LinkFidelity) Fidelity {
+func FidelityFromProto(f toposv1.LinkFidelity) Fidelity {
 	switch f {
-	case webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT:
+	case toposv1.LinkFidelity_LINK_FIDELITY_EXACT:
 		return FidelityExact
-	case webspacesv1.LinkFidelity_LINK_FIDELITY_ANCHORED:
+	case toposv1.LinkFidelity_LINK_FIDELITY_ANCHORED:
 		return FidelityAnchored
-	case webspacesv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY:
+	case toposv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY:
 		return FidelityConversationOnly
 	default:
 		return FidelityUnspecified
@@ -67,9 +67,9 @@ func ID(sourceType, sourceID string) string {
 	return fmt.Sprintf("%s:%s", sourceType, sourceID)
 }
 
-// FromProto converts a webspacesv1.Item (as returned by a plugin's Match
+// FromProto converts a toposv1.Item (as returned by a plugin's Match
 // RPC) into the kernel's normalized Item type.
-func FromProto(sourceType string, p *webspacesv1.Item) Item {
+func FromProto(sourceType string, p *toposv1.Item) Item {
 	prov := make(map[string]string, len(p.GetProvenance()))
 	for k, v := range p.GetProvenance() {
 		prov[k] = v

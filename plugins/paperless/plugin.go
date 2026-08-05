@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
 	sourceType      = "paperless"
 	displayName     = "paperless-ngx"
-	contractVersion = "webspaces.v1"
+	contractVersion = "topos.v1"
 	previewRuneCap  = 500
 )
 
@@ -39,21 +39,21 @@ func NewSourcePlugin(baseURL, token, apiVersion string) *SourcePlugin {
 	}
 }
 
-func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error) {
-	return &webspacesv1.DescribeResponse{
+func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
+	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 	}, nil
 }
 
-func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	tagIDs, err := p.client.ResolveTagIDs(ctx, req.GetKeywords())
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "paperless: resolve tag ids: %v", err)
 	}
 	if len(tagIDs) == 0 {
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	docs, err := p.client.ListDocuments(ctx, tagIDs)
@@ -66,15 +66,15 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		return nil, status.Errorf(codes.Unavailable, "paperless: list tags: %v", err)
 	}
 
-	items := make([]*webspacesv1.Item, 0, len(docs))
+	items := make([]*toposv1.Item, 0, len(docs))
 	for _, d := range docs {
 		items = append(items, p.toItem(d, allTags))
 	}
 
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
-func (p *SourcePlugin) toItem(d Document, allTags map[int]Tag) *webspacesv1.Item {
+func (p *SourcePlugin) toItem(d Document, allTags map[int]Tag) *toposv1.Item {
 	labels := make([]string, 0, len(d.TagIDs))
 	for _, id := range d.TagIDs {
 		if t, ok := allTags[id]; ok {
@@ -84,14 +84,14 @@ func (p *SourcePlugin) toItem(d Document, allTags map[int]Tag) *webspacesv1.Item
 
 	sourceID := strconv.Itoa(d.ID)
 
-	return &webspacesv1.Item{
+	return &toposv1.Item{
 		SourceId:               sourceID,
 		SourceType:             sourceType,
 		Title:                  d.Title,
 		Preview:                truncatePreview(d.Content),
 		TimestampUnix:          d.Created.Unix(),
 		SecondaryTimestampUnix: d.Added.Unix(),
-		Fidelity:               webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT,
+		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_EXACT,
 		DeepLink:               fmt.Sprintf("%s/documents/%s", p.baseURL, sourceID),
 		Labels:                 labels,
 		Provenance: map[string]string{
@@ -129,18 +129,18 @@ const noRenditionReason = "no previewable rendition"
 // FetchResponse message rather than a stream, bounded by the raised
 // MaxMessageSize gRPC limit (sdk.GRPCServer / kernel pluginhost dial
 // options).
-func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) Fetch(ctx context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	id, err := strconv.Atoi(req.GetSourceId())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "paperless: invalid source id %q", req.GetSourceId())
 	}
 
 	switch req.GetVariant() {
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL:
+	case toposv1.ContentVariant_CONTENT_VARIANT_FULL:
 		return p.fetchFull(ctx, id)
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+	case toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
 		return p.fetchRendition(ctx, id, "preview", p.client.Preview)
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+	case toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
 		return p.fetchRendition(ctx, id, "thumb", p.client.Thumbnail)
 	default:
 		return nil, status.Error(codes.InvalidArgument, "paperless: unspecified content variant")
@@ -150,7 +150,7 @@ func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest)
 // fetchFull fetches the document's extracted text (which only exists via
 // the document detail endpoint, so document-not-found is authoritatively
 // detected here) plus its preview rendition, if any.
-func (p *SourcePlugin) fetchFull(ctx context.Context, id int) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) fetchFull(ctx context.Context, id int) (*toposv1.FetchResponse, error) {
 	doc, err := p.client.Document(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -164,7 +164,7 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, id int) (*webspacesv1.Fetc
 		return nil, status.Errorf(codes.Unavailable, "paperless: fetch preview for document %d: %v", id, err)
 	}
 
-	resp := &webspacesv1.FetchResponse{
+	resp := &toposv1.FetchResponse{
 		Text:       doc.Content,
 		Provenance: map[string]string{"source_type": sourceType, "source_id": strconv.Itoa(id)},
 	}
@@ -184,15 +184,15 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, id int) (*webspacesv1.Fetc
 // extracted text. A 404 from paperless-ngx for the rendition itself is a
 // normal "unavailable" outcome, not a gRPC error — the pane falls back to
 // extracted text via the full-variant fetch instead.
-func (p *SourcePlugin) fetchRendition(ctx context.Context, id int, endpointName string, fetch func(context.Context, int) (RenditionResult, error)) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) fetchRendition(ctx context.Context, id int, endpointName string, fetch func(context.Context, int) (RenditionResult, error)) (*toposv1.FetchResponse, error) {
 	rendition, err := fetch(ctx, id)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "paperless: fetch %s for document %d: %v", endpointName, id, err)
 	}
 	if !rendition.Available {
-		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noRenditionReason}, nil
+		return &toposv1.FetchResponse{Available: false, UnavailableReason: noRenditionReason}, nil
 	}
-	return &webspacesv1.FetchResponse{
+	return &toposv1.FetchResponse{
 		Available: true,
 		MimeType:  rendition.ContentType,
 		SizeBytes: int64(len(rendition.Data)),
@@ -200,15 +200,15 @@ func (p *SourcePlugin) fetchRendition(ctx context.Context, id int, endpointName 
 	}, nil
 }
 
-func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {
+func (p *SourcePlugin) Health(ctx context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
 	_, err := p.client.AllTags(ctx)
 	if err != nil {
-		return &webspacesv1.HealthResponse{
+		return &toposv1.HealthResponse{
 			Reachable: false,
 			LastError: err.Error(),
 		}, nil
 	}
-	return &webspacesv1.HealthResponse{
+	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),
 	}, nil

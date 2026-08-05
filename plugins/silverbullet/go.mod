@@ -1,4 +1,4 @@
-module github.com/davison/webspaces/plugins/silverbullet
+module github.com/davison/topos/plugins/silverbullet
 
 go 1.25.0
 

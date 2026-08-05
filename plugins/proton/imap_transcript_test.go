@@ -14,7 +14,7 @@ import (
 	imapclient "github.com/emersion/go-imap/client"
 	imapserver "github.com/emersion/go-imap/server"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // recordingRelay is a loopback TCP relay that sits in front of a real IMAP
@@ -371,11 +371,11 @@ func TestIMAPTranscript_ExamineAndPeekOnly(t *testing.T) {
 
 	ctx := context.Background()
 
-	if _, err := plugin.Describe(ctx, &webspacesv1.DescribeRequest{}); err != nil {
+	if _, err := plugin.Describe(ctx, &toposv1.DescribeRequest{}); err != nil {
 		t.Fatalf("Describe: %v", err)
 	}
 
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"AlphaTeam", "BetaTeam"}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam", "BetaTeam"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -393,9 +393,9 @@ func TestIMAPTranscript_ExamineAndPeekOnly(t *testing.T) {
 		}
 	}
 
-	fetchResp, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	fetchResp, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: item.GetSourceId(),
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -404,7 +404,7 @@ func TestIMAPTranscript_ExamineAndPeekOnly(t *testing.T) {
 		t.Fatalf("Fetch: Available = false, want true")
 	}
 
-	if _, err := plugin.Health(ctx, &webspacesv1.HealthRequest{}); err != nil {
+	if _, err := plugin.Health(ctx, &toposv1.HealthRequest{}); err != nil {
 		t.Fatalf("Health: %v", err)
 	}
 

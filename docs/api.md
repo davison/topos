@@ -117,7 +117,7 @@ $ curl -s http://127.0.0.1:7777/api/webspaces/house-move/stream | jq
         "source_system": "https://paperless.example.lan",
         "source_id": "528",
         "plugin": "webspaces-plugin-paperless",
-        "contract_version": "webspaces.v1",
+        "contract_version": "topos.v1",
         "synced_at_unix": "1785000000"
       }
     }
@@ -521,7 +521,7 @@ Every item's `provenance` object carries exactly these six keys:
 | `source_system` | The specific source instance this item came from (e.g. a paperless-ngx base URL) — distinguishes "which paperless-ngx" if you ever configure more than one. |
 | `source_id` | Matches the item's own `source_id`. |
 | `plugin` | The plugin binary name that produced this item (e.g. `"webspaces-plugin-paperless"`). |
-| `contract_version` | The plugin's own `Describe`-reported contract version (e.g. `"webspaces.v1"`). |
+| `contract_version` | The plugin's own `Describe`-reported contract version (e.g. `"topos.v1"`). |
 | `synced_at_unix` | When the kernel's index last wrote this row, as a Unix timestamp string — set by the kernel itself at read time, never by a plugin. |
 
 ## Error codes

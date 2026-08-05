@@ -7,12 +7,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 func TestDescribe_ReturnsMockIdentity(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Describe(context.Background(), &webspacesv1.DescribeRequest{})
+	resp, err := p.Describe(context.Background(), &toposv1.DescribeRequest{})
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
 	}
@@ -22,8 +22,8 @@ func TestDescribe_ReturnsMockIdentity(t *testing.T) {
 	if resp.GetDisplayName() == "" {
 		t.Error("expected a non-empty display_name")
 	}
-	if resp.GetContractVersion() != "webspaces.v1" {
-		t.Errorf("expected contract_version %q, got %q", "webspaces.v1", resp.GetContractVersion())
+	if resp.GetContractVersion() != "topos.v1" {
+		t.Errorf("expected contract_version %q, got %q", "topos.v1", resp.GetContractVersion())
 	}
 }
 
@@ -32,7 +32,7 @@ func TestDescribe_ReturnsMockIdentity(t *testing.T) {
 // items labelled "meeting", and only those.
 func TestMatch_KeywordMatchingOneItemsLabelReturnsExactlyThatItem(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"MEETING"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"MEETING"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestMatch_KeywordMatchingOneItemsLabelReturnsExactlyThatItem(t *testing.T) 
 // match — mirrors the contract's "house" vs "Household" example.
 func TestMatch_NoSubstringMatching(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"dem"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"dem"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestMatch_NoSubstringMatching(t *testing.T) {
 // keyword matching nothing returns an empty item list, not an error.
 func TestMatch_NonMatchingKeywordReturnsZeroItemsAndNilError(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"no-such-keyword"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"no-such-keyword"}})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -88,7 +88,7 @@ func TestMatch_EveryItemHasValidFidelityAndDeepLink(t *testing.T) {
 	p := NewSourcePlugin()
 	// Every fixed item carries the "demo" label, so this returns all of
 	// them.
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"demo"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"demo"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestMatch_EveryItemHasValidFidelityAndDeepLink(t *testing.T) {
 		t.Fatalf("expected all %d fixed items to carry the 'demo' label, got %d", len(mockItems), len(resp.GetItems()))
 	}
 	for _, it := range resp.GetItems() {
-		if it.GetFidelity() == webspacesv1.LinkFidelity_LINK_FIDELITY_UNSPECIFIED {
+		if it.GetFidelity() == toposv1.LinkFidelity_LINK_FIDELITY_UNSPECIFIED {
 			t.Errorf("item %q has unspecified fidelity", it.GetSourceId())
 		}
 		if it.GetDeepLink() == "" {
@@ -130,8 +130,8 @@ func TestMatch_AtLeastOneItemHasGroupAndOneDoesNot(t *testing.T) {
 // a non-empty reason.
 func TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "1", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "1", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -151,8 +151,8 @@ func TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition(t *testing.T) {
 // a gRPC codes.NotFound error, per the contract's Fetch section.
 func TestFetch_UnknownIDReturnsNotFound(t *testing.T) {
 	p := NewSourcePlugin()
-	_, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "does-not-exist", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	_, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "does-not-exist", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unknown source id")
@@ -167,7 +167,7 @@ func TestFetch_UnknownIDReturnsNotFound(t *testing.T) {
 // reachable with no error — it has nothing to be unreachable from.
 func TestHealth_AlwaysReachableWithNoError(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Health(context.Background(), &webspacesv1.HealthRequest{})
+	resp, err := p.Health(context.Background(), &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}

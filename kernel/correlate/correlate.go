@@ -14,10 +14,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/item"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // Source is the minimal plugin surface correlate depends on. Deliberately
@@ -27,7 +27,7 @@ import (
 type Source interface {
 	Name() string
 	SourceType() string
-	Match(ctx context.Context, keywords []string) (*webspacesv1.MatchResponse, error)
+	Match(ctx context.Context, keywords []string) (*toposv1.MatchResponse, error)
 }
 
 // Engine runs sync cycles against a set of sources and a config. Sources

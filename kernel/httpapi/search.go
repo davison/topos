@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/topos/kernel/index"
 )
 
 // searchResult embeds every field a stream item carries (via streamItem)

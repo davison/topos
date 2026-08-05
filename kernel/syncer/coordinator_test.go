@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/correlate"
-	"github.com/davison/webspaces/kernel/index"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
+	"github.com/davison/topos/kernel/index"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fakeSource is a test double satisfying correlate.Source without launching
@@ -23,7 +23,7 @@ import (
 type fakeSource struct {
 	name       string
 	sourceType string
-	matchFunc  func() (*webspacesv1.MatchResponse, error)
+	matchFunc  func() (*toposv1.MatchResponse, error)
 	block      chan struct{} // if non-nil, Match blocks on receive before calling matchFunc
 
 	mu    sync.Mutex
@@ -33,7 +33,7 @@ type fakeSource struct {
 func (f *fakeSource) Name() string       { return f.name }
 func (f *fakeSource) SourceType() string { return f.sourceType }
 
-func (f *fakeSource) Match(_ context.Context, _ []string) (*webspacesv1.MatchResponse, error) {
+func (f *fakeSource) Match(_ context.Context, _ []string) (*toposv1.MatchResponse, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
@@ -65,9 +65,9 @@ func testConfig() *config.Config {
 	}}
 }
 
-func okMatchResponse(sourceID, deepLink string) (*webspacesv1.MatchResponse, error) {
-	return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-		{SourceId: sourceID, Title: "Doc", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: deepLink, TimestampUnix: 100},
+func okMatchResponse(sourceID, deepLink string) (*toposv1.MatchResponse, error) {
+	return &toposv1.MatchResponse{Items: []*toposv1.Item{
+		{SourceId: sourceID, Title: "Doc", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: deepLink, TimestampUnix: 100},
 	}}, nil
 }
 
@@ -81,7 +81,7 @@ func TestRefresh_ConcurrentCallsCoalesceIntoOneSyncCycle(t *testing.T) {
 	block := make(chan struct{})
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless", block: block,
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			return okMatchResponse("1", "http://paperless.lan/documents/1")
 		},
 	}
@@ -127,7 +127,7 @@ func TestRefresh_MatchErrorReturnsErrorStatusNotGoError(t *testing.T) {
 	store := newTestStore(t)
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			return nil, errors.New("connection refused")
 		},
 	}
@@ -158,13 +158,13 @@ func TestRefreshAll_OneSourceErrorDoesNotPreventOthers(t *testing.T) {
 	store := newTestStore(t)
 	ok := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			return okMatchResponse("1", "http://paperless.lan/documents/1")
 		},
 	}
 	bad := &fakeSource{
 		name: "silverbullet", sourceType: "silverbullet",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			return nil, errors.New("connection refused")
 		},
 	}
@@ -196,10 +196,10 @@ func TestRefresh_RejectedItemMessageReachesFinishedRunError(t *testing.T) {
 	store := newTestStore(t)
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "good", Title: "Valid", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/good", TimestampUnix: 100},
-				{SourceId: "bad", Title: "Missing link", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 200},
+		matchFunc: func() (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "good", Title: "Valid", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/good", TimestampUnix: 100},
+				{SourceId: "bad", Title: "Missing link", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 200},
 			}}, nil
 		},
 	}
@@ -237,7 +237,7 @@ func TestRefresh_RepeatedRefreshDoesNotDuplicateItems(t *testing.T) {
 	store := newTestStore(t)
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			return okMatchResponse("1", "http://paperless.lan/documents/1")
 		},
 	}
@@ -279,7 +279,7 @@ func TestRefresh_CancelledContextStillFinalisesSyncRun(t *testing.T) {
 
 	src := &fakeSource{
 		name: "proton", sourceType: "proton",
-		matchFunc: func() (*webspacesv1.MatchResponse, error) {
+		matchFunc: func() (*toposv1.MatchResponse, error) {
 			cancel() // shutdown arrives while this source is mid-sync
 			return okMatchResponse("1", "https://mail.proton.me/1")
 		},

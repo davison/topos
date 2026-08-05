@@ -8,7 +8,7 @@ import (
 
 	imapclient "github.com/emersion/go-imap/client"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // newTestPluginWithToken builds a SourcePlugin whose client.dial is
@@ -94,7 +94,7 @@ func TestHealth_ShapeSuspectTokenYieldsActionableLastErrorAndStillDials(t *testi
 	plugin, dialCount := newTestPluginWithToken(t, serverAddr, shapeSuspectTokenLiveTest)
 
 	ctx := context.Background()
-	resp, err := plugin.Health(ctx, &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(ctx, &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestHealth_WellShapedButWrongTokenGetsNoAddedAdvice(t *testing.T) {
 	plugin, dialCount := newTestPluginWithToken(t, serverAddr, "wrongPassword123")
 
 	ctx := context.Background()
-	resp, err := plugin.Health(ctx, &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(ctx, &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestHealth_CorrectTokenIsReachableWithNoLastError(t *testing.T) {
 	plugin, dialCount := newTestPluginWithToken(t, serverAddr, "password")
 
 	ctx := context.Background()
-	resp, err := plugin.Health(ctx, &webspacesv1.HealthRequest{})
+	resp, err := plugin.Health(ctx, &toposv1.HealthRequest{})
 	if err != nil {
 		t.Fatalf("Health: %v", err)
 	}

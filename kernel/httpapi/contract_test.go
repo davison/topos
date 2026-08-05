@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/item"
-	"github.com/davison/webspaces/kernel/pluginhost"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/item"
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // idPattern pins the stable id shape {source_type}:{source_id} (AGENT-02).
@@ -39,7 +39,7 @@ func contractFixtureProvenance(sourceID string) map[string]string {
 		"source_system":    "http://paperless.lan:8000",
 		"source_id":        sourceID,
 		"plugin":           "webspaces-plugin-paperless",
-		"contract_version": "webspaces.v1",
+		"contract_version": "topos.v1",
 	}
 }
 

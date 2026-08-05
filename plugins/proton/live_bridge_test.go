@@ -35,7 +35,7 @@ import (
 	imap "github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // targetMailboxLiveIT is the well-known top-level mailbox every IMAP
@@ -70,7 +70,7 @@ func TestSeenFlagUnchanged_LiveBridge(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{targetMailboxLiveIT}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{targetMailboxLiveIT}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -87,9 +87,9 @@ func TestSeenFlagUnchanged_LiveBridge(t *testing.T) {
 		t.Fatalf("Match did not return the watched message (Message-Id %q) among %d items in %q", normalizedMsgID, len(matchResp.GetItems()), targetMailboxLiveIT)
 	}
 
-	if _, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	if _, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: sourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	}); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

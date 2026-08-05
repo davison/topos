@@ -1,4 +1,4 @@
-module github.com/davison/webspaces/plugins/proton
+module github.com/davison/topos/plugins/proton
 
 go 1.25.0
 
@@ -18,10 +18,10 @@ require (
 // charset handling. hashicorp/go-plugin and google.golang.org/grpc (both
 // imported directly by main.go/plugin.go) and every other indirect
 // dependency below are already required by the workspace-local
-// github.com/davison/webspaces/sdk module (see go.work) and resolve via
+// github.com/davison/topos/sdk module (see go.work) and resolve via
 // Go's workspace build list without needing a duplicate require here —
 // `go mod tidy` cannot be run cleanly against this module in isolation
-// because github.com/davison/webspaces/sdk has no published remote
+// because github.com/davison/topos/sdk has no published remote
 // (mirrors plugins/silverbullet and plugins/mock's go.mod, which have
 // the same limitation).
 require golang.org/x/text v0.38.0 // indirect

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 func newFetchTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
@@ -33,8 +33,8 @@ func TestFetch_FullVariant_AvailableTextHTMLWithText(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "Decking", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "Decking", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -66,14 +66,14 @@ func TestFetch_PreviewVariant_SameSanitizedHTMLAsFull(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	full, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "Decking", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	full, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "Decking", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(FULL): %v", err)
 	}
-	preview, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "Decking", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
+	preview, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "Decking", Variant: toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(PREVIEW): %v", err)
@@ -90,8 +90,8 @@ func TestFetch_ThumbnailVariant_UnavailableNoError(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "Decking", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "Decking", Variant: toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL,
 	})
 	if err != nil {
 		t.Fatalf("expected no error for THUMBNAIL, got %v", err)
@@ -110,8 +110,8 @@ func TestFetch_UnknownPage_ReturnsNotFound(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	_, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "DoesNotExist", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	_, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "DoesNotExist", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unknown page")
@@ -127,8 +127,8 @@ func TestFetch_UnreachableSource_ReturnsUnavailable(t *testing.T) {
 	srv.Close() // closed before use: every request fails to connect
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	_, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "Decking", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	_, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "Decking", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unreachable source")

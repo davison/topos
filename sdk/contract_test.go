@@ -10,7 +10,7 @@ import (
 
 // protoRelPath is the published contract's source of truth, read relative
 // to this test file's package directory (sdk/).
-const protoRelPath = "../proto/webspaces/v1/plugin.proto"
+const protoRelPath = "../proto/topos/v1/plugin.proto"
 
 // allowedRPCs is the PLUG-02 allowlist: SourcePlugin may declare exactly
 // these four RPCs. This is deliberately an allowlist, not a blacklist of

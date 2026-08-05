@@ -9,9 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/pluginhost"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/pluginhost"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // Fetcher is the minimal request-time plugin-call surface item.go depends
@@ -23,7 +23,7 @@ import (
 // stream.go must never import pluginhost (KERN-02); item.go is exactly
 // the request-time, item-open boundary where a live plugin call belongs.
 type Fetcher interface {
-	Fetch(ctx context.Context, sourceType, sourceID string, variant webspacesv1.ContentVariant) (pluginhost.FetchResult, error)
+	Fetch(ctx context.Context, sourceType, sourceID string, variant toposv1.ContentVariant) (pluginhost.FetchResult, error)
 }
 
 // allowedRenditionTypes is the MIME allowlist enforced on every byte
@@ -98,7 +98,7 @@ func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, webspacesv1.ContentVariant_CONTENT_VARIANT_FULL)
+		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return
@@ -128,14 +128,14 @@ func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
 // ItemContentHandler serves GET /api/items/{id}/content — the preview
 // rendition's raw bytes, streamed straight through with io.Copy.
 func ItemContentHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
-	return renditionHandler(store, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW)
+	return renditionHandler(store, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW)
 }
 
 // ItemThumbnailHandler serves GET /api/items/{id}/thumbnail — the
 // thumbnail rendition's raw bytes, streamed straight through with
 // io.Copy.
 func ItemThumbnailHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
-	return renditionHandler(store, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL)
+	return renditionHandler(store, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL)
 }
 
 // renditionHandler is shared by ItemContentHandler and
@@ -144,7 +144,7 @@ func ItemThumbnailHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc 
 // own origin, so every accepted MIME type is checked against an
 // allowlist and every response carries a hardened header set before any
 // body is written.
-func renditionHandler(store *index.Store, fetcher Fetcher, variant webspacesv1.ContentVariant) http.HandlerFunc {
+func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.ContentVariant) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := itemIDParam(r)
 		ctx := r.Context()

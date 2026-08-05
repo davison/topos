@@ -14,9 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/webui"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/webui"
 )
 
 // schemaVersion is the envelope's schema_version field. Bump only for

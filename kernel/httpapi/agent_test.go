@@ -11,10 +11,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/item"
-	"github.com/davison/webspaces/kernel/pluginhost"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber) http.Handler {

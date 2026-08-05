@@ -15,13 +15,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
 	sourceType      = "proton"
 	displayName     = "Proton Mail"
-	contractVersion = "webspaces.v1"
+	contractVersion = "topos.v1"
 
 	// noSubjectPlaceholder is used as Title when a message's ENVELOPE
 	// carries an empty Subject.
@@ -115,8 +115,8 @@ func NewSourcePlugin(baseURL, username, token, caCertPath, webmailBaseURL string
 	}, nil
 }
 
-func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error) {
-	return &webspacesv1.DescribeResponse{
+func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
+	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
@@ -130,10 +130,10 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeReques
 // 2) before building the returned items. A webspace with zero matching
 // mailbox leaf names returns a successful, empty response (never an
 // error) — see 03-RESEARCH.md Pitfall 2 / this plan's must_haves.
-func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	keywords := req.GetKeywords()
 	if len(keywords) == 0 {
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	conn, err := p.client.connect(syncDialTimeout)
@@ -166,7 +166,7 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		// earlier webspace's Match call added moments ago in the same
 		// sync cycle — no cache mutation of any kind happens on this
 		// branch.
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	byMessageID := map[string]*matched{}
@@ -217,7 +217,7 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 	}
 
 	discovered := make(map[string]string, len(byMessageID))
-	items := make([]*webspacesv1.Item, 0, len(byMessageID))
+	items := make([]*toposv1.Item, 0, len(byMessageID))
 	for msgID, m := range byMessageID {
 		sourceID := encodeSourceID(msgID)
 		discovered[sourceID] = m.mailbox
@@ -233,7 +233,7 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		fmt.Fprintf(p.logOut, "webspaces-plugin-proton: match: skipped %d message(s) with no Message-Id header\n", skippedNoMessageID)
 	}
 
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
 type mailboxInfo struct {
@@ -341,7 +341,7 @@ func formatSender(envelope *imap.Envelope) (label, address string) {
 	return address, address
 }
 
-// toItem builds a webspacesv1.Item from one merged matched entry.
+// toItem builds a toposv1.Item from one merged matched entry.
 // Fidelity is always ANCHORED: no verified mapping exists from an IMAP
 // Message-ID/UID to Proton's internal webmail message id (03-RESEARCH.md
 // Pitfall 5), so DeepLink cannot point AT the matched message. It also
@@ -354,7 +354,7 @@ func formatSender(envelope *imap.Envelope) (label, address string) {
 // reader in a short filtered list containing the message — still
 // honestly ANCHORED, because the target is adjacent to the message
 // rather than the message itself.
-func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
+func (p *SourcePlugin) toItem(sourceID string, m *matched) *toposv1.Item {
 	title := m.envelope.Subject
 	if title == "" {
 		title = noSubjectPlaceholder
@@ -396,7 +396,7 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 		Date:    deepLinkDate,
 	})
 
-	return &webspacesv1.Item{
+	return &toposv1.Item{
 		SourceId:               sourceID,
 		SourceType:             sourceType,
 		Title:                  title,
@@ -405,7 +405,7 @@ func (p *SourcePlugin) toItem(sourceID string, m *matched) *webspacesv1.Item {
 		SecondaryTimestampUnix: secondary,
 		GroupId:                groupID,
 		GroupLabel:             groupLabel,
-		Fidelity:               webspacesv1.LinkFidelity_LINK_FIDELITY_ANCHORED,
+		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_ANCHORED,
 		DeepLink:               deepLink,
 		Labels:                 m.labels,
 		HasThumbnail:           false,
@@ -451,12 +451,12 @@ func (p *SourcePlugin) mailboxForSourceID(sourceID string) (string, bool) {
 // Fetch implements live content fetch on item-open (KERN-03) — never
 // called from Match/sync. FULL and PREVIEW share one path; THUMBNAIL is
 // always unavailable (an email has no image rendition).
-func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) Fetch(ctx context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	switch req.GetVariant() {
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+	case toposv1.ContentVariant_CONTENT_VARIANT_FULL, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
 		return p.fetchFull(ctx, req.GetSourceId())
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
-		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
+	case toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		return &toposv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
 	default:
 		return nil, status.Error(codes.InvalidArgument, "proton: unspecified content variant")
 	}
@@ -468,7 +468,7 @@ func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest)
 // SELECTed mailbox and are reassigned if UIDVALIDITY changes), then
 // fetches the body with BODY.PEEK — the mechanism that stops the server
 // implicitly setting \Seen (SRC-01's never-mark-read guarantee).
-func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*toposv1.FetchResponse, error) {
 	msgID, err := decodeSourceID(sourceID)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "proton: %v", err)
@@ -535,7 +535,7 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
 	}
 
-	resp := &webspacesv1.FetchResponse{
+	resp := &toposv1.FetchResponse{
 		Available: true,
 		Text:      text,
 		Provenance: map[string]string{
@@ -591,14 +591,14 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 // specific, actionable last_error naming the failing step — never a
 // gRPC error, matching every other plugin. The password is never
 // included in LastError.
-func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {
+func (p *SourcePlugin) Health(ctx context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
 	conn, err := p.client.connect(healthDialTimeout)
 	if err != nil {
-		return &webspacesv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil
+		return &toposv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil
 	}
 	defer conn.Logout()
 
-	return &webspacesv1.HealthResponse{
+	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),
 	}, nil

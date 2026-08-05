@@ -265,7 +265,7 @@ handoff = false
 
 # [sources.mock] — the reference "mock" plugin (plugins/mock, PLUG-05):
 # a working SourcePlugin built entirely from docs/plugin-contract.md, the
-# proto/webspaces/v1/plugin.proto wire contract, and the sdk module, with
+# proto/topos/v1/plugin.proto wire contract, and the sdk module, with
 # no network dependency and a fixed, in-memory item set. Uncomment this
 # block (and the [webspaces.demo] block at the bottom of this file) to
 # see it in action without any real source system to connect to.

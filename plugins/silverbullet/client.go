@@ -1,6 +1,6 @@
 // Command webspaces-plugin-silverbullet: this file implements the
 // hand-rolled SilverBullet /.fs HTTP client half of the plugin (see
-// plugin.go for the webspacesv1.SourcePlugin adapter and main.go for the
+// plugin.go for the toposv1.SourcePlugin adapter and main.go for the
 // subprocess entrypoint).
 package main
 

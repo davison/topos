@@ -1,6 +1,6 @@
 // Package main implements the reference "mock" source plugin (PLUG-05):
 // a SourcePlugin built entirely from the published contract
-// (docs/plugin-contract.md, proto/webspaces/v1/plugin.proto, and the sdk
+// (docs/plugin-contract.md, proto/topos/v1/plugin.proto, and the sdk
 // module) with no network dependency and no real source system behind
 // it. This file is deliberately written to be read as documentation —
 // each RPC method's comment states what the contract requires of it, not
@@ -18,13 +18,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
 	sourceType      = "mock"
 	displayName     = "Mock Source"
-	contractVersion = "webspaces.v1"
+	contractVersion = "topos.v1"
 
 	// sourceSystem stands in for a real base URL / connection string — the
 	// mock has no real instance, but Provenance's "source_system" key is
@@ -62,14 +62,14 @@ const (
 // hardcoded literal. The mock has no real per-instance base_url to build
 // from, so its deep links are fixed strings, and loopback is the only
 // literal host such a scan structurally accepts.
-var mockItems = []*webspacesv1.Item{
+var mockItems = []*toposv1.Item{
 	{
 		SourceId:      "1",
 		SourceType:    sourceType,
 		Title:         "Welcome to the mock source",
 		Preview:       "This item exists purely to demonstrate a standalone document with no group/thread concept.",
 		TimestampUnix: 1704067200, // 2024-01-01T00:00:00Z
-		Fidelity:      webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT,
+		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_EXACT,
 		DeepLink:      "http://localhost/mock/items/1",
 		Labels:        []string{"demo"},
 		Provenance:    provenanceFor("1"),
@@ -81,7 +81,7 @@ var mockItems = []*webspacesv1.Item{
 		Preview:                "First message in a fixed mock thread — demonstrates group_id/group_label (a chat/conversation-shaped source).",
 		TimestampUnix:          1704153600, // 2024-01-02T00:00:00Z
 		SecondaryTimestampUnix: 1704153610,
-		Fidelity:               webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT,
+		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_EXACT,
 		DeepLink:               "http://localhost/mock/threads/team-standup#msg-2",
 		Labels:                 []string{"demo", "meeting"},
 		GroupId:                "team-standup",
@@ -95,7 +95,7 @@ var mockItems = []*webspacesv1.Item{
 		Preview:                "Second message in the same fixed mock thread as item 2 — demonstrates LINK_FIDELITY_CONVERSATION_ONLY, the normal fidelity for a chat source with no per-message deep-link scheme.",
 		TimestampUnix:          1704240000, // 2024-01-03T00:00:00Z
 		SecondaryTimestampUnix: 1704240010,
-		Fidelity:               webspacesv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
+		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
 		DeepLink:               "http://localhost/mock/threads/team-standup",
 		Labels:                 []string{"demo", "meeting"},
 		GroupId:                "team-standup",
@@ -108,7 +108,7 @@ var mockItems = []*webspacesv1.Item{
 		Title:         "Shopping list",
 		Preview:       "Demonstrates LINK_FIDELITY_ANCHORED (the deep link opens the right context — a folder view — but not necessarily scrolled to this exact object) and has_thumbnail.",
 		TimestampUnix: 1704326400, // 2024-01-04T00:00:00Z
-		Fidelity:      webspacesv1.LinkFidelity_LINK_FIDELITY_ANCHORED,
+		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_ANCHORED,
 		DeepLink:      "http://localhost/mock/folders/lists",
 		Labels:        []string{"demo", "errands"},
 		HasThumbnail:  true,
@@ -170,8 +170,8 @@ func NewSourcePlugin() *SourcePlugin {
 // this plugin's identity (never the config key or the binary filename),
 // display_name is for UI/logs, and contract_version is the
 // additive-compatibility signal.
-func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error) {
-	return &webspacesv1.DescribeResponse{
+func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
+	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
@@ -186,15 +186,15 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeReques
 // "native categorization" is each item's fixed Labels slice, exactly the
 // role a paperless-ngx tag name or an IMAP folder name plays for a real
 // plugin (see the worked example in docs/plugin-contract.md).
-func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	keywords := req.GetKeywords()
-	var items []*webspacesv1.Item
+	var items []*toposv1.Item
 	for _, it := range mockItems {
 		if labelsMatchAnyKeyword(it.GetLabels(), keywords) {
 			items = append(items, it)
 		}
 	}
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
 // labelsMatchAnyKeyword reports whether any of labels exactly,
@@ -221,7 +221,7 @@ func labelsMatchAnyKeyword(labels, keywords []string) bool {
 // above) — not an error. A source id that doesn't exist in mockItems maps
 // to a gRPC codes.NotFound error, exactly as the contract requires for a
 // source object that no longer exists.
-func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	sourceID := req.GetSourceId()
 	it := findMockItem(sourceID)
 	if it == nil {
@@ -229,18 +229,18 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (
 	}
 
 	switch req.GetVariant() {
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL:
-		return &webspacesv1.FetchResponse{
+	case toposv1.ContentVariant_CONTENT_VARIANT_FULL:
+		return &toposv1.FetchResponse{
 			Available:         false,
 			UnavailableReason: noRenditionReason,
 			Text:              mockFullText[sourceID],
 			Provenance:        it.GetProvenance(),
 		}, nil
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW, webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+	case toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
 		// No text on these variants — matches the contract's "PREVIEW:
 		// just the inline-preview rendition, no text" / "THUMBNAIL: just
 		// a small thumbnail rendition, no text".
-		return &webspacesv1.FetchResponse{
+		return &toposv1.FetchResponse{
 			Available:         false,
 			UnavailableReason: noRenditionReason,
 		}, nil
@@ -252,7 +252,7 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (
 }
 
 // findMockItem returns the fixed item with the given source_id, or nil.
-func findMockItem(sourceID string) *webspacesv1.Item {
+func findMockItem(sourceID string) *toposv1.Item {
 	for _, it := range mockItems {
 		if it.GetSourceId() == sourceID {
 			return it
@@ -264,8 +264,8 @@ func findMockItem(sourceID string) *webspacesv1.Item {
 // Health is a lightweight reachability probe (contract: "RPC semantics:
 // Health"). The mock has nothing to be unreachable from, so it always
 // reports reachable with no error.
-func (p *SourcePlugin) Health(_ context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {
-	return &webspacesv1.HealthResponse{
+func (p *SourcePlugin) Health(_ context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
+	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),
 	}, nil

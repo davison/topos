@@ -1,4 +1,4 @@
-module github.com/davison/webspaces/plugins/signal
+module github.com/davison/topos/plugins/signal
 
 go 1.25.0
 

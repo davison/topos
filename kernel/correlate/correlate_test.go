@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/item"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fakeSource is a test double satisfying correlate.Source without launching
@@ -18,13 +18,13 @@ import (
 type fakeSource struct {
 	name       string
 	sourceType string
-	matchFunc  func(keywords []string) (*webspacesv1.MatchResponse, error)
+	matchFunc  func(keywords []string) (*toposv1.MatchResponse, error)
 	calls      [][]string
 }
 
 func (f *fakeSource) Name() string       { return f.name }
 func (f *fakeSource) SourceType() string { return f.sourceType }
-func (f *fakeSource) Match(_ context.Context, keywords []string) (*webspacesv1.MatchResponse, error) {
+func (f *fakeSource) Match(_ context.Context, keywords []string) (*toposv1.MatchResponse, error) {
 	f.calls = append(f.calls, keywords)
 	return f.matchFunc(keywords)
 }
@@ -44,9 +44,9 @@ func TestSyncSource_PersistsMatchedItems(t *testing.T) {
 
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func(keywords []string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
+		matchFunc: func(keywords []string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "1", Title: "Doc 1", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
 			}}, nil
 		},
 	}
@@ -77,10 +77,10 @@ func TestSyncSource_PersistsMatchedItems(t *testing.T) {
 func TestSyncSource_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	store := newTestStore(t)
 
-	matchFunc := func(keywords []string) (*webspacesv1.MatchResponse, error) {
-		return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-			{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
-			{SourceId: "2", Title: "Doc 2", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/2", TimestampUnix: 200},
+	matchFunc := func(keywords []string) (*toposv1.MatchResponse, error) {
+		return &toposv1.MatchResponse{Items: []*toposv1.Item{
+			{SourceId: "1", Title: "Doc 1", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
+			{SourceId: "2", Title: "Doc 2", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/2", TimestampUnix: 200},
 		}}, nil
 	}
 
@@ -125,7 +125,7 @@ func TestSyncSource_MatchErrorReturnsWebspaceResultErr(t *testing.T) {
 
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
 			return nil, errors.New("connection refused")
 		},
 	}
@@ -152,11 +152,11 @@ func TestSyncSource_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
 
 	src := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "good", Title: "Valid item", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/good", TimestampUnix: 100},
-				{SourceId: "no-fidelity", Title: "Missing fidelity", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_UNSPECIFIED, DeepLink: "http://paperless.lan/documents/no-fidelity", TimestampUnix: 200},
-				{SourceId: "no-link", Title: "Missing deep link", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 300},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "good", Title: "Valid item", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/good", TimestampUnix: 100},
+				{SourceId: "no-fidelity", Title: "Missing fidelity", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_UNSPECIFIED, DeepLink: "http://paperless.lan/documents/no-fidelity", TimestampUnix: 200},
+				{SourceId: "no-link", Title: "Missing deep link", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 300},
 			}}, nil
 		},
 	}
@@ -202,17 +202,17 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 
 	healthy := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "1", Title: "Doc 1", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "1", Title: "Doc 1", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100},
 			}}, nil
 		},
 	}
 	flaky := &fakeSource{
 		name: "silverbullet", sourceType: "silverbullet",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "notes/a", Title: "Note A", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://sb.lan/notes/a", TimestampUnix: 50},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "notes/a", Title: "Note A", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://sb.lan/notes/a", TimestampUnix: 50},
 			}}, nil
 		},
 	}
@@ -238,15 +238,15 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 	// (proving it's not just "the old rows happened to still be there").
 	healthy2 := &fakeSource{
 		name: "paperless", sourceType: "paperless",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "2", Title: "Doc 2", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/2", TimestampUnix: 200},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "2", Title: "Doc 2", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://paperless.lan/documents/2", TimestampUnix: 200},
 			}}, nil
 		},
 	}
 	failingFlaky := &fakeSource{
 		name: "silverbullet", sourceType: "silverbullet",
-		matchFunc: func([]string) (*webspacesv1.MatchResponse, error) {
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
 			return nil, errors.New("connection refused")
 		},
 	}
@@ -321,9 +321,9 @@ func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 
 	src := &fakeSource{
 		name: "silverbullet", sourceType: "silverbullet",
-		matchFunc: func(keywords []string) (*webspacesv1.MatchResponse, error) {
-			return &webspacesv1.MatchResponse{Items: []*webspacesv1.Item{
-				{SourceId: "notes/a", Title: "Note A", Fidelity: webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://sb.lan/notes/a", TimestampUnix: 100},
+		matchFunc: func(keywords []string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "notes/a", Title: "Note A", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "http://sb.lan/notes/a", TimestampUnix: 100},
 			}}, nil
 		},
 	}

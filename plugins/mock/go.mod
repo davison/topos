@@ -1,4 +1,4 @@
-module github.com/davison/webspaces/plugins/mock
+module github.com/davison/topos/plugins/mock
 
 go 1.25.0
 

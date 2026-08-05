@@ -32,9 +32,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/index"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/index"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // grantedSourceTypes returns the set of Describe-learned source_types
@@ -265,7 +265,7 @@ func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProbe
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, webspacesv1.ContentVariant_CONTENT_VARIANT_FULL)
+		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return
@@ -299,7 +299,7 @@ func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProbe
 // behavior below (allowlist check, hardened header set) is copied
 // verbatim from renditionHandler; the only added step is the grant check
 // before any plugin call is made.
-func agentRenditionHandler(store *index.Store, cfg *config.Config, prober HealthProber, fetcher Fetcher, variant webspacesv1.ContentVariant) http.HandlerFunc {
+func agentRenditionHandler(store *index.Store, cfg *config.Config, prober HealthProber, fetcher Fetcher, variant toposv1.ContentVariant) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := itemIDParam(r)
 		ctx := r.Context()
@@ -353,6 +353,6 @@ func MountAgentRoutes(r chi.Router, store *index.Store, cfg *config.Config, fetc
 	r.Get("/agent/v1/webspaces", agentWebspacesHandler(store, cfg, prober))
 	r.Get("/agent/v1/webspaces/{webspace}/stream", agentStreamHandler(store, cfg, prober))
 	r.Get("/agent/v1/items/{id}", agentItemHandler(store, cfg, prober, fetcher))
-	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfg, prober, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
-	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfg, prober, fetcher, webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))
+	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
+	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))
 }

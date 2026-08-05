@@ -1,7 +1,7 @@
 // Command webspaces-plugin-mock is the reference "mock" source plugin
 // subprocess (PLUG-05): a working SourcePlugin built entirely from the
 // published contract (docs/plugin-contract.md), the wire contract
-// (proto/webspaces/v1/plugin.proto) and the sdk module — with no network
+// (proto/topos/v1/plugin.proto) and the sdk module — with no network
 // dependency, no real source system, and no configuration requirement.
 // It is launched exactly like every other plugin, over the same go-plugin
 // gRPC handshake (see docs/plugin-contract.md "Handshake and the
@@ -13,7 +13,7 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 
-	"github.com/davison/webspaces/sdk"
+	"github.com/davison/topos/sdk"
 )
 
 func main() {

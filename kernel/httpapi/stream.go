@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/item"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
 )
 
 // syncStatus mirrors the shared "sync" object in the JSON contract.

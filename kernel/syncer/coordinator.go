@@ -23,8 +23,8 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/davison/webspaces/kernel/correlate"
-	"github.com/davison/webspaces/kernel/index"
+	"github.com/davison/topos/kernel/correlate"
+	"github.com/davison/topos/kernel/index"
 )
 
 // ErrUnknownSource is returned by Refresh when sourceName is not a

@@ -12,12 +12,12 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/correlate"
-	"github.com/davison/webspaces/kernel/httpapi"
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/pluginhost"
-	"github.com/davison/webspaces/kernel/syncer"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
+	"github.com/davison/topos/kernel/httpapi"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/pluginhost"
+	"github.com/davison/topos/kernel/syncer"
 )
 
 func main() {

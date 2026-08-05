@@ -1,4 +1,4 @@
-module github.com/davison/webspaces
+module github.com/davison/topos
 
 go 1.25.0
 

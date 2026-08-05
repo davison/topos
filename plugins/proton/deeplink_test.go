@@ -10,7 +10,7 @@ import (
 
 	imap "github.com/emersion/go-imap"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // TestWebmailSearchDeepLink_Table is a URL contract, exact-match table —
@@ -377,7 +377,7 @@ func TestToItem_FidelityRemainsAnchored(t *testing.T) {
 
 	item := plugin.toItem("test-source-id", m)
 
-	if got := item.GetFidelity(); got != webspacesv1.LinkFidelity_LINK_FIDELITY_ANCHORED {
+	if got := item.GetFidelity(); got != toposv1.LinkFidelity_LINK_FIDELITY_ANCHORED {
 		t.Errorf("item.Fidelity = %v, want LINK_FIDELITY_ANCHORED", got)
 	}
 }

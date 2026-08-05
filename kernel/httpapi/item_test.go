@@ -13,10 +13,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/davison/webspaces/kernel/index"
-	"github.com/davison/webspaces/kernel/item"
-	"github.com/davison/webspaces/kernel/pluginhost"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
+	"github.com/davison/topos/kernel/pluginhost"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fakeFetcher is a test double satisfying httpapi.Fetcher without
@@ -26,7 +26,7 @@ type fakeFetcher struct {
 	err    error
 }
 
-func (f *fakeFetcher) Fetch(_ context.Context, _, _ string, _ webspacesv1.ContentVariant) (pluginhost.FetchResult, error) {
+func (f *fakeFetcher) Fetch(_ context.Context, _, _ string, _ toposv1.ContentVariant) (pluginhost.FetchResult, error) {
 	return f.result, f.err
 }
 

@@ -1,7 +1,7 @@
 // Command webspaces-plugin-proton: this file implements the IMAP
 // connection layer against Proton Mail Bridge (reached through a LAN
 // forwarder — see 03-RESEARCH.md Pitfall 2). See plugin.go for the
-// webspacesv1.SourcePlugin adapter and main.go for the subprocess
+// toposv1.SourcePlugin adapter and main.go for the subprocess
 // entrypoint.
 package main
 

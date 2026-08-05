@@ -94,7 +94,7 @@ test:
 test-signal:
 	cd plugins/signal && CGO_ENABLED=1 go build -tags libsqlcipher ./... && CGO_ENABLED=1 go test -tags libsqlcipher ./...
 
-# proto regenerates the sdk/gen Go stubs from proto/webspaces/v1/plugin.proto.
+# proto regenerates the sdk/gen Go stubs from proto/topos/v1/plugin.proto.
 # Prefers buf; falls back to protoc + protoc-gen-go + protoc-gen-go-grpc
 # when buf is not installed (see 01-RESEARCH.md Environment Availability).
 proto:
@@ -104,7 +104,7 @@ proto:
 		protoc --go_out=sdk/gen --go_opt=paths=source_relative \
 			--go-grpc_out=sdk/gen --go-grpc_opt=paths=source_relative \
 			--proto_path=proto \
-			proto/webspaces/v1/plugin.proto; \
+			proto/topos/v1/plugin.proto; \
 	fi
 
 smoke: build

@@ -28,7 +28,7 @@ model, no health UI. What's coming, in order:
 - **Node 20+** (for building the SvelteKit web UI).
 - The proto codegen toolchain (**`buf`**, or `protoc` +
   `protoc-gen-go` + `protoc-gen-go-grpc`) — only needed if you're
-  regenerating `sdk/gen` from `proto/webspaces/v1/plugin.proto`; not
+  regenerating `sdk/gen` from `proto/topos/v1/plugin.proto`; not
   needed for a normal build.
 
 ## Repository layout
@@ -36,7 +36,7 @@ model, no health UI. What's coming, in order:
 ```
 cmd/webspaces/        kernel binary entrypoint (serve, sync)
 kernel/                config, index (SQLite), correlate (sync-time matching), httpapi, pluginhost, webui (embed)
-proto/webspaces/v1/    the published plugin contract (source of truth)
+proto/topos/v1/    the published plugin contract (source of truth)
 sdk/                    the plugin-author-facing Go module (handshake, interfaces, generated stubs)
 plugins/paperless/     the reference source plugin
 web/                    the SvelteKit SPA

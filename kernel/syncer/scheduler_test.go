@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/kernel/correlate"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // countingSource is a correlate.Source that records how many times its
@@ -26,11 +26,11 @@ type countingSource struct {
 
 func (c *countingSource) Name() string       { return c.name }
 func (c *countingSource) SourceType() string { return c.sourceType }
-func (c *countingSource) Match(context.Context, []string) (*webspacesv1.MatchResponse, error) {
+func (c *countingSource) Match(context.Context, []string) (*toposv1.MatchResponse, error) {
 	c.mu.Lock()
 	c.calls++
 	c.mu.Unlock()
-	return &webspacesv1.MatchResponse{}, nil
+	return &toposv1.MatchResponse{}, nil
 }
 
 func (c *countingSource) callCount() int {

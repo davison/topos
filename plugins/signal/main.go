@@ -17,7 +17,7 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 
-	"github.com/davison/webspaces/sdk"
+	"github.com/davison/topos/sdk"
 )
 
 // sourceConfig is decoded from the WEBSPACES_SOURCE_CONFIG environment

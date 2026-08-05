@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package webspaces.v1;
+package topos.v1;
 
-option go_package = "github.com/davison/webspaces/sdk/gen/webspaces/v1;webspacesv1";
+option go_package = "github.com/davison/topos/sdk/gen/topos/v1;toposv1";
 
 // SourcePlugin is read-only by construction. No RPC in this service changes
 // state in the source system, and none may ever be added — see PLUG-02.
@@ -17,7 +17,7 @@ message DescribeRequest {}
 message DescribeResponse {
   string source_type      = 1;  // "paperless"
   string display_name     = 2;  // "paperless-ngx"
-  string contract_version = 3;  // "webspaces.v1"
+  string contract_version = 3;  // "topos.v1"
 }
 
 message MatchRequest  { repeated string keywords = 1; }  // exact, case-insensitive (D-03)

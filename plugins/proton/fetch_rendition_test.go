@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // TestFetch_PrefersPlainTextOverHTMLRendition is 03-09-PLAN.md Task 1's
@@ -29,7 +29,7 @@ func TestFetch_PrefersPlainTextOverHTMLRendition(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"DeltaTeam"}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"DeltaTeam"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -38,9 +38,9 @@ func TestFetch_PrefersPlainTextOverHTMLRendition(t *testing.T) {
 	}
 	item := matchResp.GetItems()[0]
 
-	fetchResp, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	fetchResp, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: item.GetSourceId(),
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -75,7 +75,7 @@ func TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"EpsilonTeam"}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"EpsilonTeam"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -84,9 +84,9 @@ func TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition(t *testing.T) {
 	}
 	item := matchResp.GetItems()[0]
 
-	fetchResp, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	fetchResp, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: item.GetSourceId(),
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -124,7 +124,7 @@ func TestFetch_MessageWithNoRenderablePartIsAvailableAndEmpty(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"ZetaTeam"}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"ZetaTeam"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -133,9 +133,9 @@ func TestFetch_MessageWithNoRenderablePartIsAvailableAndEmpty(t *testing.T) {
 	}
 	item := matchResp.GetItems()[0]
 
-	fetchResp, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	fetchResp, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: item.GetSourceId(),
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: unexpected error %v, want a normal available-and-empty response, never a gRPC error", err)

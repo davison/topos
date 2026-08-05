@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fixtureKeyHex is a fixed, non-secret 32-byte SQLCipher raw key used
@@ -175,7 +175,7 @@ func TestDatabaseByteIdenticalAfterMatchAndFetch(t *testing.T) {
 	plugin := NewSourcePlugin(configDir)
 	ctx := context.Background()
 
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"House Move", "Alice Smith"}})
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"House Move", "Alice Smith"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -183,9 +183,9 @@ func TestDatabaseByteIdenticalAfterMatchAndFetch(t *testing.T) {
 		t.Fatal("expected Match to return at least one digest from the fixture database")
 	}
 	for _, item := range matchResp.GetItems() {
-		if _, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+		if _, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 			SourceId: item.GetSourceId(),
-			Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+			Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 		}); err != nil {
 			t.Fatalf("Fetch(%s): %v", item.GetSourceId(), err)
 		}
@@ -229,16 +229,16 @@ func TestLiveDatabaseByteIdentical(t *testing.T) {
 	// database, not that digests are produced against real content; the
 	// conversations table is still read in full regardless of match
 	// count (plugin.go's Match reads every conversation before filtering).
-	matchResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{
+	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{
 		Keywords: []string{"webspaces-signal-live-it-byte-identical-probe"},
 	})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
 	for _, item := range matchResp.GetItems() {
-		if _, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+		if _, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 			SourceId: item.GetSourceId(),
-			Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+			Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 		}); err != nil {
 			t.Fatalf("Fetch(%s): %v", item.GetSourceId(), err)
 		}

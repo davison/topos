@@ -11,13 +11,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
 	sourceType      = "silverbullet"
 	displayName     = "SilverBullet"
-	contractVersion = "webspaces.v1"
+	contractVersion = "topos.v1"
 	previewRuneCap  = 500
 	// matchConcurrency bounds how many page bodies Match reads at once
 	// (T-02-05): SilverBullet has no server-side tag filter (RESEARCH.md
@@ -47,8 +47,8 @@ func NewSourcePlugin(baseURL, token, caCertPath string) *SourcePlugin {
 	}
 }
 
-func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error) {
-	return &webspacesv1.DescribeResponse{
+func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
+	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
@@ -71,10 +71,10 @@ type pageMatch struct {
 // SilverBullet has no server-side tag/name filter (RESEARCH.md Pitfall 2),
 // so this cost is unavoidable and scales with total space size, not
 // matched-item count (accepted for this phase's MVP scope, A-SRC-05).
-func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	keywords := req.GetKeywords()
 	if len(keywords) == 0 {
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	files, err := p.client.ListFiles(ctx)
@@ -139,35 +139,35 @@ func (p *SourcePlugin) Match(ctx context.Context, req *webspacesv1.MatchRequest)
 		return nil, status.Errorf(codes.Unavailable, "silverbullet: match: %v", err)
 	}
 
-	items := make([]*webspacesv1.Item, 0, len(candidates))
+	items := make([]*toposv1.Item, 0, len(candidates))
 	for _, m := range matches {
 		if m == nil {
 			continue
 		}
 		items = append(items, p.toItem(m.file, m.tags, m.body))
 	}
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
-// toItem builds a webspacesv1.Item from one matched page (D-01, D-04):
+// toItem builds a toposv1.Item from one matched page (D-01, D-04):
 // source_id is the page path with ".md" stripped, title is that path's
 // final segment, preview is the frontmatter-stripped body's snippet, and
 // the deep link is an exact-fidelity link to {base_url}/{page-path}.
-func (p *SourcePlugin) toItem(f FileMeta, tags []string, body []byte) *webspacesv1.Item {
+func (p *SourcePlugin) toItem(f FileMeta, tags []string, body []byte) *toposv1.Item {
 	sourceID := strings.TrimSuffix(f.Name, ".md")
 	title := sourceID
 	if idx := strings.LastIndex(sourceID, "/"); idx >= 0 {
 		title = sourceID[idx+1:]
 	}
 
-	return &webspacesv1.Item{
+	return &toposv1.Item{
 		SourceId:               sourceID,
 		SourceType:             sourceType,
 		Title:                  title,
 		Preview:                Snippet(body),
 		TimestampUnix:          f.LastModified / 1000,
 		SecondaryTimestampUnix: f.Created / 1000,
-		Fidelity:               webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT,
+		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_EXACT,
 		DeepLink:               fmt.Sprintf("%s/%s", p.baseURL, sourceID),
 		Labels:                 tags,
 		Provenance: map[string]string{
@@ -192,12 +192,12 @@ const noThumbnailReason = "SilverBullet pages have no thumbnail rendition"
 // sanitized HTML (D-04: rendered markdown is the default detail-pane
 // content); THUMBNAIL is always unavailable, with no error, since a wiki
 // page never has an image rendition.
-func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) Fetch(ctx context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	switch req.GetVariant() {
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+	case toposv1.ContentVariant_CONTENT_VARIANT_FULL, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
 		return p.fetchFull(ctx, req.GetSourceId())
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
-		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
+	case toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		return &toposv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
 	default:
 		return nil, status.Error(codes.InvalidArgument, "silverbullet: unspecified content variant")
 	}
@@ -218,7 +218,7 @@ func (p *SourcePlugin) Fetch(ctx context.Context, req *webspacesv1.FetchRequest)
 // real instance (a request for the bare, extension-less path 404s; Task 1
 // Step 0's exploratory checks only ever probed a hardcoded ".md" path
 // directly, so this asymmetry didn't surface until Task 2's live check).
-func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*toposv1.FetchResponse, error) {
 	filePath := sourceID + ".md"
 
 	raw, err := p.client.ReadFile(ctx, filePath)
@@ -243,7 +243,7 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 	// reintroduce any XSS surface the sanitizer removed.
 	doc := WrapDocument(sanitized)
 
-	return &webspacesv1.FetchResponse{
+	return &toposv1.FetchResponse{
 		Available: true,
 		MimeType:  "text/html",
 		SizeBytes: int64(len(doc)),
@@ -256,15 +256,15 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*webspac
 	}, nil
 }
 
-func (p *SourcePlugin) Health(ctx context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {
+func (p *SourcePlugin) Health(ctx context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
 	_, err := p.client.ListFiles(ctx)
 	if err != nil {
-		return &webspacesv1.HealthResponse{
+		return &toposv1.HealthResponse{
 			Reachable: false,
 			LastError: err.Error(),
 		}, nil
 	}
-	return &webspacesv1.HealthResponse{
+	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),
 	}, nil

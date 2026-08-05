@@ -22,9 +22,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/davison/webspaces/kernel/config"
-	"github.com/davison/webspaces/sdk"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/sdk"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // ErrItemNotFound is returned by Host.Fetch when the plugin reports the
@@ -62,18 +62,18 @@ func (p *Plugin) SourceType() string { return p.sourceType }
 func (p *Plugin) DisplayName() string { return p.displayName }
 
 // Match calls the plugin's Match RPC. Satisfies correlate.Source.
-func (p *Plugin) Match(ctx context.Context, keywords []string) (*webspacesv1.MatchResponse, error) {
-	return p.impl.Match(ctx, &webspacesv1.MatchRequest{Keywords: keywords})
+func (p *Plugin) Match(ctx context.Context, keywords []string) (*toposv1.MatchResponse, error) {
+	return p.impl.Match(ctx, &toposv1.MatchRequest{Keywords: keywords})
 }
 
 // Fetch calls the plugin's Fetch RPC.
-func (p *Plugin) Fetch(ctx context.Context, sourceID string, variant webspacesv1.ContentVariant) (*webspacesv1.FetchResponse, error) {
-	return p.impl.Fetch(ctx, &webspacesv1.FetchRequest{SourceId: sourceID, Variant: variant})
+func (p *Plugin) Fetch(ctx context.Context, sourceID string, variant toposv1.ContentVariant) (*toposv1.FetchResponse, error) {
+	return p.impl.Fetch(ctx, &toposv1.FetchRequest{SourceId: sourceID, Variant: variant})
 }
 
 // Health calls the plugin's Health RPC.
-func (p *Plugin) Health(ctx context.Context) (*webspacesv1.HealthResponse, error) {
-	return p.impl.Health(ctx, &webspacesv1.HealthRequest{})
+func (p *Plugin) Health(ctx context.Context) (*toposv1.HealthResponse, error) {
+	return p.impl.Health(ctx, &toposv1.HealthRequest{})
 }
 
 // Kill terminates the plugin subprocess.
@@ -165,7 +165,7 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		return nil, fmt.Errorf("plugin %s does not implement sdk.SourcePlugin", name)
 	}
 
-	desc, err := impl.Describe(ctx, &webspacesv1.DescribeRequest{})
+	desc, err := impl.Describe(ctx, &toposv1.DescribeRequest{})
 	if err != nil {
 		client.Kill()
 		return nil, fmt.Errorf("describe plugin %s: %w", name, err)
@@ -267,13 +267,13 @@ type FetchResult struct {
 // kernel-domain types and errors. gRPC codes.NotFound maps to
 // ErrItemNotFound, codes.Unavailable and any other transport failure maps
 // to ErrSourceUnavailable.
-func (h *Host) Fetch(ctx context.Context, sourceType, sourceID string, variant webspacesv1.ContentVariant) (FetchResult, error) {
+func (h *Host) Fetch(ctx context.Context, sourceType, sourceID string, variant toposv1.ContentVariant) (FetchResult, error) {
 	p := h.bySourceType(sourceType)
 	if p == nil {
 		return FetchResult{}, fmt.Errorf("%w: no plugin registered for source type %q", ErrItemNotFound, sourceType)
 	}
 
-	resp, err := p.impl.Fetch(ctx, &webspacesv1.FetchRequest{SourceId: sourceID, Variant: variant})
+	resp, err := p.impl.Fetch(ctx, &toposv1.FetchRequest{SourceId: sourceID, Variant: variant})
 	if err != nil {
 		if st, ok := status.FromError(err); ok {
 			switch st.Code() {

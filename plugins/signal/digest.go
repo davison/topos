@@ -10,7 +10,7 @@ import (
 )
 
 // digest is one (conversation, local calendar day) unit (D-01) — the
-// item this plugin's Match ultimately returns one webspacesv1.Item per.
+// item this plugin's Match ultimately returns one toposv1.Item per.
 type digest struct {
 	ConversationID   string
 	ConversationName string

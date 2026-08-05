@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: webspaces/v1/plugin.proto
+// source: topos/v1/plugin.proto
 
-package webspacesv1
+package toposv1
 
 import (
 	context "context"
@@ -19,10 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SourcePlugin_Describe_FullMethodName = "/webspaces.v1.SourcePlugin/Describe"
-	SourcePlugin_Match_FullMethodName    = "/webspaces.v1.SourcePlugin/Match"
-	SourcePlugin_Fetch_FullMethodName    = "/webspaces.v1.SourcePlugin/Fetch"
-	SourcePlugin_Health_FullMethodName   = "/webspaces.v1.SourcePlugin/Health"
+	SourcePlugin_Describe_FullMethodName = "/topos.v1.SourcePlugin/Describe"
+	SourcePlugin_Match_FullMethodName    = "/topos.v1.SourcePlugin/Match"
+	SourcePlugin_Fetch_FullMethodName    = "/topos.v1.SourcePlugin/Fetch"
+	SourcePlugin_Health_FullMethodName   = "/topos.v1.SourcePlugin/Health"
 )
 
 // SourcePluginClient is the client API for SourcePlugin service.
@@ -216,7 +216,7 @@ func _SourcePlugin_Health_Handler(srv interface{}, ctx context.Context, dec func
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var SourcePlugin_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "webspaces.v1.SourcePlugin",
+	ServiceName: "topos.v1.SourcePlugin",
 	HandlerType: (*SourcePluginServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -237,5 +237,5 @@ var SourcePlugin_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "webspaces/v1/plugin.proto",
+	Metadata: "topos/v1/plugin.proto",
 }

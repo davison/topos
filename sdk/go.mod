@@ -1,4 +1,4 @@
-module github.com/davison/webspaces/sdk
+module github.com/davison/topos/sdk
 
 go 1.25.0
 

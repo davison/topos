@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // newFetchTestPlugin builds a SourcePlugin against a fresh fixture
@@ -41,9 +41,9 @@ func newFetchTestPlugin(t *testing.T) (plugin *SourcePlugin, groupDay1SourceID, 
 
 func TestFetch_FullReturnsWrappedTranscript(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
-	resp, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(FULL): %v", err)
@@ -64,9 +64,9 @@ func TestFetch_FullReturnsWrappedTranscript(t *testing.T) {
 
 func TestFetch_PreviewReturnsIdenticalWrappedTranscript(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
-	resp, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(PREVIEW): %v", err)
@@ -78,9 +78,9 @@ func TestFetch_PreviewReturnsIdenticalWrappedTranscript(t *testing.T) {
 
 func TestFetch_ThumbnailAlwaysUnavailable(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
-	resp, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(THUMBNAIL): %v", err)
@@ -98,9 +98,9 @@ func TestFetch_ThumbnailAlwaysUnavailable(t *testing.T) {
 
 func TestFetch_UnspecifiedVariantIsInvalidArgument(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
-	_, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	_, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_UNSPECIFIED,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_UNSPECIFIED,
 	})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Errorf("expected codes.InvalidArgument, got %v", err)
@@ -109,9 +109,9 @@ func TestFetch_UnspecifiedVariantIsInvalidArgument(t *testing.T) {
 
 func TestFetch_UnknownSourceIDIsNotFound(t *testing.T) {
 	plugin, _, _ := newFetchTestPlugin(t)
-	_, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	_, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: sourceIDForDigest("does-not-exist", "2026-01-05"),
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if status.Code(err) != codes.NotFound {
 		t.Errorf("expected codes.NotFound, got %v", err)
@@ -123,9 +123,9 @@ func TestFetch_UnknownSourceIDIsNotFound(t *testing.T) {
 
 func TestFetch_MalformedSourceIDIsNotFound(t *testing.T) {
 	plugin, _, _ := newFetchTestPlugin(t)
-	_, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	_, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: "not-a-valid-source-id",
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if status.Code(err) != codes.NotFound {
 		t.Errorf("expected codes.NotFound for a malformed source_id, got %v", err)
@@ -134,9 +134,9 @@ func TestFetch_MalformedSourceIDIsNotFound(t *testing.T) {
 
 func TestFetch_SingleMessageDayRendersExactlyOneBubble(t *testing.T) {
 	plugin, _, privateSourceID := newFetchTestPlugin(t)
-	resp, err := plugin.Fetch(context.Background(), &webspacesv1.FetchRequest{
+	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: privateSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(FULL): %v", err)

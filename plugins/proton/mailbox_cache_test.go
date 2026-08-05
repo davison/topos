@@ -20,7 +20,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // TestMatch_MailboxCacheSurvivesASecondWebspaceMatch: against ONE plugin
@@ -38,7 +38,7 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 
 	ctx := context.Background()
 
-	firstResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
+	firstResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
 	if err != nil {
 		t.Fatalf("first Match (AlphaTeam): %v", err)
 	}
@@ -47,7 +47,7 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 	}
 	firstSourceID := firstResp.GetItems()[0].GetSourceId()
 
-	secondResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"GammaTeam"}})
+	secondResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"GammaTeam"}})
 	if err != nil {
 		t.Fatalf("second Match (GammaTeam): %v", err)
 	}
@@ -62,9 +62,9 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 
 	// The regression: Fetch the FIRST Match's source_id after a SECOND,
 	// disjoint Match has run against the same plugin instance.
-	firstFetch, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	firstFetch, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: firstSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(firstSourceID) after a second webspace's Match: got error %v (code %s), want nil — the plugin's mailbox resolution state must accumulate across Match calls, not be replaced by the most recent one", err, status.Code(err))
@@ -74,9 +74,9 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 	}
 
 	// Accumulating must not have traded the newest entry for the oldest.
-	secondFetch, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	secondFetch, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: secondSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(secondSourceID): got error %v (code %s), want nil", err, status.Code(err))
@@ -99,7 +99,7 @@ func TestMatch_ZeroMailboxMatchPreservesMailboxCache(t *testing.T) {
 
 	ctx := context.Background()
 
-	firstResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
+	firstResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
 	if err != nil {
 		t.Fatalf("first Match (AlphaTeam): %v", err)
 	}
@@ -109,7 +109,7 @@ func TestMatch_ZeroMailboxMatchPreservesMailboxCache(t *testing.T) {
 	firstSourceID := firstResp.GetItems()[0].GetSourceId()
 
 	// A keyword guaranteed not to match any seeded mailbox leaf name.
-	zeroResp, err := plugin.Match(ctx, &webspacesv1.MatchRequest{Keywords: []string{"NoSuchLabelAnywhere"}})
+	zeroResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"NoSuchLabelAnywhere"}})
 	if err != nil {
 		t.Fatalf("second Match (zero-matching keyword): got error %v, want nil (a zero-mailbox-match Match must succeed with an empty response)", err)
 	}
@@ -119,9 +119,9 @@ func TestMatch_ZeroMailboxMatchPreservesMailboxCache(t *testing.T) {
 
 	// The regression: Fetch the FIRST Match's source_id after a Match that
 	// matched zero mailboxes has run against the same plugin instance.
-	fetchResp, err := plugin.Fetch(ctx, &webspacesv1.FetchRequest{
+	fetchResp, err := plugin.Fetch(ctx, &toposv1.FetchRequest{
 		SourceId: firstSourceID,
-		Variant:  webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch(firstSourceID) after a zero-mailbox-matched Match: got error %v (code %s), want nil — a webspace contributing nothing must never erase what an earlier webspace's Match contributed", err, status.Code(err))

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davison/webspaces/kernel/item"
+	"github.com/davison/topos/kernel/item"
 )
 
 func openTestStore(t *testing.T) *Store {

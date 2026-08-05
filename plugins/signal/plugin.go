@@ -15,13 +15,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
 	sourceType      = "signal"
 	displayName     = "Signal"
-	contractVersion = "webspaces.v1"
+	contractVersion = "topos.v1"
 
 	// pluginName identifies this plugin in Item.Provenance's "plugin" key
 	// and in this process's own log lines.
@@ -72,8 +72,8 @@ func NewSourcePlugin(configDir string) *SourcePlugin {
 func (p *SourcePlugin) configPath() string { return filepath.Join(p.configDir, "config.json") }
 func (p *SourcePlugin) dbPath() string     { return filepath.Join(p.configDir, "sql", "db.sqlite") }
 
-func (p *SourcePlugin) Describe(_ context.Context, _ *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error) {
-	return &webspacesv1.DescribeResponse{
+func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
+	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
@@ -149,10 +149,10 @@ func (p *SourcePlugin) openGuarded() (*sql.DB, error) {
 // conversations, both return a successful EMPTY response — never an
 // error (plugins/proton's identical precedent: a webspace with no
 // matching content is empty, not failed).
-func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	keywords := req.GetKeywords()
 	if len(keywords) == 0 {
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	db, err := p.openGuarded()
@@ -173,7 +173,7 @@ func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (
 
 	matched := eligibleConversations(convs, keywords)
 	if len(matched) == 0 {
-		return &webspacesv1.MatchResponse{}, nil
+		return &toposv1.MatchResponse{}, nil
 	}
 
 	matchedByID := make(map[string]conversation, len(matched))
@@ -198,7 +198,7 @@ func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (
 
 	digests := buildDigests(msgs, names)
 
-	items := make([]*webspacesv1.Item, 0, len(digests))
+	items := make([]*toposv1.Item, 0, len(digests))
 	for _, d := range digests {
 		items = append(items, p.toItem(d, matchedByID[d.ConversationID]))
 	}
@@ -207,14 +207,14 @@ func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (
 	// body. This log is forwarded verbatim into the kernel's log stream.
 	fmt.Fprintf(p.logOut, "%s: match: %d matched conversation(s), %d digest(s)\n", pluginName, len(matched), len(items))
 
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
-// toItem builds a webspacesv1.Item from one digest and the (already
+// toItem builds a toposv1.Item from one digest and the (already
 // matched) conversation it belongs to.
-func (p *SourcePlugin) toItem(d digest, conv conversation) *webspacesv1.Item {
+func (p *SourcePlugin) toItem(d digest, conv conversation) *toposv1.Item {
 	sourceID := sourceIDForDigest(d.ConversationID, d.Day)
-	return &webspacesv1.Item{
+	return &toposv1.Item{
 		SourceId:      sourceID,
 		SourceType:    sourceType,
 		Title:         digestTitle(d.ConversationName, d.MessageCount),
@@ -222,7 +222,7 @@ func (p *SourcePlugin) toItem(d digest, conv conversation) *webspacesv1.Item {
 		TimestampUnix: d.LastMessageUnix,
 		GroupId:       d.ConversationID,
 		GroupLabel:    "", // 04-UI-SPEC.md: left empty — the title already carries the identifying context
-		Fidelity:      webspacesv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
+		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
 		DeepLink:      conversationDeepLink(conv.Type, conv.E164),
 		Labels:        []string{d.ConversationName},
 		HasThumbnail:  false,
@@ -244,11 +244,11 @@ func (p *SourcePlugin) toItem(d digest, conv conversation) *webspacesv1.Item {
 // richer inline preview" distinction for a chat transcript the way there
 // is for an email's plain-text-vs-HTML choice, so both variants return
 // the identical wrapped transcript document.
-func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	switch req.GetVariant() {
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
-		return &webspacesv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
-	case webspacesv1.ContentVariant_CONTENT_VARIANT_FULL, webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
+	case toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		return &toposv1.FetchResponse{Available: false, UnavailableReason: noThumbnailReason}, nil
+	case toposv1.ContentVariant_CONTENT_VARIANT_FULL, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
 		return p.fetchTranscript(req.GetSourceId())
 	default:
 		return nil, status.Error(codes.InvalidArgument, "signal: unspecified content variant")
@@ -262,7 +262,7 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *webspacesv1.FetchRequest) (
 // messages for that day, renders them into a sanitized, self-contained
 // HTML transcript document (render.go), and returns it as MimeType
 // transcriptMimeType.
-func (p *SourcePlugin) fetchTranscript(sourceID string) (*webspacesv1.FetchResponse, error) {
+func (p *SourcePlugin) fetchTranscript(sourceID string) (*toposv1.FetchResponse, error) {
 	conversationID, day, err := decodeSourceID(sourceID)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "signal: source_id %q is not a recognised digest id: %v", sourceID, err)
@@ -313,7 +313,7 @@ func (p *SourcePlugin) fetchTranscript(sourceID string) (*webspacesv1.FetchRespo
 
 	doc := WrapDocument(renderTranscript(dayMsgs))
 
-	return &webspacesv1.FetchResponse{
+	return &toposv1.FetchResponse{
 		Available: true,
 		MimeType:  transcriptMimeType,
 		SizeBytes: int64(len(doc)),
@@ -331,14 +331,14 @@ func (p *SourcePlugin) fetchTranscript(sourceID string) (*webspacesv1.FetchRespo
 // Reachable:false with a specific, actionable LastError naming the
 // failing step — never a gRPC error, matching every other plugin. Never
 // includes the key or any config.json field value.
-func (p *SourcePlugin) Health(_ context.Context, _ *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error) {
+func (p *SourcePlugin) Health(_ context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
 	db, err := p.openGuarded()
 	if err != nil {
-		return &webspacesv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil
+		return &toposv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil
 	}
 	defer db.Close()
 
-	return &webspacesv1.HealthResponse{
+	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),
 	}, nil

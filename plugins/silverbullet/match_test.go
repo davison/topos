@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // newMatchTestServer mirrors newClientFixtureServer/newFetchTestServer's
@@ -63,7 +63,7 @@ func TestMatch_HappyPath_ReturnsOnlyKeywordMatchedPages(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestMatch_HappyPath_ReturnsOnlyKeywordMatchedPages(t *testing.T) {
 	if item.GetDeepLink() != srv.URL+"/Decking" {
 		t.Errorf("DeepLink = %q, want %q", item.GetDeepLink(), srv.URL+"/Decking")
 	}
-	if item.GetFidelity() != webspacesv1.LinkFidelity_LINK_FIDELITY_EXACT {
+	if item.GetFidelity() != toposv1.LinkFidelity_LINK_FIDELITY_EXACT {
 		t.Errorf("Fidelity = %v, want LINK_FIDELITY_EXACT", item.GetFidelity())
 	}
 	if atomic.LoadInt32(&plugRequested) != 0 {
@@ -107,7 +107,7 @@ func TestMatch_PageDeletedBetweenListingAndRead_SkippedNotFailed(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestMatch_AllPageReadsFail_ReturnsUnavailable(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
 	if err == nil {
 		t.Fatal("expected a non-nil error when every page read fails")
 	}
@@ -176,7 +176,7 @@ func TestMatch_OutageMidSync_AuthFailure_ReturnsUnavailable(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
 	if err == nil {
 		t.Fatal("expected a non-nil error when the token is revoked partway through the sync")
 	}
@@ -206,7 +206,7 @@ func TestMatch_UnavailableError_NeverContainsBearerToken(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, token, "")
-	_, err := p.Match(context.Background(), &webspacesv1.MatchRequest{Keywords: []string{"house"}})
+	_, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
 	if err == nil {
 		t.Fatal("expected a non-nil error when every page read fails")
 	}

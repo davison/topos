@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 func newFetchTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
@@ -40,8 +40,8 @@ func TestFetch_FullVariant_TextAndRendition(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "10")
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "42", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "42", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -80,8 +80,8 @@ func TestFetch_FullVariant_EmptyExtractedContent(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "10")
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "7", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "7", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -103,8 +103,8 @@ func TestFetch_PreviewVariant_404IsUnavailableNotError(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "10")
-	resp, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "99", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
+	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "99", Variant: toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
 	})
 	if err != nil {
 		t.Fatalf("expected no error for a 404 rendition, got %v", err)
@@ -125,8 +125,8 @@ func TestFetch_UnreachableSource_ReturnsUnavailable(t *testing.T) {
 	srv.Close() // closed before use: every request fails to connect
 
 	p := NewSourcePlugin(srv.URL, "test-token", "10")
-	_, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "1", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	_, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "1", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unreachable source")
@@ -145,8 +145,8 @@ func TestFetch_UnknownDocument_ReturnsNotFound(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "10")
-	_, err := p.Fetch(context.Background(), &webspacesv1.FetchRequest{
-		SourceId: "99999999", Variant: webspacesv1.ContentVariant_CONTENT_VARIANT_FULL,
+	_, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
+		SourceId: "99999999", Variant: toposv1.ContentVariant_CONTENT_VARIANT_FULL,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unknown document id")

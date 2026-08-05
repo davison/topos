@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 
-	"github.com/davison/webspaces/kernel/config"
+	"github.com/davison/topos/kernel/config"
 )
 
 // Scheduler runs one background goroutine per configured source, each

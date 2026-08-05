@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: webspaces/v1/plugin.proto
+// source: topos/v1/plugin.proto
 
-package webspacesv1
+package toposv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -57,11 +57,11 @@ func (x LinkFidelity) String() string {
 }
 
 func (LinkFidelity) Descriptor() protoreflect.EnumDescriptor {
-	return file_webspaces_v1_plugin_proto_enumTypes[0].Descriptor()
+	return file_topos_v1_plugin_proto_enumTypes[0].Descriptor()
 }
 
 func (LinkFidelity) Type() protoreflect.EnumType {
-	return &file_webspaces_v1_plugin_proto_enumTypes[0]
+	return &file_topos_v1_plugin_proto_enumTypes[0]
 }
 
 func (x LinkFidelity) Number() protoreflect.EnumNumber {
@@ -70,7 +70,7 @@ func (x LinkFidelity) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LinkFidelity.Descriptor instead.
 func (LinkFidelity) EnumDescriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{0}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{0}
 }
 
 type ContentVariant int32
@@ -109,11 +109,11 @@ func (x ContentVariant) String() string {
 }
 
 func (ContentVariant) Descriptor() protoreflect.EnumDescriptor {
-	return file_webspaces_v1_plugin_proto_enumTypes[1].Descriptor()
+	return file_topos_v1_plugin_proto_enumTypes[1].Descriptor()
 }
 
 func (ContentVariant) Type() protoreflect.EnumType {
-	return &file_webspaces_v1_plugin_proto_enumTypes[1]
+	return &file_topos_v1_plugin_proto_enumTypes[1]
 }
 
 func (x ContentVariant) Number() protoreflect.EnumNumber {
@@ -122,7 +122,7 @@ func (x ContentVariant) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ContentVariant.Descriptor instead.
 func (ContentVariant) EnumDescriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{1}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{1}
 }
 
 type DescribeRequest struct {
@@ -133,7 +133,7 @@ type DescribeRequest struct {
 
 func (x *DescribeRequest) Reset() {
 	*x = DescribeRequest{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[0]
+	mi := &file_topos_v1_plugin_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -145,7 +145,7 @@ func (x *DescribeRequest) String() string {
 func (*DescribeRequest) ProtoMessage() {}
 
 func (x *DescribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[0]
+	mi := &file_topos_v1_plugin_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -158,21 +158,21 @@ func (x *DescribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeRequest.ProtoReflect.Descriptor instead.
 func (*DescribeRequest) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{0}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{0}
 }
 
 type DescribeResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	SourceType      string                 `protobuf:"bytes,1,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`                // "paperless"
 	DisplayName     string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`             // "paperless-ngx"
-	ContractVersion string                 `protobuf:"bytes,3,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"` // "webspaces.v1"
+	ContractVersion string                 `protobuf:"bytes,3,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"` // "topos.v1"
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *DescribeResponse) Reset() {
 	*x = DescribeResponse{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[1]
+	mi := &file_topos_v1_plugin_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -184,7 +184,7 @@ func (x *DescribeResponse) String() string {
 func (*DescribeResponse) ProtoMessage() {}
 
 func (x *DescribeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[1]
+	mi := &file_topos_v1_plugin_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -197,7 +197,7 @@ func (x *DescribeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DescribeResponse.ProtoReflect.Descriptor instead.
 func (*DescribeResponse) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{1}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *DescribeResponse) GetSourceType() string {
@@ -230,7 +230,7 @@ type MatchRequest struct {
 
 func (x *MatchRequest) Reset() {
 	*x = MatchRequest{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[2]
+	mi := &file_topos_v1_plugin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +242,7 @@ func (x *MatchRequest) String() string {
 func (*MatchRequest) ProtoMessage() {}
 
 func (x *MatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[2]
+	mi := &file_topos_v1_plugin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +255,7 @@ func (x *MatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MatchRequest.ProtoReflect.Descriptor instead.
 func (*MatchRequest) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{2}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MatchRequest) GetKeywords() []string {
@@ -274,7 +274,7 @@ type MatchResponse struct {
 
 func (x *MatchResponse) Reset() {
 	*x = MatchResponse{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[3]
+	mi := &file_topos_v1_plugin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -286,7 +286,7 @@ func (x *MatchResponse) String() string {
 func (*MatchResponse) ProtoMessage() {}
 
 func (x *MatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[3]
+	mi := &file_topos_v1_plugin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -299,7 +299,7 @@ func (x *MatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MatchResponse.ProtoReflect.Descriptor instead.
 func (*MatchResponse) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{3}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *MatchResponse) GetItems() []*Item {
@@ -317,7 +317,7 @@ type Item struct {
 	Preview                string                 `protobuf:"bytes,4,opt,name=preview,proto3" json:"preview,omitempty"`                                                                // bounded snippet, never full content
 	TimestampUnix          int64                  `protobuf:"varint,5,opt,name=timestamp_unix,json=timestampUnix,proto3" json:"timestamp_unix,omitempty"`                              // primary sort: real-world time
 	SecondaryTimestampUnix int64                  `protobuf:"varint,6,opt,name=secondary_timestamp_unix,json=secondaryTimestampUnix,proto3" json:"secondary_timestamp_unix,omitempty"` // tie-break: ingestion/receipt time
-	Fidelity               LinkFidelity           `protobuf:"varint,7,opt,name=fidelity,proto3,enum=webspaces.v1.LinkFidelity" json:"fidelity,omitempty"`
+	Fidelity               LinkFidelity           `protobuf:"varint,7,opt,name=fidelity,proto3,enum=topos.v1.LinkFidelity" json:"fidelity,omitempty"`
 	DeepLink               string                 `protobuf:"bytes,8,opt,name=deep_link,json=deepLink,proto3" json:"deep_link,omitempty"`
 	Labels                 []string               `protobuf:"bytes,9,rep,name=labels,proto3" json:"labels,omitempty"` // native categorization (paperless tag names)
 	Provenance             map[string]string      `protobuf:"bytes,10,rep,name=provenance,proto3" json:"provenance,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -330,7 +330,7 @@ type Item struct {
 
 func (x *Item) Reset() {
 	*x = Item{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[4]
+	mi := &file_topos_v1_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -342,7 +342,7 @@ func (x *Item) String() string {
 func (*Item) ProtoMessage() {}
 
 func (x *Item) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[4]
+	mi := &file_topos_v1_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -355,7 +355,7 @@ func (x *Item) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Item.ProtoReflect.Descriptor instead.
 func (*Item) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{4}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Item) GetSourceId() string {
@@ -452,14 +452,14 @@ func (x *Item) GetHasThumbnail() bool {
 type FetchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	Variant       ContentVariant         `protobuf:"varint,2,opt,name=variant,proto3,enum=webspaces.v1.ContentVariant" json:"variant,omitempty"`
+	Variant       ContentVariant         `protobuf:"varint,2,opt,name=variant,proto3,enum=topos.v1.ContentVariant" json:"variant,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[5]
+	mi := &file_topos_v1_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -471,7 +471,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[5]
+	mi := &file_topos_v1_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -484,7 +484,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{5}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FetchRequest) GetSourceId() string {
@@ -521,7 +521,7 @@ type FetchResponse struct {
 
 func (x *FetchResponse) Reset() {
 	*x = FetchResponse{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[6]
+	mi := &file_topos_v1_plugin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -533,7 +533,7 @@ func (x *FetchResponse) String() string {
 func (*FetchResponse) ProtoMessage() {}
 
 func (x *FetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[6]
+	mi := &file_topos_v1_plugin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -546,7 +546,7 @@ func (x *FetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResponse.ProtoReflect.Descriptor instead.
 func (*FetchResponse) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{6}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FetchResponse) GetAvailable() bool {
@@ -606,7 +606,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[7]
+	mi := &file_topos_v1_plugin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -618,7 +618,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[7]
+	mi := &file_topos_v1_plugin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -631,7 +631,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{7}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{7}
 }
 
 type HealthResponse struct {
@@ -645,7 +645,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[8]
+	mi := &file_topos_v1_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -657,7 +657,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_webspaces_v1_plugin_proto_msgTypes[8]
+	mi := &file_topos_v1_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -670,7 +670,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_webspaces_v1_plugin_proto_rawDescGZIP(), []int{8}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *HealthResponse) GetReachable() bool {
@@ -694,11 +694,11 @@ func (x *HealthResponse) GetLastError() string {
 	return ""
 }
 
-var File_webspaces_v1_plugin_proto protoreflect.FileDescriptor
+var File_topos_v1_plugin_proto protoreflect.FileDescriptor
 
-const file_webspaces_v1_plugin_proto_rawDesc = "" +
+const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\x19webspaces/v1/plugin.proto\x12\fwebspaces.v1\"\x11\n" +
+	"\x15topos/v1/plugin.proto\x12\btopos.v1\"\x11\n" +
 	"\x0fDescribeRequest\"\x81\x01\n" +
 	"\x10DescribeResponse\x12\x1f\n" +
 	"\vsource_type\x18\x01 \x01(\tR\n" +
@@ -706,9 +706,9 @@ const file_webspaces_v1_plugin_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12)\n" +
 	"\x10contract_version\x18\x03 \x01(\tR\x0fcontractVersion\"*\n" +
 	"\fMatchRequest\x12\x1a\n" +
-	"\bkeywords\x18\x01 \x03(\tR\bkeywords\"9\n" +
-	"\rMatchResponse\x12(\n" +
-	"\x05items\x18\x01 \x03(\v2\x12.webspaces.v1.ItemR\x05items\"\xa6\x04\n" +
+	"\bkeywords\x18\x01 \x03(\tR\bkeywords\"5\n" +
+	"\rMatchResponse\x12$\n" +
+	"\x05items\x18\x01 \x03(\v2\x0e.topos.v1.ItemR\x05items\"\x9e\x04\n" +
 	"\x04Item\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x1f\n" +
 	"\vsource_type\x18\x02 \x01(\tR\n" +
@@ -716,13 +716,13 @@ const file_webspaces_v1_plugin_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
 	"\apreview\x18\x04 \x01(\tR\apreview\x12%\n" +
 	"\x0etimestamp_unix\x18\x05 \x01(\x03R\rtimestampUnix\x128\n" +
-	"\x18secondary_timestamp_unix\x18\x06 \x01(\x03R\x16secondaryTimestampUnix\x126\n" +
-	"\bfidelity\x18\a \x01(\x0e2\x1a.webspaces.v1.LinkFidelityR\bfidelity\x12\x1b\n" +
+	"\x18secondary_timestamp_unix\x18\x06 \x01(\x03R\x16secondaryTimestampUnix\x122\n" +
+	"\bfidelity\x18\a \x01(\x0e2\x16.topos.v1.LinkFidelityR\bfidelity\x12\x1b\n" +
 	"\tdeep_link\x18\b \x01(\tR\bdeepLink\x12\x16\n" +
-	"\x06labels\x18\t \x03(\tR\x06labels\x12B\n" +
+	"\x06labels\x18\t \x03(\tR\x06labels\x12>\n" +
 	"\n" +
 	"provenance\x18\n" +
-	" \x03(\v2\".webspaces.v1.Item.ProvenanceEntryR\n" +
+	" \x03(\v2\x1e.topos.v1.Item.ProvenanceEntryR\n" +
 	"provenance\x12\x19\n" +
 	"\bgroup_id\x18\v \x01(\tR\agroupId\x12\x1f\n" +
 	"\vgroup_label\x18\f \x01(\tR\n" +
@@ -730,10 +730,10 @@ const file_webspaces_v1_plugin_proto_rawDesc = "" +
 	"\rhas_thumbnail\x18\r \x01(\bR\fhasThumbnail\x1a=\n" +
 	"\x0fProvenanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"c\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"_\n" +
 	"\fFetchRequest\x12\x1b\n" +
-	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x126\n" +
-	"\avariant\x18\x02 \x01(\x0e2\x1c.webspaces.v1.ContentVariantR\avariant\"\xcc\x02\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x122\n" +
+	"\avariant\x18\x02 \x01(\x0e2\x18.topos.v1.ContentVariantR\avariant\"\xc8\x02\n" +
 	"\rFetchResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12-\n" +
 	"\x12unavailable_reason\x18\x02 \x01(\tR\x11unavailableReason\x12\x1b\n" +
@@ -741,9 +741,9 @@ const file_webspaces_v1_plugin_proto_rawDesc = "" +
 	"\n" +
 	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\x12\x12\n" +
 	"\x04text\x18\x05 \x01(\tR\x04text\x12\x12\n" +
-	"\x04data\x18\x06 \x01(\fR\x04data\x12K\n" +
+	"\x04data\x18\x06 \x01(\fR\x04data\x12G\n" +
 	"\n" +
-	"provenance\x18\a \x03(\v2+.webspaces.v1.FetchResponse.ProvenanceEntryR\n" +
+	"provenance\x18\a \x03(\v2'.topos.v1.FetchResponse.ProvenanceEntryR\n" +
 	"provenance\x1a=\n" +
 	"\x0fProvenanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -763,56 +763,56 @@ const file_webspaces_v1_plugin_proto_rawDesc = "" +
 	"\x1bCONTENT_VARIANT_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CONTENT_VARIANT_FULL\x10\x01\x12\x1b\n" +
 	"\x17CONTENT_VARIANT_PREVIEW\x10\x02\x12\x1d\n" +
-	"\x19CONTENT_VARIANT_THUMBNAIL\x10\x032\xa2\x02\n" +
-	"\fSourcePlugin\x12I\n" +
-	"\bDescribe\x12\x1d.webspaces.v1.DescribeRequest\x1a\x1e.webspaces.v1.DescribeResponse\x12@\n" +
-	"\x05Match\x12\x1a.webspaces.v1.MatchRequest\x1a\x1b.webspaces.v1.MatchResponse\x12@\n" +
-	"\x05Fetch\x12\x1a.webspaces.v1.FetchRequest\x1a\x1b.webspaces.v1.FetchResponse\x12C\n" +
-	"\x06Health\x12\x1b.webspaces.v1.HealthRequest\x1a\x1c.webspaces.v1.HealthResponseB?Z=github.com/davison/webspaces/sdk/gen/webspaces/v1;webspacesv1b\x06proto3"
+	"\x19CONTENT_VARIANT_THUMBNAIL\x10\x032\x82\x02\n" +
+	"\fSourcePlugin\x12A\n" +
+	"\bDescribe\x12\x19.topos.v1.DescribeRequest\x1a\x1a.topos.v1.DescribeResponse\x128\n" +
+	"\x05Match\x12\x16.topos.v1.MatchRequest\x1a\x17.topos.v1.MatchResponse\x128\n" +
+	"\x05Fetch\x12\x16.topos.v1.FetchRequest\x1a\x17.topos.v1.FetchResponse\x12;\n" +
+	"\x06Health\x12\x17.topos.v1.HealthRequest\x1a\x18.topos.v1.HealthResponseB3Z1github.com/davison/topos/sdk/gen/topos/v1;toposv1b\x06proto3"
 
 var (
-	file_webspaces_v1_plugin_proto_rawDescOnce sync.Once
-	file_webspaces_v1_plugin_proto_rawDescData []byte
+	file_topos_v1_plugin_proto_rawDescOnce sync.Once
+	file_topos_v1_plugin_proto_rawDescData []byte
 )
 
-func file_webspaces_v1_plugin_proto_rawDescGZIP() []byte {
-	file_webspaces_v1_plugin_proto_rawDescOnce.Do(func() {
-		file_webspaces_v1_plugin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_webspaces_v1_plugin_proto_rawDesc), len(file_webspaces_v1_plugin_proto_rawDesc)))
+func file_topos_v1_plugin_proto_rawDescGZIP() []byte {
+	file_topos_v1_plugin_proto_rawDescOnce.Do(func() {
+		file_topos_v1_plugin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_topos_v1_plugin_proto_rawDesc), len(file_topos_v1_plugin_proto_rawDesc)))
 	})
-	return file_webspaces_v1_plugin_proto_rawDescData
+	return file_topos_v1_plugin_proto_rawDescData
 }
 
-var file_webspaces_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_webspaces_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_webspaces_v1_plugin_proto_goTypes = []any{
-	(LinkFidelity)(0),        // 0: webspaces.v1.LinkFidelity
-	(ContentVariant)(0),      // 1: webspaces.v1.ContentVariant
-	(*DescribeRequest)(nil),  // 2: webspaces.v1.DescribeRequest
-	(*DescribeResponse)(nil), // 3: webspaces.v1.DescribeResponse
-	(*MatchRequest)(nil),     // 4: webspaces.v1.MatchRequest
-	(*MatchResponse)(nil),    // 5: webspaces.v1.MatchResponse
-	(*Item)(nil),             // 6: webspaces.v1.Item
-	(*FetchRequest)(nil),     // 7: webspaces.v1.FetchRequest
-	(*FetchResponse)(nil),    // 8: webspaces.v1.FetchResponse
-	(*HealthRequest)(nil),    // 9: webspaces.v1.HealthRequest
-	(*HealthResponse)(nil),   // 10: webspaces.v1.HealthResponse
-	nil,                      // 11: webspaces.v1.Item.ProvenanceEntry
-	nil,                      // 12: webspaces.v1.FetchResponse.ProvenanceEntry
+var file_topos_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_topos_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_topos_v1_plugin_proto_goTypes = []any{
+	(LinkFidelity)(0),        // 0: topos.v1.LinkFidelity
+	(ContentVariant)(0),      // 1: topos.v1.ContentVariant
+	(*DescribeRequest)(nil),  // 2: topos.v1.DescribeRequest
+	(*DescribeResponse)(nil), // 3: topos.v1.DescribeResponse
+	(*MatchRequest)(nil),     // 4: topos.v1.MatchRequest
+	(*MatchResponse)(nil),    // 5: topos.v1.MatchResponse
+	(*Item)(nil),             // 6: topos.v1.Item
+	(*FetchRequest)(nil),     // 7: topos.v1.FetchRequest
+	(*FetchResponse)(nil),    // 8: topos.v1.FetchResponse
+	(*HealthRequest)(nil),    // 9: topos.v1.HealthRequest
+	(*HealthResponse)(nil),   // 10: topos.v1.HealthResponse
+	nil,                      // 11: topos.v1.Item.ProvenanceEntry
+	nil,                      // 12: topos.v1.FetchResponse.ProvenanceEntry
 }
-var file_webspaces_v1_plugin_proto_depIdxs = []int32{
-	6,  // 0: webspaces.v1.MatchResponse.items:type_name -> webspaces.v1.Item
-	0,  // 1: webspaces.v1.Item.fidelity:type_name -> webspaces.v1.LinkFidelity
-	11, // 2: webspaces.v1.Item.provenance:type_name -> webspaces.v1.Item.ProvenanceEntry
-	1,  // 3: webspaces.v1.FetchRequest.variant:type_name -> webspaces.v1.ContentVariant
-	12, // 4: webspaces.v1.FetchResponse.provenance:type_name -> webspaces.v1.FetchResponse.ProvenanceEntry
-	2,  // 5: webspaces.v1.SourcePlugin.Describe:input_type -> webspaces.v1.DescribeRequest
-	4,  // 6: webspaces.v1.SourcePlugin.Match:input_type -> webspaces.v1.MatchRequest
-	7,  // 7: webspaces.v1.SourcePlugin.Fetch:input_type -> webspaces.v1.FetchRequest
-	9,  // 8: webspaces.v1.SourcePlugin.Health:input_type -> webspaces.v1.HealthRequest
-	3,  // 9: webspaces.v1.SourcePlugin.Describe:output_type -> webspaces.v1.DescribeResponse
-	5,  // 10: webspaces.v1.SourcePlugin.Match:output_type -> webspaces.v1.MatchResponse
-	8,  // 11: webspaces.v1.SourcePlugin.Fetch:output_type -> webspaces.v1.FetchResponse
-	10, // 12: webspaces.v1.SourcePlugin.Health:output_type -> webspaces.v1.HealthResponse
+var file_topos_v1_plugin_proto_depIdxs = []int32{
+	6,  // 0: topos.v1.MatchResponse.items:type_name -> topos.v1.Item
+	0,  // 1: topos.v1.Item.fidelity:type_name -> topos.v1.LinkFidelity
+	11, // 2: topos.v1.Item.provenance:type_name -> topos.v1.Item.ProvenanceEntry
+	1,  // 3: topos.v1.FetchRequest.variant:type_name -> topos.v1.ContentVariant
+	12, // 4: topos.v1.FetchResponse.provenance:type_name -> topos.v1.FetchResponse.ProvenanceEntry
+	2,  // 5: topos.v1.SourcePlugin.Describe:input_type -> topos.v1.DescribeRequest
+	4,  // 6: topos.v1.SourcePlugin.Match:input_type -> topos.v1.MatchRequest
+	7,  // 7: topos.v1.SourcePlugin.Fetch:input_type -> topos.v1.FetchRequest
+	9,  // 8: topos.v1.SourcePlugin.Health:input_type -> topos.v1.HealthRequest
+	3,  // 9: topos.v1.SourcePlugin.Describe:output_type -> topos.v1.DescribeResponse
+	5,  // 10: topos.v1.SourcePlugin.Match:output_type -> topos.v1.MatchResponse
+	8,  // 11: topos.v1.SourcePlugin.Fetch:output_type -> topos.v1.FetchResponse
+	10, // 12: topos.v1.SourcePlugin.Health:output_type -> topos.v1.HealthResponse
 	9,  // [9:13] is the sub-list for method output_type
 	5,  // [5:9] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
@@ -820,27 +820,27 @@ var file_webspaces_v1_plugin_proto_depIdxs = []int32{
 	0,  // [0:5] is the sub-list for field type_name
 }
 
-func init() { file_webspaces_v1_plugin_proto_init() }
-func file_webspaces_v1_plugin_proto_init() {
-	if File_webspaces_v1_plugin_proto != nil {
+func init() { file_topos_v1_plugin_proto_init() }
+func file_topos_v1_plugin_proto_init() {
+	if File_topos_v1_plugin_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_webspaces_v1_plugin_proto_rawDesc), len(file_webspaces_v1_plugin_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_topos_v1_plugin_proto_rawDesc), len(file_topos_v1_plugin_proto_rawDesc)),
 			NumEnums:      2,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_webspaces_v1_plugin_proto_goTypes,
-		DependencyIndexes: file_webspaces_v1_plugin_proto_depIdxs,
-		EnumInfos:         file_webspaces_v1_plugin_proto_enumTypes,
-		MessageInfos:      file_webspaces_v1_plugin_proto_msgTypes,
+		GoTypes:           file_topos_v1_plugin_proto_goTypes,
+		DependencyIndexes: file_topos_v1_plugin_proto_depIdxs,
+		EnumInfos:         file_topos_v1_plugin_proto_enumTypes,
+		MessageInfos:      file_topos_v1_plugin_proto_msgTypes,
 	}.Build()
-	File_webspaces_v1_plugin_proto = out.File
-	file_webspaces_v1_plugin_proto_goTypes = nil
-	file_webspaces_v1_plugin_proto_depIdxs = nil
+	File_topos_v1_plugin_proto = out.File
+	file_topos_v1_plugin_proto_goTypes = nil
+	file_topos_v1_plugin_proto_depIdxs = nil
 }

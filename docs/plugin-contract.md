@@ -7,8 +7,8 @@ space, ...) and hands normalized items back to the kernel. It is written
 for a reader with no access to this repository beyond four things:
 
 - this file,
-- `proto/webspaces/v1/plugin.proto` (the wire contract),
-- the `sdk` Go module (`github.com/davison/webspaces/sdk`), and
+- `proto/topos/v1/plugin.proto` (the wire contract),
+- the `sdk` Go module (`github.com/davison/topos/sdk`), and
 - `plugins/mock` — a complete, working reference plugin built from
   exactly these four inputs and nothing else (`PLUG-05`; see "Build your
   first plugin", below).
@@ -72,12 +72,12 @@ plugin binaries you built yourself or whose source you trust.
 
 A plugin is a separate Go module (or, if the source plugin's language
 support ever expands, a separate binary speaking the same gRPC contract)
-that imports `github.com/davison/webspaces/sdk`:
+that imports `github.com/davison/topos/sdk`:
 
 ```go
 import (
-	"github.com/davison/webspaces/sdk"
-	webspacesv1 "github.com/davison/webspaces/sdk/gen/webspaces/v1"
+	"github.com/davison/topos/sdk"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 ```
 
@@ -89,10 +89,10 @@ server type:
 
 ```go
 type SourcePlugin interface {
-	Describe(ctx context.Context, req *webspacesv1.DescribeRequest) (*webspacesv1.DescribeResponse, error)
-	Match(ctx context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error)
-	Fetch(ctx context.Context, req *webspacesv1.FetchRequest) (*webspacesv1.FetchResponse, error)
-	Health(ctx context.Context, req *webspacesv1.HealthRequest) (*webspacesv1.HealthResponse, error)
+	Describe(ctx context.Context, req *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error)
+	Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error)
+	Fetch(ctx context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error)
+	Health(ctx context.Context, req *toposv1.HealthRequest) (*toposv1.HealthResponse, error)
 }
 ```
 
@@ -107,7 +107,7 @@ this repository (`plugins/mock/main.go` included) uses this exact alias:
 import (
 	goplugin "github.com/hashicorp/go-plugin"
 
-	"github.com/davison/webspaces/sdk"
+	"github.com/davison/topos/sdk"
 )
 
 goplugin.Serve(&goplugin.ServeConfig{
@@ -126,8 +126,8 @@ The kernel and every plugin share one handshake, `sdk.Handshake`:
 | Field | Value |
 |---|---|
 | `ProtocolVersion` | `1` |
-| `MagicCookieKey` | `WEBSPACES_PLUGIN` |
-| `MagicCookieValue` | `webspaces-source-plugin-v1` |
+| `MagicCookieKey` | `TOPOS_PLUGIN` |
+| `MagicCookieValue` | `topos-source-plugin-v1` |
 
 `ProtocolVersion` is bumped only for a breaking wire-protocol change (not
 for an additive contract change — that's what `DescribeResponse`'s
@@ -225,7 +225,7 @@ message DescribeResponse {
   string source_type      = 1;  // e.g. "paperless" — the kernel's only
                                   // trusted source of this plugin's identity
   string display_name     = 2;  // e.g. "paperless-ngx" — for UI/logs
-  string contract_version = 3;  // e.g. "webspaces.v1"
+  string contract_version = 3;  // e.g. "topos.v1"
 }
 ```
 
@@ -264,15 +264,15 @@ what a real plugin must implement: every item whose `Labels` contains any
 keyword, compared exactly and case-insensitively:
 
 ```go
-func (p *SourcePlugin) Match(_ context.Context, req *webspacesv1.MatchRequest) (*webspacesv1.MatchResponse, error) {
+func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	keywords := req.GetKeywords()
-	var items []*webspacesv1.Item
+	var items []*toposv1.Item
 	for _, it := range mockItems {
 		if labelsMatchAnyKeyword(it.GetLabels(), keywords) {
 			items = append(items, it)
 		}
 	}
-	return &webspacesv1.MatchResponse{Items: items}, nil
+	return &toposv1.MatchResponse{Items: items}, nil
 }
 
 func labelsMatchAnyKeyword(labels, keywords []string) bool {
@@ -485,7 +485,7 @@ the step lives.
 
 ```
 mkdir plugins/yourplugin && cd plugins/yourplugin
-go mod init github.com/davison/webspaces/plugins/yourplugin
+go mod init github.com/davison/topos/plugins/yourplugin
 ```
 
 (Substitute your own module path if you're building outside this
