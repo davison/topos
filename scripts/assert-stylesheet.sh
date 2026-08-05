@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Standalone assertion over one built app stylesheet. Guards two gaps:
+# Standalone assertion over one built app stylesheet. Guards three gaps:
 #   G-01-2: the SPA shipping zero real CSS (empty file / no design tokens)
 #   G-02-1: a named --spacing-<key> theme entry shadowing Tailwind v4's
 #           default container scale, collapsing named max-w-* utilities
 #           (health-chip tooltip, index page column, empty/error copy) to
 #           a few pixels wide.
+#   Scrollbar styling (Quick task 260805-j98): the thin, theme-matched
+#           scrollbar rules authored in web/src/app.css surviving the
+#           Tailwind/Lightning CSS build pipeline into the shipped,
+#           minified stylesheet — a different claim from the source-level
+#           guard in web/src/lib/scrollbar-theme.test.ts, which only
+#           proves the rules exist in source.
 #
 # Usage: scripts/assert-stylesheet.sh [CSS_FILE]
 #   With an argument, assert against that file.
@@ -83,4 +89,19 @@ if [ -n "$COLLAPSED_RULE" ]; then
   exit 1
 fi
 
-echo "OK: stylesheet '$CSS_FILE' passes G-01-2 and G-02-1 guards"
+# 5. The scrollbar styling authored in web/src/app.css actually shipped
+#    into this BUILT stylesheet, not just source. The built file is
+#    minified (Lightning CSS strips comments and collapses whitespace), so
+#    there is no guaranteed space after a colon and no comment stripping is
+#    needed here — unlike the source-level guard, which must scan a
+#    heavily-commented, unminified file.
+if ! grep -qE -- 'scrollbar-width: *thin' "$CSS_FILE"; then
+  echo "FAIL: stylesheet '$CSS_FILE' does not declare scrollbar-width: thin — the scrollbar rules were authored in source (web/src/app.css) but did not reach the shipped stylesheet, for example because they landed in a layer or block the build dropped" >&2
+  exit 1
+fi
+if ! grep -qF -- '::-webkit-scrollbar-thumb' "$CSS_FILE"; then
+  echo "FAIL: stylesheet '$CSS_FILE' does not declare a ::-webkit-scrollbar-thumb rule — the WebKit scrollbar fallback was authored in source (web/src/app.css) but did not reach the shipped stylesheet" >&2
+  exit 1
+fi
+
+echo "OK: stylesheet '$CSS_FILE' passes G-01-2, G-02-1, and scrollbar-styling guards"
