@@ -1,5 +1,30 @@
 .PHONY: build test proto smoke dev plugins signal test-signal
 
+# DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
+# `dev` recipe's pre-flight port guard and readiness gate below. The
+# default MUST match web/vite.config.ts's hardcoded proxy target and
+# the [server] listen value in ~/.config/webspaces/config.toml — if one
+# moves, the other must move. Override on the command line
+# (`make dev DEV_PORT=9999`) if your config uses a non-default port;
+# this is the supported escape valve, not a way to skip the guard.
+DEV_HOST ?= 127.0.0.1
+DEV_PORT ?= 7777
+
+# DEV_READY_TIMEOUT is how many seconds (one per readiness-gate
+# iteration, below) the kernel is allowed to take to start listening
+# before `dev` gives up and fails loud. Generous by default because
+# `go run` may need to compile first.
+DEV_READY_TIMEOUT ?= 60
+
+# DEV_KERNEL_CMD/DEV_UI_CMD are the two child commands the `dev` recipe
+# runs. They exist so scripts/dev-guard-smoke.sh can exercise this
+# recipe hermetically with fake children instead of a real kernel and a
+# real Vite server. Overriding them changes WHICH children run — it
+# never disables any guard; the pre-flight port check and readiness
+# gate run identically regardless of what these point at.
+DEV_KERNEL_CMD ?= go run ./cmd/webspaces serve
+DEV_UI_CMD ?= npm --prefix web run dev -- --open
+
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
 # the kernel binary, and the plugin binaries — webspaces-plugin-paperless,
 # webspaces-plugin-silverbullet, webspaces-plugin-proton,
@@ -88,9 +113,54 @@ smoke: build
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
 # 127.0.0.1:7777 (see web/vite.config.ts), so edits to either side hot
-# reload independently.
+# reload independently. Guarded against the two footguns a real
+# debugging session hit on 2026-08-05: (1) a plugin source edit
+# silently not taking effect (closed by the `plugins` prerequisite
+# above) and (2) a stale kernel already holding the dev port, which
+# used to leave Vite running and proxying to that stale kernel with no
+# indication anything was wrong. The pre-flight port guard below runs
+# BEFORE any child starts; the readiness gate runs BEFORE the UI dev
+# server starts — both refusals happen loud and non-zero, and neither
+# ever leaves the UI dev server running against a kernel this recipe
+# did not itself just start. On the happy path, the EXIT trap's
+# `kill 0` deliberately also terminates make itself once `wait`
+# returns — kept as-is (this is existing, pre-guard behaviour) because
+# a process-group kill is the only teardown that reliably reaps
+# `go run`'s kernel child, the kernel's own plugin subprocesses, and
+# npm's node child together.
 dev: plugins
-	@trap 'kill 0' EXIT INT TERM; \
-	go run ./cmd/webspaces serve & \
-	npm --prefix web run dev -- --open & \
+	@if ! command -v ss >/dev/null 2>&1; then \
+		echo "make dev: 'ss' (iproute2) is required by the dev port guard — install iproute2" >&2; \
+		exit 1; \
+	fi; \
+	HOLDER="$$(ss -H -tlnp "sport = :$(DEV_PORT)")"; \
+	if [ -n "$$HOLDER" ]; then \
+		echo "make dev: refusing to start — $(DEV_HOST):$(DEV_PORT) is already in use" >&2; \
+		echo "$$HOLDER" >&2; \
+		echo "make dev: stop that process, or re-run with DEV_PORT=<a different port>" >&2; \
+		exit 1; \
+	fi; \
+	trap 'kill 0' INT TERM; \
+	$(DEV_KERNEL_CMD) & \
+	KPID=$$!; \
+	i=1; \
+	while [ "$$i" -le $(DEV_READY_TIMEOUT) ]; do \
+		if ! kill -0 $$KPID 2>/dev/null; then \
+			echo "make dev: kernel exited during startup (its output is above) — the UI dev server was NOT started ($(DEV_HOST):$(DEV_PORT))" >&2; \
+			exit 1; \
+		fi; \
+		if [ -n "$$(ss -H -tln "sport = :$(DEV_PORT)")" ]; then \
+			break; \
+		fi; \
+		if [ "$$i" -eq $(DEV_READY_TIMEOUT) ]; then \
+			echo "make dev: kernel never listened on $(DEV_HOST):$(DEV_PORT) within $(DEV_READY_TIMEOUT)s" >&2; \
+			pkill -P $$KPID 2>/dev/null || true; \
+			kill $$KPID 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+		i=$$((i + 1)); \
+	done; \
+	trap 'kill 0' EXIT INT TERM; \
+	$(DEV_UI_CMD) & \
 	wait
