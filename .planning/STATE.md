@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-last_updated: 2026-08-04T00:44:01.980Z
-last_activity: 2026-08-03 -- Phase 04 execution started
+status: planning
+last_updated: "2026-08-05T12:27:46.177Z"
+last_activity: 2026-08-04
 progress:
-  total_phases: 5
-  completed_phases: 3
+  total_phases: 8
+  completed_phases: 4
   total_plans: 26
   completed_plans: 26
-  percent: 60
-stopped_at: Phase 04 complete (4/4) — ready to discuss Phase 5
+  percent: 50
 ---
 
 # Project State
@@ -21,7 +20,7 @@ stopped_at: Phase 04 complete (4/4) — ready to discuss Phase 5
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 5 — whatsapp conversations (managed risk)
+**Current focus:** Phase 5 — Source Instances & Per-Type Matching
 
 ## Current Position
 
@@ -78,6 +77,13 @@ Progress: [██████████] 100%
 | Phase 04 P03 | ~2.5h | 3 tasks | 13 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 5 inserted after Phase 4: Source Instances & Per-Type Matching — named multi-instance plugins, per-plugin-type matching config replacing the shared keyword list (restructure 2026-08-05)
+- Phase 6 inserted after Phase 5: UI: Scalable Source Surface — combined health/filter source affordance, deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers
+- Phase 7 inserted after Phase 6: Webspace Builder UI — configure plugin instances from the UI, save as webspace, saved searches as permanent filters
+- Phase 8 edited: WhatsApp Conversations (Managed Risk) shifted from Phase 5 to Phase 8; now depends on Phase 4 (chat renderer) and Phase 5 (per-instance matching contract)
 
 ### Decisions
 
@@ -136,12 +142,12 @@ Recent decisions affecting current work:
 
 [From .planning/todos/pending/ — ideas captured during sessions]
 
-None yet.
+- 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
 
 ### Blockers/Concerns
 
 - Phase 4 (Signal): Keyring backend extraction must be tested against the user's actual Arch/DE setup; schema-version detection required — spike before planning.
-- Phase 5 (WhatsApp): Highest-risk area. No official API; linked-device route can be de-linked or banned. Spike must answer linking stability, backfill volume, event-stream persistence, and recovery before planning.
+- Phase 8 (WhatsApp, formerly Phase 5): Highest-risk area. No official API; linked-device route can be de-linked or banned. Spike must answer linking stability, backfill volume, event-stream persistence, and recovery before planning.
 
 ### Quick Tasks Completed
 
@@ -159,6 +165,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-04T00:45:02Z
-Stopped at: Phase 4 complete (UAT 2/2 passed, G-04-1 closed), ready to plan Phase 5
+Last session: 2026-08-05T10:32:40.164Z
+Stopped at: Roadmap restructured 2026-08-05: Phases 5-7 inserted, WhatsApp shifted to Phase 8. Ready to discuss Phase 5.
 Resume file: None

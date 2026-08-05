@@ -2,7 +2,7 @@
 
 ## Overview
 
-Webspaces is built as a series of vertical slices: every phase ends with the user able to open a browser, pick a webspace, and see more of their life in it than they could before. Phase 1 delivers the whole spine — config, index, plugin contract, HTTP API, stream, detail pane — proven by one real low-risk source (paperless-ngx) rather than a mock. Phase 2 adds a structurally different second source (SilverBullet), which is what actually proves the plugin contract is source-agnostic, plus the operability surface (filter, health, refresh, staleness, agent permission gating) that makes a multi-source view trustworthy. Phases 3–5 then add one source per phase in strict ascending order of integration risk: IMAP email, Signal, and finally WhatsApp. The risky sources come last on purpose — by the time WhatsApp's linked-device session is attempted, the system is already useful and complete without it, so a ban or de-link degrades one plugin rather than sinking the milestone.
+Webspaces is built as a series of vertical slices: every phase ends with the user able to open a browser, pick a webspace, and see more of their life in it than they could before. Phase 1 delivers the whole spine — config, index, plugin contract, HTTP API, stream, detail pane — proven by one real low-risk source (paperless-ngx) rather than a mock. Phase 2 adds a structurally different second source (SilverBullet), which is what actually proves the plugin contract is source-agnostic, plus the operability surface (filter, health, refresh, staleness, agent permission gating) that makes a multi-source view trustworthy. Phases 3–4 then add one source per phase in strict ascending order of integration risk: IMAP email, then Signal. Restructured 2026-08-05: before the final and riskiest source (WhatsApp), three phases of architecture and UI work land first — named source instances with per-plugin-type matching config (Phase 5, reversing the single shared keyword list while only in-repo plugins exist), a scalable source UI surface (Phase 6), and a webspace builder UI (Phase 7). WhatsApp closes the milestone as Phase 8 — by then the system is already useful and complete without it, so a ban or de-link degrades one plugin rather than sinking the milestone.
 
 ## Phases
 
@@ -17,7 +17,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Two Sources, One Trustworthy Stream** - SilverBullet joins the stream; filter, health, refresh, staleness states, and default-deny agent permissions (completed 2026-07-29)
 - [x] **Phase 3: Email in the Webspace** - Proton/IMAP mail appears in the stream, never marked read, with full-text search across the webspace (completed 2026-07-31)
 - [x] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety (completed 2026-08-03)
-- [ ] **Phase 5: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
+- [ ] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list
+- [ ] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers
+- [ ] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters
+- [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
 
 ## Phase Details
 
@@ -206,16 +209,80 @@ Notes:
 - Introduces the chat-thread renderer that Phase 5 reuses; extends the existing UI contract rather than defining a new one.
 - Research: MEDIUM-HIGH. Spike before planning: Signal Desktop DB schema, `safeStorage` keyring backend extraction tested hands-on against the user's actual Arch/DE setup, schema-version detection, and SQLCipher/SQLite version stability (pin SQLite ≥ 3.51.3; never VACUUM or checkpoint).
 
-### Phase 5: WhatsApp Conversations (Managed Risk)
+### Phase 5: Source Instances & Per-Type Matching
+
+**Goal**: Sources become named instances — the same plugin type can be configured multiple times under user-chosen display names — and each instance declares matching config appropriate to its plugin type, replacing the single shared keyword list
+**Mode:** mvp
+**Depends on**: Phase 4
+**Requirements**: KERN-06, KERN-07
+**Success Criteria** (what must be TRUE):
+
+  1. User can configure two instances of the same plugin type with distinct display names (e.g. "Home email" and "Work email") and see them as separate sources in the stream, source filter, and health UI
+  2. Each source instance carries its own matching configuration, typed to its plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), replacing the single shared per-webspace keyword list; all five existing sources migrate to the new shape
+  3. Source identity throughout the kernel — index rows, sync runs, agent grants, HTTP API, and UI display — is the named instance, never the bare plugin type; existing webspace data migrates or re-syncs cleanly with no orphaned rows
+  4. The contract change is published: `docs/plugin-contract.md`, `proto/webspaces/v1/`, `config.example.toml`, and the mock plugin all reflect per-instance match config, and the standing contract tests (read-only AST, RPC allowlist, egress pinning) still pass
+
+**Plans**: TBD
+
+Notes:
+
+- Deliberately reverses Phase 1 D-02/D-03 (single shared keyword list, flagged costly-to-reverse at the time): the restructure decision of 2026-08-05 accepted that cost now, while five in-repo plugins exist, rather than after external plugins do.
+- This is the foundation for the plugin-ecosystem direction (out-of-repo plugins, pull-by-URL distribution) captured in the backlog — the contract must stabilize on instances + typed matching before external authors build against it.
+- Research: LOW-MEDIUM. The moving parts are all in-repo (config shape, index schema, proto contract); the design question is the migration path for existing config and index data.
+
+### Phase 6: UI — Scalable Source Surface
+
+**Goal**: The webspace header presents many source instances without duplication — health and filtering combined into one affordance per source — and the accumulated UI polish lands: deep-link fidelity differentiation, search-term highlighting in the detail pane, and themed scrollbars with date markers
+**Mode:** mvp
+**Depends on**: Phase 5
+**Requirements**: UI-07, UI-08, UI-09, UI-11
+**Success Criteria** (what must be TRUE):
+
+  1. Each source instance appears exactly once in the header — a single chip/affordance combining health state, filter toggle, and refresh — and the design remains usable at 10+ instances (overflow, grouping, or collapse; no unbounded chip rows)
+  2. Items whose "open in source" link can only raise the source app's window are visually differentiated from links that navigate to the item (closes the 04-UAT follow-up)
+  3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
+  4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
+
+**Plans**: TBD
+
+Notes:
+
+- Depends on Phase 5's instance naming: the header redesign is only worth doing against the final source-identity model.
+- Fidelity differentiation builds on `LINK_FIDELITY_*` already declared per item (PLUG-03) — this is UI surfacing, not a contract change.
+- Highlighting inside sanitized HTML and transcripts must happen after sanitization without weakening it — treat the sanitizer contract as untouchable.
+- Research: LOW. All in-repo UI work; the scrollbar date-marker component is the only novel piece.
+
+### Phase 7: Webspace Builder UI
+
+**Goal**: User can configure sources and webspaces from the UI instead of hand-editing TOML — pick plugin types from a list, configure named instances, save a configured set as a webspace, and promote a live search into the webspace's permanent filter
+**Mode:** mvp
+**Depends on**: Phase 5, Phase 6
+**Requirements**: KERN-08, UI-12
+**Success Criteria** (what must be TRUE):
+
+  1. User can create or edit a webspace in the UI: choose from available plugin types, configure instances (non-secret fields only — secrets stay environment-only), and save; the kernel loads the result without a restart or with an explicit reload affordance
+  2. A live search within a webspace can be saved as a permanent filter on that webspace; the stream then shows only matching items, and further searches refine within that filter
+  3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
+  4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
+
+**Plans**: TBD
+
+Notes:
+
+- First config write path from the UI; wants Phase 5's config shape settled first, hence the dependency.
+- "Saveable set as a webspace" and "permanent filter" together turn webspaces from static config into something the user grows interactively — the search-promotion flow is the heart of this phase.
+- Research: MEDIUM. TOML round-tripping (preserving comments/unknown keys) vs. a UI-owned config layer needs a decision before planning.
+
+### Phase 8: WhatsApp Conversations (Managed Risk)
 
 **Goal**: User's WhatsApp groups for a topic appear in the webspace stream via a linked-device session, and everything else keeps working when that session breaks
 **Mode:** mvp
-**Depends on**: Phase 4
+**Depends on**: Phase 4, Phase 5
 **Requirements**: SRC-03
 **Success Criteria** (what must be TRUE):
 
   1. User can link webspaces as a WhatsApp device by scanning a QR code, and the session survives service restarts without re-linking
-  2. Messages from WhatsApp groups whose names match the webspace keyword appear in the stream alongside every other source, using the chat rendering established in Phase 4
+  2. Messages from WhatsApp groups whose names match the webspace's matching config appear in the stream alongside every other source, using the chat rendering established in Phase 4
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
@@ -225,12 +292,13 @@ Notes:
 
 - Deliberately last. WhatsApp has no official personal-use API and the linked-device route can be de-linked or banned without warning; sequencing it after every other source means v1 is already useful if this plugin has to be dropped or shipped as best-effort.
 - The official WhatsApp Desktop app is a thin mirror, not a durable store — this plugin is an active linked-device client with its own event-stream persistence, not a file reader.
+- Shifted from Phase 5 to Phase 8 on 2026-08-05; now depends on Phase 4 (chat renderer) and Phase 5 (per-instance matching contract it must implement).
 - Research: HIGH — do not plan on assumptions. Spike must answer: linking stability and ban-risk patterns, how much history backfills on first link, event-stream persistence architecture, and de-link/re-link recovery.
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -238,11 +306,14 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
-| 5. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
+| 5. Source Instances & Per-Type Matching | 0/TBD | Not started | - |
+| 6. UI — Scalable Source Surface | 0/TBD | Not started | - |
+| 7. Webspace Builder UI | 0/TBD | Not started | - |
+| 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
 
-All 23 v1 requirements are mapped to exactly one phase.
+All 31 v1 requirements are mapped to exactly one phase (8 added in the 2026-08-05 restructure).
 
 | Requirement | Phase |
 |-------------|-------|
@@ -251,6 +322,9 @@ All 23 v1 requirements are mapped to exactly one phase.
 | KERN-03 | Phase 1 |
 | KERN-04 | Phase 2 |
 | KERN-05 | Phase 3 |
+| KERN-06 | Phase 5 |
+| KERN-07 | Phase 5 |
+| KERN-08 | Phase 7 |
 | PLUG-01 | Phase 1 |
 | PLUG-02 | Phase 1 |
 | PLUG-03 | Phase 1 |
@@ -258,7 +332,7 @@ All 23 v1 requirements are mapped to exactly one phase.
 | PLUG-05 | Phase 2 |
 | SRC-01 | Phase 3 |
 | SRC-02 | Phase 4 |
-| SRC-03 | Phase 5 |
+| SRC-03 | Phase 8 |
 | SRC-04 | Phase 1 |
 | SRC-05 | Phase 2 |
 | UI-01 | Phase 1 |
@@ -267,5 +341,21 @@ All 23 v1 requirements are mapped to exactly one phase.
 | UI-04 | Phase 1 |
 | UI-05 | Phase 2 |
 | UI-06 | Phase 2 |
+| UI-07 | Phase 6 |
+| UI-08 | Phase 6 |
+| UI-09 | Phase 6 |
+| UI-11 | Phase 6 |
+| UI-12 | Phase 7 |
 | AGENT-01 | Phase 2 |
 | AGENT-02 | Phase 1 |
+
+## Backlog
+
+### Phase 999.1: Plugin ecosystem — out-of-repo plugins, distribution, certification (BACKLOG)
+
+**Goal:** [Captured 2026-08-05 for future planning — likely its own milestone] Plugins move out of the main repo into separate repos: the dozens of plugins needed to make webspaces useful to others (X/Facebook/Bluesky, generic IMAP with Proton/Gmail/Outlook specialisations, GDrive/OneDrive/Dropbox, Discord, Atom feeds, Slack/IRC, and more) would be developed by the people who use those sources and can test them. Needs: a system for pulling plugins into a locally configured instance (by URL configuration first, a marketplace eventually), a detailed plugin development guide plus an agent skill for developing new plugins, and a certification/blessing scheme for external plugins. Depends on Phase 5's contract stabilisation (named instances + per-type matching) — the contract must settle before external authors build against it.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)

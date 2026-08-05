@@ -11,6 +11,9 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **KERN-03**: Hybrid store: metadata + preview indexed locally; full content fetched live from the source when an item is opened
 - [x] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
 - [x] **KERN-05**: User can full-text search within a webspace (FTS5 over indexed metadata/previews)
+- [ ] **KERN-06**: Sources are named instances — the same plugin type can be configured multiple times, each under a user-chosen display name (e.g. "Home email" / "Work email") used throughout the UI and API *(added 2026-08-05)*
+- [ ] **KERN-07**: Matching config is declared per source instance and typed to its plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), replacing the single shared per-webspace keyword list *(added 2026-08-05; supersedes the KERN-01 shared-keyword shape — KERN-01 remains satisfied via migration)*
+- [ ] **KERN-08**: Webspace and source-instance configuration is editable through the kernel API (non-secret fields only; secrets stay environment-only), while hand-editing the config file remains supported *(added 2026-08-05)*
 
 ### Plugin Architecture
 
@@ -36,6 +39,11 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
 - [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
 - [x] **UI-06**: Sync status and plugin health are visible in the UI
+- [ ] **UI-07**: The header presents each source instance exactly once — one affordance combining health, filter toggle, and refresh — and stays usable as the instance count grows *(added 2026-08-05)*
+- [ ] **UI-08**: "Open in source" affordances visually differentiate links that navigate to the item from links that can only raise the source app's window *(added 2026-08-05; from 04-UAT follow-up)*
+- [ ] **UI-09**: After an in-webspace search, matched terms are highlighted in the detail pane's rendered content *(added 2026-08-05)*
+- [ ] **UI-11**: Scrollbars are thin and theme-matched app-wide; the stream scrollbar carries date markers *(added 2026-08-05; UI-10 was already assigned to the v1.x sync-status polish item)*
+- [ ] **UI-12**: Webspace builder UI — pick plugin types, configure named instances, save the set as a webspace, and promote a live search into a permanent webspace filter refinable by further search *(added 2026-08-05)*
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
 
@@ -63,7 +71,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 ## Traceability
 
-Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase — no orphans, no duplicates.
+Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 inserted, WhatsApp shifted to Phase 8, 8 requirements added). All 31 v1 requirements map to exactly one phase — no orphans, no duplicates.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -72,6 +80,9 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase �
 | KERN-03 | Phase 1 | Complete |
 | KERN-04 | Phase 2 | Gaps Found |
 | KERN-05 | Phase 3 | Complete |
+| KERN-06 | Phase 5 | Pending |
+| KERN-07 | Phase 5 | Pending |
+| KERN-08 | Phase 7 | Pending |
 | PLUG-01 | Phase 1 | Complete |
 | PLUG-02 | Phase 1 | Complete |
 | PLUG-03 | Phase 1 | Complete |
@@ -79,7 +90,7 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase �
 | PLUG-05 | Phase 2 | Gaps Found |
 | SRC-01 | Phase 3 | Complete |
 | SRC-02 | Phase 4 | Complete |
-| SRC-03 | Phase 5 | Pending |
+| SRC-03 | Phase 8 | Pending |
 | SRC-04 | Phase 1 | Complete |
 | SRC-05 | Phase 2 | Gaps Found |
 | UI-01 | Phase 1 | Complete |
@@ -88,6 +99,11 @@ Mapped by roadmap 2026-07-27. All 23 v1 requirements map to exactly one phase �
 | UI-04 | Phase 1 | Complete |
 | UI-05 | Phase 2 | Gaps Found |
 | UI-06 | Phase 2 | Gaps Found |
+| UI-07 | Phase 6 | Pending |
+| UI-08 | Phase 6 | Pending |
+| UI-09 | Phase 6 | Pending |
+| UI-11 | Phase 6 | Pending |
+| UI-12 | Phase 7 | Pending |
 | AGENT-01 | Phase 2 | Gaps Found |
 | AGENT-02 | Phase 1 | Complete |
 | AGENT-10 | — | Deferred (v1.x) |
