@@ -295,22 +295,36 @@ func stylesheetForShape(shape toposv1.ContentShape) string {
 	}
 }
 
+// highlightTermMaxRunes bounds an individual term's maximum length (WR-02):
+// alongside the count cap and the <2-rune drop below, this is the third
+// bounded-work control the docstring promises for threat T-06-03. Without
+// it, a caller could supply a single, arbitrarily long whitespace-free
+// "word" via ?hl= that survives strings.Fields as one term; the existing
+// length-guard in highlightTextNode (a term longer than the remaining
+// document text is skipped in O(1) per position) keeps that from being a
+// practical CPU/DoS issue today, but bounding it here too keeps the
+// docstring's claim accurate against a future refactor that weakens or
+// removes that guard.
+const highlightTermMaxRunes = 64
+
 // highlightTerms is the kernel half of UI-09's shared term-derivation rule
 // — the client half lives in web/src/lib/format.ts's own highlightTerms
 // and MUST implement the identical rule, so what the client highlights
 // never disagrees with what this function derives from the same query
 // string. It trims raw, splits on whitespace (the same strings.Fields
 // behaviour kernel/index/store.go's ftsQuery uses), lowercases every term,
-// de-duplicates, drops any term shorter than 2 runes, and caps the result
-// at the first 8 terms — the bounded-work controls for threat T-06-03.
-// Returns nil for an empty or all-dropped input.
+// de-duplicates, drops any term shorter than 2 runes or longer than
+// highlightTermMaxRunes, and caps the result at the first 8 terms — the
+// bounded-work controls for threat T-06-03. Returns nil for an empty or
+// all-dropped input.
 func highlightTerms(raw string) []string {
 	fields := strings.Fields(raw)
 	seen := make(map[string]bool, len(fields))
 	var terms []string
 	for _, f := range fields {
 		f = strings.ToLower(f)
-		if utf8.RuneCountInString(f) < 2 {
+		n := utf8.RuneCountInString(f)
+		if n < 2 || n > highlightTermMaxRunes {
 			continue
 		}
 		if seen[f] {

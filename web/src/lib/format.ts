@@ -504,13 +504,22 @@ export function noMatchesHeading(query: string): string {
 // or media body never disagrees with what the kernel highlights inside a
 // sandboxed iframe for the same search query.
 
+// HIGHLIGHT_TERM_MAX_LENGTH bounds an individual term's maximum length
+// (WR-02) — mirrors kernel/httpapi/rendition.go's highlightTermMaxRunes.
+// Alongside the count cap and the <2-character drop below, this is the
+// third bounded-work control the docstring promises for threat T-06-03;
+// without it a caller could supply a single, arbitrarily long
+// whitespace-free "word" that survives the split() as one term.
+const HIGHLIGHT_TERM_MAX_LENGTH = 64;
+
 /**
  * Derives the bounded, literal term set a search query highlights:
  * trims, splits on whitespace, lowercases, de-duplicates, drops any term
- * shorter than 2 characters, and caps the result at the first 8 terms.
- * Returns an empty array for an empty or all-dropped query. Identical
- * rule to kernel/httpapi/rendition.go's highlightTerms — see that
- * function's doc comment for why the two must never diverge.
+ * shorter than 2 characters or longer than HIGHLIGHT_TERM_MAX_LENGTH, and
+ * caps the result at the first 8 terms. Returns an empty array for an
+ * empty or all-dropped query. Identical rule to
+ * kernel/httpapi/rendition.go's highlightTerms — see that function's doc
+ * comment for why the two must never diverge.
  */
 export function highlightTerms(query: string): string[] {
 	const fields = query.split(/\s+/).filter((f) => f.length > 0);
@@ -518,7 +527,7 @@ export function highlightTerms(query: string): string[] {
 	const terms: string[] = [];
 	for (const raw of fields) {
 		const term = raw.toLowerCase();
-		if (term.length < 2) continue;
+		if (term.length < 2 || term.length > HIGHLIGHT_TERM_MAX_LENGTH) continue;
 		if (seen.has(term)) continue;
 		seen.add(term);
 		terms.push(term);

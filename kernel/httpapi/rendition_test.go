@@ -707,6 +707,12 @@ func TestHighlight_ElementBoundaryBackstop(t *testing.T) {
 // whitespace splitting, sub-2-character drop, de-duplication, the 8-term
 // cap, lowercasing, and empty/whitespace input returning nothing.
 func TestHighlightTerms_Derivation(t *testing.T) {
+	// WR-02 regression: a single whitespace-free "word" longer than
+	// highlightTermMaxRunes (64) must be dropped, not survive as one
+	// arbitrarily long term.
+	exactly64 := strings.Repeat("a", 64)
+	exactly65 := strings.Repeat("a", 65)
+
 	tests := []struct {
 		name string
 		raw  string
@@ -720,6 +726,8 @@ func TestHighlightTerms_Derivation(t *testing.T) {
 		{"empty input", "", nil},
 		{"whitespace-only input", "   \t\n  ", nil},
 		{"lowercases", "HELLO World", []string{"hello", "world"}},
+		{"a term exactly at the max length survives", "ok " + exactly64, []string{"ok", exactly64}},
+		{"a term one rune over the max length is dropped", "ok " + exactly65, []string{"ok"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -37,6 +37,18 @@ describe('highlightTerms', () => {
 	it('returns an empty array when every field is dropped (all sub-2-character)', () => {
 		expect(highlightTerms('a b c')).toEqual([]);
 	});
+
+	// WR-02 regression: mirrors kernel/httpapi/rendition_test.go's
+	// TestHighlightTerms_Derivation cases for the same rule.
+	it('keeps a term exactly at the max length (64 characters)', () => {
+		const exactly64 = 'a'.repeat(64);
+		expect(highlightTerms(`ok ${exactly64}`)).toEqual(['ok', exactly64]);
+	});
+
+	it('drops a term one character over the max length', () => {
+		const exactly65 = 'a'.repeat(65);
+		expect(highlightTerms(`ok ${exactly65}`)).toEqual(['ok']);
+	});
 });
 
 describe('highlightText', () => {
