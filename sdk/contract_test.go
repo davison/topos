@@ -62,6 +62,7 @@ func TestContractEnumsZeroValueUnspecified(t *testing.T) {
 	for _, enum := range []struct{ name, zero string }{
 		{"LinkFidelity", "LINK_FIDELITY_UNSPECIFIED"},
 		{"ContentVariant", "CONTENT_VARIANT_UNSPECIFIED"},
+		{"ContentShape", "CONTENT_SHAPE_UNSPECIFIED"},
 	} {
 		if !strings.Contains(stripped, "enum "+enum.name) {
 			t.Errorf("expected %s to declare enum %s", protoRelPath, enum.name)

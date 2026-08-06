@@ -271,24 +271,23 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*toposv1
 
 	body, _ := ExtractTagsAndBody(raw)
 
-	sanitized, err := RenderSanitized(body)
+	// RenderMarkdown converts the page's markdown to an HTML fragment
+	// only — sanitization, wrapping and theming moved to the kernel's
+	// rendition boundary (kernel/httpapi/rendition.go, D-11). Fetch
+	// returns the unwrapped, unsanitized fragment plus the declared
+	// content shape; the kernel sanitizes/wraps/themes it before serving.
+	fragment, err := RenderMarkdown(body)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "silverbullet: render %q: %v", sourceID, err)
 	}
-	// WrapDocument wraps the already-sanitized fragment in a minimal
-	// document carrying a fixed, hardcoded stylesheet matching the app's
-	// dark theme (found via live UAT: unstyled HTML rendered near-black
-	// text on the pane's dark background). The wrap happens strictly
-	// after sanitization and never re-enters bluemonday, so it cannot
-	// reintroduce any XSS surface the sanitizer removed.
-	doc := WrapDocument(sanitized)
 
 	return &toposv1.FetchResponse{
-		Available: true,
-		MimeType:  "text/html",
-		SizeBytes: int64(len(doc)),
-		Data:      doc,
-		Text:      string(body),
+		Available:    true,
+		MimeType:     "text/html",
+		ContentShape: toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
+		SizeBytes:    int64(len(fragment)),
+		Data:         fragment,
+		Text:         string(body),
 		Provenance: map[string]string{
 			"source_type": sourceType,
 			"source_id":   sourceID,

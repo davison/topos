@@ -262,14 +262,20 @@ func TestItemContentHandler_SecurityHeadersOnAllowedMIME(t *testing.T) {
 	}
 }
 
+// TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders proves
+// a text/html rendition is now sanitized, wrapped and themed by the kernel
+// (D-11) before being served: the plugin-supplied fragment must never
+// reach the response byte-for-byte, and the fetched result must declare a
+// recognised ContentShape or the kernel refuses to serve it.
 func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	seedTestItem(t, store, testItem())
 
-	body := []byte("<h1>Decking</h1><p>sanitized page content</p>")
+	fragment := []byte("<h1>Decking</h1><p>unsanitized fragment content</p>")
 	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
-		Available: true, MimeType: "text/html", SizeBytes: int64(len(body)),
-		Body: io.NopCloser(bytes.NewReader(body)),
+		Available: true, MimeType: "text/html", SizeBytes: int64(len(fragment)),
+		Body:         io.NopCloser(bytes.NewReader(fragment)),
+		ContentShape: toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
 	}})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)
@@ -293,10 +299,9 @@ func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testin
 	}
 	// Regression test: default-src 'none' with no style-src directive
 	// silently blocks the browser from applying ANY inline <style>
-	// element — including the SilverBullet plugin's own theme
-	// stylesheet (plugins/silverbullet/render.go's WrapDocument), served
-	// correctly but never applied. Caught by live UAT; see
-	// 02-01-SUMMARY.md.
+	// element — including the kernel's own composed rendition stylesheet
+	// (kernel/httpapi/rendition.go), served correctly but never applied.
+	// Caught by live UAT; see 02-01-SUMMARY.md.
 	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "style-src 'unsafe-inline'") {
 		t.Errorf("expected style-src 'unsafe-inline' in the CSP so an iframe document's own inline stylesheet is applied, got %q", rec.Header().Get("Content-Security-Policy"))
 	}
@@ -310,8 +315,50 @@ func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testin
 	if strings.Contains(rec.Header().Get("Content-Security-Policy"), "script-src") {
 		t.Errorf("expected no script-src override (scripts must stay blocked by default-src 'none'), got %q", rec.Header().Get("Content-Security-Policy"))
 	}
-	if rec.Body.String() != string(body) {
-		t.Error("response body does not match the fetched rendition bytes")
+	// The response is the SANITIZED, WRAPPED, THEMED document — never the
+	// plugin's raw fragment byte-for-byte (D-11's whole point).
+	if rec.Body.String() == string(fragment) {
+		t.Error("expected the response to be the kernel-wrapped document, not the plugin's raw fragment")
+	}
+	if !strings.HasPrefix(rec.Body.String(), "<!doctype html>") {
+		t.Errorf("expected the response to start with a doctype, got: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Decking") || !strings.Contains(rec.Body.String(), "unsanitized fragment content") {
+		t.Errorf("expected the fragment's own visible text to survive sanitization, got: %s", rec.Body.String())
+	}
+}
+
+// TestItemContentHandler_UnrecognisedContentShapeRefusedNoBody proves the
+// kernel fails closed (T-05-16): a text/html rendition whose ContentShape
+// is unspecified is refused with a distinct error code and no body — never
+// served unsanitized.
+func TestItemContentHandler_UnrecognisedContentShapeRefusedNoBody(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	seedTestItem(t, store, testItem())
+
+	fragment := []byte("<p>hello</p>")
+	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
+		Available: true, MimeType: "text/html", SizeBytes: int64(len(fragment)),
+		Body: io.NopCloser(bytes.NewReader(fragment)),
+		// ContentShape left at its zero value: CONTENT_SHAPE_UNSPECIFIED.
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal error envelope: %v", err)
+	}
+	if envelope.Error.Code != "unsupported_content_shape" {
+		t.Errorf("expected code unsupported_content_shape, got %q", envelope.Error.Code)
+	}
+	if strings.Contains(rec.Body.String(), "<p>hello</p>") {
+		t.Error("expected no fragment bytes to leak into the error response")
 	}
 }
 

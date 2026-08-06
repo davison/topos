@@ -185,6 +185,29 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 			return
 		}
 
+		// D-11: a text/html rendition arrives from the plugin as an
+		// unwrapped, unthemed, unsanitized fragment — the kernel is the
+		// one place that sanitizes, wraps and themes it, via the
+		// content-shape-keyed policy table in rendition.go. A shape the
+		// kernel does not recognise (including CONTENT_SHAPE_UNSPECIFIED)
+		// is refused outright: the kernel fails closed rather than ever
+		// serving an unsanitized document from its own origin.
+		var body []byte
+		if result.MimeType == "text/html" {
+			fragment, err := io.ReadAll(result.Body)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+				return
+			}
+			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment)
+			if err != nil {
+				WriteError(w, http.StatusBadGateway, "unsupported_content_shape",
+					"item \""+id+"\": "+err.Error())
+				return
+			}
+			body = wrapped
+		}
+
 		h := w.Header()
 		h.Set("Content-Type", result.MimeType)
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -192,28 +215,30 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 		// style-src 'unsafe-inline' (added live via UAT — see
 		// 02-01-SUMMARY.md): without it, default-src 'none' with no
 		// explicit style-src blocks the browser from applying ANY inline
-		// <style> element, including the SilverBullet plugin's own
-		// theme stylesheet (plugins/silverbullet/render.go's
-		// WrapDocument), served but silently never applied — rendered
-		// markdown looked unstyled even though the correct HTML/CSS was
-		// on the wire. Scripts remain fully blocked regardless
-		// (default-src 'none' plus the sandbox directive plus the
-		// embedding <iframe>'s own sandbox attribute in
-		// DetailPane.svelte, none of which this change touches).
-		// style-src 'unsafe-inline' is safe here specifically because
-		// the only inline style any rendition document can ever carry is
-		// the fixed Go string literal WrapDocument injects AFTER
-		// bluemonday sanitization — bluemonday strips any <style>
-		// element or style attribute that originated from page content,
-		// so this directive cannot be exploited by a hostile or
-		// malformed source document. This CSP is shared by every
-		// rendition type (PDF, images, text/html); widening style-src
-		// does not change how a PDF or image renders (neither has any
-		// inline stylesheet to apply) so this is a monotonic widening,
-		// not a behavior change, for those types.
+		// <style> element, including the kernel's own composed rendition
+		// stylesheet (rendition.go), served but silently never applied.
+		// Scripts remain fully blocked regardless (default-src 'none'
+		// plus the sandbox directive plus the embedding <iframe>'s own
+		// sandbox attribute in DetailPane.svelte, none of which this
+		// change touches). style-src 'unsafe-inline' is safe here
+		// specifically because the only inline style any rendition
+		// document can ever carry (D-11) is the kernel's own composed
+		// stylesheet, injected by sanitizeAndWrapRendition strictly AFTER
+		// its bluemonday policy runs over the plugin-supplied fragment —
+		// that policy strips any <style> element or style attribute that
+		// originated from page content, so this directive cannot be
+		// exploited by a hostile or malformed source document. This CSP
+		// is shared by every rendition type (PDF, images, text/html);
+		// widening style-src does not change how a PDF or image renders
+		// (neither has any inline stylesheet to apply) so this is a
+		// monotonic widening, not a behavior change, for those types.
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; sandbox")
 		h.Set("Cache-Control", "private, no-store")
 		w.WriteHeader(http.StatusOK)
+		if result.MimeType == "text/html" {
+			_, _ = w.Write(body)
+			return
+		}
 		_, _ = io.Copy(w, result.Body)
 	}
 }

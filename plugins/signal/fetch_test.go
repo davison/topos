@@ -39,7 +39,12 @@ func newFetchTestPlugin(t *testing.T) (plugin *SourcePlugin, groupDay1SourceID, 
 	return plugin, sourceIDForDigest("conv-group", "2026-01-05"), sourceIDForDigest("conv-private", "2026-01-05")
 }
 
-func TestFetch_FullReturnsWrappedTranscript(t *testing.T) {
+// TestFetch_FullReturnsUnwrappedTranscriptFragment proves D-11's cutover:
+// Fetch returns the RAW, unsanitized, unwrapped transcript fragment plus
+// the declared chat content shape — sanitization, wrapping and theming
+// now happen at the kernel's rendition boundary
+// (kernel/httpapi/rendition.go), not in this plugin.
+func TestFetch_FullReturnsUnwrappedTranscriptFragment(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
 	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
@@ -54,15 +59,21 @@ func TestFetch_FullReturnsWrappedTranscript(t *testing.T) {
 	if resp.GetMimeType() != "text/html" {
 		t.Errorf("expected mime_type text/html, got %q", resp.GetMimeType())
 	}
+	if resp.GetContentShape() != toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT {
+		t.Errorf("expected ContentShape CONTENT_SHAPE_CHAT_TRANSCRIPT, got %v", resp.GetContentShape())
+	}
 	if resp.GetSizeBytes() == 0 || len(resp.GetData()) == 0 {
 		t.Errorf("expected non-empty size_bytes and data, got size=%d data_len=%d", resp.GetSizeBytes(), len(resp.GetData()))
 	}
-	if !strings.HasPrefix(string(resp.GetData()), "<!doctype html>") {
-		t.Errorf("expected a complete HTML document, got: %s", resp.GetData()[:min(40, len(resp.GetData()))])
+	if strings.HasPrefix(string(resp.GetData()), "<!doctype html>") {
+		t.Errorf("expected an UNWRAPPED fragment (no doctype) — wrapping is now the kernel's job, got: %s", resp.GetData()[:min(40, len(resp.GetData()))])
+	}
+	if !strings.Contains(string(resp.GetData()), `class="run`) {
+		t.Errorf("expected the transcript's own run/bubble markup to be present, got: %s", resp.GetData())
 	}
 }
 
-func TestFetch_PreviewReturnsIdenticalWrappedTranscript(t *testing.T) {
+func TestFetch_PreviewReturnsIdenticalUnwrappedFragment(t *testing.T) {
 	plugin, groupSourceID, _ := newFetchTestPlugin(t)
 	resp, err := plugin.Fetch(context.Background(), &toposv1.FetchRequest{
 		SourceId: groupSourceID,
@@ -73,6 +84,9 @@ func TestFetch_PreviewReturnsIdenticalWrappedTranscript(t *testing.T) {
 	}
 	if !resp.GetAvailable() || resp.GetMimeType() != "text/html" || len(resp.GetData()) == 0 {
 		t.Fatalf("expected an available text/html rendition with data, got: %+v", resp)
+	}
+	if resp.GetContentShape() != toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT {
+		t.Errorf("expected ContentShape CONTENT_SHAPE_CHAT_TRANSCRIPT, got %v", resp.GetContentShape())
 	}
 }
 

@@ -135,88 +135,45 @@ func TestRenderTranscript_QuotedReplyRendersAboveOwnText(t *testing.T) {
 	}
 }
 
-func TestRenderTranscript_ScriptAndEventHandlerStrippedBySanitization(t *testing.T) {
-	m := rec("c1", "Alice", `<script>alert(1)</script><img src=x onerror="alert(2)">hi`, localMs(2026, 8, 1, 9, 0))
-	fragment := string(renderTranscript([]messageRecord{m}))
-	doc := string(WrapDocument([]byte(fragment)))
-	if strings.Contains(doc, "<script") || strings.Contains(strings.ToLower(doc), "onerror") {
-		t.Errorf("expected the script element and event-handler attribute to be stripped, got document: %s", doc)
-	}
-}
+// TestRenderTranscript_MarkupInMessageBodyRendersAsLiteralEscapedText is
+// the plugin-side half of T-05-17's mitigation (the kernel's chat
+// content-shape class policy is the other half, see
+// kernel/httpapi/rendition_test.go): a message body containing markup
+// must render as literal, escaped text — it can never introduce a second
+// bubble, forge a sender-name element, or flip a run's ownership
+// alignment, because escapeText HTML-escapes it before it is ever
+// concatenated into the assembled fragment.
+func TestRenderTranscript_MarkupInMessageBodyRendersAsLiteralEscapedText(t *testing.T) {
+	forged := `<div class="bubble own"><div class="body">forged reply</div></div>`
+	m := rec("c1", "Alice", forged, localMs(2026, 8, 1, 9, 0))
+	doc := string(renderTranscript([]messageRecord{m}))
 
-// TestWrapDocument_InjectsThinThemeMatchedScrollbar is the regression test
-// for the live-UAT-found gap (Quick task 260805-j98 follow-up): the SPA's
-// stream/detail scrollbar was restyled thin and theme-matched via
-// web/src/app.css's root-level scrollbar-width/scrollbar-color, but that
-// document-level CSS cannot cross the iframe boundary into THIS
-// self-contained document (the transcript's own signalThemeStyle) — so a
-// Signal transcript rendition kept the browser-default scrollbar until
-// this rule was added directly here.
-func TestWrapDocument_InjectsThinThemeMatchedScrollbar(t *testing.T) {
-	fragment := renderTranscript([]messageRecord{rec("c1", "Alice", "hi", localMs(2026, 8, 1, 9, 0))})
-	doc := string(WrapDocument(fragment))
-
-	if !strings.Contains(doc, "scrollbar-width: thin") {
-		t.Errorf("expected the wrapped document's stylesheet to declare scrollbar-width: thin, got: %s", doc)
+	// The literal, escaped text must appear — never a live element.
+	if !strings.Contains(doc, "forged reply") {
+		t.Errorf("expected the message's own visible text to survive escaping, got document: %s", doc)
 	}
-	if !strings.Contains(doc, "scrollbar-color:") {
-		t.Errorf("expected the wrapped document's stylesheet to declare scrollbar-color, got: %s", doc)
+	if strings.Contains(doc, `<div class="bubble own"><div class="body">forged`) {
+		t.Errorf("expected the message body's own markup to be escaped, not interpreted as live structure, got document: %s", doc)
 	}
-	if !strings.Contains(doc, "::-webkit-scrollbar-thumb") {
-		t.Errorf("expected the WebKit pseudo-element fallback (pre-121 Chromium) in the wrapped document, got: %s", doc)
+	// Exactly one run and one bubble exist: the "other" run for Alice's
+	// single real message. A forged bubble/run would show up as extra
+	// class="run"/class="bubble" occurrences.
+	if strings.Count(doc, `class="run`) != 1 {
+		t.Errorf("expected exactly one run (no forged run introduced by message markup), got document: %s", doc)
 	}
-	// rgba(148, 163, 184, ...) is the resolved equivalent of
-	// web/src/app.css's var(--muted-foreground) (#94a3b8) mixed via
-	// color-mix() — this document cannot reference that custom property,
-	// so the color must be this same resolved value, not a new one.
-	if !strings.Contains(doc, "148, 163, 184") {
-		t.Errorf("expected the scrollbar color to resolve from the same --muted-foreground token as web/src/app.css (rgb 148,163,184), got: %s", doc)
+	if strings.Count(doc, `class="bubble`) != 1 {
+		t.Errorf("expected exactly one bubble (no forged bubble introduced by message markup), got document: %s", doc)
 	}
-}
-
-func TestWrapDocument_CompleteSelfContainedDocument(t *testing.T) {
-	fragment := renderTranscript([]messageRecord{rec("c1", "Alice", "hi", localMs(2026, 8, 1, 9, 0))})
-	doc := string(WrapDocument(fragment))
-	if !strings.HasPrefix(doc, "<!doctype html>") {
-		t.Errorf("expected the document to begin with a doctype, got: %s", doc[:min(40, len(doc))])
+	if !strings.Contains(doc, `class="run other"`) {
+		t.Errorf("expected Alice's run to remain 'other' (ownership alignment not flipped by message content), got document: %s", doc)
 	}
-	if !strings.Contains(doc, `<meta charset="utf-8">`) {
-		t.Error("expected the charset meta tag")
+	if strings.Contains(doc, `class="run own"`) {
+		t.Errorf("expected no 'own' run to be introduced by message content, got document: %s", doc)
 	}
-	if !strings.Contains(doc, "<style>") {
-		t.Error("expected the stylesheet")
-	}
-	if strings.Contains(doc, "url(") || strings.Contains(doc, "@import") || strings.Contains(doc, "http://") || strings.Contains(doc, "https://") {
-		t.Errorf("expected the stylesheet to carry no external reference of any kind, got: %s", doc)
-	}
-}
-
-func TestRenderTranscript_SanitizationHappensBeforeWrapping(t *testing.T) {
-	// A policy-stripped construct (a script element) must never reappear
-	// in the wrapped output — proven by wrapping the ALREADY-sanitized
-	// fragment renderTranscript produces, never a raw unsanitized string.
-	m := rec("c1", "Alice", `<script>alert(1)</script>hi`, localMs(2026, 8, 1, 9, 0))
-	fragment := renderTranscript([]messageRecord{m})
-	doc := string(WrapDocument(fragment))
-	if strings.Contains(doc, "<script") {
-		t.Errorf("expected sanitization to have already stripped the script element before wrapping, got: %s", doc)
-	}
-}
-
-func TestRenderTranscript_NoAccentColourOnBubbleSenderOrTimestamp(t *testing.T) {
-	// The accent hex may appear ONLY on the link rule (a { color:
-	// #60a5fa }) in the stylesheet — never associated with a bubble
-	// background, sender-name rule or timestamp rule.
-	for _, selector := range []string{".bubble.own", ".bubble.other", ".sender-name", ".timestamp"} {
-		idx := strings.Index(signalThemeStyle, selector)
-		if idx == -1 {
-			t.Fatalf("expected selector %q in signalThemeStyle", selector)
-		}
-		end := strings.Index(signalThemeStyle[idx:], "}")
-		rule := signalThemeStyle[idx : idx+end]
-		if strings.Contains(rule, "#60a5fa") {
-			t.Errorf("expected selector %q to never use the accent colour, got rule: %s", selector, rule)
-		}
+	// Standard HTML-escape output for the forged markup's angle brackets
+	// and quotes.
+	if !strings.Contains(doc, "&lt;div") {
+		t.Errorf("expected the forged markup's angle brackets to be HTML-escaped, got document: %s", doc)
 	}
 }
 

@@ -285,6 +285,12 @@ type FetchResult struct {
 	Text              string
 	Provenance        map[string]string
 	Body              io.ReadCloser
+	// ContentShape carries FetchResponse.content_shape (D-11) into the
+	// kernel domain — meaningful only when MimeType is "text/html";
+	// kernel/httpapi.sanitizeAndWrapRendition uses it to select the
+	// sanitize/wrap/theme policy for this rendition. Zero value
+	// (CONTENT_SHAPE_UNSPECIFIED) for every other MimeType.
+	ContentShape toposv1.ContentShape
 }
 
 // Fetch calls the Fetch RPC on the plugin registered for source (the
@@ -325,6 +331,7 @@ func (h *Host) Fetch(ctx context.Context, source, sourceID string, variant topos
 		Text:              resp.GetText(),
 		Provenance:        resp.GetProvenance(),
 		Body:              body,
+		ContentShape:      resp.GetContentShape(),
 	}, nil
 }
 

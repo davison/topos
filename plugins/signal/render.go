@@ -1,20 +1,22 @@
 // Chat-transcript HTML renderer: the source-agnostic bubble/run
 // transcript builder Phase 5's WhatsApp plugin reuses (04-03-PLAN.md
-// Task 2). Mirrors plugins/proton/body.go's sanitize-then-wrap pipeline
-// shape — a package-level bluemonday policy built once at init, message
-// text sanitized individually before assembly, and a fixed,
-// self-contained themeStyle applied strictly AFTER sanitization — but
-// this is its OWN policy variable and its OWN wrap helper: the content
-// shape (message bubbles grouped into sender runs) differs from an
-// email body, so nothing here shares state with plugins/proton/body.go.
+// Task 2). Sanitization, wrapping and theming moved to the kernel's
+// rendition boundary (kernel/httpapi/rendition.go, D-11) — this file now
+// builds the transcript's structural markup (message bubbles grouped
+// into sender runs) and HTML-escapes every interpolated text field, but
+// no longer sanitizes with a bluemonday policy and no longer wraps or
+// themes the result. Escaping every interpolated text field before
+// assembly (escapeText below) is what guarantees the kernel's chat
+// content-shape policy never has to distinguish this plugin's own
+// structural markup from a forged one embedded in a message body
+// (T-05-17): a message body containing markup renders as literal text.
 package main
 
 import (
 	"bytes"
+	"html"
 	"strings"
 	"time"
-
-	"github.com/microcosm-cc/bluemonday"
 )
 
 // ownSenderLabel is the fixed display name readMessages/buildSenderNames
@@ -35,37 +37,26 @@ const runGapThreshold = 5 * time.Minute
 // and an edited-message suffix, respectively.
 const (
 	deletedMessageCopy = "This message was deleted"
-	editedSuffix        = "(edited)"
+	editedSuffix       = "(edited)"
 )
 
-// signalTranscriptSanitizePolicy is built once at init (bluemonday's own
-// documented pattern for concurrent-safe reuse — the identical rationale
-// plugins/proton/body.go's emailSanitizePolicy and
-// plugins/silverbullet/render.go's sanitizePolicy already rely on). Built
-// from bluemonday.UGCPolicy() and deliberately NOT widened at all: unlike
-// plugins/proton/body.go's emailSanitizePolicy (which narrowly allows a
-// presentational style attribute on a named element set), message text
-// here is untrusted third-party chat content with no legitimate styling
-// need, so no style attribute is ever allowed on any element — every
-// bubble, run and chrome element's presentation comes exclusively from
-// signalThemeStyle below, applied strictly after this policy runs.
-var signalTranscriptSanitizePolicy = newSignalTranscriptSanitizePolicy()
-
-func newSignalTranscriptSanitizePolicy() *bluemonday.Policy {
-	return bluemonday.UGCPolicy()
-}
-
-// sanitizeText sanitizes s (a single untrusted text field — a message
+// escapeText HTML-escapes s (a single untrusted text field — a message
 // body, a quoted excerpt, an attachment filename, a reactor or sender
-// display name) via signalTranscriptSanitizePolicy on its own, BEFORE it
-// is concatenated into the assembled transcript's markup. Every
-// interpolated string this file writes into HTML goes through this
-// function — never the assembled document as a whole — so a crafted
-// value can never break out of its own element boundary before the
-// sanitizer sees it (mirrors plugins/proton/body.go's identical
-// per-part-not-per-document discipline).
-func sanitizeText(s string) string {
-	return string(signalTranscriptSanitizePolicy.SanitizeBytes([]byte(s)))
+// display name) via html.EscapeString on its own, BEFORE it is
+// concatenated into the assembled transcript's markup. Every interpolated
+// string this file writes into HTML goes through this function — never
+// the assembled document as a whole — so a crafted value can never break
+// out of its own element boundary, forge a sibling bubble, or flip a
+// run's ownership alignment (T-05-17): the kernel's chat content-shape
+// policy performs the actual security sanitization
+// (kernel/httpapi/rendition.go) over the ASSEMBLED fragment this file
+// produces; this function's job is narrower and different — guarantee
+// this plugin's OWN generated structure cannot be forged by message
+// content, by ensuring message content can never contain a live "<" or
+// "&" that the kernel's policy would otherwise have to interpret as
+// markup.
+func escapeText(s string) string {
+	return html.EscapeString(s)
 }
 
 // messageRun is a maximal run of consecutive messages from the SAME
@@ -119,11 +110,11 @@ func formatTimestamp(sentAtUnixMs int64) string {
 }
 
 // renderTranscript renders msgs (chronologically ascending, already
-// scoped to one conversation's one day) into a sanitized HTML fragment —
-// NOT yet a complete document; callers pass this to WrapDocument. Each
-// message's own text fields are sanitized individually via sanitizeText
-// before being concatenated into the run/bubble markup below — this
-// function never sanitizes the assembled result.
+// scoped to one conversation's one day) into an HTML fragment — NOT yet a
+// complete document, and NOT sanitized by this plugin: the kernel's
+// rendition boundary (kernel/httpapi/rendition.go) sanitizes, wraps and
+// themes it. Each message's own text fields are escaped individually via
+// escapeText before being concatenated into the run/bubble markup below.
 func renderTranscript(msgs []messageRecord) []byte {
 	var buf bytes.Buffer
 	for _, run := range buildMessageRuns(msgs) {
@@ -134,7 +125,7 @@ func renderTranscript(msgs []messageRecord) []byte {
 
 		buf.WriteString(`<div class="run ` + align + `">`)
 		if !run.IsOwn {
-			buf.WriteString(`<div class="sender-name">` + sanitizeText(run.SenderName) + `</div>`)
+			buf.WriteString(`<div class="sender-name">` + escapeText(run.SenderName) + `</div>`)
 		}
 		for i, m := range run.Messages {
 			buf.WriteString(renderBubble(m, align, i == len(run.Messages)-1))
@@ -155,7 +146,7 @@ func renderBubble(m messageRecord, align string, showTimestamp bool) string {
 	b.WriteString(`<div class="bubble ` + align + `">`)
 
 	if m.QuoteExcerpt != "" {
-		b.WriteString(`<div class="quote">` + sanitizeText(m.QuoteExcerpt) + `</div>`)
+		b.WriteString(`<div class="quote">` + escapeText(m.QuoteExcerpt) + `</div>`)
 	}
 
 	switch {
@@ -165,14 +156,14 @@ func renderBubble(m messageRecord, align string, showTimestamp bool) string {
 		// entirely (04-UI-SPEC.md E2 `partial`).
 		b.WriteString(`<div class="tombstone">` + deletedMessageCopy + `</div>`)
 	case m.Body != "":
-		b.WriteString(`<div class="body">` + sanitizeText(m.Body) + `</div>`)
+		b.WriteString(`<div class="body">` + escapeText(m.Body) + `</div>`)
 	}
 
 	for _, att := range m.Attachments {
-		b.WriteString(`<div class="attachment">` + sanitizeText(attachmentPlaceholder(att)) + `</div>`)
+		b.WriteString(`<div class="attachment">` + escapeText(attachmentPlaceholder(att)) + `</div>`)
 	}
 	for _, line := range reactionLines(m.Reactions) {
-		b.WriteString(`<div class="reaction">` + sanitizeText(line) + `</div>`)
+		b.WriteString(`<div class="reaction">` + escapeText(line) + `</div>`)
 	}
 
 	switch {
@@ -182,7 +173,7 @@ func renderBubble(m messageRecord, align string, showTimestamp bool) string {
 		// per 04-UI-SPEC.md Typography's exact rule. Only the run's
 		// last bubble ever carries a timestamp, so this is the only
 		// place the suffix can be co-located with one.
-		ts := sanitizeText(formatTimestamp(m.SentAtUnixMs))
+		ts := escapeText(formatTimestamp(m.SentAtUnixMs))
 		if m.Edited {
 			ts += " " + editedSuffix
 		}
@@ -196,114 +187,4 @@ func renderBubble(m messageRecord, align string, showTimestamp bool) string {
 
 	b.WriteString(`</div>`)
 	return b.String()
-}
-
-// signalThemeStyle is a fixed, self-contained stylesheet — no external
-// fetch, no @import, no url() reference of any kind — applied strictly
-// AFTER sanitization (WrapDocument never re-runs its input through
-// signalTranscriptSanitizePolicy), so it can never reintroduce anything
-// sanitization removed. Base typography and the image-hiding rule copy
-// plugins/proton/body.go's/plugins/silverbullet/render.go's existing
-// rendered-content precedent verbatim (15px/1.6, the same system font
-// stack) — deliberately NOT the SPA's Inter/16px chrome (04-UI-SPEC.md
-// Typography).
-//
-// Every colour value below is an EXISTING theme token (04-UI-SPEC.md
-// Color) — no new hex value is introduced by this file. The accent
-// `#60a5fa` appears exactly once, reserved for inline links inside
-// message text (the sanitize policy's own <a> allowance) — it is never
-// applied to a bubble background, a sender name, a timestamp, or any
-// other per-participant differentiation, protecting the accent budget
-// exactly as Phase 3 protected it for search (04-UI-SPEC.md Color).
-const signalThemeStyle = `
-:root { color-scheme: dark; }
-/* Scrollbar styling (Quick task 260805-j98 follow-up). This document is
-   served through the kernel's own /content route and rendered inside the
-   detail pane's iframe (web/src/lib/components/DetailPane.svelte) — a
-   SEPARATE document from the SPA, so the SPA's own root-level
-   scrollbar-width/scrollbar-color (web/src/app.css) cannot inherit across
-   that document boundary. This block is the same thin, theme-matched
-   treatment applied independently, inside this self-contained
-   stylesheet. It cannot reference web/src/app.css's var(--muted-foreground)
-   custom property (that document doesn't exist here), so the color is the
-   resolved rgba() equivalent of that same file's derived scrollbar
-   tokens: --muted-foreground (#94a3b8 / rgb(148,163,184)) mixed to 35%/60%
-   opacity against transparent, matching color-mix(in srgb, X p%,
-   transparent)'s well-established same-RGB/alpha-only-scaled result. */
-:root {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
-}
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
-::-webkit-scrollbar-corner { background: transparent; }
-html, body {
-  margin: 0;
-  padding: 16px;
-  background: #0f172a;
-  color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 15px;
-  line-height: 1.6;
-}
-a { color: #60a5fa; text-decoration: underline; }
-a:hover { color: #93c5fd; }
-/* A message can never carry a remote image reference that actually
-   loads — the rendition is served under a policy permitting no
-   subresource of any kind (kernel/httpapi/item.go's Content-Security-
-   Policy) — so any surviving <img> could only ever render broken. */
-img { display: none !important; }
-
-.run { display: flex; flex-direction: column; margin: 16px 0; }
-.run.own { align-items: flex-end; }
-.run.other { align-items: flex-start; }
-.run .bubble + .bubble { margin-top: 4px; }
-
-.sender-name { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 4px; }
-
-.bubble {
-  max-width: 75%;
-  border-radius: 12px;
-  padding: 8px 16px;
-}
-.bubble.other { background: #1e293b; }
-.bubble.own { background: #0f172a; border: 1px solid #1e293b; }
-
-.bubble .body { font-size: 15px; font-weight: 400; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.bubble .tombstone { font-size: 15px; line-height: 1.6; font-style: italic; color: #94a3b8; }
-.bubble .quote {
-  font-size: 14px; font-weight: 400; font-style: italic; color: #94a3b8;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  margin-bottom: 4px;
-}
-.bubble .timestamp, .bubble .edited-suffix { font-size: 14px; font-weight: 400; color: #94a3b8; margin-top: 4px; }
-.bubble .attachment {
-  display: inline-block; font-size: 14px; font-weight: 400; color: #f1f5f9;
-  background: #334155; border-radius: 999px; padding: 4px 12px; margin-top: 4px;
-}
-.bubble .reaction { font-size: 14px; font-weight: 400; color: #94a3b8; margin-top: 4px; }
-`
-
-// WrapDocument wraps an already-sanitized HTML fragment
-// (renderTranscript's output) in a minimal, self-contained HTML document
-// — doctype, a <head> carrying only a charset meta tag and the fixed
-// signalThemeStyle above, and the fragment as <body> content unchanged.
-// Copies plugins/proton/body.go's WrapDocument shape verbatim — see that
-// function's own doc comment for why sanitizing must always happen
-// BEFORE this call, never after.
-func WrapDocument(sanitizedFragment []byte) []byte {
-	var buf bytes.Buffer
-	buf.WriteString("<!doctype html>\n<html><head><meta charset=\"utf-8\"><style>")
-	buf.WriteString(signalThemeStyle)
-	buf.WriteString("</style></head><body>")
-	buf.Write(sanitizedFragment)
-	buf.WriteString("</body></html>")
-	return buf.Bytes()
 }

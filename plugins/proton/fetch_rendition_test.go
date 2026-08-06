@@ -66,11 +66,14 @@ func TestFetch_PrefersPlainTextOverHTMLRendition(t *testing.T) {
 	}
 }
 
-// TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition proves the
-// fallback is kept, not deleted: a text/html-only message (no plain-text
-// alternative) must still arrive as the sanitized, theme-wrapped
-// rendition.
-func TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition(t *testing.T) {
+// TestFetch_HTMLOnlyMessageKeepsTheRendition proves the fallback is kept,
+// not deleted: a text/html-only message (no plain-text alternative) must
+// still arrive as a text/html rendition. D-11 moved sanitization, wrapping
+// and theming to the kernel's rendition boundary
+// (kernel/httpapi/rendition.go) — this plugin now returns the RAW,
+// unsanitized HTML part plus the declared email content shape, never a
+// wrapped document.
+func TestFetch_HTMLOnlyMessageKeepsTheRendition(t *testing.T) {
 	serverAddr := newTestIMAPServer(t)
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
@@ -97,12 +100,12 @@ func TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition(t *testing.T) {
 	if fetchResp.GetMimeType() != "text/html" {
 		t.Errorf("Fetch: MimeType = %q, want %q (the fallback is kept for an HTML-only message)", fetchResp.GetMimeType(), "text/html")
 	}
-	data := fetchResp.GetData()
-	if !bytes.HasPrefix(data, []byte("<!doctype html>")) {
-		t.Errorf("Fetch: Data does not begin with the doctype; got %q", string(data))
+	if fetchResp.GetContentShape() != toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML {
+		t.Errorf("Fetch: ContentShape = %v, want CONTENT_SHAPE_EMAIL_HTML", fetchResp.GetContentShape())
 	}
-	if !bytes.Contains(data, []byte("#0f172a")) {
-		t.Errorf("Fetch: Data does not contain the wrapper's theme token #0f172a; got %q", string(data))
+	data := fetchResp.GetData()
+	if bytes.HasPrefix(data, []byte("<!doctype html>")) {
+		t.Errorf("Fetch: Data is a wrapped document; expected the RAW, unwrapped HTML part (D-11 moved wrapping kernel-side), got %q", string(data))
 	}
 	if !bytes.Contains(data, []byte("Epsilon heading")) {
 		t.Errorf("Fetch: Data does not contain the message's own visible text; got %q", string(data))

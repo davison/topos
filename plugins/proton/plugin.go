@@ -571,23 +571,24 @@ func (p *SourcePlugin) fetchFull(ctx context.Context, sourceID string) (*toposv1
 		return resp, nil
 	}
 
-	// No renderable plain text: fall back to the HTML part, sanitized and
-	// wrapped in the fixed dark-theme document, as a text/html rendition
-	// — the one rendition type the kernel's fixed allowlist already
-	// permits (kernel/httpapi/item.go), reusing SilverBullet's exact
-	// sandboxed-iframe rendition path with zero kernel change. When
-	// neither part yields anything, resp is returned unchanged: Available
-	// true, empty Text, no rendition — a normal outcome, not an error.
+	// No renderable plain text: fall back to the HTML part as a text/html
+	// rendition — the one rendition type the kernel's fixed allowlist
+	// already permits (kernel/httpapi/item.go). Sanitization, wrapping
+	// and theming moved to the kernel's rendition boundary
+	// (kernel/httpapi/rendition.go, D-11): Data below is the RAW,
+	// unsanitized HTML part, with ContentShape declaring the email
+	// profile so the kernel knows which policy to apply. When neither
+	// part yields anything, resp is returned unchanged: Available true,
+	// empty Text, no rendition — a normal outcome, not an error.
 	htmlPart, err := HTMLPart(raw)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "proton: parse message %q: %v", sourceID, err)
 	}
 	if len(htmlPart) > 0 {
-		sanitized := RenderSanitizedEmail([]byte(htmlPart))
-		doc := WrapDocument(sanitized)
 		resp.MimeType = "text/html"
-		resp.SizeBytes = int64(len(doc))
-		resp.Data = doc
+		resp.ContentShape = toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML
+		resp.SizeBytes = int64(len(htmlPart))
+		resp.Data = []byte(htmlPart)
 	}
 
 	return resp, nil

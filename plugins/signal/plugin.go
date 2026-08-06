@@ -318,13 +318,18 @@ func (p *SourcePlugin) fetchTranscript(sourceID string) (*toposv1.FetchResponse,
 	}
 	sort.Slice(dayMsgs, func(i, j int) bool { return dayMsgs[i].SentAtUnixMs < dayMsgs[j].SentAtUnixMs })
 
-	doc := WrapDocument(renderTranscript(dayMsgs))
+	// renderTranscript returns an UNSANITIZED, UNWRAPPED fragment — D-11
+	// moved sanitization, wrapping and theming to the kernel's rendition
+	// boundary (kernel/httpapi/rendition.go). ContentShape declares the
+	// chat profile so the kernel applies the right policy.
+	fragment := renderTranscript(dayMsgs)
 
 	return &toposv1.FetchResponse{
-		Available: true,
-		MimeType:  transcriptMimeType,
-		SizeBytes: int64(len(doc)),
-		Data:      doc,
+		Available:    true,
+		MimeType:     transcriptMimeType,
+		ContentShape: toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
+		SizeBytes:    int64(len(fragment)),
+		Data:         fragment,
 		Provenance: map[string]string{
 			"source_type": sourceType,
 			"source_id":   sourceID,

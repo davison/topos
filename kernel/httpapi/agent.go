@@ -328,6 +328,25 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 			return
 		}
 
+		// D-11: identical branch to renditionHandler's sibling in item.go
+		// — see that function's doc comment for why sanitizing/wrapping
+		// happens here, once, kernel-side.
+		var body []byte
+		if result.MimeType == "text/html" {
+			fragment, err := io.ReadAll(result.Body)
+			if err != nil {
+				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+				return
+			}
+			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment)
+			if err != nil {
+				WriteError(w, http.StatusBadGateway, "unsupported_content_shape",
+					"item \""+id+"\": "+err.Error())
+				return
+			}
+			body = wrapped
+		}
+
 		h := w.Header()
 		h.Set("Content-Type", result.MimeType)
 		h.Set("X-Content-Type-Options", "nosniff")
@@ -335,6 +354,10 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; sandbox")
 		h.Set("Cache-Control", "private, no-store")
 		w.WriteHeader(http.StatusOK)
+		if result.MimeType == "text/html" {
+			_, _ = w.Write(body)
+			return
+		}
 		_, _ = io.Copy(w, result.Body)
 	}
 }
