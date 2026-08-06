@@ -33,6 +33,15 @@ const matchTestPage = "---\ntags: [house]\n---\n# Decking\n\nsome *plan* text"
 // use of a distinct keyword to prove selectivity.
 const matchTestPageOther = "---\ntags: [food]\n---\n# Recipe\n\nsome content"
 
+// tagsMatchReq builds a MatchRequest carrying only the "tags" field — the
+// shape most of this file's pre-existing tests use, since matchTestPage's
+// frontmatter tag ("house") is what they match against.
+func tagsMatchReq(values []string) *toposv1.MatchRequest {
+	return &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"tags": {Values: values},
+	}}
+}
+
 func TestMatch_HappyPath_ReturnsOnlyKeywordMatchedPages(t *testing.T) {
 	matchListing := []FileMeta{
 		{Name: "Decking.md", Created: 1000, LastModified: 2000, ContentType: "text/markdown", Size: 42, Perm: "ro"},
@@ -63,7 +72,7 @@ func TestMatch_HappyPath_ReturnsOnlyKeywordMatchedPages(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), tagsMatchReq([]string{"house"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -107,7 +116,7 @@ func TestMatch_PageDeletedBetweenListingAndRead_SkippedNotFailed(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), tagsMatchReq([]string{"house"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -136,7 +145,7 @@ func TestMatch_AllPageReadsFail_ReturnsUnavailable(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), tagsMatchReq([]string{"house"}))
 	if err == nil {
 		t.Fatal("expected a non-nil error when every page read fails")
 	}
@@ -176,7 +185,7 @@ func TestMatch_OutageMidSync_AuthFailure_ReturnsUnavailable(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, "test-token", "")
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
+	resp, err := p.Match(context.Background(), tagsMatchReq([]string{"house"}))
 	if err == nil {
 		t.Fatal("expected a non-nil error when the token is revoked partway through the sync")
 	}
@@ -206,7 +215,7 @@ func TestMatch_UnavailableError_NeverContainsBearerToken(t *testing.T) {
 	})
 
 	p := NewSourcePlugin(srv.URL, token, "")
-	_, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"house"}})
+	_, err := p.Match(context.Background(), tagsMatchReq([]string{"house"}))
 	if err == nil {
 		t.Fatal("expected a non-nil error when every page read fails")
 	}
@@ -225,4 +234,79 @@ func TestMatch_UnavailableError_NeverContainsBearerToken(t *testing.T) {
 // matchConcurrency's worker pool.
 func pageName(i int) string {
 	return "Page" + strconv.Itoa(i) + ".md"
+}
+
+// TestMatch_UndeclaredKeyIsIgnored proves a match_fields key outside this
+// plugin's declared vocabulary ("conversations", which silverbullet never
+// declares) is ignored entirely — only "tags" and "pages" are read (D-05).
+func TestMatch_UndeclaredKeyIsIgnored(t *testing.T) {
+	matchListing := []FileMeta{
+		{Name: "Decking.md", Created: 1000, LastModified: 2000, ContentType: "text/markdown", Size: 42, Perm: "ro"},
+	}
+	srv := newMatchTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.fs":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(matchListing)
+		case "/.fs/Decking.md":
+			w.Header().Set("Content-Type", "text/markdown")
+			_, _ = w.Write([]byte(matchTestPage))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	p := NewSourcePlugin(srv.URL, "test-token", "")
+	req := &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"tags":          {Values: []string{"house"}},
+		"conversations": {Values: []string{"should-be-ignored"}},
+	}}
+	resp, err := p.Match(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 1 || resp.GetItems()[0].GetSourceId() != "Decking" {
+		t.Fatalf("expected exactly Decking matched via the typed tags field, got %+v", resp.GetItems())
+	}
+}
+
+// TestMatch_PagesFieldMatchesOnPageNameIndependentlyOfTags proves "tags"
+// and "pages" are independent, unioned fields: a page whose NAME (not its
+// tags) matches a "pages" value is returned even when "tags" is absent or
+// non-matching, and vice versa.
+func TestMatch_PagesFieldMatchesOnPageNameIndependentlyOfTags(t *testing.T) {
+	matchListing := []FileMeta{
+		{Name: "Decking.md", Created: 1000, LastModified: 2000, ContentType: "text/markdown", Size: 42, Perm: "ro"},
+		{Name: "Recipe.md", Created: 1000, LastModified: 2000, ContentType: "text/markdown", Size: 42, Perm: "ro"},
+	}
+	srv := newMatchTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.fs":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(matchListing)
+		case "/.fs/Decking.md":
+			w.Header().Set("Content-Type", "text/markdown")
+			_, _ = w.Write([]byte(matchTestPage))
+		case "/.fs/Recipe.md":
+			w.Header().Set("Content-Type", "text/markdown")
+			_, _ = w.Write([]byte(matchTestPageOther))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	p := NewSourcePlugin(srv.URL, "test-token", "")
+	// "Recipe" matches only by page name — its tag is "food", not "house" —
+	// so supplying it only under "pages" (never "tags") must still return
+	// it, proving the fields are independent rather than ANDed together.
+	req := &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"pages": {Values: []string{"Recipe"}},
+	}}
+	resp, err := p.Match(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 1 || resp.GetItems()[0].GetSourceId() != "Recipe" {
+		t.Fatalf("expected exactly Recipe matched via the typed pages field, got %+v", resp.GetItems())
+	}
 }

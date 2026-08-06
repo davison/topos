@@ -21,12 +21,17 @@ import (
 const (
 	sourceType      = "proton"
 	displayName     = "Proton Mail"
-	contractVersion = "topos.v1"
+	contractVersion = "topos.v2"
 
 	// noSubjectPlaceholder is used as Title when a message's ENVELOPE
 	// carries an empty Subject.
 	noSubjectPlaceholder = "(no subject)"
 )
+
+// matchVocabulary is the field-name vocabulary this plugin declares and
+// reads from MatchRequest.match_fields — proton's own native categorization
+// is its IMAP mailbox/label leaf names.
+var matchVocabulary = []string{"folders"}
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL
 // content variant — an email has no image rendition, ever.
@@ -120,18 +125,20 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
+		MatchVocabulary: matchVocabulary,
 	}, nil
 }
 
 // Match lists every mailbox once, selects those whose leaf name
-// case-insensitively equals one of the webspace's keywords, EXAMINEs
-// each matched mailbox and fetches ENVELOPE+INTERNALDATE+UID for every
-// message in it, then merges results by normalized Message-ID (Pattern
-// 2) before building the returned items. A webspace with zero matching
-// mailbox leaf names returns a successful, empty response (never an
-// error) — see 03-RESEARCH.md Pitfall 2 / this plan's must_haves.
+// case-insensitively equals one of match_fields["folders"]'s values
+// (D-05: any other key in the request map is ignored), EXAMINEs each
+// matched mailbox and fetches ENVELOPE+INTERNALDATE+UID for every message
+// in it, then merges results by normalized Message-ID (Pattern 2) before
+// building the returned items. A webspace with zero matching mailbox leaf
+// names returns a successful, empty response (never an error) — see
+// 03-RESEARCH.md Pitfall 2 / this plan's must_haves.
 func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	keywords := req.GetKeywords()
+	keywords := req.GetMatchFields()["folders"].GetValues()
 	if len(keywords) == 0 {
 		return &toposv1.MatchResponse{}, nil
 	}

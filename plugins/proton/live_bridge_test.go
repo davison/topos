@@ -70,7 +70,7 @@ func TestSeenFlagUnchanged_LiveBridge(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{targetMailboxLiveIT}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{targetMailboxLiveIT}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}

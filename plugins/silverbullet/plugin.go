@@ -17,7 +17,7 @@ import (
 const (
 	sourceType      = "silverbullet"
 	displayName     = "SilverBullet"
-	contractVersion = "topos.v1"
+	contractVersion = "topos.v2"
 	previewRuneCap  = 500
 	// matchConcurrency bounds how many page bodies Match reads at once
 	// (T-02-05): SilverBullet has no server-side tag filter (RESEARCH.md
@@ -27,6 +27,13 @@ const (
 	// against the user's own home server.
 	matchConcurrency = 4
 )
+
+// matchVocabulary is the field-name vocabulary this plugin declares and
+// reads from MatchRequest.match_fields: "tags" matches a page's frontmatter
+// or inline tags, "pages" matches its page name/path — two independent
+// fields, unlike frontmatter.go's combined MatchesKeyword (see tag/page
+// helpers below).
+var matchVocabulary = []string{"tags", "pages"}
 
 // SourcePlugin implements sdk.SourcePlugin against a SilverBullet instance
 // via Client.
@@ -52,7 +59,39 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
+		MatchVocabulary: matchVocabulary,
 	}, nil
+}
+
+// tagsMatchAnyKeyword reports whether any of tags case-insensitively
+// equals any of keywords — the "tags" field's exact-match check, split out
+// of frontmatter.go's MatchesKeyword (which combines tag-or-path matching
+// into one check) now that "tags" and "pages" are independent match_fields.
+// D-04's comparison itself (strings.EqualFold, no substring/prefix) is
+// unchanged.
+func tagsMatchAnyKeyword(tags, keywords []string) bool {
+	for _, t := range tags {
+		for _, kw := range keywords {
+			if strings.EqualFold(t, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pageNameMatchesAnyKeyword reports whether pagePath (or its final
+// segment) case-insensitively equals any of keywords — the "pages" field's
+// exact-match check. Reuses MatchesKeyword with a nil tags argument so the
+// path-comparison logic (full path or final segment, exact only) stays the
+// single source of truth in frontmatter.go, just scoped to path-only.
+func pageNameMatchesAnyKeyword(pagePath string, keywords []string) bool {
+	for _, kw := range keywords {
+		if MatchesKeyword(pagePath, nil, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // pageMatch holds one page's Match-time state: its listing metadata, the
@@ -72,8 +111,9 @@ type pageMatch struct {
 // so this cost is unavoidable and scales with total space size, not
 // matched-item count (accepted for this phase's MVP scope, A-SRC-05).
 func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	keywords := req.GetKeywords()
-	if len(keywords) == 0 {
+	tagKeywords := req.GetMatchFields()["tags"].GetValues()
+	pageKeywords := req.GetMatchFields()["pages"].GetValues()
+	if len(tagKeywords) == 0 && len(pageKeywords) == 0 {
 		return &toposv1.MatchResponse{}, nil
 	}
 
@@ -126,11 +166,11 @@ func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*t
 			}
 			body, tags := ExtractTagsAndBody(raw)
 			pagePath := strings.TrimSuffix(f.Name, ".md")
-			for _, kw := range keywords {
-				if MatchesKeyword(pagePath, tags, kw) {
-					matches[i] = &pageMatch{file: f, tags: tags, body: body}
-					return nil
-				}
+			// D-04: a page matches if its tags match any "tags" value OR
+			// its page name matches any "pages" value — the two declared
+			// fields are independent, unioned, checks.
+			if tagsMatchAnyKeyword(tags, tagKeywords) || pageNameMatchesAnyKeyword(pagePath, pageKeywords) {
+				matches[i] = &pageMatch{file: f, tags: tags, body: body}
 			}
 			return nil
 		})

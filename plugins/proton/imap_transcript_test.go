@@ -341,6 +341,16 @@ func newTestIMAPServer(t *testing.T) (addr string) {
 	return l.Addr().String()
 }
 
+// foldersMatchReq builds a MatchRequest carrying only the "folders" field —
+// the shape this plugin declares (matchVocabulary = ["folders"]) and every
+// test in this package uses to drive Match, since proton's native
+// categorization is IMAP mailbox/label leaf names.
+func foldersMatchReq(values []string) *toposv1.MatchRequest {
+	return &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"folders": {Values: values},
+	}}
+}
+
 // TestIMAPTranscript_ExamineAndPeekOnly is Proof one (03-02-PLAN.md Task 2):
 // a full Describe/Match/Fetch/Health cycle against a local fake IMAP server,
 // asserting the recorded client-to-server wire transcript contains EXAMINE
@@ -375,7 +385,7 @@ func TestIMAPTranscript_ExamineAndPeekOnly(t *testing.T) {
 		t.Fatalf("Describe: %v", err)
 	}
 
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam", "BetaTeam"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"AlphaTeam", "BetaTeam"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -424,5 +434,53 @@ func TestIMAPTranscript_ExamineAndPeekOnly(t *testing.T) {
 		if strings.Contains(transcript, forbidden) {
 			t.Errorf("transcript contains forbidden mutating substring %q (PLUG-02 violation); transcript:\n%s", forbidden, transcript)
 		}
+	}
+}
+
+// TestDescribe_DeclaresFoldersVocabulary proves Describe reports the
+// single declared match field this plugin reads from match_fields.
+func TestDescribe_DeclaresFoldersVocabulary(t *testing.T) {
+	plugin, err := NewSourcePlugin("imap://bridge.invalid:143", "username", "password", "", "https://mail.proton.me/u/0")
+	if err != nil {
+		t.Fatalf("NewSourcePlugin: %v", err)
+	}
+	resp, err := plugin.Describe(context.Background(), &toposv1.DescribeRequest{})
+	if err != nil {
+		t.Fatalf("Describe: %v", err)
+	}
+	if len(resp.GetMatchVocabulary()) != 1 || resp.GetMatchVocabulary()[0] != "folders" {
+		t.Errorf("expected match_vocabulary [\"folders\"], got %v", resp.GetMatchVocabulary())
+	}
+}
+
+// TestMatch_UndeclaredKeyIsIgnored proves a match_fields key outside this
+// plugin's declared vocabulary ("tags", which proton never declares) is
+// ignored entirely — only "folders" is read (D-05).
+func TestMatch_UndeclaredKeyIsIgnored(t *testing.T) {
+	serverAddr := newTestIMAPServer(t)
+
+	plugin, err := NewSourcePlugin("imap://bridge.invalid:143", "username", "password", "", "https://mail.proton.me/u/0")
+	if err != nil {
+		t.Fatalf("NewSourcePlugin: %v", err)
+	}
+	plugin.client.dial = func(timeout time.Duration) (*imapclient.Client, error) {
+		conn, err := imapclient.Dial(serverAddr)
+		if err != nil {
+			return nil, err
+		}
+		conn.Timeout = timeout
+		return conn, nil
+	}
+
+	req := &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"folders": {Values: []string{"AlphaTeam", "BetaTeam"}},
+		"tags":    {Values: []string{"should-be-ignored"}},
+	}}
+	resp, err := plugin.Match(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 1 {
+		t.Fatalf("expected the undeclared 'tags' key to be ignored and exactly 1 item matched via 'folders', got %d", len(resp.GetItems()))
 	}
 }

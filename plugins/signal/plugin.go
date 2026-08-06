@@ -21,12 +21,18 @@ import (
 const (
 	sourceType      = "signal"
 	displayName     = "Signal"
-	contractVersion = "topos.v1"
+	contractVersion = "topos.v2"
 
 	// pluginName identifies this plugin in Item.Provenance's "plugin" key
 	// and in this process's own log lines.
 	pluginName = "topos-plugin-signal"
 )
+
+// matchVocabulary is the field-name vocabulary this plugin declares and
+// reads from MatchRequest.match_fields — Signal's own native categorization
+// is its conversations (group names, or a 1:1's nickname/system-contact
+// name per D-06).
+var matchVocabulary = []string{"conversations"}
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL
 // content variant — a Signal digest has no image rendition, ever.
@@ -77,6 +83,7 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
+		MatchVocabulary: matchVocabulary,
 	}, nil
 }
 
@@ -150,7 +157,7 @@ func (p *SourcePlugin) openGuarded() (*sql.DB, error) {
 // error (plugins/proton's identical precedent: a webspace with no
 // matching content is empty, not failed).
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	keywords := req.GetKeywords()
+	keywords := req.GetMatchFields()["conversations"].GetValues()
 	if len(keywords) == 0 {
 		return &toposv1.MatchResponse{}, nil
 	}

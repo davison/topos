@@ -9,8 +9,6 @@ import (
 
 	imap "github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
-
-	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // newTestPluginDialingServer builds a SourcePlugin whose client.dial is
@@ -48,7 +46,7 @@ func TestMatch_ItemTimestampIsInternalDate(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam", "BetaTeam"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"AlphaTeam", "BetaTeam"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -115,7 +113,7 @@ func TestMatch_EmptyMessageIDSkipIsLogged(t *testing.T) {
 	plugin.logOut = &logBuf
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"NoMessageID"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"NoMessageID"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}

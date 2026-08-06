@@ -18,9 +18,14 @@ import (
 const (
 	sourceType      = "paperless"
 	displayName     = "paperless-ngx"
-	contractVersion = "topos.v1"
+	contractVersion = "topos.v2"
 	previewRuneCap  = 500
 )
+
+// matchVocabulary is the field-name vocabulary this plugin declares and
+// reads from MatchRequest.match_fields — paperless-ngx's own native
+// categorization is its document tags.
+var matchVocabulary = []string{"tags"}
 
 // SourcePlugin implements sdk.SourcePlugin against a paperless-ngx
 // instance via Client.
@@ -44,11 +49,16 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
+		MatchVocabulary: matchVocabulary,
 	}, nil
 }
 
+// Match reads only its declared "tags" field from match_fields, ignoring
+// any other key present in the request map (D-05). The tag-name comparison
+// itself (client.ResolveTagIDs, exact and case-insensitive) is unchanged —
+// only the provenance of its input changed.
 func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	tagIDs, err := p.client.ResolveTagIDs(ctx, req.GetKeywords())
+	tagIDs, err := p.client.ResolveTagIDs(ctx, req.GetMatchFields()["tags"].GetValues())
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "paperless: resolve tag ids: %v", err)
 	}

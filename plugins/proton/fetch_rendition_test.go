@@ -29,7 +29,7 @@ func TestFetch_PrefersPlainTextOverHTMLRendition(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"DeltaTeam"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"DeltaTeam"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestFetch_HTMLOnlyMessageKeepsTheSanitizedRendition(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"EpsilonTeam"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"EpsilonTeam"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestFetch_MessageWithNoRenderablePartIsAvailableAndEmpty(t *testing.T) {
 	plugin := newTestPluginDialingServer(t, serverAddr)
 
 	ctx := context.Background()
-	matchResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"ZetaTeam"}})
+	matchResp, err := plugin.Match(ctx, foldersMatchReq([]string{"ZetaTeam"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}

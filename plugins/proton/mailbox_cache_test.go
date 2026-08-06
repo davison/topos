@@ -38,7 +38,7 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 
 	ctx := context.Background()
 
-	firstResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
+	firstResp, err := plugin.Match(ctx, foldersMatchReq([]string{"AlphaTeam"}))
 	if err != nil {
 		t.Fatalf("first Match (AlphaTeam): %v", err)
 	}
@@ -47,7 +47,7 @@ func TestMatch_MailboxCacheSurvivesASecondWebspaceMatch(t *testing.T) {
 	}
 	firstSourceID := firstResp.GetItems()[0].GetSourceId()
 
-	secondResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"GammaTeam"}})
+	secondResp, err := plugin.Match(ctx, foldersMatchReq([]string{"GammaTeam"}))
 	if err != nil {
 		t.Fatalf("second Match (GammaTeam): %v", err)
 	}
@@ -99,7 +99,7 @@ func TestMatch_ZeroMailboxMatchPreservesMailboxCache(t *testing.T) {
 
 	ctx := context.Background()
 
-	firstResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"AlphaTeam"}})
+	firstResp, err := plugin.Match(ctx, foldersMatchReq([]string{"AlphaTeam"}))
 	if err != nil {
 		t.Fatalf("first Match (AlphaTeam): %v", err)
 	}
@@ -109,7 +109,7 @@ func TestMatch_ZeroMailboxMatchPreservesMailboxCache(t *testing.T) {
 	firstSourceID := firstResp.GetItems()[0].GetSourceId()
 
 	// A keyword guaranteed not to match any seeded mailbox leaf name.
-	zeroResp, err := plugin.Match(ctx, &toposv1.MatchRequest{Keywords: []string{"NoSuchLabelAnywhere"}})
+	zeroResp, err := plugin.Match(ctx, foldersMatchReq([]string{"NoSuchLabelAnywhere"}))
 	if err != nil {
 		t.Fatalf("second Match (zero-matching keyword): got error %v, want nil (a zero-mailbox-match Match must succeed with an empty response)", err)
 	}

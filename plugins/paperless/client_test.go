@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fakeTags is the full set of tags this fixture server knows about,
@@ -167,6 +169,55 @@ func TestListDocuments_EmptyTagIDsReturnsNoDocsNoRequest(t *testing.T) {
 	}
 	if called {
 		t.Errorf("expected no HTTP request for an empty tag ID list")
+	}
+}
+
+// TestMatch_ReadsTypedTagsFieldAndIgnoresUndeclaredKey proves the plugin's
+// Match RPC resolves items from match_fields["tags"] and ignores any other
+// key in the request map (D-05) — mirrors the mock plugin's reference
+// undeclared-key-ignored case.
+func TestMatch_ReadsTypedTagsFieldAndIgnoresUndeclaredKey(t *testing.T) {
+	srv := newFixtureServer(t)
+	defer srv.Close()
+
+	p := NewSourcePlugin(srv.URL, "test-token", "10")
+
+	desc, err := p.Describe(context.Background(), &toposv1.DescribeRequest{})
+	if err != nil {
+		t.Fatalf("Describe: %v", err)
+	}
+	if len(desc.GetMatchVocabulary()) != 1 || desc.GetMatchVocabulary()[0] != "tags" {
+		t.Fatalf("expected match_vocabulary [\"tags\"], got %v", desc.GetMatchVocabulary())
+	}
+
+	req := &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"tags":         {Values: []string{"house"}},
+		"conversations": {Values: []string{"should-be-ignored"}},
+	}}
+	resp, err := p.Match(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 1 || resp.GetItems()[0].GetSourceId() != "42" {
+		t.Fatalf("expected exactly document 42 matched via the typed tags field, got %+v", resp.GetItems())
+	}
+}
+
+// TestMatch_EmptyTagsValueListMatchesNothing proves an empty "tags" value
+// list resolves to zero tag IDs and therefore zero items, never everything.
+func TestMatch_EmptyTagsValueListMatchesNothing(t *testing.T) {
+	srv := newFixtureServer(t)
+	defer srv.Close()
+
+	p := NewSourcePlugin(srv.URL, "test-token", "10")
+	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"tags": {Values: nil},
+	}})
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 0 {
+		t.Errorf("expected zero items for an empty tags value list, got %d", len(resp.GetItems()))
 	}
 }
 
