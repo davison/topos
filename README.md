@@ -7,20 +7,30 @@ topic instead of hunting across apps. It runs entirely on your own
 desktop, is read-only against every source it touches, and never sends
 your data anywhere else.
 
-## What this does not do yet
+## Status and roadmap
 
-This is Phase 1 of a five-phase build. Right now: one source
-(paperless-ngx), no source filtering, no search, no agent permission
-model, no health UI. What's coming, in order:
+Phases 1–4 of an eight-phase v1 are complete: four sources ship today —
+paperless-ngx, SilverBullet, Proton Mail (via Bridge/IMAP, never marking
+mail read), and Signal Desktop (read strictly read-only from its local
+database) — interleaved in one chronological stream per webspace, with
+source filtering, per-source health and manual refresh, full-text search,
+a live detail pane, and a default-deny agent permission model. What's
+coming, in order:
 
-- **Phase 2**: a second, structurally different source (SilverBullet)
-  proves the plugin contract is source-agnostic, plus source
-  filtering, per-plugin health, manual refresh, and a default-deny agent
-  permission model.
-- **Phase 3**: email (Proton/IMAP), plus full-text search across a
-  webspace.
-- **Phase 4**: Signal.
-- **Phase 5**: WhatsApp.
+- **Phase 5**: named source instances — the same plugin configured more
+  than once ("Home email" / "Work email") — with matching config typed
+  to each plugin (folders, tags, conversation names, pages) replacing
+  the single shared keyword list; rendition presentation moves from
+  plugins into the kernel.
+- **Phase 6**: a scalable source UI surface — one affordance per source
+  combining health and filtering, deep-link fidelity cues, search-term
+  highlighting in the detail pane, scrollbar date markers.
+- **Phase 7**: a webspace builder UI — configure sources and webspaces
+  without hand-editing TOML; promote a live search into a webspace's
+  permanent filter.
+- **Phase 8**: WhatsApp, as a linked-device client with its own
+  persistent message store — deliberately last, as the highest-risk
+  source: everything above stays useful if it has to degrade.
 
 ## Prerequisites
 
@@ -34,18 +44,21 @@ model, no health UI. What's coming, in order:
 ## Repository layout
 
 ```
-cmd/topos/        kernel binary entrypoint (serve, sync)
-kernel/                config, index (SQLite), correlate (sync-time matching), httpapi, pluginhost, webui (embed)
-proto/topos/v1/    the published plugin contract (source of truth)
-sdk/                    the plugin-author-facing Go module (handshake, interfaces, generated stubs)
-plugins/paperless/     the reference source plugin
-web/                    the SvelteKit SPA
-docs/                   published contracts: plugin-contract.md, api.md
+cmd/topos/          kernel binary entrypoint (serve, sync)
+kernel/             config, index (SQLite), correlate (sync-time matching), syncer, httpapi, pluginhost, webui (embed)
+internal/audit/     repo-wide dependency-floor audit test
+proto/topos/v1/     the published plugin contract (source of truth)
+sdk/                the plugin-author-facing Go module (handshake, interfaces, generated stubs)
+plugins/            source plugins: paperless, silverbullet, proton, signal (cgo), mock (the PLUG-05 reference)
+web/                the SvelteKit SPA
+scripts/            smoke and guard scripts (e2e-smoke, dev-guard, built-stylesheet assertions)
+docs/               published contracts: plugin-contract.md, api.md
 ```
 
-This is a **Go workspace** (`go.work`) with three separate modules: the
-root kernel module, `sdk`, and `plugins/paperless`. That's deliberate, not
-incidental — a future Signal plugin needs `cgo` (to link SQLCipher), and
+This is a **Go workspace** (`go.work`) with seven modules: the root
+kernel module, `sdk`, and one module per plugin (paperless, silverbullet,
+proton, signal, mock). That's deliberate, not incidental — the Signal
+plugin needs `cgo` (it dynamically links the system SQLCipher), and
 keeping every plugin in its own module means that requirement stays
 scoped to the one plugin that needs it. Building the kernel (or any other
 plugin) never requires a C toolchain. Don't collapse these into one
