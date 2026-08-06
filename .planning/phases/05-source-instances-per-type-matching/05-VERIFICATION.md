@@ -1,44 +1,19 @@
 ---
 phase: 05-source-instances-per-type-matching
-verified: 2026-08-06T15:25:00Z
-status: human_needed
+verified: "2026-08-06T15:25:00Z"
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 process_note: >
-  ROADMAP.md marks this phase `Mode: mvp`, but the Phase 5 Goal line is an
-  outcome statement, not `As a … I want to … so that …` form
-  (`gsd-tools query user-story.validate` returns valid=false). Every one of
-  the five PLAN.md files independently flagged this at planning time
-  ("MVP mode forbids inventing one... the tracer-first decomposition below
-  does not depend on it") and were executed against the four ROADMAP
-  Success Criteria via standard goal-backward methodology instead of a
-  User Story flow. Per this agent's MVP-mode guard, a phase whose goal
-  fails user-story.validate should not receive MVP-narrowed User Flow
-  Coverage verification (it would be low-quality). This report therefore
-  applies standard goal-backward verification against the four ROADMAP
-  Success Criteria (which is what every plan's own <success_criteria>
-  block already cited) rather than refusing to verify outright — refusing
-  entirely would discard substantial, checkable evidence for a phase that
-  is otherwise complete. Recommend: either correct ROADMAP.md's mode field
-  for Phase 5 to null, or retroactively run `/gsd-mvp-phase 5` if MVP-mode
-  treatment is actually wanted going forward.
 human_verification:
-  - test: "Open `make dev` (after restarting it — see note below) and configure or observe two instances of one plugin type; confirm the source filter chips and health chips render one entry per instance under its own display name, visually distinct, filtering independently."
-    expected: "Two chips, distinct display names, independent filter/health behavior — matches web/src/lib/components/sources.test.ts and staleness.test.ts's unit-level assertions."
-    why_human: "Pixel-level chip rendering, truncation-plus-title behavior, and visual source separation were never opened in an actual browser this phase (or during this verification) — only unit-tested at the data layer and confirmed via curl/API in 05-05. Logged as WINDOWS.md open item #4 (unrun-verify)."
-  - test: "Open one item each from an email source, a SilverBullet page, and a Signal conversation through the detail pane iframe. Confirm dark background, typography, thin theme-matched scrollbar, chat bubble alignment/coloring, and no accent color on a bubble/sender/timestamp — matching pre-Phase-5 appearance."
-    expected: "Visually identical rendition presentation to before the D-11 kernel-owned rendition move (05-04)."
-    why_human: "05-04's rendition_test.go proves every CSS rule and token carried forward byte-for-byte, but no screenshot/browser render was captured this phase to confirm actual pixel parity — 05-04-SUMMARY.md D6 explicitly flags this as human_judgment: true, unresolved."
-  - test: "Confirm the interrupted-rebuild recoverability structural claim: kill the kernel mid schema-version rebuild and confirm the next `Open` completes the rebuild rather than serving a half-dropped index."
-    expected: "No corrupted/half-migrated index state survives a kill mid-rebuild."
-    why_human: "05-01's must_haves marks this truth `verification: backstop` — the single-transaction guarantee is structurally sound but was never exercised by an actual kill-mid-rebuild test (05-01-SUMMARY.md D4, human_judgment: true)."
-  - test: "Confirm a plugin binary built against the pre-Phase-5 contract (ProtocolVersion 1) actually fails at the go-plugin handshake rather than at its first Match call, by launching one."
-    expected: "Handshake-time failure, not a silent empty-match-map degradation."
-    why_human: "The ProtocolVersion bump is structurally correct and contract-tested (`TestContractDeclaresMatchVocabulary`), but no live stale-binary handshake was exercised this phase (05-02-SUMMARY.md D4, human_judgment: true)."
-  - test: "Confirm `cmd/topos/main.go`'s `setup()` actually shuts down launched plugin subprocesses and closes the store when `ValidateMatchConfig` fails, by triggering the failure with a real launched subprocess."
-    expected: "No orphaned plugin subprocess survives a rejected match-vocabulary config."
-    why_human: "The teardown call sites mirror the two pre-existing error paths in `setup()` by inspection, but were not exercised by a test that launches a real subprocess and confirms its exit (05-03-SUMMARY.md D6, human_judgment: true)."
+
+  - [object Object]
+  - [object Object]
+  - [object Object]
+  - [object Object]
+  - [object Object]
+
 ---
 
 # Phase 5: Source Instances & Per-Type Matching Verification Report

@@ -21,10 +21,13 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Email plugin (SRC-01) — Proton Mail Bridge over LAN with self-signed cert, exact-leaf label/folder keyword matching, Message-ID dedup, never-marks-read proven live against the real account, readable detail pane (plain-text preferred, sanitized theme-wrapped HTML fallback), All Mail search deep link — Phase 3
 - ✓ Full-text search within a webspace (KERN-05): FTS5 index, ranked cross-source results with highlighted snippets — Phase 3
 - ✓ Signal plugin (SRC-02) — reads Signal Desktop's SQLCipher database strictly read-only (`mode=ro`, byte-identical after full sync, proven with Signal running), key unwrapped via runtime-detected keyring backend, unrecognised schema versions fail loudly by name, conversation-day digests in the stream with thread detail pane, deep links validated live (1:1 contact-form navigates via literal-'+' E.164; groups raise-only — Signal ships no group-navigation route) — Phase 4
+- ✓ Named source instances (KERN-06): the config map key is the kernel's source identity everywhere (index rows, sync runs, agent grants, HTTP API, UI display); the same plugin type configures multiple times under distinct display names, with a schema-version-gated index rebuild for existing data — Phase 5
+- ✓ Per-instance typed matching (KERN-07): plugin-declared `match_vocabulary` on the wire (`map<string, StringList> match_fields`, `keywords` retired, contract generation "topos.v2", handshake v1→v2 fail-fast), per-instance `match` blocks with participation allowlist and fail-loud-by-name startup validation, webspace `keywords` as fallback; all five plugins migrated and the operator's live config hand-migrated — Phase 5
+- ✓ Kernel-owned rendition boundary: plugins return content plus a declared `ContentShape`; the kernel sanitizes, wraps, and themes at the CSP boundary (three per-plugin theme copies deleted) — Phase 5
 
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace has a keyword matched against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–4: proven for paperless-ngx tags, SilverBullet tags/pages, IMAP labels/folders, and Signal conversation/group names; WhatsApp pending)*
+- [ ] Define webspaces in a config map: each webspace matches against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–4 proved keyword matching for all four shipped sources; Phase 5 upgraded the shape to per-instance typed match blocks with keywords as fallback; WhatsApp pending)*
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
 - [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phases 3–4: email body preview, in-webspace search, and Signal chat-thread preview shipped; WhatsApp previews pending. Follow-up captured in 04-UAT.md: differentiate raise-only vs navigating deep links in the UI)*
 
@@ -68,6 +71,9 @@ Open one webspace and instantly see and grok all related information across ever
 | Signal deep links: E.164 allowlist, emitted verbatim; groups raise-only | Signal Desktop's validator demands a literal '+' (percent-encoding is rejected); its route table has no group-navigation route, so group links can only raise the window — conversation-only fidelity is the honest declaration | Phase 4: confirmed live (1:1 navigates; group raise-only diagnosed as upstream-hard, journal-verified) |
 | Email readability decided in the plugin, never the shared pane | A UI-side "prefer text over rendition" rule would have flipped SilverBullet's rendered markdown to raw; the producing plugin returns plain text alone when a usable text/plain part exists | Phase 3: shipped — DetailPane stays source-agnostic, branches only on content shape |
 | Proton deep link = All Mail subject-search URL, declared ANCHORED | Proton webmail addresses custom labels by internal id (not name) and offers no Message-ID→webmail-id mapping; a search link is the only addressable form | Phase 3: confirmed working live |
+| Source identity = config-map instance key, split from plugin type (D-08) | Two instances of one plugin binary must never share identity in index rows, grants, or UI; `source_type` stays purely "which plugin kind" | Phase 5: shipped — leak-tested (two instances stay distinct incl. agent grants) |
+| Match contract: generic plugin-declared field map, proto package stays topos.v1, handshake v1→v2 (option-a) | Field names never fixed in the proto — kernel holds no table of known plugin types (D-05); stale binaries fail at handshake, not confusingly at first Match; avoids a full topos.v2 package-move churn | Phase 5: shipped — user-locked at checkpoint; contract republished in docs/plugin-contract.md |
+| Rendition sanitize/wrap/theme moved into the kernel (D-11) | Sanitization must sit inside the trust boundary once plugins can be third-party; one theme edit instead of three plugin copies | Phase 5: shipped — plugins return content + declared ContentShape; UAT confirmed pixel parity |
 
 ## Evolution
 
@@ -87,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-04 after Phase 4*
+*Last updated: 2026-08-06 after Phase 5*

@@ -4,9 +4,9 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 05
 current_phase_name: source-instances-per-type-matching
-status: verifying
-stopped_at: Completed 05-05-PLAN.md
-last_updated: "2026-08-06T14:15:12.330Z"
+status: ready_to_plan
+stopped_at: Phase 05 complete (5/5) — ready to discuss Phase 6
+last_updated: 2026-08-06T16:02:56.145Z
 last_activity: 2026-08-06
 progress:
   total_phases: 5
@@ -22,13 +22,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 05 — source-instances-per-type-matching
+**Current focus:** Phase 6 — ui — scalable source surface
 
 ## Current Position
 
-Phase: 05 (source-instances-per-type-matching) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
+Phase: 6
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-06
 
 Progress: [██████████] 100%
@@ -37,7 +37,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 26
+- Total plans completed: 31
 - Average duration: —
 - Total execution time: —
 
@@ -49,6 +49,7 @@ Progress: [██████████] 100%
 | 02 | 6 | - | - |
 | 03 | 10 | - | - |
 | 04 | 4 | - | - |
+| 05 | 5 | - | - |
 
 **Recent Trend:**
 
