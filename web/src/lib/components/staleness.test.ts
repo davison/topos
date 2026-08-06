@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detailPaneState, staleSourceTypes, filterItemsBySource } from '$lib/format';
+import { detailPaneState, staleSources, filterItemsBySource } from '$lib/format';
 import type { ItemContent, SourceStatus, StreamItem } from '$lib/api';
 
 function makeContent(overrides: Partial<ItemContent> = {}): ItemContent {
@@ -23,7 +23,9 @@ function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
 function makeItem(overrides: Partial<StreamItem> = {}): StreamItem {
 	return {
 		id: 'silverbullet:1',
+		source: 'silverbullet',
 		source_type: 'silverbullet',
+		source_display_name: 'SilverBullet',
 		source_id: '1',
 		title: 'Item',
 		preview: '',
@@ -73,37 +75,61 @@ describe('detailPaneState', () => {
 	});
 });
 
-describe('staleSourceTypes', () => {
-	it('derives exactly the unreachable source_types from a two-source response', () => {
+describe('staleSources', () => {
+	it('derives exactly the unreachable instance ids from a two-source response', () => {
 		const sources = [
-			makeSource({ source_type: 'paperless', reachable: true }),
-			makeSource({ source_type: 'silverbullet', reachable: false })
+			makeSource({ name: 'paperless', reachable: true }),
+			makeSource({ name: 'silverbullet', reachable: false })
 		];
-		expect(staleSourceTypes(sources)).toEqual(new Set(['silverbullet']));
+		expect(staleSources(sources)).toEqual(new Set(['silverbullet']));
 	});
 
 	it('returns an empty set when every source is reachable', () => {
-		const sources = [makeSource({ source_type: 'paperless', reachable: true })];
-		expect(staleSourceTypes(sources).size).toBe(0);
+		const sources = [makeSource({ name: 'paperless', reachable: true })];
+		expect(staleSources(sources).size).toBe(0);
+	});
+
+	// D-08: staleness is computed per instance. Two sources sharing one
+	// source_type but differing in name (e.g. two Proton accounts), one
+	// reachable and one not, must mark ONLY the unreachable instance's
+	// rows stale — a healthy sibling instance of the same plugin type
+	// must never be swept in just because it shares a plugin kind.
+	it('marks only the unreachable instance stale when two instances share one source_type', () => {
+		const sources = [
+			makeSource({ name: 'home-email', source_type: 'proton', reachable: true }),
+			makeSource({ name: 'work-email', source_type: 'proton', reachable: false })
+		];
+		const stale = staleSources(sources);
+		expect(stale).toEqual(new Set(['work-email']));
+		expect(stale.has('home-email')).toBe(false);
+
+		const items = [
+			makeItem({ id: 'home1', source: 'home-email', source_type: 'proton' }),
+			makeItem({ id: 'work1', source: 'work-email', source_type: 'proton' })
+		];
+		expect(items.map((item) => ({ id: item.id, stale: stale.has(item.source) }))).toEqual([
+			{ id: 'home1', stale: false },
+			{ id: 'work1', stale: true }
+		]);
 	});
 });
 
 describe('stale markers never reorder the stream', () => {
 	it('preserves the response order when mapping rows to their stale flag', () => {
 		const sources = [
-			makeSource({ source_type: 'paperless', reachable: true }),
-			makeSource({ source_type: 'silverbullet', reachable: false })
+			makeSource({ name: 'paperless', reachable: true }),
+			makeSource({ name: 'silverbullet', reachable: false })
 		];
-		const stale = staleSourceTypes(sources);
+		const stale = staleSources(sources);
 		const items = [
-			makeItem({ id: 'a', source_type: 'paperless' }),
-			makeItem({ id: 'b', source_type: 'silverbullet' }),
-			makeItem({ id: 'c', source_type: 'paperless' }),
-			makeItem({ id: 'd', source_type: 'silverbullet' })
+			makeItem({ id: 'a', source: 'paperless' }),
+			makeItem({ id: 'b', source: 'silverbullet' }),
+			makeItem({ id: 'c', source: 'paperless' }),
+			makeItem({ id: 'd', source: 'silverbullet' })
 		];
 
 		// Order must be untouched by the stale-flag mapping...
-		const rows = items.map((item) => ({ id: item.id, stale: stale.has(item.source_type) }));
+		const rows = items.map((item) => ({ id: item.id, stale: stale.has(item.source) }));
 		expect(rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
 
 		// ...and only the unreachable source's rows carry the marker.
@@ -116,14 +142,14 @@ describe('stale markers never reorder the stream', () => {
 	});
 
 	it('filtering to the stale source alone still preserves order and the stale flag', () => {
-		const sources = [makeSource({ source_type: 'silverbullet', reachable: false })];
-		const stale = staleSourceTypes(sources);
+		const sources = [makeSource({ name: 'silverbullet', reachable: false })];
+		const stale = staleSources(sources);
 		const items = [
-			makeItem({ id: 'b', source_type: 'silverbullet' }),
-			makeItem({ id: 'd', source_type: 'silverbullet' })
+			makeItem({ id: 'b', source: 'silverbullet' }),
+			makeItem({ id: 'd', source: 'silverbullet' })
 		];
 		const filtered = filterItemsBySource(items, 'silverbullet');
 		expect(filtered.map((i) => i.id)).toEqual(['b', 'd']);
-		expect(filtered.every((i) => stale.has(i.source_type))).toBe(true);
+		expect(filtered.every((i) => stale.has(i.source))).toBe(true);
 	});
 });

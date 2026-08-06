@@ -12,18 +12,18 @@
 		selectedId,
 		onselect,
 		onretry,
-		staleSourceTypes,
+		staleSources,
 		selectedSource,
-		sourcesByType
+		sourcesByInstance
 	}: {
 		state: 'loading' | 'error' | 'ready';
 		response: StreamResponse | null;
 		selectedId: string | null;
 		onselect: (id: string) => void;
 		onretry: () => void;
-		staleSourceTypes: Set<string>;
+		staleSources: Set<string>;
 		selectedSource: string | null;
-		sourcesByType: Map<string, SourceStatus>;
+		sourcesByInstance: Map<string, SourceStatus>;
 	} = $props();
 
 	// streamVariant (format.ts) is the single, pure, unit-tested decision
@@ -36,7 +36,7 @@
 	let variant = $derived(response ? streamVariant(response, selectedSource) : null);
 	let visibleItems = $derived(response ? filterItemsBySource(response.items, selectedSource) : []);
 	let filteredDisplayName = $derived(
-		selectedSource ? (sourcesByType.get(selectedSource)?.display_name ?? selectedSource) : null
+		selectedSource ? (sourcesByInstance.get(selectedSource)?.display_name ?? selectedSource) : null
 	);
 </script>
 
@@ -70,8 +70,9 @@
 				{item}
 				selected={item.id === selectedId}
 				onselect={() => onselect(item.id)}
-				stale={staleSourceTypes.has(item.source_type)}
-				sourceDisplayName={sourcesByType.get(item.source_type)?.display_name ?? item.source_type}
+				stale={staleSources.has(item.source)}
+				sourceDisplayName={sourcesByInstance.get(item.source)?.display_name ??
+					item.source_display_name}
 			/>
 		{/each}
 	</div>

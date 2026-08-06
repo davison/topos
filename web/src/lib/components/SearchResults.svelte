@@ -15,16 +15,16 @@
 		results,
 		selectedId,
 		onselect,
-		staleSourceTypes,
-		sourcesByType
+		staleSources,
+		sourcesByInstance
 	}: {
 		query: string;
 		state: 'idle' | 'loading' | 'error' | 'ready';
 		results: SearchResult[];
 		selectedId: string | null;
 		onselect: (id: string) => void;
-		staleSourceTypes: Set<string>;
-		sourcesByType: Map<string, SourceStatus>;
+		staleSources: Set<string>;
+		sourcesByInstance: Map<string, SourceStatus>;
 	} = $props();
 
 	let variant = $derived(searchVariant(query, state, results.length));
@@ -73,9 +73,9 @@
 				item={result}
 				selected={result.id === selectedId}
 				onselect={() => onselect(result.id)}
-				stale={staleSourceTypes.has(result.source_type)}
-				sourceDisplayName={sourcesByType.get(result.source_type)?.display_name ??
-					result.source_type}
+				stale={staleSources.has(result.source)}
+				sourceDisplayName={sourcesByInstance.get(result.source)?.display_name ??
+					result.source_display_name}
 				snippet={result.snippet}
 			/>
 		{/each}

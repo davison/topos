@@ -7,12 +7,11 @@
 		refreshSource,
 		refreshAll,
 		searchWebspace,
-		sourceDisplayName,
 		type StreamResponse,
 		type SourceStatus,
 		type SearchResult
 	} from '$lib/api';
-	import { resolveSourceFilter, staleSourceTypes } from '$lib/format';
+	import { resolveSourceFilter, staleSources } from '$lib/format';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
@@ -54,14 +53,20 @@
 	// Sources: fetched (and polled while any source is syncing)
 	// independently of the stream, so a sources-request failure can never
 	// block or blank the primary stream view (02-UI-SPEC.md E1 error row).
+	// sourcesByInstance is keyed by SourceStatus.name (the source INSTANCE
+	// id, D-08) — never source_type, so two instances of one plugin type
+	// resolve to two independent map entries rather than colliding on one.
 	let sources = $state<SourceStatus[]>([]);
 	let sourcesState: 'loading' | 'error' | 'ready' = $state('loading');
-	let sourcesByType = $derived(new Map(sources.map((s) => [s.source_type, s])));
-	let staleTypes = $derived(staleSourceTypes(sources));
+	let sourcesByInstance = $derived(new Map(sources.map((s) => [s.name, s])));
+	let staleInstances = $derived(staleSources(sources));
 
 	// Filter selection lives in the URL query so a reload or a shared
 	// deep link restores the same view (D-09/A-UI-02); an unrecognised
-	// value degrades to no filter rather than a blank list (T-02-17).
+	// value degrades to no filter rather than a blank list (T-02-17). The
+	// `?source=` query-parameter name is unchanged from Phase 2 — only the
+	// value it carries is now a source INSTANCE id rather than a plugin
+	// kind.
 	let selectedSource = $derived(resolveSourceFilter(page.url.searchParams.get('source'), sources));
 
 	async function load() {
@@ -128,10 +133,10 @@
 		}
 	}
 
-	function setFilter(sourceType: string | null) {
+	function setFilter(source: string | null) {
 		const url = new URL(page.url);
-		if (sourceType) {
-			url.searchParams.set('source', sourceType);
+		if (source) {
+			url.searchParams.set('source', source);
 		} else {
 			url.searchParams.delete('source');
 		}
@@ -228,8 +233,8 @@
 					results={searchResults}
 					{selectedId}
 					onselect={(id) => (selectedId = id)}
-					staleSourceTypes={staleTypes}
-					{sourcesByType}
+					staleSources={staleInstances}
+					{sourcesByInstance}
 				/>
 			{:else}
 				<StreamList
@@ -238,9 +243,9 @@
 					{selectedId}
 					onselect={(id) => (selectedId = id)}
 					onretry={load}
-					staleSourceTypes={staleTypes}
+					staleSources={staleInstances}
 					{selectedSource}
-					{sourcesByType}
+					{sourcesByInstance}
 				/>
 			{/if}
 		</div>
@@ -249,9 +254,10 @@
 			<div class="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border pl-8">
 				<DetailPane
 					item={selectedItem}
-					displayName={sourcesByType.get(selectedItem.source_type)?.display_name ??
-						sourceDisplayName(selectedItem.source_type)}
-					sourceReachable={sourcesByType.get(selectedItem.source_type)?.reachable ?? true}
+					displayName={sourcesByInstance.get(selectedItem.source)?.display_name ??
+						selectedItem.source_display_name ??
+						selectedItem.source}
+					sourceReachable={sourcesByInstance.get(selectedItem.source)?.reachable ?? true}
 				/>
 			</div>
 		{/if}

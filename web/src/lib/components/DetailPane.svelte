@@ -76,7 +76,7 @@
 				<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
 			{/each}
 		</div>
-		<OpenInSource link={item.link} sourceType={item.source_type} />
+		<OpenInSource link={item.link} {displayName} />
 	</header>
 
 	<!-- The one physical rendering of loaded extracted text — shared by

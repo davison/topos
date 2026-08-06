@@ -28,7 +28,7 @@
 		sources: SourceStatus[];
 		sourcesState: 'loading' | 'error' | 'ready';
 		selectedSource: string | null;
-		onfilter: (sourceType: string | null) => void;
+		onfilter: (source: string | null) => void;
 		onrefresh: (name: string) => void;
 		onrefreshall: () => void;
 		searchQuery: string;

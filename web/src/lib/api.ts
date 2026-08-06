@@ -38,7 +38,17 @@ export interface Provenance {
 
 export interface StreamItem {
 	id: string;
+	// source is the source INSTANCE id ([sources.<id>] config key, D-08) —
+	// the identity key for filtering, staleness and grant lookups. Two
+	// items sharing one source_type (plugin kind) always have distinct
+	// source values when synced through two configured instances.
+	source: string;
 	source_type: string;
+	// source_display_name is the resolved, operator-authored label for
+	// this item's source instance (D-09): its configured display_name, or
+	// the instance id itself when omitted — the kernel never emits an
+	// empty source_display_name.
+	source_display_name: string;
 	source_id: string;
 	title: string;
 	preview: string;
@@ -195,9 +205,9 @@ export function thumbnailUrl(id: string): string {
 // --- Source health / filter / refresh (02-02's kernel/httpapi/sources.go) ---
 
 export interface SourceStatus {
-	name: string; // config key
-	source_type: string; // matches StreamItem.source_type
-	display_name: string; // e.g. "paperless-ngx", "SilverBullet"
+	name: string; // source INSTANCE id (the [sources.<id>] config key, D-08) — matches StreamItem.source, filter/staleness/grant identity
+	source_type: string; // plugin kind (Describe-reported), matches StreamItem.source_type — descriptive only, never identity
+	display_name: string; // this instance's resolved display name (D-09): configured display_name, or `name` itself when omitted
 	reachable: boolean;
 	syncing: boolean;
 	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown
@@ -249,25 +259,4 @@ export function refreshSource(name: string): Promise<SourceRefreshResponse> {
 /** POST /api/sync */
 export function refreshAll(): Promise<SyncRefreshResponse> {
 	return postJSON<SyncRefreshResponse>('/api/sync');
-}
-
-// SOURCE_DISPLAY_NAMES is a small local fallback mapping used to
-// parameterize source-specific UI copy (RESEARCH.md "Pitfall 3:
-// Hardcoded source name in shared UI copy" — DetailPane's failure copy
-// and OpenInSource's button label both used to read "paperless-ngx"
-// unconditionally, which is wrong for any other source). A live,
-// plugin-reported display_name will arrive via a future GET /api/sources
-// route (RESEARCH.md "Health merge", a later plan in this phase); this
-// mapping is the minimal fix needed now, with a sensible fallback (the
-// raw source_type) for any source not yet listed here.
-const SOURCE_DISPLAY_NAMES: Record<string, string> = {
-	paperless: 'paperless-ngx',
-	silverbullet: 'SilverBullet',
-	proton: 'Proton Mail',
-	signal: 'Signal'
-};
-
-/** Human-friendly display name for a source_type. */
-export function sourceDisplayName(sourceType: string): string {
-	return SOURCE_DISPLAY_NAMES[sourceType] ?? sourceType;
 }

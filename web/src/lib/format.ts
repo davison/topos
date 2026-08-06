@@ -85,9 +85,9 @@ export function healthTone(source: SourceStatus): HealthTone {
 	return 'success';
 }
 
-/** Config names of every source currently mid-sync. */
-export function syncingSourceTypes(sources: SourceStatus[]): string[] {
-	return sources.filter((s) => s.syncing).map((s) => s.source_type);
+/** Instance ids (SourceStatus.name) of every source currently mid-sync. */
+export function syncingSources(sources: SourceStatus[]): string[] {
+	return sources.filter((s) => s.syncing).map((s) => s.name);
 }
 
 /**
@@ -108,21 +108,24 @@ export function shouldShowSourceRows(
 // --- Source filter (D-09 / A-UI-02) ---
 
 /**
- * Resolves a requested source-type filter (typically the URL's `source`
- * query parameter) against the configured sources. A value that names no
- * configured source — an unrecognised or stale bookmark — degrades to
- * `null` (no filter, i.e. "All") rather than an empty list or an error
- * (T-02-17).
+ * Resolves a requested source-instance filter (typically the URL's
+ * `source` query parameter, carrying a source INSTANCE id — D-08) against
+ * the configured sources. A value that names no configured instance — an
+ * unrecognised or stale bookmark — degrades to `null` (no filter, i.e.
+ * "All") rather than an empty list or an error (T-02-17). Load-time
+ * uniqueness (D-09) guarantees every configured instance's `name` is
+ * distinct, so this resolution is unambiguous even with two instances
+ * sharing one plugin kind.
  */
 export function resolveSourceFilter(requested: string | null, sources: SourceStatus[]): string | null {
 	if (!requested) return null;
-	return sources.some((s) => s.source_type === requested) ? requested : null;
+	return sources.some((s) => s.name === requested) ? requested : null;
 }
 
-/** Narrows a stream's items to one source_type; `null` returns every item, unchanged in order. */
-export function filterItemsBySource(items: StreamItem[], sourceType: string | null): StreamItem[] {
-	if (sourceType === null) return items;
-	return items.filter((item) => item.source_type === sourceType);
+/** Narrows a stream's items to one source INSTANCE id; `null` returns every item, unchanged in order. */
+export function filterItemsBySource(items: StreamItem[], source: string | null): StreamItem[] {
+	if (source === null) return items;
+	return items.filter((item) => item.source === source);
 }
 
 export type StreamVariant = 'sync-failed' | 'empty' | 'empty-filtered' | 'populated';
@@ -146,9 +149,15 @@ export function streamVariant(response: StreamResponse, selectedSource: string |
 
 // --- Staleness (D-10) ---
 
-/** source_types considered stale — currently unreachable, per the live sources response. */
-export function staleSourceTypes(sources: SourceStatus[]): Set<string> {
-	return new Set(sources.filter((s) => !s.reachable).map((s) => s.source_type));
+/**
+ * Source INSTANCE ids (SourceStatus.name) considered stale — currently
+ * unreachable, per the live sources response. Keyed by instance, never by
+ * plugin kind (D-08): a healthy instance's rows are never marked stale
+ * merely because a sibling instance of the same plugin type is
+ * unreachable.
+ */
+export function staleSources(sources: SourceStatus[]): Set<string> {
+	return new Set(sources.filter((s) => !s.reachable).map((s) => s.name));
 }
 
 export type DetailPaneState = 'loaded' | 'deleted' | 'unreachable' | 'error';

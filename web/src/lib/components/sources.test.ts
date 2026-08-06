@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	healthTone,
 	formatRelativeTime,
-	syncingSourceTypes,
+	syncingSources,
 	shouldShowSourceRows,
 	resolveSourceFilter,
 	filterItemsBySource,
@@ -27,7 +27,9 @@ function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
 function makeItem(overrides: Partial<StreamItem> = {}): StreamItem {
 	return {
 		id: 'paperless:1',
+		source: 'paperless',
 		source_type: 'paperless',
+		source_display_name: 'paperless-ngx',
 		source_id: '1',
 		title: 'Item',
 		preview: '',
@@ -78,17 +80,28 @@ describe('formatRelativeTime (zero case)', () => {
 	});
 });
 
-describe('syncingSourceTypes', () => {
-	it('returns exactly the source_types currently mid-sync', () => {
+describe('syncingSources', () => {
+	it('returns exactly the instance ids (name) currently mid-sync', () => {
 		const sources = [
-			makeSource({ source_type: 'paperless', syncing: true }),
-			makeSource({ source_type: 'silverbullet', syncing: false })
+			makeSource({ name: 'paperless', syncing: true }),
+			makeSource({ name: 'silverbullet', syncing: false })
 		];
-		expect(syncingSourceTypes(sources)).toEqual(['paperless']);
+		expect(syncingSources(sources)).toEqual(['paperless']);
 	});
 
 	it('returns an empty array when nothing is syncing', () => {
-		expect(syncingSourceTypes([makeSource({ syncing: false })])).toEqual([]);
+		expect(syncingSources([makeSource({ syncing: false })])).toEqual([]);
+	});
+
+	// D-08: two instances of one plugin type must report independently —
+	// syncing one instance must never mark its sibling instance as syncing
+	// too, even though both share source_type.
+	it('keys strictly on instance id, never on the shared source_type of two instances', () => {
+		const sources = [
+			makeSource({ name: 'home-email', source_type: 'proton', syncing: true }),
+			makeSource({ name: 'work-email', source_type: 'proton', syncing: false })
+		];
+		expect(syncingSources(sources)).toEqual(['home-email']);
 	});
 });
 
@@ -112,36 +125,59 @@ describe('shouldShowSourceRows', () => {
 
 describe('resolveSourceFilter', () => {
 	const sources = [
-		makeSource({ source_type: 'paperless' }),
-		makeSource({ source_type: 'silverbullet', name: 'silverbullet', display_name: 'SilverBullet' })
+		makeSource({ name: 'paperless' }),
+		makeSource({ name: 'silverbullet', source_type: 'silverbullet', display_name: 'SilverBullet' })
 	];
 
 	it('resolves null (no query param) to no filter', () => {
 		expect(resolveSourceFilter(null, sources)).toBeNull();
 	});
 
-	it('resolves a configured source_type to itself', () => {
+	it('resolves a configured instance id to itself', () => {
 		expect(resolveSourceFilter('silverbullet', sources)).toBe('silverbullet');
 	});
 
 	it('degrades an unrecognised value to no filter rather than an empty/error state', () => {
 		expect(resolveSourceFilter('not-a-real-source', sources)).toBeNull();
 	});
+
+	// D-08: two instances of one plugin type must resolve independently —
+	// a filter value naming one instance must never also match its sibling.
+	it('resolves exactly one of two instances sharing a plugin kind', () => {
+		const twoInstances = [
+			makeSource({ name: 'home-email', source_type: 'proton' }),
+			makeSource({ name: 'work-email', source_type: 'proton' })
+		];
+		expect(resolveSourceFilter('home-email', twoInstances)).toBe('home-email');
+		expect(resolveSourceFilter('proton', twoInstances)).toBeNull();
+	});
 });
 
 describe('filterItemsBySource', () => {
 	const items = [
-		makeItem({ id: 'a', source_type: 'paperless' }),
-		makeItem({ id: 'b', source_type: 'silverbullet' }),
-		makeItem({ id: 'c', source_type: 'paperless' })
+		makeItem({ id: 'a', source: 'paperless' }),
+		makeItem({ id: 'b', source: 'silverbullet' }),
+		makeItem({ id: 'c', source: 'paperless' })
 	];
 
 	it('returns every item, unchanged in order, for null (All)', () => {
 		expect(filterItemsBySource(items, null).map((i) => i.id)).toEqual(['a', 'b', 'c']);
 	});
 
-	it('narrows to exactly the matching source_type, preserving order', () => {
+	it('narrows to exactly the matching instance id, preserving order', () => {
 		expect(filterItemsBySource(items, 'paperless').map((i) => i.id)).toEqual(['a', 'c']);
+	});
+
+	// D-08: two items sharing one source_type but differing in source
+	// (instance id) must never both match one instance's filter value.
+	it('narrows correctly when two items share a source_type but differ in source', () => {
+		const twoInstanceItems = [
+			makeItem({ id: 'home1', source: 'home-email', source_type: 'proton' }),
+			makeItem({ id: 'work1', source: 'work-email', source_type: 'proton' })
+		];
+		expect(filterItemsBySource(twoInstanceItems, 'home-email').map((i) => i.id)).toEqual([
+			'home1'
+		]);
 	});
 });
 
@@ -169,7 +205,7 @@ describe('streamVariant', () => {
 	it('chooses empty-filtered when sync ok, items exist, but none match the filter', () => {
 		const response = makeResponse({
 			sync: { status: 'ok', finished_unix: 1, error: '' },
-			items: [makeItem({ source_type: 'paperless' })]
+			items: [makeItem({ source: 'paperless' })]
 		});
 		expect(streamVariant(response, 'silverbullet')).toBe('empty-filtered');
 	});
@@ -177,7 +213,7 @@ describe('streamVariant', () => {
 	it('chooses populated when at least one item matches', () => {
 		const response = makeResponse({
 			sync: { status: 'ok', finished_unix: 1, error: '' },
-			items: [makeItem({ source_type: 'paperless' })]
+			items: [makeItem({ source: 'paperless' })]
 		});
 		expect(streamVariant(response, null)).toBe('populated');
 	});

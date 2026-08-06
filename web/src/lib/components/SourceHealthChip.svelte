@@ -51,12 +51,15 @@
 		<Tooltip>
 			<TooltipTrigger>
 				{#snippet child({ props })}
-					<span {...props} class="flex items-center gap-1.5">
+					<span {...props} class="flex max-w-48 items-center gap-1.5">
 						<span
 							class={cn('size-2 shrink-0 rounded-full', DOT_TONE_CLASS[tone])}
 							aria-hidden="true"
 						></span>
-						<span class="text-[14px] leading-[1.4] text-foreground">{source.display_name}</span>
+						<span
+							class="truncate text-[14px] leading-[1.4] text-foreground"
+							title={source.display_name}>{source.display_name}</span
+						>
 						{#if source.syncing}
 							<span class="text-[14px] leading-[1.4] text-muted-foreground">Syncing…</span>
 						{/if}
