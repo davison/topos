@@ -106,6 +106,18 @@ func setup(ctx context.Context, logger hclog.Logger) (*config.Config, *index.Sto
 		return nil, nil, nil, err
 	}
 
+	// D-05's second validation phase: cross-check every webspace's match
+	// configuration against each launched plugin's own declared
+	// vocabulary. This must happen after Discover (it needs the launched
+	// *Host) and before any sync — a rejected config must never leave
+	// subprocesses running, so both the host and the store are torn down
+	// on failure here, exactly as the two error paths above already do.
+	if err := pluginhost.ValidateMatchConfig(cfg, host); err != nil {
+		host.Shutdown()
+		store.Close()
+		return nil, nil, nil, err
+	}
+
 	return cfg, store, host, nil
 }
 
