@@ -222,7 +222,13 @@ Notes:
   3. Source identity throughout the kernel — index rows, sync runs, agent grants, HTTP API, and UI display — is the named instance, never the bare plugin type; existing webspace data migrates or re-syncs cleanly with no orphaned rows
   4. The contract change is published: `docs/plugin-contract.md`, `proto/webspaces/v1/`, `config.example.toml`, and the mock plugin all reflect per-instance match config, and the standing contract tests (read-only AST, RPC allowlist, egress pinning) still pass
 
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 05-01-PLAN.md — Named source instances end to end: the config map key becomes the kernel's identity across index, sync, grants, API and UI
+- [ ] 05-02-PLAN.md — Typed match contract on the wire: plugin-declared vocabulary, typed MatchRequest, five plugins migrated
+- [ ] 05-03-PLAN.md — Per-instance match blocks, participation allowlist, and loud two-phase validation
+- [ ] 05-04-PLAN.md — Kernel-owned rendition sanitize/wrap/theme; plugins stop owning presentation
+- [ ] 05-05-PLAN.md — Publish the contract, rewrite config.example.toml, migrate and verify the live config
 
 Notes:
 
