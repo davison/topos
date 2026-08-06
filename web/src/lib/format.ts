@@ -198,7 +198,12 @@ export function worstHealthTone(sources: SourceStatus[]): HealthTone {
 		unknown: 2,
 		success: 3
 	};
-	let worst: HealthTone = 'unknown';
+	if (sources.length === 0) return 'unknown';
+	// Seed with `success` — the least-alarming rank — so any real source's
+	// tone always wins the first comparison; the empty-input case is
+	// handled separately above rather than by this seed, since `success`
+	// would otherwise be a wrong answer for zero sources.
+	let worst: HealthTone = 'success';
 	for (const source of sources) {
 		const tone = healthTone(source);
 		if (TONE_RANK[tone] < TONE_RANK[worst]) worst = tone;

@@ -8,7 +8,9 @@ import {
 	toggleSourceFilter,
 	serializeSourceFilters,
 	filterItemsBySource,
-	streamVariant
+	streamVariant,
+	worstHealthTone,
+	visibleChipCount
 } from '$lib/format';
 import type { SourceStatus, StreamItem, StreamResponse } from '$lib/api';
 
@@ -137,6 +139,10 @@ describe('resolveSourceFilters', () => {
 
 	it('resolves an empty string to the empty set', () => {
 		expect(resolveSourceFilters('', sources)).toEqual(new Set());
+	});
+
+	it('resolves a whitespace-only value to the empty set', () => {
+		expect(resolveSourceFilters('   ', sources)).toEqual(new Set());
 	});
 
 	it('resolves a single configured instance id to a one-member set', () => {
@@ -305,5 +311,99 @@ describe('streamVariant', () => {
 			items: [makeItem({ source: 'paperless' })]
 		});
 		expect(streamVariant(response, new Set(['paperless']))).toBe('populated');
+	});
+});
+
+describe('worstHealthTone', () => {
+	it('maps a single success source to success', () => {
+		expect(worstHealthTone([makeSource({ reachable: true, last_status: 'ok' })])).toBe('success');
+	});
+
+	it('maps a single warning source to warning', () => {
+		expect(worstHealthTone([makeSource({ reachable: true, last_status: 'error' })])).toBe(
+			'warning'
+		);
+	});
+
+	it('maps a single destructive (unreachable) source to destructive', () => {
+		expect(worstHealthTone([makeSource({ reachable: false, last_status: 'error' })])).toBe(
+			'destructive'
+		);
+	});
+
+	it('maps a single never-synced source to unknown', () => {
+		expect(worstHealthTone([makeSource({ last_status: '', last_sync_unix: 0 })])).toBe('unknown');
+	});
+
+	it('resolves the empty set to the neutral unknown tone', () => {
+		expect(worstHealthTone([])).toBe('unknown');
+	});
+
+	it('a destructive source among mixed tones always wins, regardless of position', () => {
+		const mixed = [
+			makeSource({ name: 'a', reachable: true, last_status: 'ok' }),
+			makeSource({ name: 'b', reachable: false, last_status: 'error' }),
+			makeSource({ name: 'c', reachable: true, last_status: 'error' })
+		];
+		expect(worstHealthTone(mixed)).toBe('destructive');
+	});
+
+	it('warning wins over unknown and success when no destructive source is present', () => {
+		const mixed = [
+			makeSource({ name: 'a', reachable: true, last_status: 'ok' }),
+			makeSource({ name: 'b', last_status: '', last_sync_unix: 0 }),
+			makeSource({ name: 'c', reachable: true, last_status: 'error' })
+		];
+		expect(worstHealthTone(mixed)).toBe('warning');
+	});
+
+	it('unknown wins over success when neither destructive nor warning is present', () => {
+		const mixed = [
+			makeSource({ name: 'a', reachable: true, last_status: 'ok' }),
+			makeSource({ name: 'b', last_status: '', last_sync_unix: 0 })
+		];
+		expect(worstHealthTone(mixed)).toBe('unknown');
+	});
+});
+
+describe('visibleChipCount', () => {
+	it('returns the full count with no overflow when every chip fits exactly', () => {
+		expect(visibleChipCount([10, 10, 10], 30, 0, 8)).toBe(3);
+	});
+
+	it('returns the full count with no overflow when every chip fits with room to spare', () => {
+		expect(visibleChipCount([10, 10, 10], 38, 0, 8)).toBe(3);
+	});
+
+	// One chip more than the exact-fit case above (same availableWidth,
+	// reservedWidth and overflowTriggerWidth) hides exactly one chip once
+	// the trigger's own width is charged against the budget.
+	it('one chip more than fits produces a hidden count of one', () => {
+		expect(visibleChipCount([10, 10, 10, 10], 38, 0, 8)).toBe(3);
+	});
+
+	it('a reserved trailing width reduces the inline count', () => {
+		const withoutReserve = visibleChipCount([10, 10, 10], 30, 0, 8);
+		const withReserve = visibleChipCount([10, 10, 10], 30, 10, 8);
+		expect(withReserve).toBeLessThan(withoutReserve);
+	});
+
+	it('a zero available width produces a zero inline count, never a negative one', () => {
+		expect(visibleChipCount([10, 10, 10], 0, 0, 8)).toBe(0);
+	});
+
+	it('reserved and trigger widths alone exceeding the available width still floor at zero', () => {
+		expect(visibleChipCount([10, 10, 10], 5, 10, 8)).toBe(0);
+	});
+
+	it('an empty chip-widths array returns zero regardless of available width', () => {
+		expect(visibleChipCount([], 500, 0, 8)).toBe(0);
+	});
+
+	it('is deterministic — repeating the same call over unchanged inputs yields the same count', () => {
+		const widths = [10, 10, 10, 10, 10];
+		const first = visibleChipCount(widths, 38, 4, 8);
+		const second = visibleChipCount(widths, 38, 4, 8);
+		expect(second).toBe(first);
 	});
 });
