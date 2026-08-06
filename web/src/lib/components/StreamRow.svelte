@@ -7,23 +7,33 @@
 		TooltipTrigger
 	} from '$lib/components/ui/tooltip/index.js';
 	import Thumbnail from './Thumbnail.svelte';
-	import { formatItemDate, parseSnippet } from '$lib/format';
+	import { formatItemDate, parseSnippet, highlightText } from '$lib/format';
 	import { cn } from '$lib/utils.js';
 	import type { StreamItem } from '$lib/api';
 
 	// `snippet` (03-04, search results): when a non-empty string, replaces
 	// the preview region with parseSnippet's segmented rendering instead of
-	// item.preview, with matched segments in the existing semibold weight
-	// — never a new color. Absent, this component is byte-identical to
-	// Phase 1/2. Present but empty, the preview region is omitted entirely,
-	// the same degrade the plain item.preview branch already applies.
+	// item.preview. Absent, this component is byte-identical to Phase 1/2.
+	// Present but empty, the preview region is omitted entirely, the same
+	// degrade the plain item.preview branch already applies.
+	//
+	// `searchQuery` (UI-09, G-06-1): the active in-webspace search string,
+	// supplied by SearchResults.svelte so a result row can highlight its
+	// own title — defaults to the empty string so the unfiltered stream
+	// (which never passes it) is byte-identical to before this class was
+	// shared. Both the title and the snippet's matched segments render
+	// through the shared .search-highlight class (app.css) — the same
+	// amber treatment the detail pane and the kernel rendition iframe use,
+	// not a bolder font weight (03-UI-SPEC.md's retired weight-only rule,
+	// superseded by this plan).
 	let {
 		item,
 		selected = false,
 		onselect,
 		stale = false,
 		sourceDisplayName = '',
-		snippet
+		snippet,
+		searchQuery = ''
 	}: {
 		item: StreamItem;
 		selected?: boolean;
@@ -31,6 +41,7 @@
 		stale?: boolean;
 		sourceDisplayName?: string;
 		snippet?: string;
+		searchQuery?: string;
 	} = $props();
 </script>
 
@@ -63,9 +74,15 @@
 	<Thumbnail {item} />
 
 	<div class="min-w-0 flex-1">
-		<!-- One-line title, ellipsis-truncated (heading role: 20px/600/1.2). -->
+		<!-- One-line title, ellipsis-truncated (heading role: 20px/600/1.2).
+		     UI-09 (G-06-1): highlighted through the same shared
+		     .search-highlight class as the detail-pane title and this
+		     row's own snippet below — a title-only match is a routine FTS
+		     outcome, so it must be visually explained here too. -->
 		<p class="truncate text-[20px] leading-[1.2] font-semibold text-foreground">
-			{item.title}
+			{#each highlightText(item.title, searchQuery) as segment, i (i)}
+				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+			{/each}
 		</p>
 
 		<!-- Clipped metadata strip: date + one Badge per tag (label role: 14px/400/1.4). -->
@@ -118,7 +135,7 @@
 			{#if snippet}
 				<p class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground">
 					{#each parseSnippet(snippet) as segment, i (i)}
-						<span class={segment.match ? 'font-semibold' : undefined}>{segment.text}</span>
+						<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
 					{/each}
 				</p>
 			{/if}

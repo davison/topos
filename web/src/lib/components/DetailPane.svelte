@@ -75,7 +75,17 @@
 <div class="flex h-full min-h-0 flex-col gap-6">
 	<!-- Stage one: instant metadata, synchronous — never waits on a network call. -->
 	<header class="flex shrink-0 flex-col gap-2">
-		<h2 class="text-[20px] leading-[1.2] font-semibold text-foreground">{item.title}</h2>
+		<!-- UI-09 (G-06-1): the title is FTS-indexed alongside preview/body
+		     (kernel/index/schema.go), so a title-only match is a routine
+		     search outcome — the header must highlight it exactly like the
+		     body does below, through the same shared .search-highlight
+		     class (app.css), or the user gets no visible explanation for
+		     why the item surfaced. -->
+		<h2 class="text-[20px] leading-[1.2] font-semibold text-foreground">
+			{#each highlightText(item.title, searchQuery) as segment, i (i)}
+				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+			{/each}
+		</h2>
 		{#if item.group_label}
 			<p class="truncate text-[14px] leading-[1.4] text-muted-foreground" title={item.group_label}>
 				{item.group_label}
@@ -96,8 +106,10 @@
 	     height), so the typography can never drift between the two.
 	     UI-09: each segment comes from highlightText (format.ts), the
 	     client half of the shared kernel/client term-derivation rule —
-	     matched segments carry the .search-highlight class defined below,
-	     unmatched segments carry no class. Highlighting changes colour
+	     matched segments carry the .search-highlight class (declared once,
+	     globally, in app.css — shared with the title above and with
+	     StreamRow.svelte's title/snippet), unmatched segments carry no
+	     class. Highlighting changes colour
 	     only, never size or weight: highlighted text still inherits this
 	     block's own type role. Segment text is rendered through Svelte's
 	     default text binding — never via a raw-HTML directive — so no
@@ -216,18 +228,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	/* UI-09 search-term highlighting for the text/media body variants.
-	   Same visual treatment as the kernel's own <mark> rule
-	   (kernel/httpapi/rendition.go's renditionBaseStyle), expressed
-	   through the existing Tailwind theme tokens for warning/background
-	   (web/src/app.css: --warning, --background) rather than raw hex,
-	   since both tokens are already available in this document. */
-	.search-highlight {
-		background-color: var(--warning);
-		color: var(--background);
-		border-radius: 2px;
-		padding: 0 1px;
-	}
-</style>

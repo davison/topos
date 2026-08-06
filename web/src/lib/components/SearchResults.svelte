@@ -77,6 +77,7 @@
 				sourceDisplayName={sourcesByInstance.get(result.source)?.display_name ??
 					result.source_display_name}
 				snippet={result.snippet}
+				searchQuery={query}
 			/>
 		{/each}
 	</div>

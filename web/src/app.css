@@ -222,4 +222,27 @@
 		max-height: 40px;
 		overflow: hidden;
 	}
+
+	/*
+	 * UI-09 search-match emphasis — the ONE declaration shared by every
+	 * surface that renders "this text matched your search": the kernel's
+	 * rendition stylesheet (kernel/httpapi/rendition.go, its own `mark`
+	 * rule, NOT this class and out of this file's scope — but painting the
+	 * identical pair), the detail-pane title and body (DetailPane.svelte),
+	 * and the stream/search-result row title and snippet (StreamRow.svelte).
+	 * A change here is a change to all three. Previously declared inside
+	 * DetailPane.svelte's own component-scoped <style> block — relocated
+	 * here (G-06-1) because a Svelte-scoped class cannot be shared with a
+	 * sibling component, which is the mechanical reason the detail pane and
+	 * stream row drifted onto two different match vocabularies. Resolves
+	 * through the existing --warning/--background theme tokens, never a
+	 * literal hex value, matching the derived-token discipline
+	 * scrollbar-theme.test.ts already guards elsewhere in this file.
+	 */
+	.search-highlight {
+		background-color: var(--warning);
+		color: var(--background);
+		border-radius: 2px;
+		padding: 0 1px;
+	}
 }
