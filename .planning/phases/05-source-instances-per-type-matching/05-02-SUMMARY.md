@@ -227,3 +227,7 @@ None — no external service configuration required.
 ---
 *Phase: 05-source-instances-per-type-matching*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+All key files verified present on disk; all three commits (`f65fcd6`, `edc541d`, `b8dc6e7`) verified present in `git log --oneline --all`.
