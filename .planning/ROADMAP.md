@@ -263,7 +263,7 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 1/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -276,7 +276,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-03-PLAN.md — Deep-link fidelity differentiation and the stream scrollbar's date-marker overlay (UI-08, UI-11)
+- [x] 06-03-PLAN.md — Deep-link fidelity differentiation and the stream scrollbar's date-marker overlay (UI-08, UI-11)
 
 Notes:
 
@@ -340,7 +340,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 2/3 | In Progress|  |
+| 6. UI — Scalable Source Surface | 3/3 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
