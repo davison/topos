@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-08-06T13:55:50.112Z"
+current_phase: 05
+current_phase_name: source-instances-per-type-matching
+status: verifying
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-08-06T14:15:12.330Z"
 last_activity: 2026-08-06
 progress:
-  total_phases: 9
-  completed_phases: 4
+  total_phases: 5
+  completed_phases: 5
   total_plans: 31
-  completed_plans: 30
-  percent: 44
+  completed_plans: 31
 ---
 
 # Project State
@@ -26,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 Phase: 05 (source-instances-per-type-matching) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-06
 
-Progress: [██████████] 97%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -80,6 +82,7 @@ Progress: [██████████] 97%
 | Phase 05 P02 | ~2h | 3 tasks | 22 files |
 | Phase 05 P03 | 55min | 2 tasks | 10 files |
 | Phase 05 P04 | ~20min | 2 tasks | 22 files |
+| Phase 05 P05 | 35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -154,6 +157,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 05-04]: Proto ContentShape enum/field and sdk regeneration landed in Task 1's commit (Rule 3 blocking compile dependency) since rendition.go's policy map is keyed by toposv1.ContentShape before Task 2's own declared proto work
 - [Phase ?]: [Phase 05-04]: Avoided 'go mod tidy' for the root module (pulls a synthetic pseudo-versioned require on the workspace-local sdk module plus unrelated buf/protoreflect transitives) — used a targeted 'go get' for bluemonday instead, per plugins/proton/go.mod's own documented limitation
 - [Phase ?]: [Phase 05-04]: Email content-shape stylesheet carries forward proton's full readability-layer !important neutralizer even though 05-UI-SPEC.md's contract table omits it, since the plan's own must_haves require visual parity with pre-move output
+- [Phase ?]: [Phase 05-05]: docs/plugin-contract.md's stale {source_type}:{source_id} id-scheme claim corrected to {source}:{source_id} beyond the plan's literal scope (Rule 1 bug, left over from before 05-01)
+- [Phase ?]: [Phase 05-05]: Operator's real webspaces migrated with an explicit per-instance match block for every configured instance (same values as the old shared keyword list), reproducing the D-01 fallback byte-for-byte while keeping the keywords line as a documented safety net
+- [Phase ?]: [Phase 05-05]: Live migration verified against an ephemeral second kernel instance (XDG_CONFIG_HOME override, separate port, same already-synced index) rather than restarting the user's own pre-existing make dev session on 127.0.0.1:7777
 
 ### Pending Todos
 
@@ -189,6 +195,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T13:55:50.103Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-08-06T14:15:12.315Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
