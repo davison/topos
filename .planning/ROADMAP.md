@@ -266,8 +266,16 @@ Notes:
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 06-01-PLAN.md — Search-term highlighting end-to-end: kernel-side `<mark>` tree-walk for the sandboxed rendition iframe plus client-side highlighting for text bodies (UI-09, phase tracer)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 06-02-PLAN.md — Merged per-instance source chip with multi-select filtering and measured overflow into a popover (UI-07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 06-03-PLAN.md — Deep-link fidelity differentiation and the stream scrollbar's date-marker overlay (UI-08, UI-11)
 
 Notes:
