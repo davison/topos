@@ -39,27 +39,40 @@ var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
 // Plugin is one launched, handshaken source plugin subprocess.
 type Plugin struct {
-	name        string // config key under [sources.<name>]
-	sourceType  string // learned via Describe, not trusted from the filename
-	displayName string // learned via Describe
+	name        string // config key under [sources.<name>] — THE instance identity (D-08)
+	sourceType  string // learned via Describe, not trusted from the filename — plugin kind only, never identity
+	pluginName  string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
+	displayName string // resolved instance display name (config display_name, or name if unset) — D-09
 	client      *goplugin.Client
 	impl        sdk.SourcePlugin
 }
 
 // Name returns the config key this plugin was launched under (under
-// [sources.<name>]).
+// [sources.<name>]) — the source instance's identity (D-08).
 func (p *Plugin) Name() string { return p.name }
 
 // SourceType returns the source_type learned from the plugin's own
-// Describe RPC response — never trusted from the filename (T-01-07).
+// Describe RPC response — never trusted from the filename (T-01-07). This
+// is the plugin KIND, never an identity key: two launched instances of one
+// plugin binary share the same SourceType but always have distinct Name().
 func (p *Plugin) SourceType() string { return p.sourceType }
 
-// DisplayName returns the display_name learned from the plugin's own
-// Describe RPC response (e.g. "paperless-ngx", "SilverBullet") — the
-// health/sources API surfaces this so the UI never hardcodes a
-// per-source display string (02-01-PLAN.md's sourceDisplayName fix is
-// the local-mapping predecessor this makes obsolete).
+// DisplayName returns this source INSTANCE's resolved display name (D-09):
+// its config-authored [sources.<name>] display_name, or the instance id
+// itself when that key is omitted. This is what the health/sources API and
+// the UI show for this specific instance — distinct from PluginDisplayName,
+// which names the plugin KIND regardless of how many instances of it are
+// configured.
 func (p *Plugin) DisplayName() string { return p.displayName }
+
+// PluginDisplayName returns the Describe-learned display name for the
+// plugin KIND this instance runs (e.g. "paperless-ngx", "SilverBullet") —
+// the same value every instance of this plugin binary reports, regardless
+// of its own instance display name. Provenance/diagnostic use only; never
+// a substitute for DisplayName in anything the UI renders as a source
+// label (02-01-PLAN.md's sourceDisplayName fix is the local-mapping
+// predecessor this makes obsolete).
+func (p *Plugin) PluginDisplayName() string { return p.pluginName }
 
 // Match calls the plugin's Match RPC. Satisfies correlate.Source.
 func (p *Plugin) Match(ctx context.Context, keywords []string) (*toposv1.MatchResponse, error) {
@@ -171,10 +184,22 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		return nil, fmt.Errorf("describe plugin %s: %w", name, err)
 	}
 
+	// The instance display name resolves from the operator's own config
+	// (D-09), falling back to the instance id itself when display_name is
+	// omitted — never from anything the plugin process asserts. This
+	// mirrors config.Config.DisplayNameFor without needing the whole
+	// *config.Config here, since launch already holds this instance's own
+	// config.Source.
+	instanceDisplayName := src.DisplayName
+	if instanceDisplayName == "" {
+		instanceDisplayName = name
+	}
+
 	return &Plugin{
 		name:        name,
 		sourceType:  desc.GetSourceType(),
-		displayName: desc.GetDisplayName(),
+		pluginName:  desc.GetDisplayName(),
+		displayName: instanceDisplayName,
 		client:      client,
 		impl:        impl,
 	}, nil
@@ -183,20 +208,6 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 // Plugins returns every launched plugin.
 func (h *Host) Plugins() []*Plugin {
 	return h.plugins
-}
-
-// SourceTypesByName returns the config name ([sources.<name>]) to
-// Describe-learned source_type mapping for every launched plugin, built
-// from the already-cached launch-time Describe results — this issues no
-// RPC. kernel/httpapi/agent.go calls this on every /agent/v1 request to
-// resolve which source_types the config's agent.read grants apply to, and
-// must not pay a live network probe cost just to answer that question.
-func (h *Host) SourceTypesByName() map[string]string {
-	out := make(map[string]string, len(h.plugins))
-	for _, p := range h.plugins {
-		out[p.name] = p.sourceType
-	}
-	return out
 }
 
 // SourceHealth is one plugin's live reachability probe result, keyed to
@@ -262,15 +273,16 @@ type FetchResult struct {
 	Body              io.ReadCloser
 }
 
-// Fetch calls the Fetch RPC on the plugin registered for sourceType,
+// Fetch calls the Fetch RPC on the plugin registered for source (the
+// source INSTANCE id supplied by an index row — item.Item.Source, D-08),
 // request-time only (never sync-time), and translates the result into
 // kernel-domain types and errors. gRPC codes.NotFound maps to
 // ErrItemNotFound, codes.Unavailable and any other transport failure maps
 // to ErrSourceUnavailable.
-func (h *Host) Fetch(ctx context.Context, sourceType, sourceID string, variant toposv1.ContentVariant) (FetchResult, error) {
-	p := h.bySourceType(sourceType)
+func (h *Host) Fetch(ctx context.Context, source, sourceID string, variant toposv1.ContentVariant) (FetchResult, error) {
+	p := h.byInstance(source)
 	if p == nil {
-		return FetchResult{}, fmt.Errorf("%w: no plugin registered for source type %q", ErrItemNotFound, sourceType)
+		return FetchResult{}, fmt.Errorf("%w: no plugin registered for source %q", ErrItemNotFound, source)
 	}
 
 	resp, err := p.impl.Fetch(ctx, &toposv1.FetchRequest{SourceId: sourceID, Variant: variant})
@@ -302,11 +314,13 @@ func (h *Host) Fetch(ctx context.Context, sourceType, sourceID string, variant t
 	}, nil
 }
 
-// bySourceType returns the launched plugin whose Describe-learned
-// source_type matches, or nil if none is registered.
-func (h *Host) bySourceType(sourceType string) *Plugin {
+// byInstance returns the launched plugin whose config-key instance id
+// (Name()) matches, or nil if none is registered. Keyed on instance id, not
+// on the Describe-learned plugin kind, so two launched instances of one
+// plugin binary resolve to two distinct *Plugin values (D-08).
+func (h *Host) byInstance(source string) *Plugin {
 	for _, p := range h.plugins {
-		if p.sourceType == sourceType {
+		if p.name == source {
 			return p
 		}
 	}

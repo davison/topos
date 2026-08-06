@@ -109,6 +109,16 @@ type Source struct {
 	// separate "enabled" key that could widen this; the absence of a
 	// grant block IS the deny.
 	Agent AgentGrant `toml:"agent"`
+	// DisplayName is this source instance's operator-authored label,
+	// shown by the UI and published on every HTTP response that names a
+	// source (D-09). Optional: when empty, the instance's display name
+	// resolves to the instance id itself (the [sources.<id>] map key) via
+	// Config.DisplayNameFor — the kernel never emits an empty display
+	// name. Purely cosmetic (D-08): editing this value never changes
+	// which instance an item, sync run, or agent grant belongs to — only
+	// renaming the [sources.<id>] map key itself does that, because the
+	// map key, not this field, is the instance's identity.
+	DisplayName string `toml:"display_name,omitempty"`
 }
 
 // AgentGrant is one source's per-plugin agent permission grant (AGENT-01,

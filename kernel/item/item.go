@@ -37,7 +37,18 @@ func FidelityFromProto(f toposv1.LinkFidelity) Fidelity {
 // Item is the kernel's normalized representation of a single indexed item,
 // sourced from a plugin's MatchResponse and persisted into the local index.
 type Item struct {
-	ID                     string // "{source_type}:{source_id}"
+	ID string // "{source}:{source_id}"
+	// Source is the source INSTANCE id — the [sources.<id>] config map key
+	// this item was synced through. This is the kernel's identity key
+	// everywhere it matters (item ids, sync_runs rows, agent grants, HTTP
+	// responses — D-08): it is config-key-trusted, set only from the
+	// operator's own config map, never from anything a plugin process can
+	// assert.
+	Source string
+	// SourceType is the plugin KIND learned from the plugin's own Describe
+	// RPC response (T-01-07) — descriptive provenance only, never an
+	// identity key after this split. Two instances of one plugin binary
+	// share the same SourceType but always have distinct Source values.
 	SourceType             string
 	SourceID               string
 	Title                  string
@@ -61,15 +72,17 @@ type Item struct {
 	SyncedAtUnix int64
 }
 
-// ID derives the kernel-wide stable item ID from a source type and a
-// plugin-local source ID: "{source_type}:{source_id}".
-func ID(sourceType, sourceID string) string {
-	return fmt.Sprintf("%s:%s", sourceType, sourceID)
+// ID derives the kernel-wide stable item ID from a source instance id and a
+// plugin-local source ID: "{source}:{source_id}".
+func ID(source, sourceID string) string {
+	return fmt.Sprintf("%s:%s", source, sourceID)
 }
 
 // FromProto converts a toposv1.Item (as returned by a plugin's Match
-// RPC) into the kernel's normalized Item type.
-func FromProto(sourceType string, p *toposv1.Item) Item {
+// RPC) into the kernel's normalized Item type. source is the instance id
+// (config-key-trusted, D-08); sourceType is the Describe-learned plugin
+// kind (T-01-07) — the two are never merged.
+func FromProto(source, sourceType string, p *toposv1.Item) Item {
 	prov := make(map[string]string, len(p.GetProvenance()))
 	for k, v := range p.GetProvenance() {
 		prov[k] = v
@@ -78,7 +91,8 @@ func FromProto(sourceType string, p *toposv1.Item) Item {
 	copy(labels, p.GetLabels())
 
 	return Item{
-		ID:                     ID(sourceType, p.GetSourceId()),
+		ID:                     ID(source, p.GetSourceId()),
+		Source:                 source,
 		SourceType:             sourceType,
 		SourceID:               p.GetSourceId(),
 		Title:                  p.GetTitle(),

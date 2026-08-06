@@ -256,7 +256,7 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 
 	var sawPaperlessOK, sawSilverbulletErr bool
 	for _, r := range paperlessResults {
-		if r.SourceType == "paperless" && r.Webspace == "house-move" {
+		if r.Source == "paperless" && r.Webspace == "house-move" {
 			sawPaperlessOK = true
 			if r.Err != nil {
 				t.Errorf("expected the healthy source's result to have no error, got: %v", r.Err)
@@ -264,7 +264,7 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 		}
 	}
 	for _, r := range silverbulletResults {
-		if r.SourceType == "silverbullet" && r.Webspace == "house-move" {
+		if r.Source == "silverbullet" && r.Webspace == "house-move" {
 			sawSilverbulletErr = true
 			if r.Err == nil {
 				t.Error("expected the failing source's result to carry an error")
@@ -341,8 +341,8 @@ func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 		t.Fatalf("expected one result per configured webspace, got %d: %+v", len(results), results)
 	}
 	for _, r := range results {
-		if r.SourceType != "silverbullet" {
-			t.Errorf("expected every result's SourceType to be 'silverbullet', got %q", r.SourceType)
+		if r.Source != "silverbullet" {
+			t.Errorf("expected every result's Source to be 'silverbullet', got %q", r.Source)
 		}
 		if r.Err != nil {
 			t.Errorf("unexpected error in result %+v", r)

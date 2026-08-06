@@ -42,16 +42,18 @@ type Engine struct {
 }
 
 // WebspaceResult summarizes one (webspace, source) sync outcome. The sync
-// identity is promoted from "webspace" to "(webspace, source_type)"
-// (02-01-PLAN.md's objective): with two-or-more sources, "any source
-// fails" and "the only source fails" are no longer the same event, so a
-// result is now reported per source per webspace rather than once per
-// webspace.
+// identity is promoted from "webspace" to "(webspace, source)"
+// (02-01-PLAN.md's objective, generalized to source INSTANCE identity by
+// D-08): with two-or-more sources, "any source fails" and "the only source
+// fails" are no longer the same event, so a result is now reported per
+// source per webspace rather than once per webspace. Source is the
+// instance id ([sources.<id>] config key) — two instances of one plugin
+// type report entirely independent results.
 type WebspaceResult struct {
-	Webspace   string
-	SourceType string
-	ItemCount  int
-	Err        error
+	Webspace  string
+	Source    string
+	ItemCount int
+	Err       error
 }
 
 // SyncSource runs one source's Match RPC against every configured
@@ -82,13 +84,13 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 		resp, err := src.Match(ctx, ws.Keywords)
 		if err != nil {
 			wrapped := fmt.Errorf("match against source %q: %w", src.Name(), err)
-			results = append(results, WebspaceResult{Webspace: name, SourceType: src.SourceType(), Err: wrapped})
+			results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), Err: wrapped})
 			continue
 		}
 
 		var items []item.Item
 		for _, protoItem := range resp.GetItems() {
-			it := item.FromProto(src.SourceType(), protoItem)
+			it := item.FromProto(src.Name(), src.SourceType(), protoItem)
 			// PLUG-03: an item with an unspecified fidelity or an empty
 			// deep link must never reach the index. Skip just this item
 			// (not the whole sync) and name the plugin and source id so
@@ -101,13 +103,13 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 			items = append(items, it)
 		}
 
-		if err := e.Store.ReplaceWebspaceSourceItems(ctx, name, src.SourceType(), items); err != nil {
-			wrapped := fmt.Errorf("persist webspace %q source %q: %w", name, src.SourceType(), err)
-			results = append(results, WebspaceResult{Webspace: name, SourceType: src.SourceType(), Err: wrapped})
+		if err := e.Store.ReplaceWebspaceSourceItems(ctx, name, src.Name(), items); err != nil {
+			wrapped := fmt.Errorf("persist webspace %q source %q: %w", name, src.Name(), err)
+			results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), Err: wrapped})
 			continue
 		}
 
-		results = append(results, WebspaceResult{Webspace: name, SourceType: src.SourceType(), ItemCount: len(items)})
+		results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), ItemCount: len(items)})
 	}
 
 	return results, strings.Join(rejected, "; ")

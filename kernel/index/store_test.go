@@ -27,6 +27,7 @@ func sampleItem(sourceID string, ts int64) item.Item {
 func sampleItemForSource(sourceType, sourceID string, ts int64) item.Item {
 	return item.Item{
 		ID:                     item.ID(sourceType, sourceID),
+		Source:                 sourceType,
 		SourceType:             sourceType,
 		SourceID:               sourceID,
 		Title:                  "Doc " + sourceID,
@@ -308,7 +309,7 @@ func equalIDOrder(got, want []string) bool {
 
 // TestStartAndFinishSyncRun is the load-bearing proof for the two-phase
 // sync_runs write (02-02-PLAN.md Task 1): StartSyncRun inserts exactly one
-// running row, SyncingSourceTypes reports the source as syncing while that
+// running row, SyncingSources reports the source as syncing while that
 // row is unfinished, and FinishSyncRun updates THAT row (never inserting a
 // second) so the total row count for the source stays at 1.
 func TestStartAndFinishSyncRun(t *testing.T) {
@@ -323,9 +324,9 @@ func TestStartAndFinishSyncRun(t *testing.T) {
 		t.Fatalf("expected a positive run id, got %d", id)
 	}
 
-	syncing, err := s.SyncingSourceTypes(ctx)
+	syncing, err := s.SyncingSources(ctx)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if !syncing["paperless"] {
 		t.Error("expected paperless to be syncing between StartSyncRun and FinishSyncRun")
@@ -335,9 +336,9 @@ func TestStartAndFinishSyncRun(t *testing.T) {
 		t.Fatalf("FinishSyncRun: %v", err)
 	}
 
-	syncing, err = s.SyncingSourceTypes(ctx)
+	syncing, err = s.SyncingSources(ctx)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if syncing["paperless"] {
 		t.Error("expected paperless to no longer be syncing after FinishSyncRun")
@@ -356,7 +357,7 @@ func TestStartAndFinishSyncRun(t *testing.T) {
 	}
 
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_runs WHERE source_type = ?`, "paperless").Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_runs WHERE source = ?`, "paperless").Scan(&count); err != nil {
 		t.Fatalf("count sync_runs: %v", err)
 	}
 	if count != 1 {
@@ -398,10 +399,10 @@ func TestLatestSyncRunPerSource_TwoSourcesReturnsBothNewest(t *testing.T) {
 	}
 }
 
-// TestSyncingSourceTypes_UnrelatedSourceUnaffected proves a running row
+// TestSyncingSources_UnrelatedSourceUnaffected proves a running row
 // for one source does not mark a different, never-started source as
 // syncing.
-func TestSyncingSourceTypes_UnrelatedSourceUnaffected(t *testing.T) {
+func TestSyncingSources_UnrelatedSourceUnaffected(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
@@ -409,9 +410,9 @@ func TestSyncingSourceTypes_UnrelatedSourceUnaffected(t *testing.T) {
 		t.Fatalf("StartSyncRun: %v", err)
 	}
 
-	syncing, err := s.SyncingSourceTypes(ctx)
+	syncing, err := s.SyncingSources(ctx)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if syncing["silverbullet"] {
 		t.Error("expected silverbullet, which never started a run, to not be syncing")
@@ -428,14 +429,14 @@ func startOrphanedRun(t *testing.T, s *Store, sourceType string) {
 	}
 }
 
-// TestSyncingSourceTypes_OrphanedRunDoesNotOutvoteLaterCompletedRun is the
+// TestSyncingSources_OrphanedRunDoesNotOutvoteLaterCompletedRun is the
 // regression proof for the permanently-stuck "Syncing..." indicator: a
 // source with one stranded "running" row followed by a COMPLETED run is not
 // syncing. The query previously matched any running row at all, so a single
 // orphan outvoted every later successful run and pinned the UI spinner on
-// forever, across restarts. This test MUST fail if SyncingSourceTypes drops
+// forever, across restarts. This test MUST fail if SyncingSources drops
 // its latest-row-per-source restriction.
-func TestSyncingSourceTypes_OrphanedRunDoesNotOutvoteLaterCompletedRun(t *testing.T) {
+func TestSyncingSources_OrphanedRunDoesNotOutvoteLaterCompletedRun(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
@@ -451,26 +452,26 @@ func TestSyncingSourceTypes_OrphanedRunDoesNotOutvoteLaterCompletedRun(t *testin
 		t.Fatalf("FinishSyncRun: %v", err)
 	}
 
-	syncing, err := s.SyncingSourceTypes(ctx)
+	syncing, err := s.SyncingSources(ctx)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if syncing["proton"] {
 		t.Error("expected proton to not be syncing: its latest run completed, and an older orphaned row must not outvote it")
 	}
 }
 
-// TestSyncingSourceTypes_OrphanBoundaries pins the neighbours either side of
+// TestSyncingSources_OrphanBoundaries pins the neighbours either side of
 // the fixed defect, so the latest-row restriction cannot be "fixed" into
 // simply never reporting a source as syncing.
-func TestSyncingSourceTypes_OrphanBoundaries(t *testing.T) {
+func TestSyncingSources_OrphanBoundaries(t *testing.T) {
 	t.Run("orphan as the only row still reports syncing", func(t *testing.T) {
 		s := openTestStore(t)
 		startOrphanedRun(t, s, "proton")
 
-		syncing, err := s.SyncingSourceTypes(context.Background())
+		syncing, err := s.SyncingSources(context.Background())
 		if err != nil {
-			t.Fatalf("SyncingSourceTypes: %v", err)
+			t.Fatalf("SyncingSources: %v", err)
 		}
 		if !syncing["proton"] {
 			t.Error("expected proton to be syncing: its only (latest) run is unfinished")
@@ -486,9 +487,9 @@ func TestSyncingSourceTypes_OrphanBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("StartSyncRun: %v", err)
 		}
-		syncing, err := s.SyncingSourceTypes(ctx)
+		syncing, err := s.SyncingSources(ctx)
 		if err != nil {
-			t.Fatalf("SyncingSourceTypes: %v", err)
+			t.Fatalf("SyncingSources: %v", err)
 		}
 		if !syncing["proton"] {
 			t.Error("expected proton to be syncing: its latest run is genuinely in flight")
@@ -497,9 +498,9 @@ func TestSyncingSourceTypes_OrphanBoundaries(t *testing.T) {
 		if err := s.FinishSyncRun(ctx, id, "ok", "", 1); err != nil {
 			t.Fatalf("FinishSyncRun: %v", err)
 		}
-		syncing, err = s.SyncingSourceTypes(ctx)
+		syncing, err = s.SyncingSources(ctx)
 		if err != nil {
-			t.Fatalf("SyncingSourceTypes: %v", err)
+			t.Fatalf("SyncingSources: %v", err)
 		}
 		if syncing["proton"] {
 			t.Error("expected proton to stop syncing once its latest run finished")
@@ -519,9 +520,9 @@ func TestSyncingSourceTypes_OrphanBoundaries(t *testing.T) {
 			t.Fatalf("FinishSyncRun: %v", err)
 		}
 
-		syncing, err := s.SyncingSourceTypes(ctx)
+		syncing, err := s.SyncingSources(ctx)
 		if err != nil {
-			t.Fatalf("SyncingSourceTypes: %v", err)
+			t.Fatalf("SyncingSources: %v", err)
 		}
 		if syncing["paperless"] {
 			t.Error("expected paperless to not be syncing: proton's orphan must not leak across sources")
@@ -556,9 +557,9 @@ func TestReconcileInterruptedSyncRuns(t *testing.T) {
 		t.Errorf("expected 2 stranded rows repaired, got %d", n)
 	}
 
-	syncing, err := s.SyncingSourceTypes(ctx)
+	syncing, err := s.SyncingSources(ctx)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if len(syncing) != 0 {
 		t.Errorf("expected no source to be syncing after reconciliation, got %v", syncing)

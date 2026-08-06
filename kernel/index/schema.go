@@ -1,5 +1,15 @@
 package index
 
+// schemaVersion is the current PRAGMA user_version this schema targets.
+// Store.Open compares it against the on-disk value and, on a mismatch in a
+// non-empty index file, drops and recreates every table below rather than
+// writing a data migration (D-07) — every row here is re-derivable from a
+// fresh sync, so there is nothing worth migrating. Bump this whenever a
+// schema change (like this phase's items.source / sync_runs.source
+// addition) makes previously-indexed rows structurally incompatible with
+// the new shape.
+const schemaVersion = 2
+
 // schema is applied on every Open. Statements are idempotent (CREATE TABLE
 // IF NOT EXISTS / CREATE INDEX IF NOT EXISTS) so opening an existing index
 // file is safe.
@@ -16,8 +26,9 @@ PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS items (
-  id                       TEXT PRIMARY KEY,   -- "{source_type}:{source_id}"
-  source_type              TEXT NOT NULL,
+  id                       TEXT PRIMARY KEY,   -- "{source}:{source_id}"
+  source                   TEXT NOT NULL,      -- source INSTANCE id ([sources.<id>] config key) — the identity key (D-08)
+  source_type              TEXT NOT NULL,      -- Describe-learned plugin kind — descriptive provenance only, never identity
   source_id                TEXT NOT NULL,
   title                    TEXT NOT NULL,
   preview                  TEXT NOT NULL,
@@ -55,7 +66,7 @@ CREATE TABLE IF NOT EXISTS webspaces (
 
 CREATE TABLE IF NOT EXISTS sync_runs (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_type   TEXT NOT NULL,
+  source        TEXT NOT NULL,                 -- source INSTANCE id ([sources.<id>] config key)
   started_unix  INTEGER NOT NULL,
   finished_unix INTEGER,
   status        TEXT NOT NULL,          -- "running" | "ok" | "error"

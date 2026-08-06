@@ -125,6 +125,19 @@ func (cfg *Config) AgentReadGrantedNames() map[string]bool {
 	return granted
 }
 
+// DisplayNameFor returns the resolved display name for the source instance
+// keyed instance: its configured [sources.<instance>] display_name when
+// non-blank, else the instance id itself (D-09). The kernel never emits an
+// empty display name — an instance absent from cfg.Sources entirely (which
+// should not happen for a real index row, but a defensive default all the
+// same) also resolves to instance, never to "".
+func (cfg *Config) DisplayNameFor(instance string) string {
+	if src, ok := cfg.Sources[instance]; ok && strings.TrimSpace(src.DisplayName) != "" {
+		return src.DisplayName
+	}
+	return instance
+}
+
 // expandIndexPathHome expands a leading "~" in [index] path to the current
 // user's home directory.
 func (cfg *Config) expandIndexPathHome() error {
@@ -211,6 +224,38 @@ func (cfg *Config) Validate(missing []string) error {
 		return fmt.Errorf("config: [sync] interval: %w", err)
 	}
 
+	if err := cfg.validateDisplayNameUniqueness(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateDisplayNameUniqueness enforces D-09: two source instances must
+// never resolve to the same display name. Comparison is case-insensitive
+// via strings.EqualFold, with no Unicode normalization — the same exactness
+// convention D-03 set for match-field comparison — while instance ids
+// themselves are compared byte-exact as TOML map keys, which go-toml/v2
+// already guarantees are unique within [sources] by construction. Sources
+// are iterated in sorted key order so the reported colliding pair is
+// deterministic run to run rather than dependent on Go's randomized map
+// iteration order.
+func (cfg *Config) validateDisplayNameUniqueness() error {
+	names := make([]string, 0, len(cfg.Sources))
+	for name := range cfg.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for i, name := range names {
+		display := cfg.DisplayNameFor(name)
+		for _, other := range names[i+1:] {
+			otherDisplay := cfg.DisplayNameFor(other)
+			if strings.EqualFold(display, otherDisplay) {
+				return fmt.Errorf("config: sources %q and %q both resolve display_name %q — display names must be unique", name, other, display)
+			}
+		}
+	}
 	return nil
 }
 

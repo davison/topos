@@ -65,6 +65,103 @@ func testConfig() *config.Config {
 	}}
 }
 
+// TestTwoInstancesOfOnePluginType_StayDistinct is the invariant test wired
+// into this phase's assumption-delta decision (05-01-PLAN.md): it goes red
+// the instant a future change reintroduces the singular "source_type as
+// identity" assumption anywhere on the sync/index/grant path. Two fake
+// correlate.Source values share one SourceType() ("proton") but have
+// distinct Name()s ("home-email", "work-email") — exactly the shape two
+// [sources.*] entries pointing at the same plugin binary produce. Asserts:
+// (a) two independent sync_runs series (LatestSyncRunPerSource has one
+// entry per instance, never merged into one "proton" entry); (b)
+// non-overlapping item id namespaces ("home-email:1" vs "work-email:1",
+// not collapsed to "proton:1" for both); (c) a Refresh of one instance does
+// not coalesce with, or block on, the other instance's single-flight key.
+func TestTwoInstancesOfOnePluginType_StayDistinct(t *testing.T) {
+	store := newTestStore(t)
+
+	home := &fakeSource{
+		name: "home-email", sourceType: "proton",
+		matchFunc: func() (*toposv1.MatchResponse, error) {
+			return okMatchResponse("1", "https://mail.proton.me/home/1")
+		},
+	}
+	work := &fakeSource{
+		name: "work-email", sourceType: "proton",
+		matchFunc: func() (*toposv1.MatchResponse, error) {
+			return okMatchResponse("1", "https://mail.proton.me/work/1")
+		},
+	}
+	engine := &correlate.Engine{Store: store, Config: testConfig()}
+	coord := NewCoordinator(store, engine, []correlate.Source{home, work})
+
+	homeResult, err := coord.Refresh(context.Background(), "home-email")
+	if err != nil {
+		t.Fatalf("Refresh(home-email): %v", err)
+	}
+	workResult, err := coord.Refresh(context.Background(), "work-email")
+	if err != nil {
+		t.Fatalf("Refresh(work-email): %v", err)
+	}
+	if homeResult.Coalesced || workResult.Coalesced {
+		t.Errorf("expected neither instance's Refresh to coalesce with the other's single-flight key, got home=%+v work=%+v", homeResult, workResult)
+	}
+	if homeResult.Source != "home-email" || workResult.Source != "work-email" {
+		t.Errorf("expected each RunResult.Source to carry its own instance id, got home=%q work=%q", homeResult.Source, workResult.Source)
+	}
+	if homeResult.SourceType != "proton" || workResult.SourceType != "proton" {
+		t.Errorf("expected both RunResult.SourceType to report the shared plugin kind 'proton', got home=%q work=%q", homeResult.SourceType, workResult.SourceType)
+	}
+
+	// (a) Two independent sync_runs series: LatestSyncRunPerSource must key
+	// on instance id, never merge two instances of one plugin type into a
+	// single "proton" entry.
+	runs, err := store.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if _, ok := runs["home-email"]; !ok {
+		t.Errorf("expected a sync_runs entry keyed 'home-email', got: %+v", runs)
+	}
+	if _, ok := runs["work-email"]; !ok {
+		t.Errorf("expected a sync_runs entry keyed 'work-email', got: %+v", runs)
+	}
+	if _, ok := runs["proton"]; ok {
+		t.Errorf("expected NO sync_runs entry keyed by the shared plugin kind 'proton' — instances must never merge, got: %+v", runs)
+	}
+
+	// (b) Non-overlapping item id namespaces: both instances matched
+	// source_id "1", so a source_type-keyed id scheme would collide on
+	// "proton:1" for both. Instance-keyed ids must not collide.
+	items, err := store.StreamItems(context.Background(), "house-move")
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, it := range items {
+		ids[it.ID] = true
+	}
+	if !ids["home-email:1"] {
+		t.Errorf("expected item id 'home-email:1' present, got items: %v", ids)
+	}
+	if !ids["work-email:1"] {
+		t.Errorf("expected item id 'work-email:1' present, got items: %v", ids)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected exactly 2 distinct items (one per instance, never merged), got %d: %v", len(items), ids)
+	}
+
+	// (c) A single-flight key collision would manifest as the SECOND
+	// Refresh call's underlying Match never actually running (coalesced
+	// into the first). Both fakeSource call counts must be exactly 1.
+	if home.callCount() != 1 {
+		t.Errorf("expected home-email's Match called exactly once, got %d", home.callCount())
+	}
+	if work.callCount() != 1 {
+		t.Errorf("expected work-email's Match called exactly once, got %d", work.callCount())
+	}
+}
+
 func okMatchResponse(sourceID, deepLink string) (*toposv1.MatchResponse, error) {
 	return &toposv1.MatchResponse{Items: []*toposv1.Item{
 		{SourceId: sourceID, Title: "Doc", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: deepLink, TimestampUnix: 100},
@@ -294,9 +391,9 @@ func TestRefresh_CancelledContextStillFinalisesSyncRun(t *testing.T) {
 	// Query with a fresh context, exactly as a later HTTP request would.
 	fresh := context.Background()
 
-	syncing, err := store.SyncingSourceTypes(fresh)
+	syncing, err := store.SyncingSources(fresh)
 	if err != nil {
-		t.Fatalf("SyncingSourceTypes: %v", err)
+		t.Fatalf("SyncingSources: %v", err)
 	}
 	if syncing["proton"] {
 		t.Error("expected proton to not be syncing after a cancelled sync: the run was left orphaned at status \"running\"")

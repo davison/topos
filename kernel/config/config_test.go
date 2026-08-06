@@ -403,6 +403,112 @@ plugin = "topos-plugin-broken"
 	}
 }
 
+// TestDisplayNameFor_OmittedDefaultsToInstanceID proves D-09: a
+// [sources.<id>] block that omits display_name resolves to the instance id
+// itself.
+func TestDisplayNameFor_OmittedDefaultsToInstanceID(t *testing.T) {
+	t.Setenv("TEST_DN_URL", "http://x.lan")
+	t.Setenv("TEST_DN_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DN_URL}"
+token = "${TEST_DN_TOKEN}"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.DisplayNameFor("home-email"); got != "home-email" {
+		t.Errorf("expected DisplayNameFor to default to the instance id %q, got %q", "home-email", got)
+	}
+}
+
+// TestDisplayNameFor_ExplicitValueIsUsed proves an explicitly configured
+// display_name is returned verbatim rather than the instance id.
+func TestDisplayNameFor_ExplicitValueIsUsed(t *testing.T) {
+	t.Setenv("TEST_DN2_URL", "http://x.lan")
+	t.Setenv("TEST_DN2_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DN2_URL}"
+token = "${TEST_DN2_TOKEN}"
+display_name = "Home Email"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.DisplayNameFor("home-email"); got != "Home Email" {
+		t.Errorf("expected explicit display_name %q, got %q", "Home Email", got)
+	}
+}
+
+// TestLoad_DuplicateDisplayNameCaseInsensitiveFailsNamingBothSources proves
+// D-09's uniqueness rule: two sources whose resolved display names collide
+// only by case fail config load, naming both source keys and the colliding
+// value.
+func TestLoad_DuplicateDisplayNameCaseInsensitiveFailsNamingBothSources(t *testing.T) {
+	t.Setenv("TEST_DUP_URL", "http://x.lan")
+	t.Setenv("TEST_DUP_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DUP_URL}"
+token = "${TEST_DUP_TOKEN}"
+display_name = "Email"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DUP_URL}"
+token = "${TEST_DUP_TOKEN}"
+display_name = "email"
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for case-insensitively colliding display_name, got nil")
+	}
+	if !strings.Contains(err.Error(), "home-email") || !strings.Contains(err.Error(), "work-email") {
+		t.Errorf("expected error to name both source keys, got: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "email") {
+		t.Errorf("expected error to name the colliding display_name value, got: %v", err)
+	}
+}
+
+// TestLoad_TwoInstancesOfSamePluginTypeWithDistinctDisplayNamesLoadCleanly
+// proves the core multi-instance shape (D-08/D-09) loads without error: two
+// [sources.*] entries whose plugin value is identical, with distinct
+// display names, validate cleanly.
+func TestLoad_TwoInstancesOfSamePluginTypeWithDistinctDisplayNamesLoadCleanly(t *testing.T) {
+	t.Setenv("TEST_TWO_URL", "http://x.lan")
+	t.Setenv("TEST_TWO_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_TWO_URL}"
+token = "${TEST_TWO_TOKEN}"
+display_name = "Home Email"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_TWO_URL}"
+token = "${TEST_TWO_TOKEN}"
+display_name = "Work Email"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Sources) != 2 {
+		t.Fatalf("expected 2 source instances, got %d", len(cfg.Sources))
+	}
+	if cfg.Sources["home-email"].Plugin != cfg.Sources["work-email"].Plugin {
+		t.Fatal("expected both instances to share the same plugin binary")
+	}
+}
+
 func TestLoad_ExpandsHomeInIndexPath(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

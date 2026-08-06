@@ -41,8 +41,8 @@ const finishRunTimeout = 5 * time.Second
 // RunResult is the caller-facing outcome of one Refresh call — a summary
 // of a sync run that may have coalesced into an already in-flight one.
 type RunResult struct {
-	Source       string // config name (correlate.Source.Name())
-	SourceType   string
+	Source       string // instance id (config name, correlate.Source.Name()) — the identity key (D-08)
+	SourceType   string // Describe-learned plugin kind — descriptive only, published alongside Source
 	Status       string // "ok" | "error"
 	ItemCount    int
 	Error        string
@@ -138,7 +138,7 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 	sourceType := src.SourceType()
 	started := time.Now().Unix()
 
-	runID, err := c.store.StartSyncRun(ctx, sourceType)
+	runID, err := c.store.StartSyncRun(ctx, src.Name())
 	if err != nil {
 		// A sync_runs write failure is itself a result the caller needs to
 		// see, not a silently swallowed error.
