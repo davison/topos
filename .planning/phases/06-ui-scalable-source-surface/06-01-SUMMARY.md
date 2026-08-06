@@ -197,6 +197,16 @@ None - no external service configuration required.
 - The kernel's D-11 sanitize/wrap/theme pipeline (`sanitizeAndWrapRendition`) now carries a `terms []string` parameter that any future kernel-side rendition-content mutation would need to compose with, not duplicate — plan 06-02/06-03 (if they touch rendition content) should read this plan's doc comments on `rendition.go` before adding a second post-sanitize mutation step.
 - `golang.org/x/net`'s `go.mod` entry is the only requirement in the root module's require block without a stale `// indirect` marker; a future phase that runs a real `go mod tidy` sweep should expect the whole block to be rewritten, not just this one line.
 
+## Self-Check: PASSED
+
+- FOUND: `kernel/httpapi/rendition.go`
+- FOUND: `web/src/lib/components/highlight.test.ts`
+- FOUND: `.planning/phases/06-ui-scalable-source-surface/06-01-SUMMARY.md`
+- FOUND: commit `65b0756` (Task 1)
+- FOUND: commit `d5e4956` (Task 2)
+- FOUND: commit `5a6ae1f` (Task 3)
+- FOUND: commit `7436641` (plan metadata)
+
 ---
 *Phase: 06-ui-scalable-source-surface*
 *Completed: 2026-08-06*
