@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
@@ -487,7 +488,10 @@ func TestRenditionStylesheetTokensMatchAppCSS(t *testing.T) {
 	}
 	css := string(appCSS)
 
-	tokens := []string{"#0f172a", "#1e293b", "#60a5fa", "#94a3b8", "#f1f5f9"}
+	// UI-09: #fbbf24/#020617 are the highlight mark's background/foreground
+	// — already-declared theme tokens (--warning/--background), held in
+	// step with web/src/app.css by this same mechanism.
+	tokens := []string{"#0f172a", "#1e293b", "#60a5fa", "#94a3b8", "#f1f5f9", "#fbbf24", "#020617"}
 	for _, tok := range tokens {
 		if !strings.Contains(css, tok) {
 			t.Errorf("expected web/src/app.css to declare token %q", tok)
@@ -505,5 +509,249 @@ func TestRenditionStylesheetTokensMatchAppCSS(t *testing.T) {
 				t.Errorf("shape %v: expected the composed stylesheet to reference theme token %q, got: %s", shape, tok, style)
 			}
 		}
+	}
+}
+
+// --- highlighting (UI-09) ---
+//
+// This section proves the kernel highlighter (Task 1, rendition.go)
+// touches rendered text only — never attributes, never tag bytes, never
+// the chat class allowlist, never a second sanitizer pass — and pins the
+// term-derivation rule's exact behaviour. Every test here calls
+// sanitizeAndWrapRendition directly, exactly like every pre-existing test
+// above.
+
+// TestHighlight_EmptyTermsInert proves nil and an empty (but non-nil)
+// terms slice produce byte-identical output containing no mark element,
+// for every recognised content shape — the no-search path must stay
+// byte-identical to the pre-UI-09 output regardless of which "no terms"
+// representation a caller passes.
+func TestHighlight_EmptyTermsInert(t *testing.T) {
+	for _, shape := range []toposv1.ContentShape{
+		toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
+		toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
+		toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
+	} {
+		fragment := []byte(`<p>hello world</p>`)
+		withNil, err := sanitizeAndWrapRendition(shape, fragment, nil)
+		if err != nil {
+			t.Fatalf("shape %v: sanitizeAndWrapRendition(nil terms): %v", shape, err)
+		}
+		withEmpty, err := sanitizeAndWrapRendition(shape, fragment, []string{})
+		if err != nil {
+			t.Fatalf("shape %v: sanitizeAndWrapRendition(empty terms): %v", shape, err)
+		}
+		if string(withNil) != string(withEmpty) {
+			t.Errorf("shape %v: expected nil and empty terms to produce byte-identical output, got:\nnil:   %s\nempty: %s", shape, withNil, withEmpty)
+		}
+		if strings.Contains(string(withNil), "<mark") {
+			t.Errorf("shape %v: expected no <mark> element with no terms, got: %s", shape, withNil)
+		}
+	}
+}
+
+// TestHighlight_TextNodesOnly_AttributesUntouched proves a fragment whose
+// anchor href and title attribute both contain the search term produces a
+// mark inside the anchor's visible text only — both attribute values
+// survive completely unchanged (T-06-01).
+func TestHighlight_TextNodesOnly_AttributesUntouched(t *testing.T) {
+	fragment := []byte(`<a href="https://example.com/needle" title="needle">visible needle text</a>`)
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	if !strings.Contains(got, `href="https://example.com/needle"`) {
+		t.Errorf("expected the href attribute value to survive unchanged, got: %s", got)
+	}
+	if !strings.Contains(got, `title="needle"`) {
+		t.Errorf("expected the title attribute value to survive unchanged, got: %s", got)
+	}
+	if !strings.Contains(got, "<mark>needle</mark>") {
+		t.Errorf("expected the anchor's visible text to gain a mark element, got: %s", got)
+	}
+}
+
+// TestHighlight_TagBytesUntouched proves a fragment where the term
+// collides with an element or attribute name/value produces no mark
+// inside any tag — the highlighter only ever scans html.TextNode Data, so
+// a term matching "div"/"body"/"own" can only ever highlight those
+// strings when they appear as genuine rendered text, never as markup.
+// Uses the chat shape's real class-token vocabulary (T-05-17) as the
+// collision source, since those tokens are both real attribute values on
+// this fragment AND absent from its own text content.
+func TestHighlight_TagBytesUntouched(t *testing.T) {
+	fragment := []byte(`<div class="run own"><div class="bubble own"><div class="body">some content here</div></div></div>`)
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, fragment, []string{"div", "own", "body"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	if strings.Contains(got, "<mark") {
+		t.Errorf("expected no <mark> element when terms only match tag/attribute names and values, not text content, got: %s", got)
+	}
+	for _, want := range []string{`<div class="run own">`, `<div class="bubble own">`, `<div class="body">`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected the element structure to be fully preserved, missing %q, got: %s", want, got)
+		}
+	}
+}
+
+// TestHighlight_ChatClassAllowlistSurvives is the direct regression guard
+// for RESEARCH.md Pitfall 2: a chat-transcript fragment carrying the real
+// class tokens keeps every class attribute after highlighting, and the
+// highlight lands inside the bubble body text.
+func TestHighlight_ChatClassAllowlistSurvives(t *testing.T) {
+	fragment := `<div class="run own"><div class="bubble own"><div class="body">hello needle world</div></div></div>`
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(fragment), []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	for _, want := range []string{`class="run own"`, `class="bubble own"`, `class="body"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected class attribute %q to survive highlighting, got: %s", want, got)
+		}
+	}
+	if !strings.Contains(got, `<div class="body">hello <mark>needle</mark> world</div>`) {
+		t.Errorf("expected the highlight to land inside the bubble body text, got: %s", got)
+	}
+}
+
+// TestHighlight_NoReSanitization proves a fragment the policy would strip
+// is still stripped, and a mark inserted by the highlighter still
+// survives to the output — the highlighted tree is never fed back
+// through policy.SanitizeBytes.
+func TestHighlight_NoReSanitization(t *testing.T) {
+	fragment := []byte(`<script>alert(1)</script><p>hello needle world</p>`)
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	if strings.Contains(strings.ToLower(got), "<script") {
+		t.Errorf("expected the script element to remain stripped, got: %s", got)
+	}
+	if !strings.Contains(got, "<mark>needle</mark>") {
+		t.Errorf("expected the highlighter's own mark insertion to survive to the output, got: %s", got)
+	}
+}
+
+// TestHighlight_MultiByteSafety proves a fragment containing multi-byte
+// runes adjacent to a match renders back with those runes intact —
+// highlightTextNode's rune-based (never byte-index-based) scan is what
+// guarantees this.
+func TestHighlight_MultiByteSafety(t *testing.T) {
+	fragment := []byte(`<p>héllo wörld 日本語 needle 表情</p>`)
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	if !utf8.ValidString(got) {
+		t.Fatal("expected valid UTF-8 output")
+	}
+	if !strings.Contains(got, "héllo wörld 日本語") {
+		t.Errorf("expected multi-byte runes preceding the match to survive intact, got: %s", got)
+	}
+	if !strings.Contains(got, "表情") {
+		t.Errorf("expected multi-byte runes following the match to survive intact, got: %s", got)
+	}
+	if !strings.Contains(got, "<mark>needle</mark>") {
+		t.Errorf("expected the ASCII term to still be highlighted, got: %s", got)
+	}
+}
+
+// TestHighlight_CaseInsensitiveOriginalCasingPreserved proves a lowercase
+// term matches mixed-case text and the marked text keeps the document's
+// own original casing.
+func TestHighlight_CaseInsensitiveOriginalCasingPreserved(t *testing.T) {
+	fragment := []byte(`<p>The Needle is here</p>`)
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition: %v", err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "<mark>Needle</mark>") {
+		t.Errorf("expected the matched text to preserve its original document casing inside the mark element, got: %s", got)
+	}
+}
+
+// TestHighlight_ElementBoundaryBackstop is the must_haves backstop row: a
+// term split across two adjacent inline elements degrades to no highlight
+// for that occurrence — highlightTextNodes only ever scans a single text
+// node — and the document's element structure stays byte-for-byte
+// identical to the unhighlighted render. This test asserts only the
+// non-corruption half; under-highlighting across an element boundary is
+// an accepted, deliberate limitation of single-text-node matching, not a
+// defect.
+func TestHighlight_ElementBoundaryBackstop(t *testing.T) {
+	fragment := []byte(`<p><em>nee</em><em>dle</em></p>`)
+	highlighted, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, []string{"needle"})
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition(highlighted): %v", err)
+	}
+	unhighlighted, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, fragment, nil)
+	if err != nil {
+		t.Fatalf("sanitizeAndWrapRendition(unhighlighted): %v", err)
+	}
+	if string(highlighted) != string(unhighlighted) {
+		t.Errorf("expected a term split across two adjacent inline elements to degrade to no highlight (structurally identical output), got:\nhighlighted:   %s\nunhighlighted: %s", highlighted, unhighlighted)
+	}
+	if strings.Contains(string(highlighted), "<mark") {
+		t.Errorf("expected no mark element for an occurrence split across element boundaries, got: %s", highlighted)
+	}
+}
+
+// TestHighlightTerms_Derivation is a direct table test of highlightTerms:
+// whitespace splitting, sub-2-character drop, de-duplication, the 8-term
+// cap, lowercasing, and empty/whitespace input returning nothing.
+func TestHighlightTerms_Derivation(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"whitespace splitting", "hello   world\tfoo\nbar", []string{"hello", "world", "foo", "bar"}},
+		{"sub-2-character drop", "a bb c dd", []string{"bb", "dd"}},
+		{"de-duplication", "hello world hello", []string{"hello", "world"}},
+		{"8-term cap", "one two three four five six seven eight nine ten",
+			[]string{"one", "two", "three", "four", "five", "six", "seven", "eight"}},
+		{"empty input", "", nil},
+		{"whitespace-only input", "   \t\n  ", nil},
+		{"lowercases", "HELLO World", []string{"hello", "world"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := highlightTerms(tt.raw)
+			if len(got) != len(tt.want) {
+				t.Fatalf("highlightTerms(%q) = %v, want %v", tt.raw, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("highlightTerms(%q)[%d] = %q, want %q", tt.raw, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestHighlight_EmailStylesheetMarkSelectorIsImportant asserts the email
+// shape's composed stylesheet carries a mark selector marked important —
+// the restoring rule that keeps the email readability neutraliser from
+// silently swallowing the highlight (renditionEmailReadabilityDelta).
+func TestHighlight_EmailStylesheetMarkSelectorIsImportant(t *testing.T) {
+	style := stylesheetForShape(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML)
+	idx := strings.Index(style, "body mark")
+	if idx == -1 {
+		t.Fatalf("expected a 'body mark' selector in the email shape's composed stylesheet, got: %s", style)
+	}
+	end := strings.Index(style[idx:], "}")
+	if end == -1 {
+		t.Fatalf("malformed rule for the 'body mark' selector")
+	}
+	rule := style[idx : idx+end]
+	if !strings.Contains(rule, "!important") {
+		t.Errorf("expected the 'body mark' restoring rule to carry an !important marker, got rule: %s", rule)
 	}
 }

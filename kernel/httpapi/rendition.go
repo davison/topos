@@ -159,7 +159,7 @@ html, body {
 }
 a { color: #60a5fa; text-decoration: underline; }
 a:hover { color: #93c5fd; }
-/* UI-09 search-term highlighting: a bare, attribute-free <mark> element
+/* UI-09 search-term highlighting: a bare, attribute-free mark element
    (highlightTextNodes below never sets a class or any attribute on it, so
    this rule alone is sufficient — no sanitizer-policy entry is needed).
    Both hex values are already-declared theme tokens (web/src/app.css's

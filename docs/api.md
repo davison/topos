@@ -359,6 +359,27 @@ from plugin/source content before that trusted stylesheet is ever
 appended, so a hostile or malformed source document cannot smuggle a
 stylesheet through this directive.
 
+**`?hl=` (UI-09, optional, `GET /api/items/{id}/content` only):** carries
+the user's raw in-webspace search query. The kernel whitespace-splits it,
+lowercases each field, de-duplicates, drops any field shorter than 2
+characters, and caps the result at the first 8 terms — the same
+literal-term derivation `GET /api/webspaces/{webspace}/search` itself uses
+internally (whitespace-split, no stemming). For a `text/html` rendition,
+each derived term is matched case-insensitively as a literal substring
+inside the already-sanitized document's text content and wrapped in a
+bare `<mark>` element — a tree mutation via `golang.org/x/net/html`
+(parse/walk/render), never a byte- or pattern-level substitution over the
+sanitized bytes, so it cannot corrupt markup, alter an attribute value, or
+reintroduce anything the sanitizer already stripped. The highlighted
+output is never re-sanitized: sanitization runs exactly once, strictly
+before this step. `?hl=` does not change the sanitizer policy, the
+`Content-Security-Policy` header, or how any non-`text/html` rendition
+(PDF, image) is served — an absent or empty `?hl=` produces a response
+byte-identical to the pre-UI-09 output. **The `/agent/v1` rendition
+mirror does not accept `?hl=`** — the agent surface has no search UI, so
+`GET /agent/v1/items/{id}/content` always serves an unhighlighted
+document regardless of any query string supplied.
+
 ### `GET /api/sources`
 
 One entry per configured source **instance** (`name`, the `[sources.<id>]`
