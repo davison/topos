@@ -39,7 +39,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **UI-04**: Every item has an "open in source" affordance matching its declared link fidelity
 - [x] **UI-05**: Stale or source-unavailable items show an explicit state (not silent 404s)
 - [x] **UI-06**: Sync status and plugin health are visible in the UI
-- [ ] **UI-07**: The header presents each source instance exactly once — one affordance combining health, filter toggle, and refresh — and stays usable as the instance count grows *(added 2026-08-05)*
+- [x] **UI-07**: The header presents each source instance exactly once — one affordance combining health, filter toggle, and refresh — and stays usable as the instance count grows *(added 2026-08-05)*
 - [ ] **UI-08**: "Open in source" affordances visually differentiate links that navigate to the item from links that can only raise the source app's window *(added 2026-08-05; from 04-UAT follow-up)*
 - [x] **UI-09**: After an in-webspace search, matched terms are highlighted in the detail pane's rendered content *(added 2026-08-05)*
 - [ ] **UI-11**: Scrollbars are thin and theme-matched app-wide; the stream scrollbar carries date markers *(added 2026-08-05; UI-10 was already assigned to the v1.x sync-status polish item)*
@@ -99,7 +99,7 @@ Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 ins
 | UI-04 | Phase 1 | Complete |
 | UI-05 | Phase 2 | Gaps Found |
 | UI-06 | Phase 2 | Gaps Found |
-| UI-07 | Phase 6 | Pending |
+| UI-07 | Phase 6 | Complete |
 | UI-08 | Phase 6 | Pending |
 | UI-09 | Phase 6 | Complete |
 | UI-11 | Phase 6 | Pending |

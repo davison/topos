@@ -272,7 +272,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — Merged per-instance source chip with multi-select filtering and measured overflow into a popover (UI-07)
+- [x] 06-02-PLAN.md — Merged per-instance source chip with multi-select filtering and measured overflow into a popover (UI-07)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -340,7 +340,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 1/3 | In Progress|  |
+| 6. UI — Scalable Source Surface | 2/3 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
