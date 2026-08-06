@@ -328,6 +328,38 @@ func TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders(t *testin
 	}
 }
 
+// TestItemThumbnailHandler_HlParameterNeverHighlights is a regression test
+// for WR-01: docs/api.md documents ?hl= as "content route only", but
+// renditionHandler is shared verbatim by ItemContentHandler and
+// ItemThumbnailHandler. A text/html thumbnail rendition (nothing in the
+// MIME allowlist prevents a plugin from returning one) must never be
+// highlighted, even when the request carries a matching ?hl= term.
+func TestItemThumbnailHandler_HlParameterNeverHighlights(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	seedTestItem(t, store, testItem())
+
+	fragment := []byte("<h1>Decking</h1><p>unsanitized fragment content</p>")
+	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
+		Available: true, MimeType: "text/html", SizeBytes: int64(len(fragment)),
+		Body:         io.NopCloser(bytes.NewReader(fragment)),
+		ContentShape: toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/thumbnail?hl=Decking", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "<mark>") {
+		t.Errorf("expected the thumbnail route to never highlight regardless of ?hl=, got: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Decking") {
+		t.Errorf("expected the fragment's own visible text to survive sanitization, got: %s", rec.Body.String())
+	}
+}
+
 // TestItemContentHandler_UnrecognisedContentShapeRefusedNoBody proves the
 // kernel fails closed (T-05-16): a text/html rendition whose ContentShape
 // is unspecified is refused with a distinct error code and no body — never

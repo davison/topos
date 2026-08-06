@@ -200,6 +200,13 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 		// yields a nil terms slice, which sanitizeAndWrapRendition treats
 		// as "skip highlighting entirely" — the no-search path is
 		// byte-identical to this route's pre-UI-09 output.
+		//
+		// docs/api.md documents ?hl= as content-route-only (WR-01):
+		// terms are only ever derived for the PREVIEW variant
+		// (ItemContentHandler), never for THUMBNAIL
+		// (ItemThumbnailHandler) -- even though nothing in the MIME
+		// allowlist prevents a plugin from returning a text/html
+		// thumbnail rendition, that path must never highlight.
 		var body []byte
 		if result.MimeType == "text/html" {
 			fragment, err := io.ReadAll(result.Body)
@@ -207,7 +214,10 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 				return
 			}
-			terms := highlightTerms(r.URL.Query().Get("hl"))
+			var terms []string
+			if variant == toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW {
+				terms = highlightTerms(r.URL.Query().Get("hl"))
+			}
 			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment, terms)
 			if err != nil {
 				WriteError(w, http.StatusBadGateway, "unsupported_content_shape",
