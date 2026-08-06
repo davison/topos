@@ -184,6 +184,7 @@ Recent decisions affecting current work:
 | 260805-lry | accept Signal schema 1740 after live read-set verification (source recovered) | 2026-08-05 | 9f000c3 | [260805-lry-accept-signal-desktop-schema-version-174](./quick/260805-lry-accept-signal-desktop-schema-version-174/) |
 | 260805-o5d | harden make dev: plugins rebuilt as prerequisite, fail loudly on port squat/dead kernel | 2026-08-05 | 6d0e6a8 | [260805-o5d-harden-make-dev-rebuild-plugin-binaries-](./quick/260805-o5d-harden-make-dev-rebuild-plugin-binaries-/) |
 | 260806-f1 | (fast) refresh README: 8-phase roadmap, five-plugin layout, seven workspace modules | 2026-08-06 | cd8ba20 | — |
+| 260806-f2 | (fast) expose Vite dev server (:5173) to the tailscale network via make dev | 2026-08-06 | 54d30b4 | — |
 
 ## Deferred Items
 
