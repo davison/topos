@@ -84,6 +84,24 @@ created: 2026-08-06
 
 Two independently-implemented mechanisms for one consistent visual result — see 06-RESEARCH.md's Pattern 2/3 for *why* they must differ; this section fixes *how they look and what they touch*.
 
+> **Surface set extended 2026-08-07 (G-06-1, plan 06-05).** The shared visual
+> contract below now also covers the SPA-rendered **item title**, in both the
+> detail-pane header and the stream/search-result row — not only the
+> detail-pane body variants this section originally scoped. Why: the local
+> index full-text-searches both `title` and `preview`
+> (`kernel/index/schema.go`), and the search API's `snippet()` call
+> auto-selects the best-matching column, so a title-only match is a routine,
+> first-class search outcome — not an edge case — for which the app must
+> still visually explain why the item surfaced. On the SPA side this half of
+> the contract is delivered by exactly one class, `.search-highlight`,
+> declared once in `web/src/app.css` (`@layer components`) rather than as a
+> component-scoped Svelte `<style>` block — a scoped class cannot be shared
+> across `DetailPane.svelte` and `StreamRow.svelte`, which is what let the
+> two components drift onto different match vocabularies in the first place.
+> The kernel's own rendition-iframe `mark` rule (below) is unchanged and
+> continues to paint the identical amber/near-black pair from the same two
+> tokens.
+
 ### Shared visual contract (both mechanisms)
 
 - Highlighted text is wrapped in a bare `<mark>` element (no class, no attribute — per RESEARCH.md Pitfall 2, an unstyled/attribute-free element needs no sanitizer-policy entry).

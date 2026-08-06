@@ -66,11 +66,30 @@ Exceptions: none new. Phase 1's 44px minimum touch-target floor still applies to
 | Heading | 20px | 600 | 1.2 |
 | Display | 28px | 600 | 1.2 |
 
-**One new usage of the existing 600 weight (not a third weight):** search-result matched-term emphasis (E2 below) uses the already-declared semibold (600) weight applied inline within body-role (16px/400/1.5) snippet text, rather than introducing a highlight color. This keeps the "exactly 2 weights" contract literally true — 600 is not new, only its context (inline emphasis within body text, not just headings) is.
+~~**One new usage of the existing 600 weight (not a third weight):** search-result matched-term emphasis (E2 below) uses the already-declared semibold (600) weight applied inline within body-role (16px/400/1.5) snippet text, rather than introducing a highlight color. This keeps the "exactly 2 weights" contract literally true — 600 is not new, only its context (inline emphasis within body text, not just headings) is.~~
 
-Usage mapping (new this phase):
+> **Superseded 2026-08-07 (G-06-1, Phase 6 plan 06-05).** Phase 6 introduced a
+> shared amber match-emphasis treatment (background `--warning`, foreground
+> `--background`, via the `.search-highlight` class in `web/src/app.css`) for
+> the detail-pane body and the kernel rendition iframe, but left this rule's
+> weight-only stream/search-row treatment standing — one concept, two
+> vocabularies, in adjacent panes. The rule above is retired: search-match
+> emphasis is now the shared amber treatment, applied uniformly to the
+> stream/search-result snippet, item titles (both the stream-row title and
+> the detail-pane header, not covered by UI-09's original scope — see
+> `06-UI-SPEC.md`), the detail-pane body and the kernel rendition iframe.
+>
+> This deliberately overturns the rule's own stated rationale rather than
+> ignoring it: the weight-based treatment existed solely to protect the
+> "exactly 2 weights" contract by avoiding a third visual dimension. Moving
+> to a colour-only treatment **restores that rule more purely** than the
+> original semibold approach did — inline 600 emphasis inside body-role text
+> is retired entirely, so 600 returns to being a heading-only weight, and
+> "exactly 2 weights" no longer carries an inline-emphasis exception at all.
+
+Usage mapping (updated 2026-08-07, G-06-1):
 - **Label (14px/400):** sender (`group_label`) in both the stream-row metadata strip and the detail-pane header sub-line; search box input text and placeholder
-- **Body (16px/400) + inline 600 emphasis:** search-result snippet text, matched terms rendered semibold
+- **Body (16px/400), no inline weight emphasis:** search-result snippet text; matched terms render via the shared `.search-highlight` amber class (colour only — see `06-UI-SPEC.md`'s Search-Term Highlighting section), never a font-weight change
 
 ---
 
@@ -85,7 +104,7 @@ Usage mapping (new this phase):
 | Accent (10%) | `#60a5fa` (blue-400) — unchanged | "Open in {display_name}" CTA, links, focus rings, selected stream/result row |
 | Destructive | `#f87171` (red-400) — unchanged | Destructive actions (none new this phase); unreachable-source health dot |
 
-Accent reserved for: exactly the same list as Phase 2 — "Open in source" CTA, inline text links, focus-visible rings, the selected stream/result row indicator, and the active source-filter chip. **Explicitly not used for:** the search box's focus state beyond the standard focus ring, the search-result matched-term emphasis (uses weight, not color — see Typography), or the sender field (plain `--foreground`/`--muted-foreground` text, same treatment as the date field it sits beside). This keeps the accent budget uncontaminated by the two new surfaces this phase adds.
+Accent reserved for: exactly the same list as Phase 2 — "Open in source" CTA, inline text links, focus-visible rings, the selected stream/result row indicator, and the active source-filter chip. **Explicitly not used for:** the search box's focus state beyond the standard focus ring, or the sender field (plain `--foreground`/`--muted-foreground` text, same treatment as the date field it sits beside). This keeps the accent budget uncontaminated by the two new surfaces this phase adds. (Search-result matched-term emphasis was originally weight-only, not accent or any color — see the superseded rule under Typography above; it is now the dedicated `--warning` amber, still never the accent blue.)
 
 ---
 
@@ -131,7 +150,7 @@ Probe run (ui-consideration-probe engine, post-verification per Step 9.5) over 5
 | empty | E2 search-results-list | ✅ covered | Zero matches for a non-empty query renders the "No matches for…" heading + body (Copywriting Contract) — visually distinct from the unfiltered stream's own empty state, never the same "Nothing here yet" copy. |
 | loading | E2 search-results-list | ✅ covered | Debounced request in flight reuses the existing stream-load skeleton treatment (Phase 1's skeleton rows) — no new skeleton design. |
 | error | E2 search-results-list | 🧪 backstop | A search-request failure (kernel unreachable / index error) is rare — kernel and SPA share one process, same rationale as Phase 1's own stream-load-error backstop row — and awkward to exercise without deliberate fault injection; held out as backstop per that precedent. |
-| populated | E2 search-results-list | ✅ covered | One row per match, reusing `StreamRow.svelte`'s exact visual shape (thumbnail/title/date/sender/tags), with the preview region replaced by the FTS5 `snippet()` text; matched terms render in the existing semibold (600) weight (see Typography) rather than a new color. Rows render in the order the API returns them (bm25 rank ascending) — never re-sorted client-side. |
+| populated | E2 search-results-list | ✅ covered | One row per match, reusing `StreamRow.svelte`'s exact visual shape (thumbnail/title/date/sender/tags), with the preview region replaced by the FTS5 `snippet()` text; matched terms render via the shared amber `.search-highlight` class (see Typography's superseded-rule note — G-06-1, Phase 6 plan 06-05), not a font-weight change. Rows render in the order the API returns them (bm25 rank ascending) — never re-sorted client-side. |
 | partial | E2 search-results-list | ✅ covered | A result whose snippet is empty (title-only match) omits the snippet line — the same "title + metadata only" degrade `StreamRow` already applies when `item.preview` is empty; no new fallback rule. |
 | overflow | E2 search-results-list | ➖ dismissed | Inherits the stream pane's own independent-scroll contract (Phase 1) unchanged — searching doesn't introduce a second scroll region. |
 | zero-one-many | E2 search-results-list | ✅ covered | One match renders a single full-width row (no pagination chrome, same rule as the stream's own zero-one-many row); results are capped at 50 (`03-RESEARCH.md`'s `LIMIT 50`) with no "load more" affordance this phase — explicit MVP scope, not a gap. |
