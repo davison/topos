@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 06
-current_phase_name: ui-scalable-source-surface
 status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-08-06T21:59:30.826Z"
+last_updated: "2026-08-06T22:10:27.118Z"
 last_activity: 2026-08-06
-last_activity_desc: Phase 06 planning complete
 progress:
-  total_phases: 6
+  total_phases: 9
   completed_phases: 6
   total_plans: 35
-  completed_plans: 34
+  completed_plans: 35
+  percent: 67
 ---
 
 # Project State
@@ -28,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 06 (ui-scalable-source-surface) — EXECUTING
-Plan: 3 of 3
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-08-06 — Phase 06 planning complete
+Last activity: 2026-08-06
 
 Progress: [██████████] 100%
 
@@ -87,6 +84,7 @@ Progress: [██████████] 100%
 | Phase 05 P05 | 35min | 3 tasks | 5 files |
 | Phase 06 P02 | ~20min | 3 tasks | 13 files |
 | Phase 06 P03 | 20min | 3 tasks | 7 files |
+| Phase 06 P04 | ~12min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -167,6 +165,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06-02]: implemented visibleChipCount per the plan's own <action> algorithm (full-fit check before charging the overflow trigger's width) rather than its internally-inconsistent [10,10,10],35,0,8->2 acceptance-criteria example; the 30,0,8->3 exact-fit example is satisfied verbatim
 - [Phase ?]: [Phase 06-02]: worstHealthTone seeds its reduction with the least-alarming tone (success) rather than 'unknown', with the empty-input case handled by an explicit early return — seeding at 'unknown' silently mis-scored an all-success input
 - [Phase ?]: [Phase 06-03]: Duplicated the stream-pane scroll div's conditional width classes onto a new outer relative wrapper (the real flex item main sizes) rather than moving them, preserving pane-layout.test.ts's existing fixed-width source-scan guard unchanged
+- [Phase ?]: [Phase 06-04]: Observer attachment extracted into web/src/lib/resize-observer.ts (injectable createObserver factory) rather than inlined, so attachment is provable by behaviour under the node-environment test runner with no component-mount harness
+- [Phase ?]: [Phase 06-04]: Structural proof is a comment-stripped source-scan guard with balanced-paren extraction, not a raw grep -- a bare grep is what let 06-VERIFICATION.md's gap through once already
 
 ### Pending Todos
 
@@ -203,6 +203,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T21:09:57.133Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-08-06T22:10:27.109Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
