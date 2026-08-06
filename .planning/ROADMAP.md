@@ -263,12 +263,12 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Search-term highlighting end-to-end: kernel-side `<mark>` tree-walk for the sandboxed rendition iframe plus client-side highlighting for text bodies (UI-09, phase tracer)
+- [x] 06-01-PLAN.md — Search-term highlighting end-to-end: kernel-side `<mark>` tree-walk for the sandboxed rendition iframe plus client-side highlighting for text bodies (UI-09, phase tracer)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -340,7 +340,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 0/TBD | Not started | - |
+| 6. UI — Scalable Source Surface | 1/3 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
