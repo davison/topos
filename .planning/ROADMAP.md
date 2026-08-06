@@ -263,7 +263,7 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 4 plans (3 executed, 1 gap closure pending)
+**Plans**: 7 plans (4 executed, 3 UAT gap closure pending)
 
 Plans:
 **Wave 1**
@@ -281,6 +281,18 @@ Plans:
 **Wave 4** *(gap closure — blocked on Wave 2 completion)*
 
 - [x] 06-04-PLAN.md — Keep the chip row's overflow measurement live for the whole session: ref-driven observer attachment covering all four measured elements (UI-07, closes 06-VERIFICATION.md's single gap)
+
+**Wave 5** *(UAT gap closure — 06-UAT.md G-06-1)*
+
+- [ ] 06-05-PLAN.md — One match-emphasis vocabulary across every search surface, extended to the item title (UI-09, closes G-06-1)
+
+**Wave 6** *(UAT gap closure — blocked on Wave 5: shared spec/stylesheet files)*
+
+- [ ] 06-06-PLAN.md — Restore a visible selected state on the merged source chip: solid accent fill with re-toned label, dot and refresh (UI-07, closes G-06-3)
+
+**Wave 7** *(UAT gap closure — blocked on Wave 6: shared spec/stylesheet files)*
+
+- [ ] 06-07-PLAN.md — Rebuild the stream date-marker overlay as a real ruler: own lane, dedicated tokens at 3:1, rail and major/minor hierarchy, scroll and edge gates (UI-11, closes G-06-6)
 
 Notes:
 
