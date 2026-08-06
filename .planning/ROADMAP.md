@@ -263,7 +263,12 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Search-term highlighting end-to-end: kernel-side `<mark>` tree-walk for the sandboxed rendition iframe plus client-side highlighting for text bodies (UI-09, phase tracer)
+- [ ] 06-02-PLAN.md — Merged per-instance source chip with multi-select filtering and measured overflow into a popover (UI-07)
+- [ ] 06-03-PLAN.md — Deep-link fidelity differentiation and the stream scrollbar's date-marker overlay (UI-08, UI-11)
 
 Notes:
 
