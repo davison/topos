@@ -11,17 +11,22 @@
 # unset variable expands to the empty string and is reported by name in
 # the load-time error, not silently accepted.
 #
-# Keyword matching is exact, case-insensitive (D-03): "house" matches a
-# tag/folder/group literally named "House", but does NOT match "Household"
-# — there is no substring or prefix matching, and no NFC/NFD Unicode
-# normalization, so keep your keyword spelling consistent with how each
-# source actually names things. All keywords in a webspace's list are
-# matched against every configured plugin's own native categorization
-# (paperless-ngx tags today; IMAP folders/labels, chat group names, and
-# SilverBullet page tags in later phases) — there is no per-source
-# override syntax (D-02). If one silo names a topic differently than
-# another, add that silo's own spelling as an additional keyword in the
-# same list, rather than looking for a per-source config knob.
+# Matching is exact, case-insensitive (D-04): "house" matches a value
+# literally named "House", but does NOT match "Household" — there is no
+# substring or prefix matching, and no NFC/NFD Unicode normalization, so
+# keep your spelling consistent with how each source actually names
+# things. What changed in Phase 5: matching is no longer one shared
+# keyword list compared against every source's categorization uniformly.
+# Instead, each SOURCE INSTANCE (a [sources.<id>] block, below) declares
+# its own typed field vocabulary via its plugin's Describe RPC — a
+# paperless-ngx instance matches on "tags", a SilverBullet instance on
+# "tags" and "pages", a Proton instance on "folders", a Signal instance
+# on "conversations" — and a webspace either supplies typed values for
+# those fields directly (a [webspaces.<name>.match.<instance>] block,
+# D-02) or falls back to one shared "keywords" list fanned across every
+# field that instance's plugin declares (D-01). See "[webspaces.<name>]",
+# near the bottom of this file, for the full worked shape and every
+# load-time failure this can produce.
 
 [server]
 # listen: host:port the kernel's HTTP API and embedded web UI bind to.
@@ -67,14 +72,35 @@ dir = "plugins"
 # load, naming the "[sync] interval" key.
 interval = "15m"
 
-# [sources.<name>] — one block per source plugin instance. "<name>" is
+# [sources.<name>] — one block per source plugin INSTANCE. "<name>" is
 # your own label (it does not have to match the plugin's source_type; the
 # kernel always learns source_type from the plugin's own Describe RPC,
-# never from this key).
+# never from this key) — and it is also this instance's IDENTITY (D-08):
+# it prefixes every item id this instance ever produces, keys its own
+# sync history, and is what a [sources.<name>.agent] grant and a
+# [webspaces.<ws>.match.<name>] block both key on. Renaming this map key
+# creates a brand-new instance from the kernel's point of view — its old
+# items and sync history do not follow the rename. The SAME plugin binary
+# can be launched more than once under different "<name>" keys — see the
+# "home-email"/"work-email" worked example below, after [sources.proton].
 [sources.paperless]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
 plugin = "topos-plugin-paperless"
+
+# display_name: this instance's operator-authored label, shown by the UI
+# and published on every HTTP response that names a source (D-09).
+# Optional: when omitted, the instance's display name resolves to the
+# instance id itself (the "paperless" map key above). Purely cosmetic
+# (D-08) — editing this value never changes which instance an item, sync
+# run, or agent grant belongs to; only renaming the [sources.<id>] map
+# key itself does that.
+# Validation: must be unique across every configured source instance
+# (case-insensitive); two instances resolving to the same display name
+# (whether by explicit display_name or by both leaving it unset with
+# identical map keys, which TOML itself already forbids) fails config
+# load, naming both offending instances.
+display_name = "paperless-ngx"
 
 # base_url: the paperless-ngx instance's base URL. ${PAPERLESS_URL} is
 # expanded from the environment — never hardcode a real URL/host here if
@@ -101,6 +127,10 @@ api_version = "10"
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
 plugin = "topos-plugin-silverbullet"
+
+# display_name: see [sources.paperless]'s display_name comment, above —
+# identical shape and validation for every source.
+display_name = "SilverBullet"
 
 # base_url: the SilverBullet instance's base URL. ${SILVERBULLET_URL} is
 # expanded from the environment, same as paperless's base_url above.
@@ -149,6 +179,10 @@ token = "${SB_AUTH_TOKEN}"
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
 plugin = "topos-plugin-proton"
+
+# display_name: see [sources.paperless]'s display_name comment, above —
+# identical shape and validation for every source.
+display_name = "Proton Mail"
 
 # base_url: "imaps://host:port" for implicit TLS, or "imap://host:port"
 # for a plaintext connect immediately followed by a mandatory STARTTLS —
@@ -237,10 +271,60 @@ handoff = false
 read = true
 handoff = false
 
+# --- Two named instances of one plugin type (D-08/D-10) ---------------
+#
+# The kernel can launch the SAME plugin binary more than once — once per
+# [sources.<id>] entry. Two instances of one plugin type always have
+# distinct display names, distinct item id namespaces, distinct sync
+# history, and independent agent grants; they never merge into one row
+# anywhere in the kernel's index or HTTP API. This example illustrates
+# the shape by splitting a single Proton account (above) into two: a
+# personal inbox and a work inbox, both running topos-plugin-proton.
+# Uncomment both blocks below (and give each its own real connection
+# details/env vars — Bridge supports multiple linked accounts
+# simultaneously) to run them alongside, or instead of, [sources.proton]
+# above.
+#
+# [sources.home-email]
+# plugin = "topos-plugin-proton"
+# display_name = "Home email"
+# base_url = "imaps://${PROTON_HOME_BRIDGE_ADDR}"
+# username = "${PROTON_HOME_BRIDGE_USER}"
+# token = "${PROTON_HOME_BRIDGE_PASS}"
+# ca_cert = "~/.config/topos/proton-bridge-cert.pem"
+# webmail_base_url = "${PROTON_HOME_WEBMAIL_BASE}"
+#
+# [sources.home-email.agent]
+# read = true
+# handoff = false
+#
+# [sources.work-email]
+# plugin = "topos-plugin-proton"
+# display_name = "Work email"
+# base_url = "imaps://${PROTON_WORK_BRIDGE_ADDR}"
+# username = "${PROTON_WORK_BRIDGE_USER}"
+# token = "${PROTON_WORK_BRIDGE_PASS}"
+# ca_cert = "~/.config/topos/proton-bridge-cert.pem"
+# webmail_base_url = "${PROTON_WORK_WEBMAIL_BASE}"
+#
+# [sources.work-email.agent]
+# read = false
+# handoff = false
+#
+# Grants are per instance, never per plugin kind: granting home-email
+# read access above never admits work-email's items through /agent/v1,
+# even though both instances share one source_type ("proton") and one
+# plugin binary. See "[webspaces.<name>]", below, for how each instance
+# gets its own independent match configuration too.
+
 [sources.signal]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.
 # Validation: none at load time; a missing file fails at startup, by path.
 plugin = "topos-plugin-signal"
+
+# display_name: see [sources.paperless]'s display_name comment, above —
+# identical shape and validation for every source.
+display_name = "Signal"
 
 # path: Signal Desktop's own config directory — the source of both
 # config.json (SQLCipher key resolution) and sql/db.sqlite (the message
@@ -275,6 +359,10 @@ handoff = false
 # other two plugin binaries.
 # plugin = "topos-plugin-mock"
 #
+# display_name: see [sources.paperless]'s display_name comment, above —
+# identical shape and validation for every source.
+# display_name = "Mock Source"
+#
 # base_url / token: the mock plugin's own main.go does NOT require
 # WEBSPACES_SOURCE_CONFIG to be set at all — it has no connection details
 # to configure. The two placeholder lines below exist only because
@@ -297,24 +385,129 @@ handoff = false
 # [webspaces.<name>] — one block per webspace. "<name>" becomes the
 # webspace's URL slug (e.g. /w/house-move) and its GET
 # /api/webspaces/{name}/stream path segment.
+#
+# Each configured source INSTANCE lands its items in a webspace one of
+# two ways (never both at once, for the same instance):
+#
+#   1. keywords (D-01, the FALLBACK): one shared list of strings, fanned
+#      out across every field that instance's plugin declared in its
+#      Describe match_vocabulary. This is the simplest shape — one list,
+#      applies uniformly — and the only shape needed when your keyword
+#      spelling happens to match cleanly across every field a plugin
+#      declares.
+#   2. [webspaces.<name>.match.<instance>] (D-02, the EXPLICIT BLOCK): a
+#      table of field-name -> value-list, typed to that ONE instance's
+#      own declared vocabulary. When present for an instance, this block
+#      REPLACES the keywords fallback outright for that instance alone —
+#      the two are never combined/unioned. Every OTHER participating
+#      instance with no block of its own still falls back to keywords
+#      normally.
+#
+# A webspace must declare a non-empty keywords list, at least one match
+# block, or both — declaring neither fails config load. An instance
+# participating in a webspace with an empty keywords list AND no match
+# block of its own also fails config load (nothing to resolve its match
+# input from at sync time) — this is the fifth failure mode below.
+#
+# sources (D-03, OPTIONAL): a participation allowlist. Empty/omitted (the
+# default) means every configured source instance participates in this
+# webspace. When non-empty, ONLY the named instances participate — every
+# other configured instance is skipped at sync time for this webspace,
+# and any rows it previously wrote here are cleared so no orphaned rows
+# survive the config change.
+#
+# Five load-time failures the kernel names explicitly, by webspace and/or
+# instance:
+#   - a match field name the participating instance's plugin did not
+#     declare in its own match_vocabulary (checked post-launch, against
+#     the live plugin — pluginhost.ValidateMatchConfig, D-05)
+#   - a match block or a sources entry naming an instance that isn't a
+#     configured [sources.<id>] at all (typo signal)
+#   - an instance named in BOTH this webspace's match table AND excluded
+#     by this webspace's own sources allowlist — dead config, not a
+#     staging feature; remove one or the other
+#   - a webspace declaring neither keywords nor any match block
+#   - a participating instance with no match block, in a webspace whose
+#     keywords list is empty — nothing for that instance to resolve its
+#     match input from
+#
+# Matching itself stays exact and case-insensitive with no Unicode
+# normalization (D-04) in both shapes above — only WHERE the value list
+# comes from (one shared list vs. a typed, per-instance table) changed in
+# Phase 5.
 [webspaces.house-move]
-# keywords: every string here is matched, exactly and case-insensitively,
-# against every configured plugin's native categorization for this
-# webspace. This example's real value differs from the illustrative
-# "house-move"/"House" pair used elsewhere in this project's docs: this
-# deployment's actual paperless-ngx tag for the topic is "house and
-# home" — the webspace's slug/name stays "house-move" for URL/docs
-# consistency, but the keyword list reflects what the source system
-# actually calls it. Add more strings to this list (rather than editing
-# the source) if a second plugin/source names the same topic differently.
+# keywords: the fallback (see above) — every string here is matched,
+# exactly and case-insensitively, against every field each participating,
+# block-less instance's plugin declared. This example's real value
+# differs from the illustrative "house-move"/"House" pair used elsewhere
+# in this project's docs: this deployment's actual paperless-ngx tag for
+# the topic is "house and home" — the webspace's slug/name stays
+# "house-move" for URL/docs consistency, but the keyword list reflects
+# what the source system actually calls it. Add more strings to this
+# list (rather than editing the source) if a second plugin/source names
+# the same topic differently. In this example, "paperless" and "signal"
+# have no explicit match block below, so both resolve their match input
+# from this list.
 # Validation: at least one non-empty, non-whitespace-only keyword is
-# required; a webspace with zero keywords, or any empty-string keyword,
-# fails config load.
+# required whenever this list is non-empty; a webspace declaring it with
+# zero keywords, or any empty-string keyword, fails config load.
 keywords = ["house and home"]
+
+# [webspaces.house-move.match.silverbullet] — an EXPLICIT block (D-02):
+# replaces the keywords fallback above for the "silverbullet" instance
+# alone. SilverBullet declares a two-field vocabulary, "tags" and
+# "pages" — a page matches if its tags match any "tags" value OR its page
+# name matches any "pages" value (the two fields are independent, unioned
+# results, never combined into one comparison).
+[webspaces.house-move.match.silverbullet]
+tags = ["house"]
+pages = ["House Move Checklist"]
+
+# [webspaces.house-move.match.proton] — Proton declares a one-field
+# vocabulary, "folders": the IMAP mailbox/label leaf name(s) whose
+# messages should land in this webspace.
+[webspaces.house-move.match.proton]
+folders = ["House"]
+
+# [webspaces.example-multi-source] — a second, purely illustrative
+# webspace gathering one worked match-block example for every one of
+# this repository's four real (non-mock) plugin types in a single place,
+# alongside the "sources" participation allowlist. Uncomment to try it
+# against your own real tag/folder/conversation names — every value
+# below is a placeholder, not this deployment's actual data.
+#
+# [webspaces.example-multi-source]
+# sources restricts participation to exactly these four instances — any
+# OTHER configured instance (e.g. a second Proton account from the
+# "home-email"/"work-email" example above, if you've uncommented it) is
+# skipped entirely for this one webspace, even though it still
+# participates normally in [webspaces.house-move] above (the allowlist is
+# per-webspace, not global).
+# sources = ["paperless", "silverbullet", "proton", "signal"]
+#
+# Every instance named in sources above has its own explicit block below
+# — with full coverage like this, a keywords fallback line would simply
+# go unused (legal, just redundant), so this example omits keywords
+# entirely to demonstrate that match blocks alone are sufficient.
+#
+# [webspaces.example-multi-source.match.paperless]
+# tags = ["Household", "Admin"]
+#
+# [webspaces.example-multi-source.match.silverbullet]
+# tags = ["household"]
+# pages = ["Household Tasks"]
+#
+# [webspaces.example-multi-source.match.proton]
+# folders = ["Household"]
+#
+# [webspaces.example-multi-source.match.signal]
+# conversations = ["Family Group", "Jane Doe"]
 
 # [webspaces.demo] — pairs with the commented-out [sources.mock] block
 # above: "demo" matches the label every one of plugins/mock's four fixed
 # items carries, so uncommenting both blocks and running `webspaces sync`
-# populates this webspace with all four mock items.
+# populates this webspace with all four mock items via the keywords
+# fallback (mock declares a one-field vocabulary, "labels", so a bare
+# keywords list is all it needs — no match block required).
 # [webspaces.demo]
 # keywords = ["demo"]
