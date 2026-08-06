@@ -11,7 +11,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **KERN-03**: Hybrid store: metadata + preview indexed locally; full content fetched live from the source when an item is opened
 - [x] **KERN-04**: Sync scheduler with a per-plugin coordinator (dedups refreshes, tracks health); user can trigger manual refresh
 - [x] **KERN-05**: User can full-text search within a webspace (FTS5 over indexed metadata/previews)
-- [ ] **KERN-06**: Sources are named instances — the same plugin type can be configured multiple times, each under a user-chosen display name (e.g. "Home email" / "Work email") used throughout the UI and API *(added 2026-08-05)*
+- [x] **KERN-06**: Sources are named instances — the same plugin type can be configured multiple times, each under a user-chosen display name (e.g. "Home email" / "Work email") used throughout the UI and API *(added 2026-08-05)*
 - [ ] **KERN-07**: Matching config is declared per source instance and typed to its plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), replacing the single shared per-webspace keyword list *(added 2026-08-05; supersedes the KERN-01 shared-keyword shape — KERN-01 remains satisfied via migration)*
 - [ ] **KERN-08**: Webspace and source-instance configuration is editable through the kernel API (non-secret fields only; secrets stay environment-only), while hand-editing the config file remains supported *(added 2026-08-05)*
 
@@ -80,7 +80,7 @@ Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 ins
 | KERN-03 | Phase 1 | Complete |
 | KERN-04 | Phase 2 | Gaps Found |
 | KERN-05 | Phase 3 | Complete |
-| KERN-06 | Phase 5 | Pending |
+| KERN-06 | Phase 5 | Complete |
 | KERN-07 | Phase 5 | Pending |
 | KERN-08 | Phase 7 | Pending |
 | PLUG-01 | Phase 1 | Complete |

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-06T10:25:28.338Z"
-last_activity: 2026-08-06 -- Phase 05 execution started
+last_updated: "2026-08-06T11:03:56.393Z"
+last_activity: 2026-08-06
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
   percent: 44
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 05 (source-instances-per-type-matching) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 05
-Last activity: 2026-08-06 -- Phase 05 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-08-06
 
-Progress: [██████████] 100%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██████████] 100%
 | Phase 04 P02 | 2h | 3 tasks | 18 files |
 | Phase 04 P03 | ~2.5h | 3 tasks | 13 files |
 | Phase 260805-kt3 P01 | ~20min | 1 tasks | 3 files |
+| Phase 05 P01 | 40min | 3 tasks | 35 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 04-03]: Fetch's FULL and PREVIEW variants share one path (fetchTranscript) — a Signal digest has no separate richer-preview-vs-extracted-text distinction the way an email does
 - [Phase ?]: [Quick 260805-kt3]: webmailSearchDeepLink extended to a deepLinkCriteria struct (subject/sender/date) via strict RED->GREEN TDD, keeping all 03-10 assertions byte-identical; Task 2 (live Proton checkpoint) and Task 3 (land verdict, update docs) deliberately not executed this run
 - [Phase ?]: [Quick 260805-kt3 Task 3]: Task 2's live-Proton checkpoint returned a bare 'approved' verdict (no corrections, no drops, no address-bar URL) — assumption register rows A-2..A-7 recorded as CONFIRMED-BY-BEHAVIOR (not the stronger CONFIRMED-BY-CANONICALIZED-URL the plan hoped for); no source change needed, config.example.toml/kernel/config/types.go docs updated to match shipped behavior
+- [Phase ?]: [Phase 05-01]: Instance identity split across kernel/HTTP/agent/UI (D-08); kernel/httpapi/routes.go modified beyond the plan's declared scope (Rule 3) to wire cfg into StreamHandler/ItemHandler for source_display_name resolution
+- [Phase ?]: [Phase 05-01]: search.go/toSearchResult intentionally kept calling the unchanged toStreamItem(it) signature (out of plan scope) — a new toStreamItemFor(it, resolveDisplayName) sibling serves every other caller, so a search result's source_display_name falls back to the instance id rather than any configured override
 
 ### Pending Todos
 
@@ -175,6 +178,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T00:45:45.136Z
-Stopped at: Phase 5 UI-SPEC approved
-Resume file: /home/darren/projects/davison/topos/.planning/phases/05-source-instances-per-type-matching/05-UI-SPEC.md
+Last session: 2026-08-06T11:03:56.383Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
