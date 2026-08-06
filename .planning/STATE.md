@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-last_updated: "2026-08-05T23:08:48.851Z"
-last_activity: "2026-08-05 - Completed quick task 260805-o5d: make dev hardening (plugins prerequisite, loud port-clash failure)"
+current_phase: 5
+status: executing
+stopped_at: Phase 5 UI-SPEC approved
+last_updated: "2026-08-06T01:18:29.735Z"
+last_activity: 2026-08-05
+last_activity_desc: "Completed quick task 260805-o5d: make dev hardening (plugins prerequisite, loud port-clash failure)"
 progress:
-  total_phases: 9
+  total_phases: 5
   completed_phases: 4
-  total_plans: 26
+  total_plans: 31
   completed_plans: 26
-  percent: 44
 ---
 
 # Project State
@@ -26,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 Phase: 5
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-05 - Completed quick task 260805-o5d: make dev hardening (plugins prerequisite, loud port-clash failure)
 
 Progress: [██████████] 100%
@@ -175,6 +177,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-05T23:08:48.843Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-source-instances-per-type-matching/05-CONTEXT.md
+Last session: 2026-08-06T00:45:45.136Z
+Stopped at: Phase 5 UI-SPEC approved
+Resume file: /home/darren/projects/davison/topos/.planning/phases/05-source-instances-per-type-matching/05-UI-SPEC.md

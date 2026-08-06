@@ -224,10 +224,24 @@ Notes:
 
 **Plans**: 5 plans
 Plans:
+**Wave 1**
+
 - [ ] 05-01-PLAN.md — Named source instances end to end: the config map key becomes the kernel's identity across index, sync, grants, API and UI
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — Typed match contract on the wire: plugin-declared vocabulary, typed MatchRequest, five plugins migrated
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05-03-PLAN.md — Per-instance match blocks, participation allowlist, and loud two-phase validation
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 05-04-PLAN.md — Kernel-owned rendition sanitize/wrap/theme; plugins stop owning presentation
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 05-05-PLAN.md — Publish the contract, rewrite config.example.toml, migrate and verify the live config
 
 Notes:
@@ -364,4 +378,5 @@ All 31 v1 requirements are mapped to exactly one phase (8 added in the 2026-08-0
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with /gsd-review-backlog when ready)
