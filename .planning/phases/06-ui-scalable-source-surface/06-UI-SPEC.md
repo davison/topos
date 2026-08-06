@@ -1,7 +1,7 @@
 ---
 phase: 6
 slug: ui-scalable-source-surface
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1, unchanged — no re-init; components.json still records these contract values even though shadcn-svelte's live CLI/registry has since retired this baseColor/style combination — every actual color the app renders comes from web/src/app.css's hand-authored hex tokens, not the CLI)"
 created: 2026-08-06
@@ -202,7 +202,7 @@ Accent reserved for: unchanged list from Phase 2/5 (CTA, links, focus rings, sel
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Probe run (ui-consideration-probe engine, 2026-08-06, researcher-classified element kinds per the closed 8-category taxonomy) over 5 elements this phase materially changes or adds: E1 merged source chip row (list-collection + nav — same hybrid classification Phase 2's E1 used for the row it replaces); E2 overflow trigger + popover (list-collection + interactive-control, new); E3 `OpenInSource` fidelity affordance (interactive-control); E4 detail-pane search-term highlighting (media, spans all four `bodyVariant` branches); E5 stream scrollbar date-marker overlay (list-collection + interactive-control, new). Phases 1–5's already-resolved rows for the stream list, detail pane load/error states, and health-chip base behavior are inherited unchanged and not re-derived here. **34 applicable considerations: 27 covered, 2 backstop, 5 dismissed (reasons recorded), 0 unresolved.**
+Probe run (ui-consideration-probe engine, 2026-08-06, orchestrator-invoked; element kinds and all resolutions user-confirmed) over 5 elements this phase materially changes or adds: E1 merged source chip row (list-collection + nav — same hybrid classification Phase 2's E1 used for the row it replaces); E2 overflow trigger + popover (list-collection + interactive-control, new); E3 `OpenInSource` fidelity affordance (interactive-control; the engine's collection-category over-classification is resolved by explicit dismissals below); E4 detail-pane search-term highlighting (media, spans all four `bodyVariant` branches); E5 stream scrollbar date-marker overlay (list-collection + interactive-control, new). Engine floor: 33 applicable considerations; 4 additional rows authored beyond the floor (E4 empty/error/populated, E5 long-text). Phases 1–5's already-resolved rows for the stream list, detail pane load/error states, and health-chip base behavior are inherited unchanged and not re-derived here. **37 considerations: 23 covered, 12 dismissed (reasons recorded), 1 backstop, 0 unresolved.**
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -218,11 +218,17 @@ Probe run (ui-consideration-probe engine, 2026-08-06, researcher-classified elem
 | loading | E2 list-collection/interactive-control: overflow popover | ➖ dismissed | Popover content is derived synchronously from the already-fetched `sources` array (same data E1 renders from) — no independent load state. |
 | error | E2 list-collection/interactive-control: overflow popover | ➖ dismissed | Shares E1's error handling — if `GET /api/sources` fails, neither the chip row nor the (nonexistent) overflow trigger renders. |
 | populated | E2 list-collection/interactive-control: overflow popover, N hidden sources | ✅ covered | Vertical list of full `SourceChip` instances, same interaction contract as inline chips (filter toggle, hover-reveal refresh, tooltip) — see Header Redesign. |
+| partial | E2 list-collection/interactive-control: mixed health states among hidden sources | ✅ covered | The overflow trigger carries the worst-of health tone across hidden chips (a problem never hides behind the fold); each popover chip renders strictly from its own `SourceStatus` record — same per-instance isolation as E1's partial row. |
 | overflow | E2 list-collection/interactive-control: very large hidden count (e.g. 30+ instances) | ✅ covered | Popover content area scrolls internally (`max-h-80 overflow-y-auto`, existing themed scrollbar tokens) rather than growing unbounded or clipping silently. |
 | zero-one-many | E2 list-collection/interactive-control: hidden count of exactly one | ✅ covered | Same list rendering regardless of count — "+1" trigger opens a one-item popover, no special-cased singular layout needed since the list itself (not the trigger label) carries the count semantics. |
 | long-text | E2 list-collection/interactive-control: popover list item names | ✅ covered | Reuses `SourceChip`'s own truncate+title resolution (E1 long-text) — no separate handling needed since it's the same component. |
+| empty | E3 interactive-control: item without a source link | ➖ dismissed | Control renders only when the item carries a source link — inherited Phase 1 gating, unchanged this phase. |
 | loading | E3 interactive-control: `OpenInSource` fidelity affordance | ➖ dismissed | Fidelity/link data arrives with the already-loaded item — no independent async state; inherited from Phase 1. |
 | error | E3 interactive-control: unrecognised fidelity value | ✅ covered | Both the icon-selection and label-selection logic default to the navigable (exact/anchored) treatment on any value other than the literal string `conversation-only` — an unrecognised enum value degrades to the more common, less alarming treatment (a plain "Open" link) rather than throwing or rendering blank, consistent with `formatFidelity`'s existing `?? fidelity` raw-value fallback for the badge. |
+| populated | E3 interactive-control: recognised fidelity values | ✅ covered | The three-row fidelity table (Deep-Link Fidelity Differentiation section) is the populated state — icon, label, and tooltip fixed per fidelity class. |
+| partial | E3 interactive-control | ➖ dismissed | Fidelity and link arrive atomically with the already-loaded item — no partial-data state exists. |
+| overflow | E3 interactive-control: button width | ➖ dismissed | Single control; width overflow is exactly the long-text truncation row below (`max-w-64 truncate`). |
+| zero-one-many | E3 interactive-control | ➖ dismissed | Exactly one affordance per item — no collection semantics. |
 | long-text | E3 interactive-control: fidelity button label with a long `displayName` | ✅ covered | Inherits the existing `max-w-64 truncate` treatment on the button (unchanged from Phase 1/5) — the new leading icon does not change the truncation contract, just adds a fixed-width glyph before it. |
 | empty | E4 media: no active search query | ✅ covered | Highlighting mechanism does not run at all when `searchQuery` is empty — every `bodyVariant` renders exactly as it does today, zero `<mark>` insertion, zero performance cost. |
 | error | E4 media: query contains characters that would be unsafe/invalid if naively regex-compiled | ✅ covered | Both the client-side (`highlightText`) and kernel-side (tree-walk) implementations use literal substring matching (indexOf-equivalent), never a regex built directly from unescaped user input — per 06-RESEARCH.md's explicit anti-pattern warning. A query with zero matches simply renders zero `<mark>` elements, never an error state. |
@@ -232,6 +238,7 @@ Probe run (ui-consideration-probe engine, 2026-08-06, researcher-classified elem
 | empty | E5 list-collection/interactive-control: stream has zero items | ✅ covered | No markers render — there is nothing to mark; the overlay's own container is simply empty when `StreamList` is in its empty/error variant. |
 | loading | E5 list-collection/interactive-control: stream still loading (skeleton state) | ➖ dismissed | No marker overlay renders during the skeleton-row loading state — consistent with the overlay depending entirely on already-fetched `StreamItem.timestamp_unix` data. |
 | populated | E5 list-collection/interactive-control: stream with items spanning multiple dates | ✅ covered | One marker per date boundary (or thinned per the adaptive granularity rule) — see Date Marker Overlay section. |
+| partial | E5 list-collection/interactive-control | ➖ dismissed | Markers derive synchronously from the fully-fetched in-memory stream items — no partial-data state (loading resolved above). |
 | overflow | E5 list-collection/interactive-control: dense multi-year history (many distinct dates) | ✅ covered | Adaptive thinning (day → week → month) keeps markers ≥24px apart — the explicit resolution for this row's own scale concern, mirroring E1's overflow resolution for the same "don't let a list of N grow unbounded" shape. |
 | zero-one-many | E5 list-collection/interactive-control: stream spanning exactly one calendar date vs many | ✅ covered | A single-date stream renders zero markers (no navigational aid needed for a one-day span) — many dates render the full adaptive-marker treatment. |
 | long-text | E5 list-collection/interactive-control: date tooltip label | ➖ dismissed | `formatItemDate`'s fixed short format (e.g. "6 Aug 2026") is bounded by construction — no truncation handling needed. |
@@ -250,11 +257,11 @@ No third-party registries declared for Phase 6. Registry vetting gate not trigge
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 2026-08-06 (6/6 dimensions, no blocking issues)
