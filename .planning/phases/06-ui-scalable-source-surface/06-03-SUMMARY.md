@@ -149,3 +149,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-ui-scalable-source-surface*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+All 7 declared files (3 created, 4 modified) confirmed present on disk; all 4 commit hashes (73950de, 899504f, 31998ce, cd56c73) confirmed present in git history.
