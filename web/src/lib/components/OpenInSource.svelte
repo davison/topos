@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+	import AppWindow from '@lucide/svelte/icons/app-window';
+	import { fidelityAffordance, formatFidelity } from '$lib/format';
 	import type { Link } from '$lib/api';
 
 	// displayName parameterizes the button label (RESEARCH.md Pitfall 3,
@@ -11,14 +14,11 @@
 	// instance display name and passes it straight through.
 	let { link, displayName }: { link: Link; displayName: string } = $props();
 
-	// Fixed label per enum value (never populated from item/source
-	// content) — fidelity is a signal, not stream-ordering input
-	// (PLUG-03/ordering).
-	const fidelityLabel: Record<string, string> = {
-		exact: 'exact',
-		anchored: 'anchored',
-		'conversation-only': 'conversation-only'
-	};
+	// The two-class icon/verb/title split (UI-08) — see fidelityAffordance's
+	// (format.ts) own doc comment for why this stays a two-class split
+	// alongside the Badge below, which keeps the raw three-value enum for
+	// the power-user detail.
+	let affordance = $derived(fidelityAffordance(link.fidelity, displayName));
 </script>
 
 <div class="flex items-center gap-2">
@@ -27,9 +27,14 @@
 		target="_blank"
 		rel="noopener noreferrer"
 		class="min-h-11 max-w-64"
-		title={`Open in ${displayName}`}
+		title={affordance.title}
 	>
-		<span class="truncate">Open in {displayName}</span>
+		{#if affordance.windowOnly}
+			<AppWindow class="size-4 shrink-0" />
+		{:else}
+			<ArrowUpRight class="size-4 shrink-0" />
+		{/if}
+		<span class="truncate">{affordance.label}</span>
 	</Button>
-	<Badge variant="secondary">{fidelityLabel[link.fidelity] ?? link.fidelity}</Badge>
+	<Badge variant="secondary">{formatFidelity(link.fidelity)}</Badge>
 </div>

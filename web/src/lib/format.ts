@@ -39,6 +39,43 @@ export function formatFidelity(fidelity: string): string {
 	return FIDELITY_LABELS[fidelity] ?? fidelity;
 }
 
+// --- Deep-link fidelity affordance (UI-08) ---
+
+export interface FidelityAffordance {
+	windowOnly: boolean;
+	label: string;
+	title: string;
+}
+
+/**
+ * Maps a `Link.fidelity` value plus the item's resolved source display name
+ * to the open-affordance's icon class, verb and title (04-UAT follow-up,
+ * UI-08). This is a deliberate TWO-class split — `windowOnly` is true only
+ * for the literal string `conversation-only`; every other value, including
+ * an unrecognised one, produces the navigating treatment — layered
+ * alongside `formatFidelity` above, which stays a three-value, power-user
+ * badge. Defaulting an unfamiliar value to the navigating treatment is
+ * deliberate: an unfamiliar enum value degrades to the commoner, less
+ * alarming affordance rather than throwing or rendering blank, the same
+ * defensive posture `formatFidelity`'s own raw-value fallback already
+ * takes for the badge. Both copy strings are frozen from the UI-SPEC's
+ * Copywriting Contract — do not paraphrase them.
+ */
+export function fidelityAffordance(fidelity: string, displayName: string): FidelityAffordance {
+	if (fidelity === 'conversation-only') {
+		return {
+			windowOnly: true,
+			label: `Show in ${displayName}`,
+			title: `Raise ${displayName} — opens the app/conversation, not this exact message`
+		};
+	}
+	return {
+		windowOnly: false,
+		label: `Open in ${displayName}`,
+		title: `Open in ${displayName}`
+	};
+}
+
 // --- Health chips (D-08) ---
 
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
