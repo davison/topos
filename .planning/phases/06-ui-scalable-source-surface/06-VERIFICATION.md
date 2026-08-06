@@ -138,3 +138,7 @@ What remains is exactly what remained after the prior verification for the phase
 
 _Verified: 2026-08-06T22:26:20Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Acknowledged Gaps
+
+- `api-coverage.verify-pre` gate waived by user (2026-08-06): detection signals `{integration, api}` trace to Phase 6's own kernel HTTP API (`docs/api.md`, `kernel/httpapi/*`) — UI work against the project's internal API, not an external-API integration. No COVERAGE.md required for this phase.
