@@ -30,27 +30,25 @@ class FakeResizeObserver implements ResizeObserverLike {
 	}
 }
 
+// `state` is a single mutable object (not individually destructured
+// getters) so callers can destructure `{ factory, instances, state }`
+// once, up front, and still observe live values afterward — destructuring
+// a getter's return value instead would freeze it at call time, before
+// observeResize ever runs.
 function makeFactory() {
 	const instances: FakeResizeObserver[] = [];
-	let callCount = 0;
-	let capturedCallback: (() => void) | undefined;
+	const state: { callCount: number; callback: (() => void) | undefined } = {
+		callCount: 0,
+		callback: undefined
+	};
 	const factory: CreateResizeObserver = (onResize) => {
-		callCount++;
-		capturedCallback = onResize;
+		state.callCount++;
+		state.callback = onResize;
 		const instance = new FakeResizeObserver();
 		instances.push(instance);
 		return instance;
 	};
-	return {
-		factory,
-		instances,
-		get callCount() {
-			return callCount;
-		},
-		get callback() {
-			return capturedCallback;
-		}
-	};
+	return { factory, instances, state };
 }
 
 // Nothing in the helper dereferences a target — it only calls .observe()
@@ -66,11 +64,11 @@ describe('observeResize', () => {
 		const b = makeElement();
 		const c = makeElement();
 		const d = makeElement();
-		const { factory, instances, callCount } = makeFactory();
+		const { factory, instances, state } = makeFactory();
 
 		observeResize([a, b, c, d], () => {}, factory);
 
-		expect(callCount, 'expected the factory to be called exactly once').toBe(1);
+		expect(state.callCount, 'expected the factory to be called exactly once').toBe(1);
 		expect(
 			instances[0].observed,
 			'expected all four bound targets to be observed, in the order given'
@@ -91,12 +89,12 @@ describe('observeResize', () => {
 	});
 
 	it('constructs no observer at all when every target is still unbound', () => {
-		const { factory, callCount } = makeFactory();
+		const { factory, state } = makeFactory();
 
 		const teardown = observeResize([undefined, null, undefined, null], () => {}, factory);
 
 		expect(
-			callCount,
+			state.callCount,
 			'expected no observer to be constructed when every target is still unbound — this is the state on first mount, while the sources request is still in flight, and constructing an observer with nothing to watch would be the dead wiring this plan removes'
 		).toBe(0);
 		expect(
@@ -107,7 +105,7 @@ describe('observeResize', () => {
 
 	it('routes the observer callback through to the supplied resize handler', () => {
 		let resizeCount = 0;
-		const { factory, callback } = makeFactory();
+		const { factory, state } = makeFactory();
 
 		observeResize(
 			[makeElement()],
@@ -118,10 +116,10 @@ describe('observeResize', () => {
 		);
 
 		expect(
-			callback,
+			state.callback,
 			'expected the factory to have captured the callback it was handed'
 		).toBeDefined();
-		callback!();
+		state.callback!();
 		expect(
 			resizeCount,
 			'expected invoking the factory-captured callback to call the supplied resize handler — the path a real layout change travels'

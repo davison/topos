@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { observeResize } from '$lib/resize-observer';
 	import SourceChip from './SourceChip.svelte';
 	import SearchBox from './SearchBox.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -57,7 +57,7 @@
 
 	// --- Overflow measurement (UI-07 "Scaling to 10+ instances") ---
 	//
-	// Three DOM regions cooperate:
+	// Four DOM regions cooperate:
 	//  - `rowEl`: the visible, clipped row — its clientWidth is the
 	//    available width.
 	//  - `measureEl`: an off-screen (position:absolute, invisible), unclipped
@@ -73,13 +73,19 @@
 	//    itself, needed because the real trigger only renders once overflow
 	//    is already known — a chicken-and-egg case a hidden clone resolves.
 	//
-	// A ResizeObserver watches `rowEl` and `measureEl` (a display_name
-	// change or font load can change a chip's natural width without the
-	// row itself resizing) and `trailingEl`. The callback only writes state
-	// when a measured value actually changed, and never schedules a
-	// synchronous re-measure from inside itself — that combination is what
-	// keeps this bounded rather than a resize-then-measure feedback loop
-	// (T-06-10).
+	// Attachment (see the $effect below, wired through
+	// web/src/lib/resize-observer.ts) is driven by the four element
+	// references themselves: reading them synchronously inside the effect
+	// body registers them as its dependencies, so the attachment (re)runs
+	// whenever a ref binds or rebinds — including the very first render,
+	// when every ref is still unbound (the sources request is still in
+	// flight and the row's render gate is false) and nothing is
+	// constructed to watch. That is what keeps the row's overflow
+	// computation correct for the lifetime of the component, not only at
+	// initial load. The measurement callback itself only writes a value
+	// when it actually changed, and never schedules a synchronous
+	// re-measure from inside itself — that combination is what keeps this
+	// bounded rather than a resize-then-measure feedback loop (T-06-10).
 	let rowEl: HTMLDivElement | undefined = $state();
 	let measureEl: HTMLDivElement | undefined = $state();
 	let trailingEl: HTMLDivElement | undefined = $state();
@@ -115,14 +121,16 @@
 		}
 	}
 
-	onMount(() => {
-		measure();
-		const observer = new ResizeObserver(() => measure());
-		if (rowEl) observer.observe(rowEl);
-		if (measureEl) observer.observe(measureEl);
-		if (trailingEl) observer.observe(trailingEl);
-		return () => observer.disconnect();
-	});
+	// Reading all four refs here — not just rowEl/measureEl/trailingEl —
+	// is what pins IN-01 closed: the overflow-trigger measurement clone is
+	// now observed directly, rather than only refreshed incidentally when
+	// the sources-keyed effect below happens to fire. No explicit initial
+	// measure is needed: observing an element runs its callback once
+	// immediately, and the sources-keyed effect already schedules a
+	// deferred measure on the same mount/update transition.
+	$effect(() =>
+		observeResize([rowEl, measureEl, trailingEl, overflowTriggerMeasureEl], measure)
+	);
 
 	// Re-measure whenever the source list itself changes shape (a
 	// different instance count, or a renamed display_name that changes a
