@@ -1,23 +1,22 @@
 <script lang="ts">
-	import SourceHealthChip from './SourceHealthChip.svelte';
-	import SourceFilterChips from './SourceFilterChips.svelte';
+	import SourceChip from './SourceChip.svelte';
 	import SearchBox from './SearchBox.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { shouldShowSourceRows } from '$lib/format';
 	import type { SourceStatus } from '$lib/api';
 
 	// The webspace title renders synchronously from the route param, same
-	// as Phase 1. The health-chip and source-filter rows below it DO have
-	// their own async load/error state (GET /api/sources, owned by the
-	// caller) — unlike Phase 1's title-only header, a non-critical sources
-	// failure must never block or blank the primary stream view, so both
-	// rows render only once sourcesState is 'ready' and at least one
-	// source is configured (shouldShowSourceRows, 02-UI-SPEC.md E1/E5).
+	// as Phase 1. The chip row below it DOES have its own async load/error
+	// state (GET /api/sources, owned by the caller) — unlike Phase 1's
+	// title-only header, a non-critical sources failure must never block
+	// or blank the primary stream view, so the row renders only once
+	// sourcesState is 'ready' and at least one source is configured
+	// (shouldShowSourceRows, 02-UI-SPEC.md E1/E5, unchanged this phase).
 	let {
 		webspace,
 		sources,
 		sourcesState,
-		selectedSource,
+		selectedSources,
 		onfilter,
 		onrefresh,
 		onrefreshall,
@@ -27,8 +26,8 @@
 		webspace: string;
 		sources: SourceStatus[];
 		sourcesState: 'loading' | 'error' | 'ready';
-		selectedSource: string | null;
-		onfilter: (source: string | null) => void;
+		selectedSources: Set<string>;
+		onfilter: (name: string) => void;
 		onrefresh: (name: string) => void;
 		onrefreshall: () => void;
 		searchQuery: string;
@@ -50,21 +49,34 @@
 	</h1>
 
 	{#if showSourceRows}
-		<div class="mt-4 flex flex-wrap items-center gap-2">
+		<!--
+		  D-01: one merged chip per configured instance replaces Phase 2's
+		  two rows (health + filter). Chips render in config-declared
+		  instance order — never sorted or reordered by health state, so a
+		  chip's position stays a stable target across health changes.
+		  `flex-nowrap` keeps this a single line at any instance count; Task
+		  2 adds the measured overflow popover that keeps it that way past
+		  the point every chip's natural width no longer fits.
+		-->
+		<div class="mt-4 flex flex-nowrap items-center gap-2 overflow-hidden">
 			{#each sources as source (source.name)}
-				<SourceHealthChip {source} {onrefresh} />
+				<SourceChip
+					{source}
+					selected={selectedSources.has(source.name)}
+					onfilter={(name) => onfilter(name)}
+					{onrefresh}
+				/>
 			{/each}
-			<Button variant="outline" size="sm" onclick={onrefreshall}>Refresh all</Button>
-		</div>
-		<div class="mt-3">
-			<SourceFilterChips {sources} {selectedSource} {onfilter} />
+			<Button variant="outline" size="sm" class="shrink-0" onclick={onrefreshall}
+				>Refresh all</Button
+			>
 		</div>
 	{/if}
 
 	<!--
-	  The search box renders whenever the webspace does — unlike the two
-	  rows above, it is NOT gated behind shouldShowSourceRows: searching
-	  the local index doesn't depend on any source being reachable, so a
+	  The search box renders whenever the webspace does — unlike the row
+	  above, it is NOT gated behind shouldShowSourceRows: searching the
+	  local index doesn't depend on any source being reachable, so a
 	  sourceless webspace or a sources-request failure never hides it.
 	-->
 	<div class="mt-3">

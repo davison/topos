@@ -105,27 +105,63 @@ export function shouldShowSourceRows(
 	return sourcesState === 'ready' && sources.length > 0;
 }
 
-// --- Source filter (D-09 / A-UI-02) ---
+// --- Source filter (D-02 multi-select, superseding Phase 2's D-09 single-select) ---
 
 /**
  * Resolves a requested source-instance filter (typically the URL's
- * `source` query parameter, carrying a source INSTANCE id — D-08) against
- * the configured sources. A value that names no configured instance — an
- * unrecognised or stale bookmark — degrades to `null` (no filter, i.e.
- * "All") rather than an empty list or an error (T-02-17). Load-time
- * uniqueness (D-09) guarantees every configured instance's `name` is
- * distinct, so this resolution is unambiguous even with two instances
- * sharing one plugin kind.
+ * `sources` query parameter, a comma-joined list of source INSTANCE ids —
+ * D-08) against the configured sources. Splits on commas, trims each
+ * member, drops empties, and keeps only members naming a configured
+ * instance by `name`. Degrades PER MEMBER (06-RESEARCH.md Pitfall 4, the
+ * multi-value form of T-02-17's single-value degrade rule): a value
+ * naming one configured and one since-removed instance yields a
+ * one-member set holding only the configured name — never an empty set
+ * and never an error just because one member is stale. A null, empty or
+ * whitespace-only input yields an empty set, meaning "no filter, show
+ * everything." Load-time uniqueness (D-09) guarantees every configured
+ * instance's `name` is distinct, so membership testing is unambiguous
+ * even with two instances sharing one plugin kind.
  */
-export function resolveSourceFilter(requested: string | null, sources: SourceStatus[]): string | null {
-	if (!requested) return null;
-	return sources.some((s) => s.name === requested) ? requested : null;
+export function resolveSourceFilters(requested: string | null, sources: SourceStatus[]): Set<string> {
+	const result = new Set<string>();
+	if (!requested) return result;
+	const known = new Set(sources.map((s) => s.name));
+	for (const raw of requested.split(',')) {
+		const member = raw.trim();
+		if (member === '') continue;
+		if (known.has(member)) result.add(member);
+	}
+	return result;
 }
 
-/** Narrows a stream's items to one source INSTANCE id; `null` returns every item, unchanged in order. */
-export function filterItemsBySource(items: StreamItem[], source: string | null): StreamItem[] {
-	if (source === null) return items;
-	return items.filter((item) => item.source === source);
+/**
+ * Returns a new set with `name` added when it is absent from `current`
+ * and removed when it is present — `current` itself is never mutated.
+ */
+export function toggleSourceFilter(current: Set<string>, name: string): Set<string> {
+	const next = new Set(current);
+	if (next.has(name)) {
+		next.delete(name);
+	} else {
+		next.add(name);
+	}
+	return next;
+}
+
+/**
+ * Serializes a selection set back into the `sources` query value: members
+ * joined by commas in the caller's iteration order. An empty set
+ * serializes to the empty string (the caller deletes the query key
+ * entirely for that case, per D-02's "all-off = show everything" rule).
+ */
+export function serializeSourceFilters(selected: Set<string>): string {
+	return [...selected].join(',');
+}
+
+/** Narrows a stream's items to the selected source INSTANCE ids; an empty set returns every item, unchanged in order. */
+export function filterItemsBySource(items: StreamItem[], selected: Set<string>): StreamItem[] {
+	if (selected.size === 0) return items;
+	return items.filter((item) => selected.has(item.source));
 }
 
 export type StreamVariant = 'sync-failed' | 'empty' | 'empty-filtered' | 'populated';
@@ -137,12 +173,13 @@ export type StreamVariant = 'sync-failed' | 'empty' | 'empty-filtered' | 'popula
  * item count, never the filtered subset, so a filter can never mask a
  * sync failure (T-02-16, PLAN.md prohibitions). Only once that's ruled
  * out does an empty filtered view get its own distinct copy from an
- * empty unfiltered one.
+ * empty unfiltered one — keyed on whether the selection set is empty,
+ * rather than whether a single value is null.
  */
-export function streamVariant(response: StreamResponse, selectedSource: string | null): StreamVariant {
+export function streamVariant(response: StreamResponse, selected: Set<string>): StreamVariant {
 	if (response.sync.status === 'error' && response.items.length === 0) return 'sync-failed';
-	if (filterItemsBySource(response.items, selectedSource).length === 0) {
-		return selectedSource === null ? 'empty' : 'empty-filtered';
+	if (filterItemsBySource(response.items, selected).length === 0) {
+		return selected.size === 0 ? 'empty' : 'empty-filtered';
 	}
 	return 'populated';
 }

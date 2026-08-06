@@ -11,7 +11,7 @@
 		type SourceStatus,
 		type SearchResult
 	} from '$lib/api';
-	import { resolveSourceFilter, staleSources } from '$lib/format';
+	import { resolveSourceFilters, toggleSourceFilter, serializeSourceFilters, staleSources } from '$lib/format';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
@@ -62,12 +62,15 @@
 	let staleInstances = $derived(staleSources(sources));
 
 	// Filter selection lives in the URL query so a reload or a shared
-	// deep link restores the same view (D-09/A-UI-02); an unrecognised
-	// value degrades to no filter rather than a blank list (T-02-17). The
-	// `?source=` query-parameter name is unchanged from Phase 2 — only the
-	// value it carries is now a source INSTANCE id rather than a plugin
-	// kind.
-	let selectedSource = $derived(resolveSourceFilter(page.url.searchParams.get('source'), sources));
+	// deep link restores the same multi-source view (D-02, superseding
+	// Phase 2's single-select D-09); an unrecognised member degrades that
+	// member alone rather than the whole selection (T-02-17's multi-value
+	// form, 06-RESEARCH.md Pitfall 4). `?sources=` (plural) replaces
+	// Phase 2's `?source=` outright — no backward-compatible read of the
+	// old singular key (06-02-PLAN.md decision).
+	let selectedSources = $derived(
+		resolveSourceFilters(page.url.searchParams.get('sources'), sources)
+	);
 
 	async function load() {
 		loadState = 'loading';
@@ -133,17 +136,26 @@
 		}
 	}
 
-	function setFilter(source: string | null) {
+	function navigateFilters(next: Set<string>) {
 		const url = new URL(page.url);
-		if (source) {
-			url.searchParams.set('source', source);
+		const serialized = serializeSourceFilters(next);
+		if (serialized) {
+			url.searchParams.set('sources', serialized);
 		} else {
-			url.searchParams.delete('source');
+			url.searchParams.delete('sources');
 		}
-		// replaceState (not a new history entry) so toggling the filter
+		// replaceState (not a new history entry) so toggling a chip
 		// repeatedly doesn't fill the back-button history; keepFocus/
 		// noScroll so selecting a chip never steals focus or scrolls.
 		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+	}
+
+	function toggleFilter(name: string) {
+		navigateFilters(toggleSourceFilter(selectedSources, name));
+	}
+
+	function clearFilters() {
+		navigateFilters(new Set());
 	}
 
 	async function handleSearch(query: string) {
@@ -193,8 +205,8 @@
 		{webspace}
 		{sources}
 		{sourcesState}
-		{selectedSource}
-		onfilter={setFilter}
+		{selectedSources}
+		onfilter={toggleFilter}
 		onrefresh={handleRefreshSource}
 		onrefreshall={handleRefreshAll}
 		{searchQuery}
@@ -244,7 +256,7 @@
 					onselect={(id) => (selectedId = id)}
 					onretry={load}
 					staleSources={staleInstances}
-					{selectedSource}
+					{selectedSources}
 					{sourcesByInstance}
 				/>
 			{/if}

@@ -148,7 +148,7 @@ describe('stale markers never reorder the stream', () => {
 			makeItem({ id: 'b', source: 'silverbullet' }),
 			makeItem({ id: 'd', source: 'silverbullet' })
 		];
-		const filtered = filterItemsBySource(items, 'silverbullet');
+		const filtered = filterItemsBySource(items, new Set(['silverbullet']));
 		expect(filtered.map((i) => i.id)).toEqual(['b', 'd']);
 		expect(filtered.every((i) => stale.has(i.source))).toBe(true);
 	});

@@ -4,7 +4,9 @@ import {
 	formatRelativeTime,
 	syncingSources,
 	shouldShowSourceRows,
-	resolveSourceFilter,
+	resolveSourceFilters,
+	toggleSourceFilter,
+	serializeSourceFilters,
 	filterItemsBySource,
 	streamVariant
 } from '$lib/format';
@@ -123,22 +125,47 @@ describe('shouldShowSourceRows', () => {
 	});
 });
 
-describe('resolveSourceFilter', () => {
+describe('resolveSourceFilters', () => {
 	const sources = [
 		makeSource({ name: 'paperless' }),
 		makeSource({ name: 'silverbullet', source_type: 'silverbullet', display_name: 'SilverBullet' })
 	];
 
-	it('resolves null (no query param) to no filter', () => {
-		expect(resolveSourceFilter(null, sources)).toBeNull();
+	it('resolves null (no query param) to the empty set (no filter)', () => {
+		expect(resolveSourceFilters(null, sources)).toEqual(new Set());
 	});
 
-	it('resolves a configured instance id to itself', () => {
-		expect(resolveSourceFilter('silverbullet', sources)).toBe('silverbullet');
+	it('resolves an empty string to the empty set', () => {
+		expect(resolveSourceFilters('', sources)).toEqual(new Set());
 	});
 
-	it('degrades an unrecognised value to no filter rather than an empty/error state', () => {
-		expect(resolveSourceFilter('not-a-real-source', sources)).toBeNull();
+	it('resolves a single configured instance id to a one-member set', () => {
+		expect(resolveSourceFilters('silverbullet', sources)).toEqual(new Set(['silverbullet']));
+	});
+
+	it('resolves a comma-joined list of configured instance ids to their set', () => {
+		expect(resolveSourceFilters('paperless,silverbullet', sources)).toEqual(
+			new Set(['paperless', 'silverbullet'])
+		);
+	});
+
+	it('degrades an unrecognised value to the empty set rather than an error state', () => {
+		expect(resolveSourceFilters('not-a-real-source', sources)).toEqual(new Set());
+	});
+
+	// 06-RESEARCH.md Pitfall 4 / T-02-17's multi-value form: a partially
+	// stale bookmark narrows to the still-valid member(s), never an error
+	// and never the empty set just because one member is stale.
+	it('degrades a partially-stale value per member, keeping the configured member', () => {
+		expect(resolveSourceFilters('paperless,not-a-real-source', sources)).toEqual(
+			new Set(['paperless'])
+		);
+	});
+
+	it('tolerates surrounding whitespace and extra commas around members', () => {
+		expect(resolveSourceFilters(' paperless , ,silverbullet ,', sources)).toEqual(
+			new Set(['paperless', 'silverbullet'])
+		);
 	});
 
 	// D-08: two instances of one plugin type must resolve independently —
@@ -148,8 +175,53 @@ describe('resolveSourceFilter', () => {
 			makeSource({ name: 'home-email', source_type: 'proton' }),
 			makeSource({ name: 'work-email', source_type: 'proton' })
 		];
-		expect(resolveSourceFilter('home-email', twoInstances)).toBe('home-email');
-		expect(resolveSourceFilter('proton', twoInstances)).toBeNull();
+		expect(resolveSourceFilters('home-email', twoInstances)).toEqual(new Set(['home-email']));
+		expect(resolveSourceFilters('proton', twoInstances)).toEqual(new Set());
+	});
+});
+
+describe('toggleSourceFilter', () => {
+	it('adds a name absent from the set', () => {
+		const current = new Set(['paperless']);
+		expect(toggleSourceFilter(current, 'silverbullet')).toEqual(
+			new Set(['paperless', 'silverbullet'])
+		);
+	});
+
+	it('removes a name present in the set', () => {
+		const current = new Set(['paperless', 'silverbullet']);
+		expect(toggleSourceFilter(current, 'paperless')).toEqual(new Set(['silverbullet']));
+	});
+
+	it('toggling twice returns a set equal to the original', () => {
+		const original = new Set(['paperless']);
+		const twice = toggleSourceFilter(toggleSourceFilter(original, 'silverbullet'), 'silverbullet');
+		expect(twice).toEqual(original);
+	});
+
+	it('never mutates the input set', () => {
+		const original = new Set(['paperless']);
+		toggleSourceFilter(original, 'silverbullet');
+		expect(original).toEqual(new Set(['paperless']));
+	});
+});
+
+describe('serializeSourceFilters', () => {
+	it('joins members with commas', () => {
+		expect(serializeSourceFilters(new Set(['paperless', 'silverbullet']))).toBe(
+			'paperless,silverbullet'
+		);
+	});
+
+	it('serializes an empty set to the empty string', () => {
+		expect(serializeSourceFilters(new Set())).toBe('');
+	});
+
+	it('round-trips through resolveSourceFilters to an equal set', () => {
+		const sources = [makeSource({ name: 'paperless' }), makeSource({ name: 'silverbullet' })];
+		const original = new Set(['paperless', 'silverbullet']);
+		const resolved = resolveSourceFilters(serializeSourceFilters(original), sources);
+		expect(resolved).toEqual(original);
 	});
 });
 
@@ -160,12 +232,21 @@ describe('filterItemsBySource', () => {
 		makeItem({ id: 'c', source: 'paperless' })
 	];
 
-	it('returns every item, unchanged in order, for null (All)', () => {
-		expect(filterItemsBySource(items, null).map((i) => i.id)).toEqual(['a', 'b', 'c']);
+	it('returns every item, unchanged in order, for the empty set (All)', () => {
+		expect(filterItemsBySource(items, new Set()).map((i) => i.id)).toEqual(['a', 'b', 'c']);
 	});
 
 	it('narrows to exactly the matching instance id, preserving order', () => {
-		expect(filterItemsBySource(items, 'paperless').map((i) => i.id)).toEqual(['a', 'c']);
+		expect(filterItemsBySource(items, new Set(['paperless'])).map((i) => i.id)).toEqual([
+			'a',
+			'c'
+		]);
+	});
+
+	it('narrows to exactly the matching members of a two-member set, preserving order', () => {
+		expect(
+			filterItemsBySource(items, new Set(['paperless', 'silverbullet'])).map((i) => i.id)
+		).toEqual(['a', 'b', 'c']);
 	});
 
 	// D-08: two items sharing one source_type but differing in source
@@ -175,31 +256,31 @@ describe('filterItemsBySource', () => {
 			makeItem({ id: 'home1', source: 'home-email', source_type: 'proton' }),
 			makeItem({ id: 'work1', source: 'work-email', source_type: 'proton' })
 		];
-		expect(filterItemsBySource(twoInstanceItems, 'home-email').map((i) => i.id)).toEqual([
-			'home1'
-		]);
+		expect(
+			filterItemsBySource(twoInstanceItems, new Set(['home-email'])).map((i) => i.id)
+		).toEqual(['home1']);
 	});
 });
 
 describe('streamVariant', () => {
 	it('chooses sync-failed when the aggregate status is error and items are empty, unfiltered', () => {
 		const response = makeResponse({ sync: { status: 'error', finished_unix: 1, error: 'boom' }, items: [] });
-		expect(streamVariant(response, null)).toBe('sync-failed');
+		expect(streamVariant(response, new Set())).toBe('sync-failed');
 	});
 
 	it('chooses sync-failed even while a filter is active', () => {
 		const response = makeResponse({ sync: { status: 'error', finished_unix: 1, error: 'boom' }, items: [] });
-		expect(streamVariant(response, 'silverbullet')).toBe('sync-failed');
+		expect(streamVariant(response, new Set(['silverbullet']))).toBe('sync-failed');
 	});
 
 	it('chooses sync-failed over empty even when the response items array happens to be empty for other reasons', () => {
 		const response = makeResponse({ sync: { status: 'error', finished_unix: 1, error: 'boom' }, items: [] });
-		expect(streamVariant(response, null)).not.toBe('empty');
+		expect(streamVariant(response, new Set())).not.toBe('empty');
 	});
 
 	it('chooses empty (unfiltered) when sync ok and zero items', () => {
 		const response = makeResponse({ sync: { status: 'ok', finished_unix: 1, error: '' }, items: [] });
-		expect(streamVariant(response, null)).toBe('empty');
+		expect(streamVariant(response, new Set())).toBe('empty');
 	});
 
 	it('chooses empty-filtered when sync ok, items exist, but none match the filter', () => {
@@ -207,14 +288,22 @@ describe('streamVariant', () => {
 			sync: { status: 'ok', finished_unix: 1, error: '' },
 			items: [makeItem({ source: 'paperless' })]
 		});
-		expect(streamVariant(response, 'silverbullet')).toBe('empty-filtered');
+		expect(streamVariant(response, new Set(['silverbullet']))).toBe('empty-filtered');
 	});
 
-	it('chooses populated when at least one item matches', () => {
+	it('chooses populated when at least one item matches an empty (unfiltered) selection', () => {
 		const response = makeResponse({
 			sync: { status: 'ok', finished_unix: 1, error: '' },
 			items: [makeItem({ source: 'paperless' })]
 		});
-		expect(streamVariant(response, null)).toBe('populated');
+		expect(streamVariant(response, new Set())).toBe('populated');
+	});
+
+	it('chooses populated when at least one item matches a populated selection', () => {
+		const response = makeResponse({
+			sync: { status: 'ok', finished_unix: 1, error: '' },
+			items: [makeItem({ source: 'paperless' })]
+		});
+		expect(streamVariant(response, new Set(['paperless']))).toBe('populated');
 	});
 });

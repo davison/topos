@@ -13,7 +13,7 @@
 		onselect,
 		onretry,
 		staleSources,
-		selectedSource,
+		selectedSources,
 		sourcesByInstance
 	}: {
 		state: 'loading' | 'error' | 'ready';
@@ -22,7 +22,7 @@
 		onselect: (id: string) => void;
 		onretry: () => void;
 		staleSources: Set<string>;
-		selectedSource: string | null;
+		selectedSources: Set<string>;
 		sourcesByInstance: Map<string, SourceStatus>;
 	} = $props();
 
@@ -33,11 +33,19 @@
 	// never the filtered subset below, so a filter can never mask a sync
 	// failure. This ordering is the entire point of this component (see
 	// PLAN.md prohibitions).
-	let variant = $derived(response ? streamVariant(response, selectedSource) : null);
-	let visibleItems = $derived(response ? filterItemsBySource(response.items, selectedSource) : []);
-	let filteredDisplayName = $derived(
-		selectedSource ? (sourcesByInstance.get(selectedSource)?.display_name ?? selectedSource) : null
+	let variant = $derived(response ? streamVariant(response, selectedSources) : null);
+	let visibleItems = $derived(
+		response ? filterItemsBySource(response.items, selectedSources) : []
 	);
+	// The filtered-empty copy names the single filtered source's display
+	// name only when exactly one member is selected; a multi-select filter
+	// (or no filter at all) falls back to the unfiltered empty-state copy
+	// path, which takes no name (StreamEmpty.svelte).
+	let filteredDisplayName = $derived.by(() => {
+		if (selectedSources.size !== 1) return null;
+		const [name] = selectedSources;
+		return sourcesByInstance.get(name)?.display_name ?? name;
+	});
 </script>
 
 {#if state === 'loading'}
