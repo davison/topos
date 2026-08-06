@@ -222,7 +222,7 @@ Notes:
   3. Source identity throughout the kernel — index rows, sync runs, agent grants, HTTP API, and UI display — is the named instance, never the bare plugin type; existing webspace data migrates or re-syncs cleanly with no orphaned rows
   4. The contract change is published: `docs/plugin-contract.md`, `proto/webspaces/v1/`, `config.example.toml`, and the mock plugin all reflect per-instance match config, and the standing contract tests (read-only AST, RPC allowlist, egress pinning) still pass
 
-**Plans**: 5 plans
+**Plans**: 2/5 plans executed
 Plans:
 **Wave 1**
 
@@ -230,7 +230,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — Typed match contract on the wire: plugin-declared vocabulary, typed MatchRequest, five plugins migrated
+- [x] 05-02-PLAN.md — Typed match contract on the wire: plugin-declared vocabulary, typed MatchRequest, five plugins migrated
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -326,7 +326,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
-| 5. Source Instances & Per-Type Matching | 1/5 | In Progress|  |
+| 5. Source Instances & Per-Type Matching | 2/5 | In Progress|  |
 | 6. UI — Scalable Source Surface | 0/TBD | Not started | - |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
