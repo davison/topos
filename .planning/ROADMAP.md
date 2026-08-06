@@ -284,7 +284,7 @@ Plans:
 
 **Wave 5** *(UAT gap closure — 06-UAT.md G-06-1)*
 
-- [ ] 06-05-PLAN.md — One match-emphasis vocabulary across every search surface, extended to the item title (UI-09, closes G-06-1)
+- [x] 06-05-PLAN.md — One match-emphasis vocabulary across every search surface, extended to the item title (UI-09, closes G-06-1)
 
 **Wave 6** *(UAT gap closure — blocked on Wave 5: shared spec/stylesheet files)*
 
@@ -356,7 +356,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 4/4 | Complete   | 2026-08-06 |
+| 6. UI — Scalable Source Surface | 5/7 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 

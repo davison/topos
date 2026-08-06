@@ -192,3 +192,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-ui-scalable-source-surface*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+All 9 claimed files found on disk; all 4 claimed commit hashes (`65407cc`, `d2a998c`, `8cdd7de`, `cb5e9a0`) found in git history.
