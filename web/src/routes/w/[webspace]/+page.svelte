@@ -258,6 +258,7 @@
 						selectedItem.source_display_name ??
 						selectedItem.source}
 					sourceReachable={sourcesByInstance.get(selectedItem.source)?.reachable ?? true}
+					{searchQuery}
 				/>
 			</div>
 		{/if}

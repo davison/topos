@@ -18,8 +18,14 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
@@ -153,6 +159,12 @@ html, body {
 }
 a { color: #60a5fa; text-decoration: underline; }
 a:hover { color: #93c5fd; }
+/* UI-09 search-term highlighting: a bare, attribute-free <mark> element
+   (highlightTextNodes below never sets a class or any attribute on it, so
+   this rule alone is sufficient — no sanitizer-policy entry is needed).
+   Both hex values are already-declared theme tokens (web/src/app.css's
+   --warning and --background) — no new colour is introduced here. */
+mark { background: #fbbf24; color: #020617; border-radius: 2px; padding: 0 1px; }
 `
 
 // renditionProseDelta is shared by the email and markdown content shapes —
@@ -202,6 +214,14 @@ const renditionMarkdownImageDelta = `img { max-width: 100%; }`
 // theme tokens already declared above are reused: no new colour value and
 // no additional external reference of any kind is introduced by this
 // block.
+//
+// UI-09: this delta's own `body, body *` neutralizer matches the base
+// stylesheet's `mark` rule too (mark is a descendant of body) and would
+// otherwise silently swallow the highlight for the email shape. The
+// `body mark, body mark *` rule below is more specific than the
+// neutralizer, so it wins among priority-marked declarations without
+// depending on source order — the same pattern its sibling link/code/
+// blockquote restoring rules already use.
 const renditionEmailReadabilityDelta = `
 body, body * {
   color: #f1f5f9 !important;
@@ -210,6 +230,7 @@ body, body * {
 body a, body a * { color: #60a5fa !important; }
 body code, body pre { background-color: #1e293b !important; }
 body blockquote { color: #94a3b8 !important; }
+body mark, body mark * { background-color: #fbbf24 !important; color: #020617 !important; }
 `
 
 // renditionChatDelta is the chat content-shape's own delta — no headings/
@@ -274,6 +295,196 @@ func stylesheetForShape(shape toposv1.ContentShape) string {
 	}
 }
 
+// highlightTerms is the kernel half of UI-09's shared term-derivation rule
+// — the client half lives in web/src/lib/format.ts's own highlightTerms
+// and MUST implement the identical rule, so what the client highlights
+// never disagrees with what this function derives from the same query
+// string. It trims raw, splits on whitespace (the same strings.Fields
+// behaviour kernel/index/store.go's ftsQuery uses), lowercases every term,
+// de-duplicates, drops any term shorter than 2 runes, and caps the result
+// at the first 8 terms — the bounded-work controls for threat T-06-03.
+// Returns nil for an empty or all-dropped input.
+func highlightTerms(raw string) []string {
+	fields := strings.Fields(raw)
+	seen := make(map[string]bool, len(fields))
+	var terms []string
+	for _, f := range fields {
+		f = strings.ToLower(f)
+		if utf8.RuneCountInString(f) < 2 {
+			continue
+		}
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		terms = append(terms, f)
+		if len(terms) == 8 {
+			break
+		}
+	}
+	return terms
+}
+
+// highlightTextNodes walks roots — the top-level nodes of a parsed
+// fragment — and every descendant, wrapping each case-insensitive literal
+// match of any term in terms in a bare <mark> element (T-06-01). Mutates
+// the tree in place; never touches attribute values or tag bytes, which
+// tree mutation gives for free (no byte-level or pattern substitution over
+// the parsed markup is ever performed here).
+//
+// Descends into every element except script/style — bluemonday has already
+// stripped any <script>, and the only <style> element a rendition document
+// ever carries is the kernel's own later-injected stylesheet, added after
+// this step runs, so this guard is defensive rather than load-bearing.
+//
+// Each node's children are snapshotted before the walk visits them, so
+// replacing a matched text node's position among its siblings never
+// perturbs the walk, and the newly inserted <mark> elements are never
+// re-walked — re-walking inserted nodes is the infinite-loop failure mode
+// this snapshot avoids.
+func highlightTextNodes(roots []*html.Node, terms []string) {
+	if len(terms) == 0 {
+		return
+	}
+
+	// Longest-first (by rune count) so a longer term always wins over a
+	// shorter overlapping one at the same scan position — the
+	// deterministic tie-break this function guarantees.
+	sorted := make([]string, len(terms))
+	copy(sorted, terms)
+	sort.Slice(sorted, func(i, j int) bool {
+		return utf8.RuneCountInString(sorted[i]) > utf8.RuneCountInString(sorted[j])
+	})
+
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && (n.Data == "script" || n.Data == "style") {
+			return
+		}
+		var children []*html.Node
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			children = append(children, c)
+		}
+		for _, c := range children {
+			if c.Type == html.TextNode {
+				highlightTextNode(n, c, sorted)
+				continue
+			}
+			walk(c)
+		}
+	}
+	for _, root := range roots {
+		walk(root)
+	}
+}
+
+// highlightTextNode scans textNode's Data for terms (already sorted
+// longest-first, already lowercase) and, if any match is found, replaces
+// textNode in place among parent's children with an ordered sequence of
+// plain text.TextNodes (the unmatched spans) and bare <mark>
+// html.ElementNodes (the matched spans, each carrying a single TextNode
+// child holding the matched source substring VERBATIM — the document's
+// original casing is preserved — and no attributes and no class). A
+// bare, attribute-free element needs no sanitizer-policy entry, which is
+// why the chat-transcript class allowlist (T-05-17) is unaffected by this
+// insertion.
+//
+// Matching walks textNode's Data rune-by-rune (never by byte index) and
+// compares each candidate window against a term via unicode.ToLower per
+// rune, rather than lower-casing the whole string up front — case-folding
+// can change a string's byte length for some Unicode text, and comparing
+// rune-by-rune against already-lowercased terms sidesteps that entirely,
+// so a multi-byte rune adjacent to (or inside) a match is never split or
+// corrupted (T-06-01's multi-byte-safety requirement).
+//
+// A term matching across a text-node boundary (i.e. split across two
+// adjacent inline elements in the sanitized markup) is not detected — this
+// function only ever scans a single text node — which degrades to no
+// highlight for that occurrence rather than ever risking document
+// corruption; see the must_haves backstop row this behaviour satisfies.
+func highlightTextNode(parent *html.Node, textNode *html.Node, terms []string) {
+	runes := []rune(textNode.Data)
+	n := len(runes)
+
+	var newNodes []*html.Node
+	cursor := 0
+	matched := false
+	i := 0
+	for i < n {
+		matchLen := 0
+		for _, term := range terms {
+			termRunes := []rune(term)
+			if i+len(termRunes) > n {
+				continue
+			}
+			match := true
+			for k, tr := range termRunes {
+				if unicode.ToLower(runes[i+k]) != tr {
+					match = false
+					break
+				}
+			}
+			if match {
+				matchLen = len(termRunes)
+				break
+			}
+		}
+		if matchLen == 0 {
+			i++
+			continue
+		}
+		if i > cursor {
+			newNodes = append(newNodes, &html.Node{Type: html.TextNode, Data: string(runes[cursor:i])})
+		}
+		mark := &html.Node{Type: html.ElementNode, DataAtom: atom.Mark, Data: "mark"}
+		mark.AppendChild(&html.Node{Type: html.TextNode, Data: string(runes[i : i+matchLen])})
+		newNodes = append(newNodes, mark)
+		i += matchLen
+		cursor = i
+		matched = true
+	}
+	if !matched {
+		return
+	}
+	if cursor < n {
+		newNodes = append(newNodes, &html.Node{Type: html.TextNode, Data: string(runes[cursor:])})
+	}
+
+	for _, nn := range newNodes {
+		parent.InsertBefore(nn, textNode)
+	}
+	parent.RemoveChild(textNode)
+}
+
+// highlightSanitizedFragment parses sanitized (already-sanitized-and-
+// trusted HTML bytes) as an HTML fragment in a <body> context, mutates the
+// parsed tree via highlightTextNodes, and renders it back to bytes. The
+// parsed-then-rendered round trip is itself the guarantee that no matched
+// term is ever spliced into raw HTML: golang.org/x/net/html's own encoder
+// is what produces the output bytes, never string concatenation.
+//
+// A <body> context node (rather than html.Parse's default full-document
+// context) makes ParseFragment round-trip the input as a fragment — it
+// does not gain a nested <html>/<head>/<body> wrapper inside
+// sanitizeAndWrapRendition's own later <body> wrap step.
+func highlightSanitizedFragment(sanitized []byte, terms []string) ([]byte, error) {
+	context := &html.Node{Type: html.ElementNode, Data: "body", DataAtom: atom.Body}
+	nodes, err := html.ParseFragment(bytes.NewReader(sanitized), context)
+	if err != nil {
+		return nil, fmt.Errorf("httpapi: parsing sanitized fragment for highlighting: %w", err)
+	}
+
+	highlightTextNodes(nodes, terms)
+
+	var buf bytes.Buffer
+	for _, node := range nodes {
+		if err := html.Render(&buf, node); err != nil {
+			return nil, fmt.Errorf("httpapi: rendering highlighted fragment: %w", err)
+		}
+	}
+	return buf.Bytes(), nil
+}
+
 // sanitizeAndWrapRendition is the kernel's one sanitize/wrap/theme pipeline
 // (D-11): it looks up shape's policy, sanitizes fragment with it, and wraps
 // the sanitized result in a minimal, self-contained HTML document —
@@ -285,18 +496,39 @@ func stylesheetForShape(shape toposv1.ContentShape) string {
 // derived from fragment content, so injecting it after sanitization cannot
 // reintroduce any XSS surface the policy removed.
 //
+// UI-09: when terms is non-empty, a highlighting step sits strictly
+// between the sanitize and wrap steps — highlightSanitizedFragment parses
+// the already-sanitized bytes, wraps each matched term in a bare <mark>
+// element via tree mutation (highlightTextNodes), and renders the tree
+// back to bytes. That highlighted output is itself never fed back through
+// policy.SanitizeBytes — the same "sanitize once, trust your own
+// Go-authored insertions after that" rule this doc comment already
+// established, now covering the highlighter's own insertions too. When
+// terms is empty, this step is skipped entirely and sanitized is used
+// unchanged — the no-search path stays byte-identical to the pre-UI-09
+// output.
+//
 // An unrecognised or unspecified shape (including the zero value,
 // CONTENT_SHAPE_UNSPECIFIED) returns errUnrecognisedContentShape and no
 // bytes — the kernel fails closed rather than ever guessing a policy
 // (T-05-16). Callers (renditionHandler/agentRenditionHandler in item.go/
 // agent.go) must write no body when this function returns an error.
-func sanitizeAndWrapRendition(shape toposv1.ContentShape, fragment []byte) ([]byte, error) {
+func sanitizeAndWrapRendition(shape toposv1.ContentShape, fragment []byte, terms []string) ([]byte, error) {
 	policy, ok := renditionPolicies[shape]
 	if !ok {
 		return nil, fmt.Errorf("%w: %v", errUnrecognisedContentShape, shape)
 	}
 
 	sanitized := policy.SanitizeBytes(fragment)
+
+	if len(terms) > 0 {
+		highlighted, err := highlightSanitizedFragment(sanitized, terms)
+		if err != nil {
+			return nil, err
+		}
+		sanitized = highlighted
+	}
+
 	style := stylesheetForShape(shape)
 
 	var buf bytes.Buffer

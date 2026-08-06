@@ -331,6 +331,15 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 		// D-11: identical branch to renditionHandler's sibling in item.go
 		// — see that function's doc comment for why sanitizing/wrapping
 		// happens here, once, kernel-side.
+		//
+		// UI-09 / 06-RESEARCH.md Open Question 2: the agent surface has no
+		// search UI (AGENT-10/11 are v1.x-deferred), so this call site
+		// passes nil terms deliberately — every /agent/v1 rendition stays
+		// byte-identical to its pre-UI-09 output. This is a scope
+		// boundary, not an oversight: sanitizeAndWrapRendition's shared
+		// signature means the compiler forces this call site to be
+		// updated, but the choice of "always unhighlighted" is the
+		// explicit decision recorded here.
 		var body []byte
 		if result.MimeType == "text/html" {
 			fragment, err := io.ReadAll(result.Body)
@@ -338,7 +347,7 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 				return
 			}
-			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment)
+			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment, nil)
 			if err != nil {
 				WriteError(w, http.StatusBadGateway, "unsupported_content_shape",
 					"item \""+id+"\": "+err.Error())

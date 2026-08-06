@@ -15,11 +15,22 @@
 	// from the live GET /api/sources response) — this pane is shared
 	// across every source, so neither its copy nor its unreachable/error
 	// branch choice may hardcode or guess at one source's identity.
+	// searchQuery (UI-09) is the active in-webspace search string, also
+	// supplied by +page.svelte — threaded into the html-branch iframe src
+	// via contentUrl so the kernel can highlight matched terms server-side
+	// (the sandboxed iframe is an opaque origin, so this is the only
+	// channel into that document; see rendition.go's own doc comment).
 	let {
 		item,
 		displayName,
-		sourceReachable
-	}: { item: StreamItem; displayName: string; sourceReachable: boolean } = $props();
+		sourceReachable,
+		searchQuery
+	}: {
+		item: StreamItem;
+		displayName: string;
+		sourceReachable: boolean;
+		searchQuery: string;
+	} = $props();
 
 	let content: ItemContent | null = $state(null);
 	let loadingContent = $state(true);
@@ -156,7 +167,7 @@
 		     iframe provides for free (RESEARCH.md's explicit
 		     anti-pattern). -->
 		<div class="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-			<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
+			<iframe title={item.title} src={contentUrl(item.id, searchQuery)} class="h-full w-full"></iframe>
 		</div>
 	{:else if bodyVariant === 'media'}
 		<div class="flex min-h-0 flex-1 flex-col gap-6">

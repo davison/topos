@@ -192,6 +192,14 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 		// kernel does not recognise (including CONTENT_SHAPE_UNSPECIFIED)
 		// is refused outright: the kernel fails closed rather than ever
 		// serving an unsanitized document from its own origin.
+		//
+		// UI-09: the optional ?hl= query parameter carries the user's raw
+		// in-webspace search query. highlightTerms (rendition.go) derives
+		// the bounded literal-term set sanitizeAndWrapRendition highlights
+		// inside the sanitized fragment; an absent or empty hl parameter
+		// yields a nil terms slice, which sanitizeAndWrapRendition treats
+		// as "skip highlighting entirely" — the no-search path is
+		// byte-identical to this route's pre-UI-09 output.
 		var body []byte
 		if result.MimeType == "text/html" {
 			fragment, err := io.ReadAll(result.Body)
@@ -199,7 +207,8 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 				return
 			}
-			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment)
+			terms := highlightTerms(r.URL.Query().Get("hl"))
+			wrapped, err := sanitizeAndWrapRendition(result.ContentShape, fragment, terms)
 			if err != nil {
 				WriteError(w, http.StatusBadGateway, "unsupported_content_shape",
 					"item \""+id+"\": "+err.Error())

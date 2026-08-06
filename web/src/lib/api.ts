@@ -192,9 +192,19 @@ export function getItem(id: string): Promise<ItemDetail> {
 	return getJSON<ItemDetail>(`/api/items/${encodeURIComponent(id)}`);
 }
 
-/** Relative kernel path for GET /api/items/{id}/content. */
-export function contentUrl(id: string): string {
-	return `/api/items/${encodeURIComponent(id)}/content`;
+/**
+ * Relative kernel path for GET /api/items/{id}/content. When query is a
+ * non-empty (trimmed) search string, appends it as an encoded `hl` query
+ * parameter — the channel the kernel-side highlighter (UI-09,
+ * kernel/httpapi/rendition.go's highlightTerms) reads to derive the
+ * highlight term set. An empty/whitespace-only or omitted query returns
+ * today's path unchanged, byte-identical to the pre-UI-09 URL.
+ */
+export function contentUrl(id: string, query?: string): string {
+	const base = `/api/items/${encodeURIComponent(id)}/content`;
+	const trimmed = query?.trim();
+	if (!trimmed) return base;
+	return `${base}?hl=${encodeURIComponent(trimmed)}`;
 }
 
 /** Relative kernel path for GET /api/items/{id}/thumbnail. */

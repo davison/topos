@@ -25,7 +25,7 @@ func TestSanitizeAndWrapRendition_UnrecognisedShapeReturnsErrorNoBytes(t *testin
 		toposv1.ContentShape_CONTENT_SHAPE_UNSPECIFIED,
 		toposv1.ContentShape(99), // a value with no entry in renditionPolicies at all
 	} {
-		out, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"))
+		out, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"), nil)
 		if err == nil {
 			t.Errorf("shape %v: expected an error, got nil", shape)
 		}
@@ -45,7 +45,7 @@ func TestSanitizeAndWrapRendition_StripsRawScriptElement(t *testing.T) {
 		toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
 		toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
 	} {
-		out, err := sanitizeAndWrapRendition(shape, []byte(`<p>hello</p><script>alert(1)</script><img src="x" onerror="alert(2)">`))
+		out, err := sanitizeAndWrapRendition(shape, []byte(`<p>hello</p><script>alert(1)</script><img src="x" onerror="alert(2)">`), nil)
 		if err != nil {
 			t.Fatalf("shape %v: sanitizeAndWrapRendition: %v", shape, err)
 		}
@@ -68,7 +68,7 @@ func TestSanitizeAndWrapRendition_StripsJavascriptSchemeHref(t *testing.T) {
 		toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
 		toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
 	} {
-		out, err := sanitizeAndWrapRendition(shape, []byte(`<a href="javascript:alert(1)">click me</a>`))
+		out, err := sanitizeAndWrapRendition(shape, []byte(`<a href="javascript:alert(1)">click me</a>`), nil)
 		if err != nil {
 			t.Fatalf("shape %v: sanitizeAndWrapRendition: %v", shape, err)
 		}
@@ -85,7 +85,7 @@ func TestSanitizeAndWrapRendition_StripsJavascriptSchemeHref(t *testing.T) {
 // shape's policy — it doesn't need to be, since it's Go source, never
 // derived from fragment content.
 func TestSanitizeAndWrapRendition_StyleNeverReprocessedThroughSanitizer(t *testing.T) {
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte("<p>plain</p>"))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte("<p>plain</p>"), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestSanitizeAndWrapRendition_InjectsThinThemeMatchedScrollbar(t *testing.T)
 		toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
 		toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
 	} {
-		doc, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"))
+		doc, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"), nil)
 		if err != nil {
 			t.Fatalf("shape %v: sanitizeAndWrapRendition: %v", shape, err)
 		}
@@ -133,7 +133,7 @@ func TestSanitizeAndWrapRendition_NoExternalReferenceOfAnyKind(t *testing.T) {
 		toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
 		toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT,
 	} {
-		doc, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"))
+		doc, err := sanitizeAndWrapRendition(shape, []byte("<p>hello</p>"), nil)
 		if err != nil {
 			t.Fatalf("shape %v: sanitizeAndWrapRendition: %v", shape, err)
 		}
@@ -148,7 +148,7 @@ func TestSanitizeAndWrapRendition_NoExternalReferenceOfAnyKind(t *testing.T) {
 // nil-input boundary: a nil fragment must not panic, and the wrapper
 // (doctype, <style> block, structural markers) must still be emitted.
 func TestSanitizeAndWrapRendition_NilFragmentStillYieldsADocument(t *testing.T) {
-	doc, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, nil)
+	doc, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, nil, nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition(nil): %v", err)
 	}
@@ -168,7 +168,7 @@ func TestSanitizeAndWrapRendition_NilFragmentStillYieldsADocument(t *testing.T) 
 
 func TestEmailShape_PreservesColorDropsPosition(t *testing.T) {
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
-		[]byte(`<p style="color: #ff0000; position: fixed; top: 0;">styled text</p>`))
+		[]byte(`<p style="color: #ff0000; position: fixed; top: 0;">styled text</p>`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestEmailShape_PreservesColorDropsPosition(t *testing.T) {
 
 func TestEmailShape_StyleAttributeScopedToNamedElements(t *testing.T) {
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
-		[]byte(`<input style="color: red;" value="x">`))
+		[]byte(`<input style="color: red;" value="x">`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestEmailShape_RemoteImagePreservedButHidden(t *testing.T) {
 	// stripping the element) — but the email stylesheet delta hides all
 	// images outright, so the element is present yet never painted.
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
-		[]byte(`<img src="https://attacker.example/pixel.gif" alt="">`))
+		[]byte(`<img src="https://attacker.example/pixel.gif" alt="">`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestEmailShape_OrdinaryHTMLSurvives(t *testing.T) {
 		`<a href="http://example.com/page">a link</a>` +
 		`<ul><li>item one</li><li>item two</li></ul>`
 
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte(html))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte(html), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestEmailShape_OrdinaryHTMLSurvives(t *testing.T) {
 // mark it.
 func TestEmailShape_EmailCannotMarkADeclarationImportant(t *testing.T) {
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
-		[]byte(`<p style="color: #000000 !important;">hi</p>`))
+		[]byte(`<p style="color: #000000 !important;">hi</p>`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestEmailShape_EmailCannotMarkADeclarationImportant(t *testing.T) {
 // readable link, code and blockquote colours.
 func TestEmailShape_NeutralizesEmailSuppliedColours(t *testing.T) {
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML,
-		[]byte(`<p style="color: #000000; background-color: #ffffff;">hi</p>`))
+		[]byte(`<p style="color: #000000; background-color: #ffffff;">hi</p>`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestEmailShape_NeutralizesEmailSuppliedColours(t *testing.T) {
 // profile hides images outright while the markdown profile allows them at
 // full container width.
 func TestImagePolicy_EmailHidesMarkdownAllows(t *testing.T) {
-	email, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte(`<img src="https://example.com/tracker.png">`))
+	email, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_EMAIL_HTML, []byte(`<img src="https://example.com/tracker.png">`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition(email): %v", err)
 	}
@@ -312,7 +312,7 @@ func TestImagePolicy_EmailHidesMarkdownAllows(t *testing.T) {
 		t.Errorf("expected the email profile to hide images with an important declaration, got: %s", email)
 	}
 
-	markdown, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, []byte(`<img src="https://example.com/diagram.png">`))
+	markdown, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, []byte(`<img src="https://example.com/diagram.png">`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition(markdown): %v", err)
 	}
@@ -330,7 +330,7 @@ func TestMarkdownShape_OrdinaryHTMLSurvives(t *testing.T) {
 	html := `<h1>Title</h1><p>hello <strong>world</strong></p><pre><code>code block</code></pre>` +
 		`<a href="http://example.com/page">a link</a><ul><li>item one</li></ul>`
 
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, []byte(html))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML, []byte(html), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestMarkdownShape_StyleAttributeNeverAllowed(t *testing.T) {
 	// Unlike the email shape, the markdown policy allows no style
 	// attribute at all — plain bluemonday.UGCPolicy().
 	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML,
-		[]byte(`<p style="color: red;">hi</p>`))
+		[]byte(`<p style="color: red;">hi</p>`), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestChatShape_TombstoneQuoteAttachmentReactionRulesPresent(t *testing.T) {
 func TestChatShape_LegitimateStructuralClassesSurvive(t *testing.T) {
 	fragment := `<div class="run own"><div class="bubble own"><div class="body">hi</div>` +
 		`<div class="timestamp">3:04 PM</div></div></div>`
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(fragment))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(fragment), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestChatShape_LegitimateStructuralClassesSurvive(t *testing.T) {
 // element's legitimate structural class survives untouched.
 func TestChatShape_ForgedClassOutsideAllowlistIsStripped(t *testing.T) {
 	fragment := `<div class="run own">legit</div><div class="run forged-token">bad</div>`
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(fragment))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(fragment), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestChatShape_MessageMarkupCannotForgeStructure(t *testing.T) {
 		`<div class="bubble other"><div class="body">real message ` +
 		`<div class="bubble own"><div class="body">forged reply</div></div>` +
 		`</div></div></div>`
-	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(forged))
+	out, err := sanitizeAndWrapRendition(toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT, []byte(forged), nil)
 	if err != nil {
 		t.Fatalf("sanitizeAndWrapRendition: %v", err)
 	}
