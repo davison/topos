@@ -42,7 +42,7 @@ created: 2026-08-06
 - **Health dot** (unchanged tone mapping — `healthTone`/`DOT_TONE_CLASS`): success/warning/destructive/unknown. Passive indicator only, per D-01 — clicking the dot does not do anything different from clicking the rest of the chip body.
 - **Display name**: Label role (14px/400/1.4), `truncate` + native `title` attribute for the full string (carries forward 05-UI-SPEC.md's long-text resolution verbatim — `display_name` is user-authored and may be long).
 - **Refresh control** (D-03): a `RefreshCw` icon button, `opacity-0` at rest, `opacity-100` on chip `:hover`/`:focus-within`, **always visible and spinning** (never hidden) while `source.syncing` is true — the syncing spinner is the sole in-place syncing indicator this phase (see Copywriting Contract; the old inline "Syncing…" text label is retired to keep the chip compact at scale).
-- **Selected/filtered state** (D-02): when a chip's source is in the active filter set, the chip gets a 2px accent ring (`ring-2 ring-accent`) plus `bg-accent/10` — an extension of Phase 2's already-reserved "active filter chip" accent usage, not a new accent site. Unselected chips keep the plain `border-border bg-card` treatment.
+- **Selected/filtered state** (D-02): when a chip's source is in the active filter set, the chip gets a solid `--primary` fill (`border-primary bg-primary`) with its display name, health-dot ring and refresh icon re-toned to `--primary-foreground` so they stay legible on the fill — an extension of Phase 2's already-reserved "active filter chip" accent-blue usage, not a new accent site. Unselected chips keep the plain `border-border bg-card` treatment. *(2026-08-07, G-06-3: this bullet originally spelled `ring-2 ring-accent` plus `bg-accent/10`, a class literal that resolves through the neutral `--accent` token — byte-identical to `--border` in this palette — rather than through `--primary`/`--ring`, the tokens this document's own Color table assigns to the selected chip. That contradiction shipped an invisible selected state; this bullet now agrees with the Color table and the shipped code.)*
 
 ### Interaction model (D-01, D-02, D-03, D-04 — locked)
 
@@ -178,7 +178,7 @@ Usage mapping (new this phase, same roles): chip display name, overflow trigger 
 |------|-------|-------|
 | Dominant (60%) | `#020617` | Page background, stream pane background; also the `<mark>` highlight's foreground text color (new usage, same token) |
 | Secondary (30%) | `#0f172a` / border `#1e293b` | Cards, header, detail pane surface, chip pill background/border |
-| Accent (10%) | `#60a5fa` | "Open in/Show in source" CTA, links, focus rings, selected stream row, **the filtered/selected source chip's ring** (extends Phase 2's already-reserved "active filter chip" role to the merged chip — same role, same component family, not a new site) |
+| Accent (10%) | `#60a5fa` | "Open in/Show in source" CTA, links, focus rings, selected stream row, **the filtered/selected source chip's fill** (extends Phase 2's already-reserved "active filter chip" role to the merged chip — same role, same component family, not a new site) |
 | Destructive | `#f87171` | Destructive actions (none in this read-only viewer); "unreachable" health-dot tone, including the overflow trigger's worst-of dot |
 | Success | `#4ade80` | Health dot, "reachable" tone |
 | Warning | `#fbbf24` | Health dot, "stale" tone; **new usage this phase:** `<mark>` highlight background (search-term highlighting, both client- and kernel-rendered variants) |

@@ -74,7 +74,7 @@
 <div
 	class={cn(
 		'group flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card py-1 pr-1 pl-2.5',
-		selected && 'bg-accent/10 ring-2 ring-accent'
+		selected && 'border-primary bg-primary'
 	)}
 >
 	<TooltipProvider>
@@ -89,11 +89,18 @@
 						class="flex max-w-48 items-center gap-1.5 rounded-full"
 					>
 						<span
-							class={cn('size-2 shrink-0 rounded-full', DOT_TONE_CLASS[tone])}
+							class={cn(
+								'size-2 shrink-0 rounded-full',
+								DOT_TONE_CLASS[tone],
+								selected && 'ring-1 ring-primary-foreground'
+							)}
 							aria-hidden="true"
 						></span>
 						<span
-							class="truncate text-[14px] leading-[1.4] text-foreground"
+							class={cn(
+								'truncate text-[14px] leading-[1.4]',
+								selected ? 'text-primary-foreground' : 'text-foreground'
+							)}
 							title={source.display_name}>{source.display_name}</span
 						>
 					</button>
@@ -108,7 +115,8 @@
 		size="icon"
 		class={cn(
 			'size-11 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
-			source.syncing && 'opacity-100'
+			source.syncing && 'opacity-100',
+			selected && 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
 		)}
 		aria-label={`Refresh ${source.display_name}`}
 		onclick={handleRefreshClick}

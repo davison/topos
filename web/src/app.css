@@ -82,6 +82,11 @@
 	 * hover chrome, so --accent stays a neutral surface here. The actual
 	 * blue lives in --primary (the "Open in paperless-ngx" CTA button
 	 * variant) and --ring (focus-visible outlines).
+	 *
+	 * This trap was not hypothetical: G-06-3 (Phase 6 UAT) shipped an
+	 * invisible source-chip selected state built from --accent/--ring-accent
+	 * for exactly this reason — reach for --primary/--ring for any future
+	 * selected/active affordance, never the token literally named "accent".
 	 */
 	--accent: #1e293b;
 	--accent-foreground: #f1f5f9;
