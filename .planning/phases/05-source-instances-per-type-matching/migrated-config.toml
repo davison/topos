@@ -1,0 +1,120 @@
+# Migrated copy of the operator's live config (~/.config/topos/config.toml),
+# hand-rewritten onto Phase 5's per-instance match shape (D-06: there is no
+# auto-migration code, so this file is the delivery work itself, not
+# generated tooling output). Produced by 05-05-PLAN.md Task 3.
+#
+# Install: back up the current live file, then copy this one over it.
+#
+#   cp ~/.config/topos/config.toml ~/.config/topos/config.toml.pre-phase05.bak
+#   cp .planning/phases/05-source-instances-per-type-matching/migrated-config.toml \
+#      ~/.config/topos/config.toml
+#
+# What changed from the pre-Phase-5 file:
+#   - every [sources.<id>] block gained a display_name, set to that
+#     instance's plugin-reported Describe display_name (the label the UI
+#     already showed for it before D-09 existed) — purely cosmetic (D-08),
+#     changes no identity
+#   - every webspace's flat `keywords` list is now ALSO expressed as an
+#     explicit [webspaces.<ws>.match.<instance>] block per configured
+#     instance, typed to that instance's own declared match_vocabulary,
+#     with the SAME keyword strings as values (D-04: matching stays exact
+#     and case-insensitive, so this is a value-for-value, not a semantic,
+#     conversion) — reproducing byte-identical match results to the old
+#     shared-list-fanned-into-every-field fallback (D-01), because that is
+#     exactly what an explicit block naming every field a plugin declares,
+#     with the same values, computes
+#   - the original `keywords` line is deliberately KEPT on every webspace
+#     below (not deleted) as the safety-net fallback for any future
+#     instance added to a webspace without its own explicit block — every
+#     currently-configured instance has one, so keywords is presently
+#     unused by any of them, but removing it would leave a newly-added
+#     fifth instance with nothing to resolve its match input from until an
+#     explicit block is written for it too
+#   - everything else — plugin, base_url, username, token (every ${VAR}
+#     reference preserved, never expanded to a literal secret), ca_cert,
+#     path, webmail_base_url, api_version, and every [sources.*.agent]
+#     block — is carried over unchanged, byte for byte
+
+[server]
+listen = "127.0.0.1:7777"
+
+[index]
+path = "~/.local/share/topos/index.db"
+
+[plugins]
+# Absolute path so the kernel finds plugins under both `./bin/topos serve`
+# and `make dev`'s `go run` (whose temp executable lives in the go-build cache,
+# breaking exe-relative resolution).
+dir = "/home/darren/projects/davison/topos/bin/plugins"
+
+[sources.paperless]
+plugin       = "topos-plugin-paperless"
+display_name = "paperless-ngx"
+base_url     = "http://docs.davisononline.home"
+token        = "${PAPERLESS_TOKEN}"
+api_version  = "10"
+
+[sources.silverbullet]
+plugin       = "topos-plugin-silverbullet"
+display_name = "SilverBullet"
+base_url     = "https://notes.davisononline.home"
+token        = "${SILVERBULLET_AUTH_TOKEN}"
+ca_cert      = "~/.config/topos/silverbullet-ca.pem"
+
+[sources.proton]
+plugin           = "topos-plugin-proton"
+display_name     = "Proton Mail"
+base_url         = "imap://monroe:1143"
+username         = "darren@davisononline.org"
+token            = "${PROTON_BRIDGE_PASS}"
+ca_cert          = "~/.config/topos/proton-bridge-cert.pem"
+webmail_base_url = "https://mail.proton.me/u/4"
+
+[sources.proton.agent]
+read    = false
+handoff = false
+
+[sources.signal]
+plugin       = "topos-plugin-signal"
+display_name = "Signal"
+path         = "/home/darren/.config/Signal"
+
+[sources.signal.agent]
+read    = false
+handoff = false
+
+[webspaces.house-move]
+# Retained as the fallback safety net — see the migration notes above.
+# Every currently-configured instance below has its own explicit block, so
+# this list is not presently consulted by any of them.
+keywords = ["house and home", "house", "house+home", "CrapCarbs"]
+
+[webspaces.house-move.match.paperless]
+tags = ["house and home", "house", "house+home", "CrapCarbs"]
+
+[webspaces.house-move.match.silverbullet]
+tags  = ["house and home", "house", "house+home", "CrapCarbs"]
+pages = ["house and home", "house", "house+home", "CrapCarbs"]
+
+[webspaces.house-move.match.proton]
+folders = ["house and home", "house", "house+home", "CrapCarbs"]
+
+[webspaces.house-move.match.signal]
+conversations = ["house and home", "house", "house+home", "CrapCarbs"]
+
+[webspaces.test]
+# Retained as the fallback safety net — see the migration notes above.
+keywords = ["Dad"]
+
+[webspaces.test.match.paperless]
+tags = ["Dad"]
+
+[webspaces.test.match.silverbullet]
+tags  = ["Dad"]
+pages = ["Dad"]
+
+[webspaces.test.match.proton]
+folders = ["Dad"]
+
+[webspaces.test.match.signal]
+conversations = ["Dad"]
