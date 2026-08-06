@@ -86,7 +86,23 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 	var rejected []string
 
 	for name, ws := range e.Config.Webspaces {
-		resp, err := src.Match(ctx, matchFieldsFor(ws, src))
+		fields, participates := matchFieldsFor(ws, src)
+		if !participates {
+			// D-03: this instance is excluded from this webspace by a
+			// non-empty sources allowlist. Never call Match — instead
+			// clear this instance's previously persisted rows for this
+			// webspace so a de-allowlisted instance leaves no orphaned
+			// rows behind (ROADMAP success criterion 3).
+			if err := e.Store.ReplaceWebspaceSourceItems(ctx, name, src.Name(), nil); err != nil {
+				wrapped := fmt.Errorf("clear webspace %q source %q: %w", name, src.Name(), err)
+				results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), Err: wrapped})
+				continue
+			}
+			results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), ItemCount: 0})
+			continue
+		}
+
+		resp, err := src.Match(ctx, fields)
 		if err != nil {
 			wrapped := fmt.Errorf("match against source %q: %w", src.Name(), err)
 			results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), Err: wrapped})
@@ -121,25 +137,38 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 }
 
 // matchFieldsFor resolves one source instance's Match input for one
-// webspace. For now this returns only the D-01 fallback: ws.Keywords
-// assigned to every field in src's declared vocabulary (src.MatchVocabulary)
-// — a webspace declaring only `keywords` therefore reproduces the pre-Phase-5
-// shared-keyword-list behaviour byte for byte, since every current in-repo
-// plugin declares exactly one match field. 05-03-PLAN.md adds the
-// explicit-block (D-02, a webspace's per-instance match block replaces this
-// fallback entirely) and allowlist (D-03, a webspace's sources list can
-// exclude an instance outright) branches around this function; this plan
-// intentionally implements only the fallback branch. Each call returns a
-// map scoped to exactly this one instance's own declared fields — never the
-// webspace's whole match configuration — so a Match RPC to one plugin
-// process never discloses another instance's match configuration
-// (T-05-07).
-func matchFieldsFor(ws config.Webspace, src Source) map[string][]string {
-	fields := make(map[string][]string, len(src.MatchVocabulary()))
+// webspace, implementing the full D-01/D-02/D-03 resolution in order:
+//
+//  1. Allowlist (D-03): if ws.Sources is non-empty and does not name src,
+//     src does not participate in ws at all — the second return value is
+//     false and the caller must not call Match for this (webspace, source)
+//     pair.
+//  2. Explicit block (D-02): if ws.Match names src, that block is returned
+//     verbatim — it replaces the Keywords fallback outright for this
+//     instance; the two are never combined.
+//  3. Fallback (D-01): otherwise, ws.Keywords is fanned into every field of
+//     src's declared vocabulary (src.MatchVocabulary()) — a webspace
+//     declaring only `keywords` therefore reproduces the pre-Phase-5
+//     shared-keyword-list behaviour byte for byte.
+//
+// Each call returns a map scoped to exactly this one instance's own
+// resolved fields — never the webspace's whole match configuration — so a
+// Match RPC to one plugin process never discloses another instance's match
+// configuration (T-05-07).
+func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates bool) {
+	if !ws.Participates(src.Name()) {
+		return nil, false
+	}
+
+	if block, ok := ws.Match[src.Name()]; ok {
+		return map[string][]string(block), true
+	}
+
+	fields = make(map[string][]string, len(src.MatchVocabulary()))
 	for _, field := range src.MatchVocabulary() {
 		fields[field] = ws.Keywords
 	}
-	return fields
+	return fields, true
 }
 
 // validateCorrelatedItem enforces PLUG-03 at the sync boundary: no item

@@ -170,7 +170,7 @@ func agentWebspacesHandler(store *index.Store, cfg *config.Config, prober Health
 			}
 			resp.Webspaces = append(resp.Webspaces, webspaceSummary{
 				Name:      name,
-				Keywords:  cfg.Webspaces[name].Keywords,
+				Keywords:  keywordsOrEmpty(cfg.Webspaces[name].Keywords),
 				ItemCount: count,
 				LastSync:  lastSync,
 			})

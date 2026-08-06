@@ -48,7 +48,7 @@ func WebspacesHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
 		for _, name := range names {
 			resp.Webspaces = append(resp.Webspaces, webspaceSummary{
 				Name:      name,
-				Keywords:  cfg.Webspaces[name].Keywords,
+				Keywords:  keywordsOrEmpty(cfg.Webspaces[name].Keywords),
 				ItemCount: counts[name],
 				LastSync:  lastSync,
 			})
@@ -56,4 +56,16 @@ func WebspacesHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
 
 		WriteJSON(w, http.StatusOK, resp)
 	}
+}
+
+// keywordsOrEmpty normalises a webspace's Keywords fallback list for JSON
+// serialisation: nil (a webspace that relies entirely on explicit match
+// blocks, per D-01/D-02, legitimately has no keywords fallback) becomes an
+// empty array rather than encoding/json's default `null`, so API consumers
+// never need to special-case a null keywords field.
+func keywordsOrEmpty(keywords []string) []string {
+	if keywords == nil {
+		return []string{}
+	}
+	return keywords
 }

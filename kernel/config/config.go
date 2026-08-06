@@ -178,18 +178,8 @@ func (cfg *Config) expandSourceCACertPathsHome() error {
 // required field is empty because of an unset variable rather than a
 // simply-omitted key.
 func (cfg *Config) Validate(missing []string) error {
-	for name, ws := range cfg.Webspaces {
-		if strings.TrimSpace(name) == "" {
-			return fmt.Errorf("config: webspace has empty name")
-		}
-		if len(ws.Keywords) == 0 {
-			return fmt.Errorf("config: webspace %q declares zero keywords", name)
-		}
-		for _, kw := range ws.Keywords {
-			if strings.TrimSpace(kw) == "" {
-				return fmt.Errorf("config: webspace %q declares an empty or whitespace-only keyword", name)
-			}
-		}
+	if err := cfg.validateWebspaces(); err != nil {
+		return err
 	}
 
 	for name, src := range cfg.Sources {
@@ -226,6 +216,145 @@ func (cfg *Config) Validate(missing []string) error {
 
 	if err := cfg.validateDisplayNameUniqueness(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateWebspaces checks every [webspaces.<name>] block against the
+// per-instance match shape (D-01/D-02/D-03), independent of any launched
+// plugin — the plugin-vocabulary cross-check (D-05) is a separate,
+// post-launch phase (pluginhost.ValidateMatchConfig), since config.Load
+// runs before any plugin subprocess exists (05-RESEARCH.md Pitfall 1).
+// Webspace names, match block instance names, and field names within a
+// block are all iterated in sorted order so the first reported error is
+// deterministic run to run and never depends on Go's randomized map
+// iteration order (KERN-07 ordering).
+func (cfg *Config) validateWebspaces() error {
+	names := make([]string, 0, len(cfg.Webspaces))
+	for name := range cfg.Webspaces {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("config: webspace has empty name")
+		}
+		ws := cfg.Webspaces[name]
+
+		if len(ws.Keywords) == 0 && len(ws.Match) == 0 {
+			return fmt.Errorf("config: webspace %q declares neither a keywords fallback nor any match block — declare `keywords = [...]`, a `[webspaces.%s.match.<instance>]` block, or both", name, name)
+		}
+
+		for _, kw := range ws.Keywords {
+			if strings.TrimSpace(kw) == "" {
+				return fmt.Errorf("config: webspace %q declares an empty or whitespace-only keyword", name)
+			}
+		}
+
+		if err := cfg.validateMatchBlocks(name, ws); err != nil {
+			return err
+		}
+		if err := cfg.validateSourcesAllowlist(name, ws); err != nil {
+			return err
+		}
+		if err := cfg.validateFallbackCoverage(name, ws); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateMatchBlocks checks every [webspaces.<name>.match.<instance>]
+// block: the instance must be a configured source (unknown instance is a
+// typo signal), must not be excluded by the same webspace's sources
+// allowlist (dead config — 05-RESEARCH.md Open Question 1, decided here as
+// a load-time error), and the block itself must declare at least one
+// field, no empty field name, and no field with zero or empty/
+// whitespace-only values (all silently-matches-nothing shapes D-06
+// forbids).
+func (cfg *Config) validateMatchBlocks(webspaceName string, ws Webspace) error {
+	instances := make([]string, 0, len(ws.Match))
+	for instance := range ws.Match {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+
+	for _, instance := range instances {
+		if _, ok := cfg.Sources[instance]; !ok {
+			return fmt.Errorf("config: webspace %q match block names unknown source instance %q", webspaceName, instance)
+		}
+		if !ws.Participates(instance) {
+			return fmt.Errorf("config: webspace %q declares a match block for source %q, which is excluded by this webspace's sources allowlist — remove one or the other", webspaceName, instance)
+		}
+
+		block := ws.Match[instance]
+		if len(block) == 0 {
+			return fmt.Errorf("config: webspace %q match block for source %q declares zero fields", webspaceName, instance)
+		}
+
+		fields := make([]string, 0, len(block))
+		for field := range block {
+			fields = append(fields, field)
+		}
+		sort.Strings(fields)
+
+		for _, field := range fields {
+			if strings.TrimSpace(field) == "" {
+				return fmt.Errorf("config: webspace %q match block for source %q declares an empty field name", webspaceName, instance)
+			}
+			values := block[field]
+			if len(values) == 0 {
+				return fmt.Errorf("config: webspace %q match block for source %q field %q declares zero values", webspaceName, instance, field)
+			}
+			for _, v := range values {
+				if strings.TrimSpace(v) == "" {
+					return fmt.Errorf("config: webspace %q match block for source %q field %q declares an empty or whitespace-only value", webspaceName, instance, field)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateSourcesAllowlist checks every [webspaces.<name>] sources entry
+// names a configured source instance.
+func (cfg *Config) validateSourcesAllowlist(webspaceName string, ws Webspace) error {
+	for _, instance := range ws.Sources {
+		if _, ok := cfg.Sources[instance]; !ok {
+			return fmt.Errorf("config: webspace %q sources allowlist names unknown source instance %q", webspaceName, instance)
+		}
+	}
+	return nil
+}
+
+// validateFallbackCoverage checks D-06: a participating instance with no
+// explicit match block, in a webspace whose keywords fallback is empty, has
+// nothing to resolve its match input from at sync time — this must fail
+// loudly at load time, naming both accepted shapes, rather than silently
+// matching nothing.
+func (cfg *Config) validateFallbackCoverage(webspaceName string, ws Webspace) error {
+	if len(ws.Keywords) > 0 {
+		return nil
+	}
+
+	instances := make([]string, 0, len(cfg.Sources))
+	for instance := range cfg.Sources {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+
+	for _, instance := range instances {
+		if !ws.Participates(instance) {
+			continue
+		}
+		if _, ok := ws.Match[instance]; ok {
+			continue
+		}
+		return fmt.Errorf("config: webspace %q has no keywords fallback and no match block for participating source %q — declare `keywords = [...]`, a `[webspaces.%s.match.%s]` block, or exclude %q via `sources`", webspaceName, instance, webspaceName, instance, instance)
 	}
 
 	return nil

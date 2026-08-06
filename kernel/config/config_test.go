@@ -509,6 +509,211 @@ display_name = "Work Email"
 	}
 }
 
+// TestLoad_WebspaceWithNeitherKeywordsNorMatchFails proves D-06: a webspace
+// declaring neither a keywords fallback nor any match block fails config
+// load, naming the webspace and both accepted shapes.
+func TestLoad_WebspaceWithNeitherKeywordsNorMatchFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[webspaces.house-move]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a webspace declaring neither keywords nor a match block, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") {
+		t.Errorf("expected error to name the webspace, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "keywords") || !strings.Contains(err.Error(), "match") {
+		t.Errorf("expected error to name both accepted shapes (keywords and match), got: %v", err)
+	}
+}
+
+// TestLoad_MatchBlockUnknownInstanceFails proves a match block naming an
+// instance with no corresponding [sources.<id>] entry fails config load,
+// naming the webspace and the unknown instance.
+func TestLoad_MatchBlockUnknownInstanceFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[webspaces.house-move]
+keywords = ["house"]
+
+[webspaces.house-move.match.nonexistent]
+folders = ["Home"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a match block naming an unconfigured instance, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "nonexistent") {
+		t.Errorf("expected error to name the webspace and the unknown instance, got: %v", err)
+	}
+}
+
+// TestLoad_SourcesAllowlistUnknownInstanceFails proves a sources allowlist
+// entry naming an unconfigured instance fails config load, naming the
+// webspace and the unknown instance.
+func TestLoad_SourcesAllowlistUnknownInstanceFails(t *testing.T) {
+	path := writeTempConfig(t, `
+[webspaces.house-move]
+keywords = ["house"]
+sources = ["nonexistent"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a sources allowlist naming an unconfigured instance, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "nonexistent") {
+		t.Errorf("expected error to name the webspace and the unknown instance, got: %v", err)
+	}
+}
+
+// TestLoad_MatchBlockForDeallowlistedInstanceFails proves the dead-config
+// rule decided by 05-RESEARCH.md Open Question 1: an instance both excluded
+// by a webspace's sources allowlist and given an explicit match block in
+// that same webspace fails config load, naming the webspace and the
+// instance.
+func TestLoad_MatchBlockForDeallowlistedInstanceFails(t *testing.T) {
+	t.Setenv("TEST_DEAD_URL", "http://x.lan")
+	t.Setenv("TEST_DEAD_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DEAD_URL}"
+token = "${TEST_DEAD_TOKEN}"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_DEAD_URL}"
+token = "${TEST_DEAD_TOKEN}"
+
+[webspaces.house-move]
+keywords = ["house"]
+sources = ["work-email"]
+
+[webspaces.house-move.match.home-email]
+folders = ["Home"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a match block on a source excluded by the sources allowlist, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "home-email") {
+		t.Errorf("expected error to name the webspace and the excluded instance, got: %v", err)
+	}
+}
+
+// TestLoad_MatchBlockZeroFieldsFails proves a match block declaring zero
+// fields fails config load, naming the webspace and the instance.
+func TestLoad_MatchBlockZeroFieldsFails(t *testing.T) {
+	t.Setenv("TEST_ZF_URL", "http://x.lan")
+	t.Setenv("TEST_ZF_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_ZF_URL}"
+token = "${TEST_ZF_TOKEN}"
+
+[webspaces.house-move]
+keywords = ["house"]
+
+[webspaces.house-move.match]
+home-email = {}
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a match block declaring zero fields, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "home-email") {
+		t.Errorf("expected error to name the webspace and the instance, got: %v", err)
+	}
+}
+
+// TestLoad_MatchBlockEmptyValueFails proves a match block field with an
+// empty or whitespace-only value fails config load, naming the webspace,
+// the instance, and the field.
+func TestLoad_MatchBlockEmptyValueFails(t *testing.T) {
+	t.Setenv("TEST_EV_URL", "http://x.lan")
+	t.Setenv("TEST_EV_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_EV_URL}"
+token = "${TEST_EV_TOKEN}"
+
+[webspaces.house-move]
+keywords = ["house"]
+
+[webspaces.house-move.match.home-email]
+folders = ["Home", "   "]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a match block field with a whitespace-only value, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "home-email") || !strings.Contains(err.Error(), "folders") {
+		t.Errorf("expected error to name the webspace, instance and field, got: %v", err)
+	}
+}
+
+// TestLoad_ParticipatingInstanceWithNoBlockAndEmptyKeywordsFails proves
+// D-06: a participating instance with no explicit match block, in a
+// webspace whose keywords fallback is empty, fails config load — there is
+// no field for the fallback to fan into and nothing else to resolve this
+// instance's match input from.
+func TestLoad_ParticipatingInstanceWithNoBlockAndEmptyKeywordsFails(t *testing.T) {
+	t.Setenv("TEST_FC_URL", "http://x.lan")
+	t.Setenv("TEST_FC_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_FC_URL}"
+token = "${TEST_FC_TOKEN}"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_FC_URL}"
+token = "${TEST_FC_TOKEN}"
+
+[webspaces.house-move.match.home-email]
+folders = ["Home"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for a participating instance with no block and no keywords fallback, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "work-email") {
+		t.Errorf("expected error to name the webspace and the uncovered instance, got: %v", err)
+	}
+}
+
+// TestLoad_MatchBlockDecodesNestedTOMLShape proves the core decode
+// capability this plan depends on: [webspaces.<ws>.match.<instance>]
+// nested TOML decodes to Config.Webspaces[ws].Match[instance][field] via
+// go-toml/v2's map-of-map decode, with no new dependency.
+func TestLoad_MatchBlockDecodesNestedTOMLShape(t *testing.T) {
+	t.Setenv("TEST_MB_URL", "http://x.lan")
+	t.Setenv("TEST_MB_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_MB_URL}"
+token = "${TEST_MB_TOKEN}"
+
+[webspaces.house-move]
+keywords = ["house"]
+
+[webspaces.house-move.match.home-email]
+folders = ["Home"]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := cfg.Webspaces["house-move"].Match["home-email"]["folders"]
+	if len(got) != 1 || got[0] != "Home" {
+		t.Errorf("expected Match[\"home-email\"][\"folders\"] == [\"Home\"], got %+v", got)
+	}
+}
+
 func TestLoad_ExpandsHomeInIndexPath(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

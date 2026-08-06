@@ -25,6 +25,11 @@ type fakeSource struct {
 	vocabulary []string // defaults to []string{"keywords"} when unset (see MatchVocabulary)
 	matchFunc  func(keywords []string) (*toposv1.MatchResponse, error)
 	calls      [][]string
+	// receivedFields records every full match_fields map this source's
+	// Match was called with — used by tests asserting explicit-block or
+	// multi-field fallback resolution, where a flat []string of "keywords"
+	// alone isn't enough to inspect the call.
+	receivedFields []map[string][]string
 }
 
 func (f *fakeSource) Name() string       { return f.name }
@@ -36,6 +41,7 @@ func (f *fakeSource) MatchVocabulary() []string {
 	return []string{"keywords"}
 }
 func (f *fakeSource) Match(_ context.Context, fields map[string][]string) (*toposv1.MatchResponse, error) {
+	f.receivedFields = append(f.receivedFields, fields)
 	keywords := fields["keywords"]
 	f.calls = append(f.calls, keywords)
 	return f.matchFunc(keywords)
@@ -372,5 +378,135 @@ func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 		if len(items) != 1 || items[0].ID != "silverbullet:notes/a" {
 			t.Fatalf("expected silverbullet's item persisted independently to webspace %q, got: %+v", ws, items)
 		}
+	}
+}
+
+// TestMatchFieldsFor_ExplicitBlockReplacesFallback proves D-02: an instance
+// with an explicit ws.Match block receives that block verbatim, never a
+// union with ws.Keywords.
+func TestMatchFieldsFor_ExplicitBlockReplacesFallback(t *testing.T) {
+	src := &fakeSource{name: "home-email", vocabulary: []string{"folders"}}
+	ws := config.Webspace{
+		Keywords: []string{"house"},
+		Match: map[string]config.MatchBlock{
+			"home-email": {"folders": {"Home"}},
+		},
+	}
+
+	fields, participates := matchFieldsFor(ws, src)
+	if !participates {
+		t.Fatal("expected instance with an explicit block to participate")
+	}
+	if len(fields) != 1 {
+		t.Fatalf("expected exactly the explicit block's one field, got %+v", fields)
+	}
+	if got := fields["folders"]; len(got) != 1 || got[0] != "Home" {
+		t.Errorf("expected fields[\"folders\"] == [\"Home\"] (the explicit block, not the keywords fallback), got %+v", got)
+	}
+}
+
+// TestMatchFieldsFor_FallbackFansAcrossTwoFieldVocabulary proves D-01: an
+// instance with no explicit block receives ws.Keywords fanned into every
+// field of its declared (here two-field) vocabulary.
+func TestMatchFieldsFor_FallbackFansAcrossTwoFieldVocabulary(t *testing.T) {
+	src := &fakeSource{name: "wiki", vocabulary: []string{"tags", "pages"}}
+	ws := config.Webspace{Keywords: []string{"house"}}
+
+	fields, participates := matchFieldsFor(ws, src)
+	if !participates {
+		t.Fatal("expected instance relying on the fallback to participate")
+	}
+	if len(fields) != 2 {
+		t.Fatalf("expected 2 fields (one per declared vocabulary entry), got %+v", fields)
+	}
+	for _, field := range []string{"tags", "pages"} {
+		got := fields[field]
+		if len(got) != 1 || got[0] != "house" {
+			t.Errorf("expected fields[%q] == [\"house\"] (the fanned-out fallback), got %+v", field, got)
+		}
+	}
+}
+
+// TestMatchFieldsFor_DeallowlistedInstanceDoesNotParticipate proves D-03: a
+// webspace's non-empty sources allowlist excludes any instance not named in
+// it, regardless of whether that instance has an explicit block or would
+// otherwise use the fallback.
+func TestMatchFieldsFor_DeallowlistedInstanceDoesNotParticipate(t *testing.T) {
+	src := &fakeSource{name: "personal-signal", vocabulary: []string{"conversations"}}
+	ws := config.Webspace{Keywords: []string{"house"}, Sources: []string{"work-email"}}
+
+	fields, participates := matchFieldsFor(ws, src)
+	if participates {
+		t.Fatalf("expected de-allowlisted instance to not participate, got fields %+v", fields)
+	}
+	if fields != nil {
+		t.Errorf("expected a nil fields map for a non-participating instance, got %+v", fields)
+	}
+}
+
+// TestSyncSource_DeallowlistedInstanceRowsCleared proves the ROADMAP
+// success-criterion-3 guarantee end to end: when a webspace's sources
+// allowlist stops including a previously-participating instance, that
+// instance's Match is never called and its previously persisted rows for
+// that webspace are cleared at the next sync, leaving no orphaned rows.
+func TestSyncSource_DeallowlistedInstanceRowsCleared(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	seed := &fakeSource{
+		name: "personal-signal", sourceType: "signal",
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "1", Title: "Chat", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "signal://x", TimestampUnix: 100},
+			}}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"work": {Keywords: []string{"work"}},
+	}}
+	engine := &Engine{Store: store, Config: cfg}
+
+	// First cycle: the instance participates (no allowlist yet) and its
+	// item persists.
+	if _, rejections := engine.SyncSource(ctx, seed); rejections != "" {
+		t.Fatalf("seed SyncSource: unexpected rejections %q", rejections)
+	}
+	baseline, err := store.StreamItems(ctx, "work")
+	if err != nil {
+		t.Fatalf("StreamItems (baseline): %v", err)
+	}
+	if len(baseline) != 1 {
+		t.Fatalf("expected 1 baseline item, got %d: %+v", len(baseline), baseline)
+	}
+
+	// Second cycle: the webspace's sources allowlist now excludes this
+	// instance. Its Match must never be called, and its previously
+	// persisted rows must be cleared.
+	cfg2 := &config.Config{Webspaces: map[string]config.Webspace{
+		"work": {Keywords: []string{"work"}, Sources: []string{"work-email"}},
+	}}
+	engine2 := &Engine{Store: store, Config: cfg2}
+	guarded := &fakeSource{
+		name: "personal-signal", sourceType: "signal",
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			t.Fatal("Match must not be called for an instance excluded by the sources allowlist")
+			return nil, nil
+		},
+	}
+
+	results, rejections := engine2.SyncSource(ctx, guarded)
+	if rejections != "" {
+		t.Fatalf("unexpected rejections: %q", rejections)
+	}
+	if len(results) != 1 || results[0].Err != nil || results[0].ItemCount != 0 {
+		t.Fatalf("expected a zero-count, error-free result for the de-allowlisted instance, got: %+v", results)
+	}
+
+	items, err := store.StreamItems(ctx, "work")
+	if err != nil {
+		t.Fatalf("StreamItems (after de-allowlisting): %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected the de-allowlisted instance's rows to be cleared, got: %+v", items)
 	}
 }

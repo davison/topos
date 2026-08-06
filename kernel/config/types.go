@@ -141,10 +141,59 @@ type AgentGrant struct {
 	Handoff bool `toml:"handoff"`
 }
 
-// Webspace declares a shared keyword list matched against every source's
-// native categorization (D-02) — no per-source override.
+// MatchBlock is one source instance's explicit, typed match configuration
+// within a webspace: field name (from that instance's plugin's declared
+// vocabulary, DescribeResponse.match_vocabulary) to exact, case-insensitive
+// values (D-04). A field name the plugin did not declare fails startup
+// loudly via pluginhost.ValidateMatchConfig (D-05), never silently matching
+// nothing.
+type MatchBlock map[string][]string
+
+// Webspace declares how each configured source instance's items land in
+// this webspace (D-01/D-02/D-03), replacing the single shared per-webspace
+// keyword list (05-01/05-02-PLAN.md's foundation; this phase's own KERN-07
+// config half).
 type Webspace struct {
+	// Keywords is the optional fallback applied to every field of a
+	// participating instance's declared vocabulary when that instance has
+	// no explicit Match block (D-01). An instance WITH an explicit block
+	// never sees this list — the block replaces the fallback outright for
+	// that instance alone; the two are never combined (D-02). A webspace
+	// must declare a non-empty Keywords list, at least one Match block, or
+	// both — declaring neither fails config load (D-06).
 	Keywords []string `toml:"keywords"`
+	// Sources is the optional participation allowlist (D-03): when
+	// non-empty, only the named source instances participate in this
+	// webspace — every other configured instance is skipped at sync time,
+	// and its previously persisted rows for this webspace are cleared so
+	// no orphaned rows survive the config change. Empty (the zero value)
+	// means every configured instance participates by default. See
+	// Participates.
+	Sources []string `toml:"sources"`
+	// Match is keyed by source instance id (the [sources.<id>] config
+	// map key, D-08) — NOT by plugin type, so two instances of the same
+	// plugin can carry independent blocks. An explicit block for an
+	// instance replaces the Keywords fallback outright for that instance
+	// (D-02); a Match entry naming an instance that is also excluded by a
+	// non-empty Sources allowlist is dead config and fails load, a typo
+	// signal rather than a staging feature (05-RESEARCH.md Open Question
+	// 1, decided here).
+	Match map[string]MatchBlock `toml:"match"`
+}
+
+// Participates reports whether source instance participates in webspace w:
+// true when Sources is empty (every configured instance participates by
+// default), or when instance is explicitly named in Sources (D-03).
+func (w Webspace) Participates(instance string) bool {
+	if len(w.Sources) == 0 {
+		return true
+	}
+	for _, s := range w.Sources {
+		if s == instance {
+			return true
+		}
+	}
+	return false
 }
 
 const (
