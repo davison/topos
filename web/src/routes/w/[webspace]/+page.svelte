@@ -108,6 +108,15 @@
 			const res = await getSources();
 			sources = res.sources;
 			sourcesState = 'ready';
+			// WR-03: pick up an already-in-flight sync regardless of who
+			// started it (the background scheduler, the `topos sync` CLI,
+			// or another browser tab) — not only syncs this tab itself
+			// kicked off via handleRefreshSource/handleRefreshAll below.
+			// Without this, a source that's already syncing when the page
+			// loads or the webspace route param changes never schedules a
+			// poll, so its spinner can keep spinning after the sync
+			// actually finishes.
+			if (sources.some((s) => s.syncing)) ensurePolling();
 		} catch {
 			sources = [];
 			sourcesState = 'error';
