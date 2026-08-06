@@ -105,9 +105,31 @@ message FetchResponse {
   string mime_type                = 3;  // "" when there is no binary rendition
   int64  size_bytes               = 4;
   string text                     = 5;  // extracted text, may be ""
-  bytes  data                     = 6;  // rendition bytes, may be empty
+  bytes  data                     = 6;  // rendition bytes, may be empty. For a
+                                         // text/html mime_type, data is an
+                                         // UNWRAPPED, UNTHEMED, UNSANITIZED
+                                         // fragment (D-11) — the kernel, not
+                                         // the plugin, sanitizes/wraps/themes
+                                         // it via content_shape below.
   map<string, string> provenance  = 7;
+  // content_shape is REQUIRED whenever mime_type is "text/html" — the kernel
+  // refuses to serve a text/html rendition whose content_shape is
+  // CONTENT_SHAPE_UNSPECIFIED (D-11, T-05-16). Ignored for every other
+  // mime_type.
+  ContentShape content_shape      = 8;
 }
 
 message HealthRequest {}
 message HealthResponse { bool reachable = 1; int64 last_sync_unix = 2; string last_error = 3; }
+
+// ContentShape (D-11) declares which of the kernel's rendition sanitize/wrap
+// profiles applies to a FetchResponse whose mime_type is "text/html". The
+// kernel refuses to serve a text/html rendition whose content_shape is
+// CONTENT_SHAPE_UNSPECIFIED — the zero value fails closed, exactly like
+// LinkFidelity and ContentVariant above.
+enum ContentShape {
+  CONTENT_SHAPE_UNSPECIFIED       = 0;
+  CONTENT_SHAPE_EMAIL_HTML        = 1;
+  CONTENT_SHAPE_CHAT_TRANSCRIPT   = 2;
+  CONTENT_SHAPE_MARKDOWN_HTML     = 3;
+}

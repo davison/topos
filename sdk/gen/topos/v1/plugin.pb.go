@@ -125,6 +125,63 @@ func (ContentVariant) EnumDescriptor() ([]byte, []int) {
 	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{1}
 }
 
+// ContentShape (D-11) declares which of the kernel's rendition sanitize/wrap
+// profiles applies to a FetchResponse whose mime_type is "text/html". The
+// kernel refuses to serve a text/html rendition whose content_shape is
+// CONTENT_SHAPE_UNSPECIFIED — the zero value fails closed, exactly like
+// LinkFidelity and ContentVariant above.
+type ContentShape int32
+
+const (
+	ContentShape_CONTENT_SHAPE_UNSPECIFIED     ContentShape = 0
+	ContentShape_CONTENT_SHAPE_EMAIL_HTML      ContentShape = 1
+	ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT ContentShape = 2
+	ContentShape_CONTENT_SHAPE_MARKDOWN_HTML   ContentShape = 3
+)
+
+// Enum value maps for ContentShape.
+var (
+	ContentShape_name = map[int32]string{
+		0: "CONTENT_SHAPE_UNSPECIFIED",
+		1: "CONTENT_SHAPE_EMAIL_HTML",
+		2: "CONTENT_SHAPE_CHAT_TRANSCRIPT",
+		3: "CONTENT_SHAPE_MARKDOWN_HTML",
+	}
+	ContentShape_value = map[string]int32{
+		"CONTENT_SHAPE_UNSPECIFIED":     0,
+		"CONTENT_SHAPE_EMAIL_HTML":      1,
+		"CONTENT_SHAPE_CHAT_TRANSCRIPT": 2,
+		"CONTENT_SHAPE_MARKDOWN_HTML":   3,
+	}
+)
+
+func (x ContentShape) Enum() *ContentShape {
+	p := new(ContentShape)
+	*p = x
+	return p
+}
+
+func (x ContentShape) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContentShape) Descriptor() protoreflect.EnumDescriptor {
+	return file_topos_v1_plugin_proto_enumTypes[2].Descriptor()
+}
+
+func (ContentShape) Type() protoreflect.EnumType {
+	return &file_topos_v1_plugin_proto_enumTypes[2]
+}
+
+func (x ContentShape) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContentShape.Descriptor instead.
+func (ContentShape) EnumDescriptor() ([]byte, []int) {
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{2}
+}
+
 type DescribeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -597,10 +654,20 @@ type FetchResponse struct {
 	MimeType          string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"` // "" when there is no binary rendition
 	SizeBytes         int64                  `protobuf:"varint,4,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	Text              string                 `protobuf:"bytes,5,opt,name=text,proto3" json:"text,omitempty"` // extracted text, may be ""
-	Data              []byte                 `protobuf:"bytes,6,opt,name=data,proto3" json:"data,omitempty"` // rendition bytes, may be empty
-	Provenance        map[string]string      `protobuf:"bytes,7,rep,name=provenance,proto3" json:"provenance,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	Data              []byte                 `protobuf:"bytes,6,opt,name=data,proto3" json:"data,omitempty"` // rendition bytes, may be empty. For a
+	// text/html mime_type, data is an
+	// UNWRAPPED, UNTHEMED, UNSANITIZED
+	// fragment (D-11) — the kernel, not
+	// the plugin, sanitizes/wraps/themes
+	// it via content_shape below.
+	Provenance map[string]string `protobuf:"bytes,7,rep,name=provenance,proto3" json:"provenance,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// content_shape is REQUIRED whenever mime_type is "text/html" — the kernel
+	// refuses to serve a text/html rendition whose content_shape is
+	// CONTENT_SHAPE_UNSPECIFIED (D-11, T-05-16). Ignored for every other
+	// mime_type.
+	ContentShape  ContentShape `protobuf:"varint,8,opt,name=content_shape,json=contentShape,proto3,enum=topos.v1.ContentShape" json:"content_shape,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FetchResponse) Reset() {
@@ -680,6 +747,13 @@ func (x *FetchResponse) GetProvenance() map[string]string {
 		return x.Provenance
 	}
 	return nil
+}
+
+func (x *FetchResponse) GetContentShape() ContentShape {
+	if x != nil {
+		return x.ContentShape
+	}
+	return ContentShape_CONTENT_SHAPE_UNSPECIFIED
 }
 
 type HealthRequest struct {
@@ -824,7 +898,7 @@ const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"_\n" +
 	"\fFetchRequest\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x122\n" +
-	"\avariant\x18\x02 \x01(\x0e2\x18.topos.v1.ContentVariantR\avariant\"\xc8\x02\n" +
+	"\avariant\x18\x02 \x01(\x0e2\x18.topos.v1.ContentVariantR\avariant\"\x85\x03\n" +
 	"\rFetchResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12-\n" +
 	"\x12unavailable_reason\x18\x02 \x01(\tR\x11unavailableReason\x12\x1b\n" +
@@ -835,7 +909,8 @@ const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\x04data\x18\x06 \x01(\fR\x04data\x12G\n" +
 	"\n" +
 	"provenance\x18\a \x03(\v2'.topos.v1.FetchResponse.ProvenanceEntryR\n" +
-	"provenance\x1a=\n" +
+	"provenance\x12;\n" +
+	"\rcontent_shape\x18\b \x01(\x0e2\x16.topos.v1.ContentShapeR\fcontentShape\x1a=\n" +
 	"\x0fProvenanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x0f\n" +
@@ -854,7 +929,12 @@ const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\x1bCONTENT_VARIANT_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14CONTENT_VARIANT_FULL\x10\x01\x12\x1b\n" +
 	"\x17CONTENT_VARIANT_PREVIEW\x10\x02\x12\x1d\n" +
-	"\x19CONTENT_VARIANT_THUMBNAIL\x10\x032\x82\x02\n" +
+	"\x19CONTENT_VARIANT_THUMBNAIL\x10\x03*\x8f\x01\n" +
+	"\fContentShape\x12\x1d\n" +
+	"\x19CONTENT_SHAPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18CONTENT_SHAPE_EMAIL_HTML\x10\x01\x12!\n" +
+	"\x1dCONTENT_SHAPE_CHAT_TRANSCRIPT\x10\x02\x12\x1f\n" +
+	"\x1bCONTENT_SHAPE_MARKDOWN_HTML\x10\x032\x82\x02\n" +
 	"\fSourcePlugin\x12A\n" +
 	"\bDescribe\x12\x19.topos.v1.DescribeRequest\x1a\x1a.topos.v1.DescribeResponse\x128\n" +
 	"\x05Match\x12\x16.topos.v1.MatchRequest\x1a\x17.topos.v1.MatchResponse\x128\n" +
@@ -873,46 +953,48 @@ func file_topos_v1_plugin_proto_rawDescGZIP() []byte {
 	return file_topos_v1_plugin_proto_rawDescData
 }
 
-var file_topos_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_topos_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_topos_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_topos_v1_plugin_proto_goTypes = []any{
 	(LinkFidelity)(0),        // 0: topos.v1.LinkFidelity
 	(ContentVariant)(0),      // 1: topos.v1.ContentVariant
-	(*DescribeRequest)(nil),  // 2: topos.v1.DescribeRequest
-	(*DescribeResponse)(nil), // 3: topos.v1.DescribeResponse
-	(*StringList)(nil),       // 4: topos.v1.StringList
-	(*MatchRequest)(nil),     // 5: topos.v1.MatchRequest
-	(*MatchResponse)(nil),    // 6: topos.v1.MatchResponse
-	(*Item)(nil),             // 7: topos.v1.Item
-	(*FetchRequest)(nil),     // 8: topos.v1.FetchRequest
-	(*FetchResponse)(nil),    // 9: topos.v1.FetchResponse
-	(*HealthRequest)(nil),    // 10: topos.v1.HealthRequest
-	(*HealthResponse)(nil),   // 11: topos.v1.HealthResponse
-	nil,                      // 12: topos.v1.MatchRequest.MatchFieldsEntry
-	nil,                      // 13: topos.v1.Item.ProvenanceEntry
-	nil,                      // 14: topos.v1.FetchResponse.ProvenanceEntry
+	(ContentShape)(0),        // 2: topos.v1.ContentShape
+	(*DescribeRequest)(nil),  // 3: topos.v1.DescribeRequest
+	(*DescribeResponse)(nil), // 4: topos.v1.DescribeResponse
+	(*StringList)(nil),       // 5: topos.v1.StringList
+	(*MatchRequest)(nil),     // 6: topos.v1.MatchRequest
+	(*MatchResponse)(nil),    // 7: topos.v1.MatchResponse
+	(*Item)(nil),             // 8: topos.v1.Item
+	(*FetchRequest)(nil),     // 9: topos.v1.FetchRequest
+	(*FetchResponse)(nil),    // 10: topos.v1.FetchResponse
+	(*HealthRequest)(nil),    // 11: topos.v1.HealthRequest
+	(*HealthResponse)(nil),   // 12: topos.v1.HealthResponse
+	nil,                      // 13: topos.v1.MatchRequest.MatchFieldsEntry
+	nil,                      // 14: topos.v1.Item.ProvenanceEntry
+	nil,                      // 15: topos.v1.FetchResponse.ProvenanceEntry
 }
 var file_topos_v1_plugin_proto_depIdxs = []int32{
-	12, // 0: topos.v1.MatchRequest.match_fields:type_name -> topos.v1.MatchRequest.MatchFieldsEntry
-	7,  // 1: topos.v1.MatchResponse.items:type_name -> topos.v1.Item
+	13, // 0: topos.v1.MatchRequest.match_fields:type_name -> topos.v1.MatchRequest.MatchFieldsEntry
+	8,  // 1: topos.v1.MatchResponse.items:type_name -> topos.v1.Item
 	0,  // 2: topos.v1.Item.fidelity:type_name -> topos.v1.LinkFidelity
-	13, // 3: topos.v1.Item.provenance:type_name -> topos.v1.Item.ProvenanceEntry
+	14, // 3: topos.v1.Item.provenance:type_name -> topos.v1.Item.ProvenanceEntry
 	1,  // 4: topos.v1.FetchRequest.variant:type_name -> topos.v1.ContentVariant
-	14, // 5: topos.v1.FetchResponse.provenance:type_name -> topos.v1.FetchResponse.ProvenanceEntry
-	4,  // 6: topos.v1.MatchRequest.MatchFieldsEntry.value:type_name -> topos.v1.StringList
-	2,  // 7: topos.v1.SourcePlugin.Describe:input_type -> topos.v1.DescribeRequest
-	5,  // 8: topos.v1.SourcePlugin.Match:input_type -> topos.v1.MatchRequest
-	8,  // 9: topos.v1.SourcePlugin.Fetch:input_type -> topos.v1.FetchRequest
-	10, // 10: topos.v1.SourcePlugin.Health:input_type -> topos.v1.HealthRequest
-	3,  // 11: topos.v1.SourcePlugin.Describe:output_type -> topos.v1.DescribeResponse
-	6,  // 12: topos.v1.SourcePlugin.Match:output_type -> topos.v1.MatchResponse
-	9,  // 13: topos.v1.SourcePlugin.Fetch:output_type -> topos.v1.FetchResponse
-	11, // 14: topos.v1.SourcePlugin.Health:output_type -> topos.v1.HealthResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	15, // 5: topos.v1.FetchResponse.provenance:type_name -> topos.v1.FetchResponse.ProvenanceEntry
+	2,  // 6: topos.v1.FetchResponse.content_shape:type_name -> topos.v1.ContentShape
+	5,  // 7: topos.v1.MatchRequest.MatchFieldsEntry.value:type_name -> topos.v1.StringList
+	3,  // 8: topos.v1.SourcePlugin.Describe:input_type -> topos.v1.DescribeRequest
+	6,  // 9: topos.v1.SourcePlugin.Match:input_type -> topos.v1.MatchRequest
+	9,  // 10: topos.v1.SourcePlugin.Fetch:input_type -> topos.v1.FetchRequest
+	11, // 11: topos.v1.SourcePlugin.Health:input_type -> topos.v1.HealthRequest
+	4,  // 12: topos.v1.SourcePlugin.Describe:output_type -> topos.v1.DescribeResponse
+	7,  // 13: topos.v1.SourcePlugin.Match:output_type -> topos.v1.MatchResponse
+	10, // 14: topos.v1.SourcePlugin.Fetch:output_type -> topos.v1.FetchResponse
+	12, // 15: topos.v1.SourcePlugin.Health:output_type -> topos.v1.HealthResponse
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_topos_v1_plugin_proto_init() }
@@ -925,7 +1007,7 @@ func file_topos_v1_plugin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_topos_v1_plugin_proto_rawDesc), len(file_topos_v1_plugin_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
