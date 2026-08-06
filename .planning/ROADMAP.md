@@ -238,7 +238,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05-04-PLAN.md — Kernel-owned rendition sanitize/wrap/theme; plugins stop owning presentation
+- [x] 05-04-PLAN.md — Kernel-owned rendition sanitize/wrap/theme; plugins stop owning presentation
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -326,7 +326,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 2. Two Sources, One Trustworthy Stream | 6/6 | Complete    | 2026-07-29 |
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
-| 5. Source Instances & Per-Type Matching | 3/5 | In Progress|  |
+| 5. Source Instances & Per-Type Matching | 4/5 | In Progress|  |
 | 6. UI — Scalable Source Surface | 0/TBD | Not started | - |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |

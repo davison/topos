@@ -270,3 +270,7 @@ None — no external service configuration required.
 ---
 *Phase: 05-source-instances-per-type-matching*
 *Completed: 2026-08-06*
+
+## Self-Check: PASSED
+
+All key files verified present on disk (`kernel/httpapi/rendition.go`, `kernel/httpapi/rendition_test.go`, this SUMMARY, and the completed todo file); all three commits (`d0948b4`, `fe244d2`, `acd480b`) verified present in `git log --oneline --all`.

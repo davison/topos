@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-06T13:32:42.012Z"
+last_updated: "2026-08-06T13:55:50.112Z"
 last_activity: 2026-08-06
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
   percent: 44
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 05 (source-instances-per-type-matching) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-06
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [█████████░] 94%
 | Phase 05 P01 | 40min | 3 tasks | 35 files |
 | Phase 05 P02 | ~2h | 3 tasks | 22 files |
 | Phase 05 P03 | 55min | 2 tasks | 10 files |
+| Phase 05 P04 | ~20min | 2 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -150,6 +151,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 05-03]: 05-RESEARCH.md Open Question 1 decided as specified — a match block for an instance excluded by the same webspace's sources allowlist is dead config and fails load, naming both
 - [Phase ?]: [Phase 05-03]: A match field's zero-length value list is treated as a validation failure alongside the plan's named empty-field-name/empty-value cases, reading must_haves' silently-matching-nothing framing broadly
 - [Phase ?]: [Phase 05-03]: pluginhost.ValidateMatchConfig also guards a match block or fallback naming an unlaunched instance, defensive completeness verified via fake-plugin-list fixtures rather than a live subprocess mismatch
+- [Phase ?]: [Phase 05-04]: Proto ContentShape enum/field and sdk regeneration landed in Task 1's commit (Rule 3 blocking compile dependency) since rendition.go's policy map is keyed by toposv1.ContentShape before Task 2's own declared proto work
+- [Phase ?]: [Phase 05-04]: Avoided 'go mod tidy' for the root module (pulls a synthetic pseudo-versioned require on the workspace-local sdk module plus unrelated buf/protoreflect transitives) — used a targeted 'go get' for bluemonday instead, per plugins/proton/go.mod's own documented limitation
+- [Phase ?]: [Phase 05-04]: Email content-shape stylesheet carries forward proton's full readability-layer !important neutralizer even though 05-UI-SPEC.md's contract table omits it, since the plan's own must_haves require visual parity with pre-move output
 
 ### Pending Todos
 
@@ -185,6 +189,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T13:32:42.003Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-08-06T13:55:50.103Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
