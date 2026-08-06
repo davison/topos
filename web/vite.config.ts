@@ -17,7 +17,12 @@ export default defineConfig({
 				target: 'http://127.0.0.1:7777',
 				changeOrigin: true
 			}
-		}
+		},
+		// `make dev` passes --host so the dev server is reachable over the
+		// tailscale network; the leading dot allowlists any MagicDNS name
+		// (e.g. hepburn-ts.<tailnet>.ts.net). IP-literal access is always
+		// permitted by Vite and needs no entry here.
+		allowedHosts: ['.ts.net']
 	},
 	test: {
 		// Plan 01-03 only unit-tests plain TS (web/src/lib/format.ts) — no

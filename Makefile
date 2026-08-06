@@ -23,7 +23,10 @@ DEV_READY_TIMEOUT ?= 60
 # never disables any guard; the pre-flight port check and readiness
 # gate run identically regardless of what these point at.
 DEV_KERNEL_CMD ?= go run ./cmd/topos serve
-DEV_UI_CMD ?= npm --prefix web run dev -- --open
+# --host exposes the Vite dev server on all interfaces (including the
+# tailscale one); vite.config.ts allowlists *.ts.net Host headers so the
+# MagicDNS name works too. Raw-IP access (100.x.y.z:5173) needs no allowlist.
+DEV_UI_CMD ?= npm --prefix web run dev -- --open --host
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
 # the kernel binary, and the plugin binaries — topos-plugin-paperless,
