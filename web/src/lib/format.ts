@@ -569,3 +569,159 @@ export function highlightText(text: string, query: string): SnippetSegment[] {
 
 	return segments;
 }
+
+// --- Stream date markers (UI-11) ---
+
+export interface DateMarker {
+	itemId: string;
+	timestampUnix: number;
+	topPx: number;
+}
+
+export type MarkerGranularity = 'day' | 'week' | 'month';
+
+/**
+ * The minimum vertical spacing, in pixels, `dateMarkers` guarantees
+ * between any two returned markers. Never violated: adaptive thinning
+ * (day -> week -> month) exists specifically to hold this floor, and the
+ * degenerate case where even month periods are too dense enforces it by
+ * construction (see `dateMarkers`'s own doc comment).
+ */
+const MARKER_SPACING_FLOOR_PX = 24;
+
+/**
+ * UTC calendar-day key. Unix timestamps are seconds since the epoch in
+ * UTC, so floor-dividing by the number of seconds in a day yields the same
+ * day boundary `formatItemDate`'s `timeZone: 'UTC'` formatter would show —
+ * no `Date` construction needed, and no risk of the two ever disagreeing
+ * about which day an item belongs to.
+ */
+function dayKey(timestampUnix: number): number {
+	return Math.floor(timestampUnix / 86400);
+}
+
+/**
+ * ISO-8601 week key (`{iso-week-year}-W{week}`), computed in UTC. Follows
+ * the standard "nearest Thursday" ISO week algorithm: shifting each date to
+ * the Thursday of its own week makes the week-year and week-number
+ * unambiguous even across a Dec/Jan boundary (a Thursday-anchored week
+ * never crosses into a different ISO year than the days around it).
+ */
+function isoWeekKey(timestampUnix: number): string {
+	const source = new Date(timestampUnix * 1000);
+	const d = new Date(
+		Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate())
+	);
+	const dayNum = (d.getUTCDay() + 6) % 7; // Monday=0 .. Sunday=6
+	d.setUTCDate(d.getUTCDate() - dayNum + 3); // shift to this week's Thursday
+
+	const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+	const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+	firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+
+	const weekNum =
+		1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000));
+	return `${d.getUTCFullYear()}-W${weekNum}`;
+}
+
+/** UTC calendar-month key (`{year}-{month}`), month `0`-indexed. */
+function monthKey(timestampUnix: number): string {
+	const d = new Date(timestampUnix * 1000);
+	return `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+}
+
+/**
+ * Builds one candidate marker per new period key, walking `items` in the
+ * order supplied — never re-sorted, since the marker's whole job is to
+ * describe the stream's actual order. Position is index-proportional
+ * (`(index / items.length) * trackHeightPx`), valid because the stream is
+ * a non-virtualised list of fixed-height rows.
+ */
+function candidateMarkers(
+	items: StreamItem[],
+	trackHeightPx: number,
+	keyOf: (timestampUnix: number) => string | number
+): DateMarker[] {
+	const markers: DateMarker[] = [];
+	let lastKey: string | number | null = null;
+	items.forEach((item, index) => {
+		const key = keyOf(item.timestamp_unix);
+		if (key !== lastKey) {
+			markers.push({
+				itemId: item.id,
+				timestampUnix: item.timestamp_unix,
+				topPx: (index / items.length) * trackHeightPx
+			});
+			lastKey = key;
+		}
+	});
+	return markers;
+}
+
+/** True when every adjacent pair of a (position-sorted-by-construction) candidate list is at least the spacing floor apart. */
+function satisfiesSpacingFloor(markers: DateMarker[]): boolean {
+	for (let i = 1; i < markers.length; i += 1) {
+		if (markers[i].topPx - markers[i - 1].topPx < MARKER_SPACING_FLOOR_PX) return false;
+	}
+	return true;
+}
+
+/**
+ * The degenerate-case backstop: the first candidate is always kept, and
+ * every subsequent candidate is kept only if it lands at least the
+ * spacing floor away from the last KEPT marker (not the last candidate) —
+ * so the floor holds by construction rather than being silently
+ * abandoned when even month periods are too dense.
+ */
+function enforceSpacingFloor(markers: DateMarker[]): DateMarker[] {
+	if (markers.length === 0) return markers;
+	const kept: DateMarker[] = [markers[0]];
+	for (let i = 1; i < markers.length; i += 1) {
+		const candidate = markers[i];
+		const last = kept[kept.length - 1];
+		if (candidate.topPx - last.topPx >= MARKER_SPACING_FLOOR_PX) {
+			kept.push(candidate);
+		}
+	}
+	return kept;
+}
+
+/**
+ * Derives the stream pane's date-tick overlay markers (UI-11) from the
+ * already-in-memory, already-visible stream items — no new fetch. Pure and
+ * side-effect-free; the same input always yields the same output.
+ *
+ * Rules:
+ * - Fewer than two items, a non-positive track height, or every item
+ *   sharing one UTC calendar date all return an empty array — a
+ *   single-date stream has nothing to navigate between, so it renders no
+ *   markers at all rather than one useless tick.
+ * - Granularity is adaptive: day candidates are computed first and used
+ *   if every adjacent pair is at least `MARKER_SPACING_FLOOR_PX` apart;
+ *   otherwise week candidates are tried, then month candidates. The first
+ *   granularity that satisfies the floor wins.
+ * - If even month periods violate the floor, month-period candidates are
+ *   thinned by `enforceSpacingFloor` (dropping any candidate landing
+ *   within the floor of the last KEPT marker), so the floor holds by
+ *   construction in the degenerate case rather than being silently
+ *   abandoned.
+ * - The first candidate at every granularity is always kept; the floor is
+ *   only ever evaluated against the previously kept marker.
+ */
+export function dateMarkers(items: StreamItem[], trackHeightPx: number): DateMarker[] {
+	if (items.length < 2 || trackHeightPx <= 0) return [];
+
+	const firstDay = dayKey(items[0].timestamp_unix);
+	if (items.every((item) => dayKey(item.timestamp_unix) === firstDay)) return [];
+
+	const dayMarkers = candidateMarkers(items, trackHeightPx, dayKey);
+	if (satisfiesSpacingFloor(dayMarkers)) return dayMarkers;
+
+	const weekMarkers = candidateMarkers(items, trackHeightPx, isoWeekKey);
+	if (satisfiesSpacingFloor(weekMarkers)) return weekMarkers;
+
+	const monthMarkers = candidateMarkers(items, trackHeightPx, monthKey);
+	if (satisfiesSpacingFloor(monthMarkers)) return monthMarkers;
+
+	return enforceSpacingFloor(monthMarkers);
+}

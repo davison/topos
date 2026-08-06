@@ -11,9 +11,16 @@
 		type SourceStatus,
 		type SearchResult
 	} from '$lib/api';
-	import { resolveSourceFilters, toggleSourceFilter, serializeSourceFilters, staleSources } from '$lib/format';
+	import {
+		resolveSourceFilters,
+		toggleSourceFilter,
+		serializeSourceFilters,
+		staleSources,
+		filterItemsBySource
+	} from '$lib/format';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
+	import StreamDateMarkers from '$lib/components/StreamDateMarkers.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 
@@ -70,6 +77,19 @@
 	// old singular key (06-02-PLAN.md decision).
 	let selectedSources = $derived(
 		resolveSourceFilters(page.url.searchParams.get('sources'), sources)
+	);
+
+	// The stream pane's scroll region — bound below so StreamDateMarkers
+	// (UI-11) can measure the track height and resolve tick clicks against
+	// the same element StreamRow.svelte's data-item-id attribute lives in.
+	// visibleStreamItems mirrors StreamList.svelte's own internal
+	// filterItemsBySource derivation exactly (same inputs, same function)
+	// so the markers overlay can never disagree with what the stream
+	// itself is rendering.
+	let streamScrollEl: HTMLElement | null = $state(null);
+	let streamScrollHeight = $state(0);
+	let visibleStreamItems = $derived(
+		response ? filterItemsBySource(response.items, selectedSources) : []
 	);
 
 	async function load() {
@@ -233,32 +253,58 @@
 		  pane's rendering, so the two can never disagree. With nothing
 		  selected there is no sibling to size against, so the stream pane
 		  falls back to flex-1 and keeps filling the full content width.
+
+		  Wrapped in a `relative` container (UI-11) so StreamDateMarkers
+		  can render as an absolutely-positioned sibling of the actual
+		  scroll region below, pinned to the pane's full height rather
+		  than scrolling along with its content. The scroll div's own
+		  overflow/scroll classes are unchanged; the conditional width
+		  moves to this wrapper since it -- not the scroll div -- is now
+		  the flex child `main` sizes.
 		-->
-		<div
-			class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto {selectedItem
-				? 'w-[480px] shrink-0'
-				: 'flex-1'}"
-		>
-			{#if searchQuery.trim()}
-				<SearchResults
-					query={searchQuery}
-					state={searchState}
-					results={searchResults}
-					{selectedId}
-					onselect={(id) => (selectedId = id)}
-					staleSources={staleInstances}
-					{sourcesByInstance}
-				/>
-			{:else}
-				<StreamList
-					state={loadState}
-					{response}
-					{selectedId}
-					onselect={(id) => (selectedId = id)}
-					onretry={load}
-					staleSources={staleInstances}
-					{selectedSources}
-					{sourcesByInstance}
+		<div class="relative min-h-0 min-w-0 {selectedItem ? 'w-[480px] shrink-0' : 'flex-1'}">
+			<div
+				bind:this={streamScrollEl}
+				bind:clientHeight={streamScrollHeight}
+				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto {selectedItem
+					? 'w-[480px] shrink-0'
+					: 'flex-1'}"
+			>
+				{#if searchQuery.trim()}
+					<SearchResults
+						query={searchQuery}
+						state={searchState}
+						results={searchResults}
+						{selectedId}
+						onselect={(id) => (selectedId = id)}
+						staleSources={staleInstances}
+						{sourcesByInstance}
+					/>
+				{:else}
+					<StreamList
+						state={loadState}
+						{response}
+						{selectedId}
+						onselect={(id) => (selectedId = id)}
+						onretry={load}
+						staleSources={staleInstances}
+						{selectedSources}
+						{sourcesByInstance}
+					/>
+				{/if}
+			</div>
+			{#if !searchQuery.trim() && loadState === 'ready' && response}
+				<!-- Gated behind the same condition that selects the
+				     stream over search results, and behind the stream
+				     having loaded successfully -- markers never render
+				     over search results, a skeleton, an error state (the
+				     'error' branch above sets response back to null), or
+				     an empty stream (dateMarkers itself returns zero
+				     markers for fewer than two items). -->
+				<StreamDateMarkers
+					items={visibleStreamItems}
+					trackHeightPx={streamScrollHeight}
+					scrollContainer={streamScrollEl}
 				/>
 			{/if}
 		</div>

@@ -53,6 +53,7 @@
 	type="button"
 	onclick={onselect}
 	aria-pressed={selected}
+	data-item-id={item.id}
 	class={cn(
 		'stream-row-surface flex w-full items-start gap-4 overflow-hidden rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-card/80',
 		'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
