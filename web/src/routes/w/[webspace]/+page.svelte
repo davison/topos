@@ -207,6 +207,7 @@
 		{sourcesState}
 		{selectedSources}
 		onfilter={toggleFilter}
+		onclearfilters={clearFilters}
 		onrefresh={handleRefreshSource}
 		onrefreshall={handleRefreshAll}
 		{searchQuery}

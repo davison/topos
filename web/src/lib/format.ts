@@ -184,6 +184,72 @@ export function streamVariant(response: StreamResponse, selected: Set<string>): 
 	return 'populated';
 }
 
+/**
+ * Reduces a set of sources to the single most alarming health tone —
+ * fixed precedence destructive, then warning, then unknown, then success
+ * — the existing per-source `healthTone` map reduced over a set, not a
+ * new tone vocabulary. Returns the neutral `unknown` tone for an empty
+ * input, matching `healthTone`'s own neutral default.
+ */
+export function worstHealthTone(sources: SourceStatus[]): HealthTone {
+	const TONE_RANK: Record<HealthTone, number> = {
+		destructive: 0,
+		warning: 1,
+		unknown: 2,
+		success: 3
+	};
+	let worst: HealthTone = 'unknown';
+	for (const source of sources) {
+		const tone = healthTone(source);
+		if (TONE_RANK[tone] < TONE_RANK[worst]) worst = tone;
+	}
+	return worst;
+}
+
+/**
+ * Returns how many chips fit inline given their natural widths (in
+ * order), the row's available width, the width reserved for the trailing
+ * controls (Clear filters / Refresh all — never pushed into overflow),
+ * and the overflow trigger's own width.
+ *
+ * `reservedWidth` is subtracted from `availableWidth` first. If every
+ * chip's combined width fits that budget, every chip is visible and no
+ * overflow trigger is needed — the trigger's width is never charged in
+ * that case, since nothing is deferred to it. Only once the full set
+ * does NOT fit is the budget further reduced by `overflowTriggerWidth`
+ * (the trigger itself now occupies row space) and chips are accumulated
+ * in order against that reduced budget.
+ *
+ * Accumulation uses a strict `>` comparison, so a chip that would exceed
+ * the budget by any fraction of a pixel is excluded rather than rendered
+ * half-clipped at the row's trailing edge — this is the answer to the
+ * sub-pixel measurement question. The function is pure and
+ * side-effect-free: a repeated pass over unchanged inputs yields an
+ * identical count, and a budget that goes negative (reserved and trigger
+ * widths alone exceed the available width) naturally floors the result
+ * at zero rather than a negative count.
+ */
+export function visibleChipCount(
+	chipWidths: number[],
+	availableWidth: number,
+	reservedWidth: number,
+	overflowTriggerWidth: number
+): number {
+	const budget = availableWidth - reservedWidth;
+	const total = chipWidths.reduce((sum, width) => sum + width, 0);
+	if (total <= budget) return chipWidths.length;
+
+	const overflowBudget = budget - overflowTriggerWidth;
+	let used = 0;
+	let count = 0;
+	for (const width of chipWidths) {
+		if (used + width > overflowBudget) break;
+		used += width;
+		count += 1;
+	}
+	return count;
+}
+
 // --- Staleness (D-10) ---
 
 /**
