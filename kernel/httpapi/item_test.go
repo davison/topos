@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
 	"github.com/davison/topos/kernel/pluginhost"
@@ -20,19 +21,28 @@ import (
 )
 
 // fakeFetcher is a test double satisfying httpapi.Fetcher without
-// launching a real plugin subprocess.
+// launching a real plugin subprocess. gotSource records the last source
+// argument Fetch was called with, so a test can assert callers pass the
+// instance id (item.Item.Source), never the plugin kind (item.Item.SourceType).
 type fakeFetcher struct {
 	result pluginhost.FetchResult
 	err    error
+
+	gotSource string
 }
 
-func (f *fakeFetcher) Fetch(_ context.Context, _, _ string, _ toposv1.ContentVariant) (pluginhost.FetchResult, error) {
+func (f *fakeFetcher) Fetch(_ context.Context, source, _ string, _ toposv1.ContentVariant) (pluginhost.FetchResult, error) {
+	f.gotSource = source
 	return f.result, f.err
 }
 
 func newTestItemRouter(store *index.Store, fetcher Fetcher) http.Handler {
+	return newTestItemRouterWithConfig(store, &config.Config{}, fetcher)
+}
+
+func newTestItemRouterWithConfig(store *index.Store, cfg *config.Config, fetcher Fetcher) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/items/{id}", ItemHandler(store, fetcher))
+	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
 	return r
@@ -40,14 +50,18 @@ func newTestItemRouter(store *index.Store, fetcher Fetcher) http.Handler {
 
 func seedTestItem(t *testing.T, store *index.Store, it item.Item) {
 	t.Helper()
-	if err := store.ReplaceWebspaceSourceItems(context.Background(), "test-webspace", "paperless", []item.Item{it}); err != nil {
+	source := it.Source
+	if source == "" {
+		source = it.SourceType
+	}
+	if err := store.ReplaceWebspaceSourceItems(context.Background(), "test-webspace", source, []item.Item{it}); err != nil {
 		t.Fatalf("seed item: %v", err)
 	}
 }
 
 func testItem() item.Item {
 	return item.Item{
-		ID: "paperless:42", SourceType: "paperless", SourceID: "42",
+		ID: "paperless:42", Source: "paperless", SourceType: "paperless", SourceID: "42",
 		Title: "Completion statement", Fidelity: item.FidelityExact,
 		DeepLink: "http://paperless.lan:8000/documents/42",
 	}
@@ -94,6 +108,37 @@ func TestItemHandler_SourceUnavailable502(t *testing.T) {
 	}
 	if envelope.Error.Code != "source_unavailable" {
 		t.Errorf("expected code source_unavailable, got %q", envelope.Error.Code)
+	}
+}
+
+// TestItemHandler_FetchCalledWithInstanceIDNotPluginKind is the
+// regression proof for D-08's Fetch rewire: seeds an item whose Source
+// (instance id) and SourceType (plugin kind) deliberately differ, and
+// asserts fetcher.Fetch is called with the instance id. Before this
+// phase's identity split, ItemHandler called Fetch with it.SourceType —
+// which resolves the wrong (or no) plugin once two instances of one
+// plugin type exist, since pluginhost.Host.Fetch looks up its launched
+// plugin by instance id, not by plugin kind.
+func TestItemHandler_FetchCalledWithInstanceIDNotPluginKind(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	it := item.Item{
+		ID: "home-email:1", Source: "home-email", SourceType: "proton", SourceID: "1",
+		Title: "Home item", Fidelity: item.FidelityExact, DeepLink: "https://mail.proton.me/home/1",
+	}
+	seedTestItem(t, store, it)
+
+	fetcher := &fakeFetcher{result: pluginhost.FetchResult{Available: true, Text: "x"}}
+	router := newTestItemRouter(store, fetcher)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/home-email:1", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if fetcher.gotSource != "home-email" {
+		t.Errorf("expected Fetch called with the instance id 'home-email', got %q", fetcher.gotSource)
 	}
 }
 

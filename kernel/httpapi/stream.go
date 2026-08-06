@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
 )
@@ -23,8 +24,14 @@ type link struct {
 }
 
 type streamItem struct {
-	ID                     string            `json:"id"`
+	ID string `json:"id"`
+	// Source is the source INSTANCE id ([sources.<id>] config key) — the
+	// identity key everywhere it matters (D-08). SourceType is retained
+	// unchanged alongside it as the descriptive plugin kind (never an
+	// identity key after this split).
+	Source                 string            `json:"source"`
 	SourceType             string            `json:"source_type"`
+	SourceDisplayName      string            `json:"source_display_name"`
 	SourceID               string            `json:"source_id"`
 	Title                  string            `json:"title"`
 	Preview                string            `json:"preview"`
@@ -46,10 +53,12 @@ type streamResponse struct {
 }
 
 // StreamHandler serves GET /api/webspaces/{webspace}/stream — a free
-// function taking only the index store, so this handler is structurally
-// unable to reach a plugin (KERN-02 / Pitfall 1). It never calls Match; it
-// only reads the already-correlated index.
-func StreamHandler(store *index.Store) http.HandlerFunc {
+// function taking only the index store and config, so this handler is
+// structurally unable to reach a plugin (KERN-02 / Pitfall 1): cfg is
+// inert configuration data, resolved here only to label each item's
+// source_display_name (D-09), never to reach a plugin process. It never
+// calls Match; it only reads the already-correlated index.
+func StreamHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
@@ -81,14 +90,31 @@ func StreamHandler(store *index.Store) http.HandlerFunc {
 		}
 
 		for i, it := range items {
-			resp.Items[i] = toStreamItem(it)
+			resp.Items[i] = toStreamItemFor(it, cfg.DisplayNameFor)
 		}
 
 		WriteJSON(w, http.StatusOK, resp)
 	}
 }
 
+// toStreamItem converts it into its streamItem representation with
+// source_display_name resolved to the identity function (it.Source
+// itself) — the same fallback D-09 already declares as an instance's
+// default display name when no config override exists. This is the
+// signature search.go's toSearchResult calls (out of this plan's file
+// scope, per 05-01-PLAN.md's files_modified list), so a search result's
+// source_display_name reports the instance id rather than any configured
+// override; every other caller in this package uses toStreamItemFor
+// directly, resolving against the real *config.Config.
 func toStreamItem(it item.Item) streamItem {
+	return toStreamItemFor(it, func(source string) string { return source })
+}
+
+// toStreamItemFor is toStreamItem's config-aware sibling: resolveDisplayName
+// is applied to it.Source to populate source_display_name — callers pass
+// cfg.DisplayNameFor (or an equivalent test fake) so the resolved name
+// reflects the operator's own [sources.<id>] display_name (D-09).
+func toStreamItemFor(it item.Item, resolveDisplayName func(string) string) streamItem {
 	labels := it.Labels
 	if labels == nil {
 		labels = []string{}
@@ -110,7 +136,9 @@ func toStreamItem(it item.Item) streamItem {
 	}
 	return streamItem{
 		ID:                     it.ID,
+		Source:                 it.Source,
 		SourceType:             it.SourceType,
+		SourceDisplayName:      resolveDisplayName(it.Source),
 		SourceID:               it.SourceID,
 		Title:                  it.Title,
 		Preview:                it.Preview,

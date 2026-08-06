@@ -27,22 +27,23 @@ const schemaVersion = 1
 // /api/webspaces/{webspace}/stream, /api/items/{id} (+ /content,
 // /thumbnail), /api/sources, the manual-refresh routes, and the mirrored
 // /agent/v1/* namespace (MountAgentRoutes, agent.go).
-// StreamHandler deliberately takes only *index.Store — httpapi's
-// sync-time read path cannot import kernel/pluginhost, so the stream
-// route is structurally incapable of reaching a plugin (KERN-02 /
-// Pitfall 1). The /api/items/* routes are the one deliberate exception:
-// fetcher is the request-time, item-open plugin call path (KERN-03).
-// prober and refresher are the other two: prober drives GET
-// /api/sources's live reachability probe, and refresher is the same
-// kernel/syncer.Coordinator the scheduler and the CLI use, so every
-// caller of a sync reaches the identical single-flight entry point
-// (D-06).
+// StreamHandler and ItemHandler take cfg alongside *index.Store (05-01-
+// PLAN.md Task 2, D-09) to resolve each item's source_display_name — cfg
+// is inert configuration data, never a plugin handle, so this does not
+// weaken KERN-02 / Pitfall 1: the stream route remains structurally
+// incapable of reaching a plugin (it never imports kernel/pluginhost).
+// The /api/items/* routes are the one deliberate exception: fetcher is
+// the request-time, item-open plugin call path (KERN-03). prober and
+// refresher are the other two: prober drives GET /api/sources's live
+// reachability probe, and refresher is the same kernel/syncer.Coordinator
+// the scheduler and the CLI use, so every caller of a sync reaches the
+// identical single-flight entry point (D-06).
 func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber, refresher Refresher) chi.Router {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
-	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store))
+	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfg))
 	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store))
-	r.Get("/api/items/{id}", ItemHandler(store, fetcher))
+	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
 	r.Get("/api/sources", SourcesHandler(store, prober))

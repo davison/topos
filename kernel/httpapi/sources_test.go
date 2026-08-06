@@ -19,28 +19,11 @@ import (
 // fakeProber is a test double satisfying httpapi.HealthProber without
 // launching real plugin subprocesses.
 type fakeProber struct {
-	healths           []pluginhost.SourceHealth
-	sourceTypesByName map[string]string
+	healths []pluginhost.SourceHealth
 }
 
 func (f *fakeProber) ProbeSources(context.Context) []pluginhost.SourceHealth {
 	return f.healths
-}
-
-// SourceTypesByName defaults to deriving the name->source_type map from
-// f.healths (Name/SourceType are always set together on a SourceHealth in
-// this package's tests) unless a test explicitly overrides it — e.g. to
-// exercise a configured-but-unlaunched source, which has an agent.read
-// grant but no entry here.
-func (f *fakeProber) SourceTypesByName() map[string]string {
-	if f.sourceTypesByName != nil {
-		return f.sourceTypesByName
-	}
-	out := make(map[string]string, len(f.healths))
-	for _, h := range f.healths {
-		out[h.Name] = h.SourceType
-	}
-	return out
 }
 
 // fakeRefresher is a test double satisfying httpapi.Refresher.
@@ -304,8 +287,8 @@ func TestSyncRefreshHandler_ReturnsOneStatusPerSource(t *testing.T) {
 // source returned nothing must never look merely empty.
 func TestAggregateSyncStatus_ErrorTakesPrecedenceOverOK(t *testing.T) {
 	runs := map[string]index.SyncRun{
-		"paperless":    {SourceType: "paperless", Status: "ok", FinishedUnix: 200},
-		"silverbullet": {SourceType: "silverbullet", Status: "error", Error: "connection refused", FinishedUnix: 100},
+		"paperless":    {Source: "paperless", Status: "ok", FinishedUnix: 200},
+		"silverbullet": {Source: "silverbullet", Status: "error", Error: "connection refused", FinishedUnix: 100},
 	}
 	got := aggregateSyncStatus(runs)
 	if got.Status != "error" {
@@ -321,8 +304,8 @@ func TestAggregateSyncStatus_ErrorTakesPrecedenceOverOK(t *testing.T) {
 
 func TestAggregateSyncStatus_RunningTakesPrecedenceOverOK(t *testing.T) {
 	runs := map[string]index.SyncRun{
-		"paperless":    {SourceType: "paperless", Status: "ok", FinishedUnix: 200},
-		"silverbullet": {SourceType: "silverbullet", Status: "running"},
+		"paperless":    {Source: "paperless", Status: "ok", FinishedUnix: 200},
+		"silverbullet": {Source: "silverbullet", Status: "running"},
 	}
 	got := aggregateSyncStatus(runs)
 	if got.Status != "running" {

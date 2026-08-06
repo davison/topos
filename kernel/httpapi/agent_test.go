@@ -21,9 +21,15 @@ func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher,
 	return Router(store, cfg, fetcher, prober, &fakeRefresher{})
 }
 
+// agentTestItem builds a test item whose Source (instance id) and
+// SourceType (plugin kind) are the same value — sourceType is used for
+// both, matching this file's pre-existing single-instance-per-kind
+// fixtures. TestAgent_TwoInstancesOfOnePluginType_UngrantedNeverLeaks
+// below is the one test in this file that deliberately gives two items
+// distinct Source values sharing one SourceType.
 func agentTestItem(sourceType, sourceID string, ts int64) item.Item {
 	return item.Item{
-		ID: sourceType + ":" + sourceID, SourceType: sourceType, SourceID: sourceID,
+		ID: sourceType + ":" + sourceID, Source: sourceType, SourceType: sourceType, SourceID: sourceID,
 		Title: "item " + sourceID, Fidelity: item.FidelityExact,
 		DeepLink: "http://example.lan/" + sourceID, TimestampUnix: ts,
 	}
@@ -423,6 +429,117 @@ func TestAgentItemHandler_GrantedItemServed(t *testing.T) {
 	}
 	if resp.Content.Text != "extracted text" {
 		t.Errorf("expected the granted item's content to be served, got: %+v", resp.Content)
+	}
+}
+
+// TestAgent_TwoInstancesOfOnePluginType_UngrantedNeverLeaks is the single
+// most important new test in this phase (05-01-PLAN.md, T-05-01): seeds
+// one webspace with items from two source instances sharing one
+// source_type ("proton"), grants agent.read to exactly one instance, and
+// proves the ungranted instance's items/id/source never appear anywhere
+// in the /agent/v1 namespace — the shape this test exercises could not
+// exist before the identity split, since a source_type-keyed grant set
+// would have treated the two instances as one and leaked (or denied) both
+// together.
+func TestAgent_TwoInstancesOfOnePluginType_UngrantedNeverLeaks(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	grantedItem := item.Item{
+		ID: "home-email:1", Source: "home-email", SourceType: "proton", SourceID: "1",
+		Title: "Home item", Fidelity: item.FidelityExact,
+		DeepLink: "https://mail.proton.me/home/1", TimestampUnix: 200,
+	}
+	ungrantedItem := item.Item{
+		ID: "work-email:1", Source: "work-email", SourceType: "proton", SourceID: "1",
+		Title: "Work item", Fidelity: item.FidelityExact,
+		DeepLink: "https://mail.proton.me/work/1", TimestampUnix: 100,
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "home-email", []item.Item{grantedItem}); err != nil {
+		t.Fatalf("seed home-email: %v", err)
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "work-email", []item.Item{ungrantedItem}); err != nil {
+		t.Fatalf("seed work-email: %v", err)
+	}
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"home-email": {Plugin: "topos-plugin-proton", DisplayName: "Home Email", Agent: config.AgentGrant{Read: true}},
+			"work-email": {Plugin: "topos-plugin-proton", DisplayName: "Work Email"}, // no agent.read grant
+		},
+		Webspaces: map[string]config.Webspace{"house-move": {Keywords: []string{"x"}}},
+	}
+	prober := &fakeProber{healths: []pluginhost.SourceHealth{
+		{Name: "home-email", SourceType: "proton", DisplayName: "Home Email", Reachable: true},
+		{Name: "work-email", SourceType: "proton", DisplayName: "Work Email", Reachable: true},
+	}}
+	router := newAgentTestRouter(store, cfg, &fakeFetcher{result: pluginhost.FetchResult{Available: true, Text: "x"}}, prober)
+
+	// (a) /agent/v1/webspaces/{ws}/stream contains only the granted
+	// instance's items.
+	streamReq := httptest.NewRequest(http.MethodGet, "/agent/v1/webspaces/house-move/stream", nil)
+	streamRec := httptest.NewRecorder()
+	router.ServeHTTP(streamRec, streamReq)
+	var streamResp streamResponse
+	if err := json.Unmarshal(streamRec.Body.Bytes(), &streamResp); err != nil {
+		t.Fatalf("unmarshal stream: %v", err)
+	}
+	if len(streamResp.Items) != 1 || streamResp.Items[0].ID != "home-email:1" {
+		t.Fatalf("expected exactly the granted instance's item, got: %+v", streamResp.Items)
+	}
+	if streamResp.Items[0].Source != "home-email" {
+		t.Errorf("expected the surviving item's source to be 'home-email', got %q", streamResp.Items[0].Source)
+	}
+
+	// (b) /agent/v1/items/{ungranted-id} returns exactly the same status,
+	// code and message as a nonexistent id.
+	ungrantedReq := httptest.NewRequest(http.MethodGet, "/agent/v1/items/work-email:1", nil)
+	ungrantedRec := httptest.NewRecorder()
+	router.ServeHTTP(ungrantedRec, ungrantedReq)
+
+	nonexistentStore := newTestStoreForHTTP(t)
+	nonexistentRouter := newAgentTestRouter(nonexistentStore, cfg, &fakeFetcher{}, prober)
+	nonexistentReq := httptest.NewRequest(http.MethodGet, "/agent/v1/items/work-email:1", nil)
+	nonexistentRec := httptest.NewRecorder()
+	nonexistentRouter.ServeHTTP(nonexistentRec, nonexistentReq)
+
+	if ungrantedRec.Code != http.StatusNotFound || nonexistentRec.Code != http.StatusNotFound {
+		t.Fatalf("expected both 404, got ungranted=%d nonexistent=%d", ungrantedRec.Code, nonexistentRec.Code)
+	}
+	if ungrantedRec.Body.String() != nonexistentRec.Body.String() {
+		t.Errorf("expected byte-identical bodies for ungranted-vs-nonexistent:\nungranted=%s\nnonexistent=%s",
+			ungrantedRec.Body.String(), nonexistentRec.Body.String())
+	}
+	var ungrantedEnvelope errorEnvelope
+	if err := json.Unmarshal(ungrantedRec.Body.Bytes(), &ungrantedEnvelope); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if ungrantedEnvelope.Error.Code != "item_not_found" {
+		t.Errorf("expected code item_not_found, got %q", ungrantedEnvelope.Error.Code)
+	}
+
+	// (c) /agent/v1/sources lists only the granted instance.
+	sourcesReq := httptest.NewRequest(http.MethodGet, "/agent/v1/sources", nil)
+	sourcesRec := httptest.NewRecorder()
+	router.ServeHTTP(sourcesRec, sourcesReq)
+	var sourcesResp agentSourcesResponse
+	if err := json.Unmarshal(sourcesRec.Body.Bytes(), &sourcesResp); err != nil {
+		t.Fatalf("unmarshal sources: %v", err)
+	}
+	if len(sourcesResp.Sources) != 1 || sourcesResp.Sources[0].Name != "home-email" {
+		t.Fatalf("expected exactly the granted instance in /agent/v1/sources, got: %+v", sourcesResp.Sources)
+	}
+
+	// (d) /agent/v1/webspaces's item_count excludes the ungranted instance.
+	webspacesReq := httptest.NewRequest(http.MethodGet, "/agent/v1/webspaces", nil)
+	webspacesRec := httptest.NewRecorder()
+	router.ServeHTTP(webspacesRec, webspacesReq)
+	var webspacesResp webspacesResponse
+	if err := json.Unmarshal(webspacesRec.Body.Bytes(), &webspacesResp); err != nil {
+		t.Fatalf("unmarshal webspaces: %v", err)
+	}
+	if len(webspacesResp.Webspaces) != 1 || webspacesResp.Webspaces[0].ItemCount != 1 {
+		t.Fatalf("expected item_count 1 (granted instance only, ungranted instance's item excluded), got: %+v", webspacesResp.Webspaces)
 	}
 }
 

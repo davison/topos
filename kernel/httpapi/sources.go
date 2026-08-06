@@ -20,14 +20,14 @@ import (
 // already establishes) so sources_test.go can exercise every merge branch
 // with a fake, without launching real plugin subprocesses.
 //
-// SourceTypesByName extends this interface (02-04-PLAN.md Task 1):
-// kernel/httpapi/agent.go's grant filtering needs the launched-plugin
-// name-to-source_type mapping on every /agent/v1 request, and must reach
-// it through the same no-RPC, already-cached path SourcesHandler's own
-// merge relies on — never a live probe just to resolve a name.
+// The name-to-plugin-kind lookup method this interface previously
+// required is gone (05-01-PLAN.md Task 2, D-08): kernel/httpapi/agent.go's
+// grant filtering now keys directly on cfg.AgentReadGrantedNames() /
+// item.Source (the instance id), so that indirection — and its
+// pluginhost.Host-side implementation — is deleted alongside its last
+// caller.
 type HealthProber interface {
 	ProbeSources(ctx context.Context) []pluginhost.SourceHealth
-	SourceTypesByName() map[string]string
 }
 
 // Refresher is the minimal sync-dispatch surface SourceRefreshHandler and
@@ -57,8 +57,10 @@ type sourcesResponse struct {
 
 // SourcesHandler serves GET /api/sources: a kernel-side merge of every
 // launched plugin's live reachability (ProbeSources) with the kernel's
-// own sync_runs history (LatestSyncRunPerSource, SyncingSourceTypes) —
-// D-08. A plugin's own self-reported last-sync time and last error are
+// own sync_runs history (LatestSyncRunPerSource, SyncingSources) — D-08.
+// One entry per source INSTANCE (never merged by plugin kind), sorted by
+// instance id for a deterministic response order run to run. A plugin's
+// own self-reported last-sync time and last error are
 // deliberately never read here: last_status, last_sync_unix and
 // last_error come exclusively from the kernel's own recorded sync_runs
 // rows, so a plugin cannot report a rosier history than actually happened
@@ -89,20 +91,20 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 	if err != nil {
 		return nil, err
 	}
-	syncing, err := store.SyncingSourceTypes(ctx)
+	syncing, err := store.SyncingSources(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	statuses := make([]sourceStatus, len(healths))
 	for i, h := range healths {
-		run := runs[h.SourceType] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
+		run := runs[h.Name] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
 		statuses[i] = sourceStatus{
 			Name:         h.Name,
 			SourceType:   h.SourceType,
 			DisplayName:  h.DisplayName,
 			Reachable:    h.Reachable,
-			Syncing:      syncing[h.SourceType],
+			Syncing:      syncing[h.Name],
 			LastStatus:   run.Status,
 			LastSyncUnix: run.FinishedUnix,
 			LastError:    run.Error,
@@ -191,37 +193,39 @@ func SyncRefreshHandler(refresher Refresher) http.HandlerFunc {
 }
 
 // aggregateSyncStatus merges every configured source's latest sync_runs
-// row (keyed by source_type, as LatestSyncRunPerSource returns) into the
-// single shared "sync" object used by the stream and webspace-list
-// envelopes. Precedence: "error" if any source's latest run errored; else
-// "running" if any source is still mid-sync; else "ok" if at least one
-// run is recorded; else the zero value (nothing has ever synced). This is
-// what stops a webspace whose only failing source returned nothing from
-// ever rendering as merely empty — an aggregate that silently dropped a
-// failing source with zero items would look identical to a healthy,
-// genuinely-empty webspace.
+// row (keyed by source INSTANCE id, as LatestSyncRunPerSource returns —
+// D-08) into the single shared "sync" object used by the stream and
+// webspace-list envelopes. Precedence: "error" if any source's latest run
+// errored; else "running" if any source is still mid-sync; else "ok" if at
+// least one run is recorded; else the zero value (nothing has ever
+// synced). This is what stops a webspace whose only failing source
+// returned nothing from ever rendering as merely empty — an aggregate that
+// silently dropped a failing source with zero items would look identical
+// to a healthy, genuinely-empty webspace. errParts names each failing
+// entry by its instance id, never by the shared plugin kind two instances
+// might have in common.
 func aggregateSyncStatus(runs map[string]index.SyncRun) syncStatus {
 	if len(runs) == 0 {
 		return syncStatus{}
 	}
 
-	sourceTypes := make([]string, 0, len(runs))
-	for st := range runs {
-		sourceTypes = append(sourceTypes, st)
+	sources := make([]string, 0, len(runs))
+	for source := range runs {
+		sources = append(sources, source)
 	}
-	sort.Strings(sourceTypes)
+	sort.Strings(sources)
 
 	var hasError, hasRunning, hasOK bool
 	var newestFinished int64
 	var errParts []string
 
-	for _, st := range sourceTypes {
-		run := runs[st]
+	for _, source := range sources {
+		run := runs[source]
 		switch run.Status {
 		case "error":
 			hasError = true
 			if run.Error != "" {
-				errParts = append(errParts, st+": "+run.Error)
+				errParts = append(errParts, source+": "+run.Error)
 			}
 		case "running":
 			hasRunning = true

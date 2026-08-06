@@ -15,7 +15,7 @@
 // subpackage split can avoid without duplicating all of the above.
 //
 // Every handler here follows the same shape: resolve the request-scoped
-// granted set via grantedSourceTypes, then do the identical index
+// granted set via grantedSources, then do the identical index
 // read/plugin call the /api/* sibling handler does, filtering by that
 // granted set as the one added step (T-02-19). Every not-found branch for
 // an ungranted item reuses the exact "item_not_found" code/status/message
@@ -37,32 +37,27 @@ import (
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
-// grantedSourceTypes returns the set of Describe-learned source_types
-// whose config source has agent.read = true, intersected with byName
-// (every launched plugin's config name -> source_type mapping, from
-// HealthProber.SourceTypesByName). A configured-but-unlaunched source has
-// no entry in byName and is therefore never granted, even if its config
-// carries agent.read = true — there is nothing to serve on its behalf.
-func grantedSourceTypes(cfg *config.Config, byName map[string]string) map[string]bool {
-	granted := map[string]bool{}
-	for name := range cfg.AgentReadGrantedNames() {
-		if st, ok := byName[name]; ok {
-			granted[st] = true
-		}
-	}
-	return granted
+// grantedSources returns the set of source INSTANCE ids whose config
+// source has agent.read = true (D-08, D-10) — directly from
+// cfg.AgentReadGrantedNames(), with no name-to-source_type indirection.
+// Index rows already carry the instance id (item.Item.Source), so a grant
+// is checked by matching that instance id against this set, never by
+// translating through the plugin kind first — two configured instances of
+// one plugin type therefore never share a grant (T-05-01).
+func grantedSources(cfg *config.Config) map[string]bool {
+	return cfg.AgentReadGrantedNames()
 }
 
 // filterRunsByGrant restricts a LatestSyncRunPerSource-shaped map (keyed
-// by source_type) to the granted set, so aggregateSyncStatus computes its
-// error/running/ok precedence over granted sources only (per-handler
-// requirement: the webspace and stream listings' sync status must never
-// be influenced by an ungranted source's failure or success).
+// by source INSTANCE id) to the granted set, so aggregateSyncStatus
+// computes its error/running/ok precedence over granted sources only
+// (per-handler requirement: the webspace and stream listings' sync status
+// must never be influenced by an ungranted source's failure or success).
 func filterRunsByGrant(runs map[string]index.SyncRun, granted map[string]bool) map[string]index.SyncRun {
 	out := make(map[string]index.SyncRun, len(runs))
-	for st, run := range runs {
-		if granted[st] {
-			out[st] = run
+	for source, run := range runs {
+		if granted[source] {
+			out[source] = run
 		}
 	}
 	return out
@@ -97,7 +92,7 @@ type agentSourcesResponse struct {
 func agentSourcesHandler(store *index.Store, cfg *config.Config, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		granted := grantedSourceTypes(cfg, prober.SourceTypesByName())
+		granted := grantedSources(cfg)
 
 		statuses, err := sourceStatusesFrom(ctx, store, prober)
 		if err != nil {
@@ -107,7 +102,7 @@ func agentSourcesHandler(store *index.Store, cfg *config.Config, prober HealthPr
 
 		out := make([]agentSourceStatus, 0, len(statuses))
 		for _, s := range statuses {
-			if !granted[s.SourceType] {
+			if !granted[s.Name] {
 				continue
 			}
 			out = append(out, agentSourceStatus{
@@ -124,8 +119,8 @@ func agentSourcesHandler(store *index.Store, cfg *config.Config, prober HealthPr
 }
 
 // agentGrantedItemCount reads webspaceName's full item set and counts only
-// the items whose source_type is granted — GET /agent/v1/webspaces has no
-// dedicated per-source-filtered index query, so this reuses StreamItems
+// the items whose source INSTANCE is granted — GET /agent/v1/webspaces has
+// no dedicated per-source-filtered index query, so this reuses StreamItems
 // (the same read StreamHandler/agentStreamHandler use) rather than adding
 // a new Store method outside this plan's scope.
 func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool) (int, error) {
@@ -135,7 +130,7 @@ func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName
 	}
 	count := 0
 	for _, it := range items {
-		if granted[it.SourceType] {
+		if granted[it.Source] {
 			count++
 		}
 	}
@@ -151,7 +146,7 @@ func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName
 func agentWebspacesHandler(store *index.Store, cfg *config.Config, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		granted := grantedSourceTypes(cfg, prober.SourceTypesByName())
+		granted := grantedSources(cfg)
 
 		runs, err := store.LatestSyncRunPerSource(ctx)
 		if err != nil {
@@ -209,7 +204,7 @@ func agentStreamHandler(store *index.Store, cfg *config.Config, prober HealthPro
 			return
 		}
 
-		granted := grantedSourceTypes(cfg, prober.SourceTypesByName())
+		granted := grantedSources(cfg)
 
 		items, err := store.StreamItems(ctx, name)
 		if err != nil {
@@ -223,10 +218,10 @@ func agentStreamHandler(store *index.Store, cfg *config.Config, prober HealthPro
 			Items:         []streamItem{},
 		}
 		for _, it := range items {
-			if !granted[it.SourceType] {
+			if !granted[it.Source] {
 				continue
 			}
-			resp.Items = append(resp.Items, toStreamItem(it))
+			resp.Items = append(resp.Items, toStreamItemFor(it, cfg.DisplayNameFor))
 		}
 
 		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
@@ -259,13 +254,13 @@ func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProbe
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		granted := grantedSourceTypes(cfg, prober.SourceTypesByName())
-		if !ok || !granted[it.SourceType] {
+		granted := grantedSources(cfg)
+		if !ok || !granted[it.Source] {
 			agentItemNotFound(w, id)
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
+		result, err := fetcher.Fetch(ctx, it.Source, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return
@@ -286,7 +281,7 @@ func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProbe
 
 		WriteJSON(w, http.StatusOK, itemDetailResponse{
 			SchemaVersion: schemaVersion,
-			Item:          toStreamItem(it),
+			Item:          toStreamItemFor(it, cfg.DisplayNameFor),
 			Content:       content,
 		})
 	}
@@ -309,13 +304,13 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		granted := grantedSourceTypes(cfg, prober.SourceTypesByName())
-		if !ok || !granted[it.SourceType] {
+		granted := grantedSources(cfg)
+		if !ok || !granted[it.Source] {
 			agentItemNotFound(w, id)
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, variant)
+		result, err := fetcher.Fetch(ctx, it.Source, it.SourceID, variant)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return

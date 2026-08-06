@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/pluginhost"
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
@@ -22,8 +23,11 @@ import (
 // deliberate exception to the "httpapi never reaches a plugin" rule:
 // stream.go must never import pluginhost (KERN-02); item.go is exactly
 // the request-time, item-open boundary where a live plugin call belongs.
+// source is the instance id (item.Item.Source, D-08) — pluginhost.Host's
+// own Fetch resolves the launched plugin by instance id, not by plugin
+// kind, so every call site below must pass it.Source, never it.SourceType.
 type Fetcher interface {
-	Fetch(ctx context.Context, sourceType, sourceID string, variant toposv1.ContentVariant) (pluginhost.FetchResult, error)
+	Fetch(ctx context.Context, source, sourceID string, variant toposv1.ContentVariant) (pluginhost.FetchResult, error)
 }
 
 // allowedRenditionTypes is the MIME allowlist enforced on every byte
@@ -80,10 +84,12 @@ func itemIDParam(r *http.Request) string {
 }
 
 // ItemHandler serves GET /api/items/{id}: an index read to resolve the
-// composite id to source_type/source_id and the item's own metadata, plus
-// exactly one request-time plugin Fetch call (full variant) for the live
-// extracted text and rendition descriptor (KERN-03).
-func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
+// composite id to source (instance id) /source_id and the item's own
+// metadata, plus exactly one request-time plugin Fetch call (full variant)
+// for the live extracted text and rendition descriptor (KERN-03). cfg
+// resolves the item's source_display_name (D-09) — inert configuration
+// data, never a plugin call.
+func ItemHandler(store *index.Store, cfg *config.Config, fetcher Fetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := itemIDParam(r)
 		ctx := r.Context()
@@ -98,7 +104,7 @@ func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
+		result, err := fetcher.Fetch(ctx, it.Source, it.SourceID, toposv1.ContentVariant_CONTENT_VARIANT_FULL)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return
@@ -119,7 +125,7 @@ func ItemHandler(store *index.Store, fetcher Fetcher) http.HandlerFunc {
 
 		WriteJSON(w, http.StatusOK, itemDetailResponse{
 			SchemaVersion: schemaVersion,
-			Item:          toStreamItem(it),
+			Item:          toStreamItemFor(it, cfg.DisplayNameFor),
 			Content:       content,
 		})
 	}
@@ -159,7 +165,7 @@ func renditionHandler(store *index.Store, fetcher Fetcher, variant toposv1.Conte
 			return
 		}
 
-		result, err := fetcher.Fetch(ctx, it.SourceType, it.SourceID, variant)
+		result, err := fetcher.Fetch(ctx, it.Source, it.SourceID, variant)
 		if err != nil {
 			writeFetchError(w, id, err)
 			return

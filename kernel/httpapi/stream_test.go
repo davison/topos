@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
 )
@@ -25,8 +26,12 @@ func newTestStoreForHTTP(t *testing.T) *index.Store {
 }
 
 func newTestRouter(store *index.Store) http.Handler {
+	return newTestRouterWithConfig(store, &config.Config{})
+}
+
+func newTestRouterWithConfig(store *index.Store, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store))
+	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfg))
 	return r
 }
 
@@ -87,7 +92,7 @@ func TestStreamHandler_ReturnsItemsWithLinkAndProvenance(t *testing.T) {
 	ctx := context.Background()
 
 	it := item.Item{
-		ID: "paperless:42", SourceType: "paperless", SourceID: "42",
+		ID: "paperless:42", Source: "paperless", SourceType: "paperless", SourceID: "42",
 		Title: "Completion statement", Preview: "some text",
 		TimestampUnix: 1773532800, SecondaryTimestampUnix: 1773561234,
 		Fidelity: item.FidelityExact, DeepLink: "http://paperless.lan:8000/documents/42",
@@ -122,5 +127,74 @@ func TestStreamHandler_ReturnsItemsWithLinkAndProvenance(t *testing.T) {
 	}
 	if len(got.Preview) > 500 {
 		t.Errorf("preview exceeds 500 runes: %d", len(got.Preview))
+	}
+}
+
+// TestStreamHandler_TwoInstancesOfOnePluginTypeReportDistinctSourceAndDisplayName
+// proves the stream envelope carries source (instance id) and
+// source_display_name distinctly for two source instances sharing one
+// plugin kind (D-08/D-09) — the exact shape two [sources.*] entries
+// pointing at the same plugin binary produce.
+func TestStreamHandler_TwoInstancesOfOnePluginTypeReportDistinctSourceAndDisplayName(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	home := item.Item{
+		ID: "home-email:1", Source: "home-email", SourceType: "proton", SourceID: "1",
+		Title: "Home item", Fidelity: item.FidelityExact, DeepLink: "https://mail.proton.me/home/1",
+		TimestampUnix: 200,
+	}
+	work := item.Item{
+		ID: "work-email:1", Source: "work-email", SourceType: "proton", SourceID: "1",
+		Title: "Work item", Fidelity: item.FidelityExact, DeepLink: "https://mail.proton.me/work/1",
+		TimestampUnix: 100,
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "home-email", []item.Item{home}); err != nil {
+		t.Fatalf("seed home-email: %v", err)
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "work-email", []item.Item{work}); err != nil {
+		t.Fatalf("seed work-email: %v", err)
+	}
+
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"home-email": {Plugin: "topos-plugin-proton", DisplayName: "Home Email"},
+		"work-email": {Plugin: "topos-plugin-proton", DisplayName: "Work Email"},
+	}}
+	router := newTestRouterWithConfig(store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(resp.Items))
+	}
+
+	byID := map[string]streamItem{}
+	for _, it := range resp.Items {
+		byID[it.ID] = it
+	}
+	homeItem, ok := byID["home-email:1"]
+	if !ok {
+		t.Fatalf("expected item 'home-email:1' present, got: %+v", resp.Items)
+	}
+	if homeItem.Source != "home-email" || homeItem.SourceDisplayName != "Home Email" {
+		t.Errorf("expected source=home-email display_name='Home Email', got source=%q display_name=%q", homeItem.Source, homeItem.SourceDisplayName)
+	}
+	if homeItem.SourceType != "proton" {
+		t.Errorf("expected source_type 'proton' (shared plugin kind), got %q", homeItem.SourceType)
+	}
+	workItem, ok := byID["work-email:1"]
+	if !ok {
+		t.Fatalf("expected item 'work-email:1' present, got: %+v", resp.Items)
+	}
+	if workItem.Source != "work-email" || workItem.SourceDisplayName != "Work Email" {
+		t.Errorf("expected source=work-email display_name='Work Email', got source=%q display_name=%q", workItem.Source, workItem.SourceDisplayName)
 	}
 }

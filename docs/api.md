@@ -101,7 +101,9 @@ $ curl -s http://127.0.0.1:7777/api/webspaces/house-move/stream | jq
   "items": [
     {
       "id": "paperless:528",
+      "source": "paperless",
       "source_type": "paperless",
+      "source_display_name": "paperless-ngx",
       "source_id": "528",
       "title": "Completion statement",
       "preview": "This letter confirms completion has taken place...",
@@ -125,6 +127,22 @@ $ curl -s http://127.0.0.1:7777/api/webspaces/house-move/stream | jq
 }
 ```
 
+**`source` is the source INSTANCE id** — the `[sources.<id>]` config map
+key this item was synced through (`D-08`). It is the identity key
+everywhere identity matters: it prefixes every item `id` (see "The
+stable-ID scheme", below), keys every sync-run record, and is what
+`/agent/v1` grants are checked against. **`source_type`** is retained
+unchanged alongside it as the *plugin kind* the owning plugin reported via
+its `Describe` RPC — purely descriptive provenance, never an identity key.
+Two source instances configured against the same plugin binary (e.g. two
+Proton accounts, "home-email" and "work-email") always share one
+`source_type` but always have distinct `source` values, distinct item id
+namespaces, and distinct sync history — they never merge (`D-10`).
+**`source_display_name`** is that instance's resolved, operator-authored
+label: its configured `[sources.<id>] display_name`, or the instance id
+itself when that key is omitted (`D-09`) — the kernel never emits an empty
+`source_display_name`.
+
 A **known** webspace (one that has completed at least one sync, even a
 zero-item sync) with no matched items returns `200` and `"items": []` —
 never `404` and never a JSON `null` for `items`. An **unconfigured or
@@ -140,9 +158,10 @@ source's latest run errored, else `"running"` if any source is still
 mid-sync, else `"ok"` if at least one run has ever completed, else the
 zero value (`""`) if nothing has ever synced. `finished_unix` is the
 newest `finished_unix` across every source's latest run. `error` joins
-each failing source's message, prefixed with its source type, in sorted
-source order (so it's deterministic) — e.g. `"silverbullet: dial tcp:
-connection refused"`. This is what stops a two-source webspace whose only
+each failing source's message, prefixed with its source INSTANCE id (never
+the plugin kind — two instances of one plugin type report independently),
+in sorted source order (so it's deterministic) — e.g. `"work-email: dial
+tcp: connection refused"`. This is what stops a two-source webspace whose only
 failing source returned nothing from rendering as merely empty: before
 this aggregate, a webspace with one healthy source and one silently
 broken one could report `sync.status: "ok"` just because the *other*
@@ -166,7 +185,9 @@ $ curl -s "http://127.0.0.1:7777/api/webspaces/house-move/search?q=boiler" | jq
   "results": [
     {
       "id": "paperless:528",
+      "source": "paperless",
       "source_type": "paperless",
+      "source_display_name": "paperless-ngx",
       "source_id": "528",
       "title": "Boiler service invoice",
       "preview": "annual boiler service",
@@ -232,13 +253,17 @@ This route has **no `/agent/v1` mirror** in this version — see "The
 
 ### `GET /api/items/{id}`
 
-`{id}` is the stable composite id (`{source_type}:{source_id}`, e.g.
-`paperless:528`), accepted both raw and percent-encoded
-(`paperless%3A528`) — both resolve to the same item. Returns the item's
-indexed metadata (identical shape to a stream row) plus **one live
-`Fetch(FULL)` call** to the owning plugin for extracted text and a
-rendition descriptor. This is the one route family with request-time
-source-system latency; everything else on this API is an index read.
+`{id}` is the stable composite id (`{source}:{source_id}`, e.g.
+`paperless:528` — see "The stable-ID scheme", below), accepted both raw and
+percent-encoded (`paperless%3A528`) — both resolve to the same item.
+Returns the item's indexed metadata (identical shape to a stream row) plus
+**one live `Fetch(FULL)` call** to the owning plugin for extracted text
+and a rendition descriptor. This is the one route family with
+request-time source-system latency; everything else on this API is an
+index read. The plugin call is made against the item's `source` (its
+source INSTANCE id), never its `source_type` — this is what lets two
+configured instances of one plugin binary resolve to the correct running
+subprocess each.
 
 ```
 $ curl -s http://127.0.0.1:7777/api/items/paperless:528 | jq
@@ -312,10 +337,16 @@ directive.
 
 ### `GET /api/sources`
 
-One entry per configured source: its config name, plugin-reported
-`source_type` and `display_name`, a **live** reachability probe result,
-whether it is currently syncing, and the kernel's own recorded sync
-history for it (`PLUG-04`). Sorted by name.
+One entry per configured source **instance** (`name`, the `[sources.<id>]`
+config map key — `D-08`): its resolved `display_name` (`D-09`), the
+plugin-reported `source_type` (the plugin kind, shared by every instance
+of that plugin binary), a **live** reachability probe result, whether it
+is currently syncing, and the kernel's own recorded sync history for it
+(`PLUG-04`). Sorted by instance id — so two instances of one plugin type
+always appear in the same deterministic order, run to run. Two
+`[sources.*]` entries whose `plugin` value is identical (e.g. two Proton
+accounts) always produce **two distinct entries** here, never one merged
+row.
 
 ```
 $ curl -s http://127.0.0.1:7777/api/sources | jq
@@ -423,6 +454,16 @@ deny. `read` and `handoff` are independent: a source with `handoff = true`
 and `read = false` is still fully absent from every `/agent/v1/*`
 response.
 
+**Grants are per source INSTANCE, never per plugin kind (`D-08`, `D-10`).**
+`[sources.<name>.agent]` is keyed on the instance id — the same
+`[sources.<name>]` map key that carries the grant everywhere else. Two
+instances of one plugin type (e.g. `home-email` and `work-email`, both
+running the Proton plugin) can be granted independently: granting
+`home-email` alone never admits `work-email`'s items, sources entry, or
+sync history, even though both share one `source_type`. There is no way
+to grant "every instance of a plugin kind" in one declaration — each
+instance's `agent.read` is set explicitly.
+
 | Route | Mirrors | Restriction |
 |---|---|---|
 | `GET /agent/v1/sources` | `GET /api/sources` | Ungranted sources are omitted entirely; each entry gains a `capabilities: {read, handoff}` object. |
@@ -482,17 +523,28 @@ of it is designed.
 
 ## The stable-ID scheme
 
-Every item's `id` is `"{source_type}:{source_id}"` — `source_type` is
-whatever the owning plugin reported via its `Describe` RPC (e.g.
-`"paperless"`), and `source_id` is that plugin's own stable local
-identifier for the object (e.g. `"528"`, a paperless-ngx document id).
+Every item's `id` is `"{source}:{source_id}"` — `source` is the source
+INSTANCE id, the `[sources.<id>]` config map key the item was synced
+through (`D-08`; e.g. `"paperless"`, or `"home-email"`/`"work-email"` for
+two Proton instances), and `source_id` is the owning plugin's own stable
+local identifier for the object (e.g. `"528"`, a paperless-ngx document
+id). Identity comes only from the operator's own config map key — never
+from anything a plugin process asserts, a binary filename, or launch
+order. `source_type`, the plugin kind learned from `Describe`, is retained
+as descriptive provenance but never appears in the id and is never used to
+key identity anywhere in the kernel.
 
 - **Stable across syncs**: re-syncing never changes an existing item's id;
   the same source object always upserts to the same row.
-- **Unique across source types**: two different sources can use
-  overlapping `source_id` values (a paperless-ngx document `"1"` and an
-  IMAP message `"1"`) without colliding, because the `source_type` prefix
-  disambiguates them.
+- **Unique across source instances**: two different source instances can
+  use overlapping `source_id` values (a paperless-ngx document `"1"` and
+  an IMAP message `"1"` — or even two instances of the *same* plugin type,
+  each with their own `source_id "1"`) without colliding, because the
+  `source` (instance id) prefix disambiguates them. Two instances of one
+  plugin type never merge: their items occupy distinct id namespaces,
+  their sync history forms independent per-instance series, and an
+  `agent.read` grant on one instance never admits the other's items
+  (`D-10`).
 - **Round-trips through percent-encoding**: a client that URL-encodes the
   `:` (producing `paperless%3A528`) gets the identical item back as the
   raw form.
@@ -517,8 +569,8 @@ Every item's `provenance` object carries exactly these six keys:
 
 | Key | Meaning |
 |---|---|
-| `source_type` | Matches the item's own `source_type` / id prefix. |
-| `source_system` | The specific source instance this item came from (e.g. a paperless-ngx base URL) — distinguishes "which paperless-ngx" if you ever configure more than one. |
+| `source_type` | Matches the item's own top-level `source_type` — the plugin kind (`Describe`-reported), never the id prefix (that's `source`, the instance id — see "The stable-ID scheme"). |
+| `source_system` | The specific source instance's connection endpoint (e.g. a paperless-ngx base URL) — distinguishes "which paperless-ngx" if you configure more than one instance; the item's top-level `source` field is the config-authored instance id for the same purpose. |
 | `source_id` | Matches the item's own `source_id`. |
 | `plugin` | The plugin binary name that produced this item (e.g. `"topos-plugin-paperless"`). |
 | `contract_version` | The plugin's own `Describe`-reported contract version (e.g. `"topos.v1"`). |

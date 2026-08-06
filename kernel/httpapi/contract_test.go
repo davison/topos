@@ -50,21 +50,21 @@ func contractFixtureProvenance(sourceID string) map[string]string {
 func contractFixtureItems() []item.Item {
 	return []item.Item{
 		{
-			ID: "paperless:1", SourceType: "paperless", SourceID: "1",
+			ID: "paperless:1", Source: "paperless", SourceType: "paperless", SourceID: "1",
 			Title: "Same-day, added earlier", Preview: "a short preview",
 			TimestampUnix: 1000, SecondaryTimestampUnix: 100,
 			Fidelity: item.FidelityExact, DeepLink: "http://paperless.lan:8000/documents/1",
 			Provenance: contractFixtureProvenance("1"),
 		},
 		{
-			ID: "paperless:2", SourceType: "paperless", SourceID: "2",
+			ID: "paperless:2", Source: "paperless", SourceType: "paperless", SourceID: "2",
 			Title: "Same-day, added later", Preview: "",
 			TimestampUnix: 1000, SecondaryTimestampUnix: 900,
 			Fidelity: item.FidelityAnchored, DeepLink: "http://paperless.lan:8000/documents/2",
 			Provenance: contractFixtureProvenance("2"),
 		},
 		{
-			ID: "paperless:3", SourceType: "paperless", SourceID: "3",
+			ID: "paperless:3", Source: "paperless", SourceType: "paperless", SourceID: "3",
 			Title: "Newest", Preview: "another preview",
 			TimestampUnix: 2000, SecondaryTimestampUnix: 1,
 			Fidelity: item.FidelityConversationOnly, DeepLink: "http://paperless.lan:8000/documents/3",
@@ -104,8 +104,14 @@ func TestContract_StreamEnvelope_IDsLinkAndProvenance(t *testing.T) {
 		if !idPattern.MatchString(it.ID) {
 			t.Errorf("item id %q does not match ^[a-z0-9_-]+:.+$", it.ID)
 		}
-		if it.ID != it.SourceType+":"+it.SourceID {
-			t.Errorf("item id %q is not exactly source_type+\":\"+source_id (%q:%q)", it.ID, it.SourceType, it.SourceID)
+		if it.ID != it.Source+":"+it.SourceID {
+			t.Errorf("item id %q is not exactly source+\":\"+source_id (%q:%q)", it.ID, it.Source, it.SourceID)
+		}
+		if it.Source == "" {
+			t.Errorf("item %q has an empty source (instance id)", it.ID)
+		}
+		if it.SourceDisplayName == "" {
+			t.Errorf("item %q has an empty source_display_name", it.ID)
 		}
 		if !validFidelities[it.Link.Fidelity] {
 			t.Errorf("item %q has unexpected link.fidelity %q", it.ID, it.Link.Fidelity)
