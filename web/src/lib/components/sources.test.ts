@@ -368,42 +368,60 @@ describe('worstHealthTone', () => {
 
 describe('visibleChipCount', () => {
 	it('returns the full count with no overflow when every chip fits exactly', () => {
-		expect(visibleChipCount([10, 10, 10], 30, 0, 8)).toBe(3);
+		expect(visibleChipCount([10, 10, 10], 30, 0, 8, 0)).toBe(3);
 	});
 
 	it('returns the full count with no overflow when every chip fits with room to spare', () => {
-		expect(visibleChipCount([10, 10, 10], 38, 0, 8)).toBe(3);
+		expect(visibleChipCount([10, 10, 10], 38, 0, 8, 0)).toBe(3);
 	});
 
 	// One chip more than the exact-fit case above (same availableWidth,
 	// reservedWidth and overflowTriggerWidth) hides exactly one chip once
 	// the trigger's own width is charged against the budget.
 	it('one chip more than fits produces a hidden count of one', () => {
-		expect(visibleChipCount([10, 10, 10, 10], 38, 0, 8)).toBe(3);
+		expect(visibleChipCount([10, 10, 10, 10], 38, 0, 8, 0)).toBe(3);
 	});
 
 	it('a reserved trailing width reduces the inline count', () => {
-		const withoutReserve = visibleChipCount([10, 10, 10], 30, 0, 8);
-		const withReserve = visibleChipCount([10, 10, 10], 30, 10, 8);
+		const withoutReserve = visibleChipCount([10, 10, 10], 30, 0, 8, 0);
+		const withReserve = visibleChipCount([10, 10, 10], 30, 10, 8, 0);
 		expect(withReserve).toBeLessThan(withoutReserve);
 	});
 
 	it('a zero available width produces a zero inline count, never a negative one', () => {
-		expect(visibleChipCount([10, 10, 10], 0, 0, 8)).toBe(0);
+		expect(visibleChipCount([10, 10, 10], 0, 0, 8, 0)).toBe(0);
 	});
 
 	it('reserved and trigger widths alone exceeding the available width still floor at zero', () => {
-		expect(visibleChipCount([10, 10, 10], 5, 10, 8)).toBe(0);
+		expect(visibleChipCount([10, 10, 10], 5, 10, 8, 0)).toBe(0);
 	});
 
 	it('an empty chip-widths array returns zero regardless of available width', () => {
-		expect(visibleChipCount([], 500, 0, 8)).toBe(0);
+		expect(visibleChipCount([], 500, 0, 8, 0)).toBe(0);
 	});
 
 	it('is deterministic — repeating the same call over unchanged inputs yields the same count', () => {
 		const widths = [10, 10, 10, 10, 10];
-		const first = visibleChipCount(widths, 38, 4, 8);
-		const second = visibleChipCount(widths, 38, 4, 8);
+		const first = visibleChipCount(widths, 38, 4, 8, 0);
+		const second = visibleChipCount(widths, 38, 4, 8, 0);
 		expect(second).toBe(first);
+	});
+
+	// CR-01 regression: a combination that exactly fits with zero gap width
+	// (mirrors the very first test above) must report fewer visible chips
+	// once a real, non-zero inter-chip gap (the row's actual `gap-2`/8px)
+	// is charged — three 10px chips plus a trailing gap need 30 + 8 = 38,
+	// which exceeds the 30px budget, so not all three fit inline anymore.
+	it('a non-zero gap width reduces the inline count versus the same layout with no gap', () => {
+		const withoutGap = visibleChipCount([10, 10, 10], 30, 0, 8, 0);
+		const withGap = visibleChipCount([10, 10, 10], 30, 0, 8, 8);
+		expect(withGap).toBeLessThan(withoutGap);
+	});
+
+	it('charges N-1 between-chip gaps plus one trailing gap when every chip is visible', () => {
+		// 3 chips * 10 + 2 between-chip gaps * 8 + 1 trailing gap * 8 = 30 + 16 + 8 = 54.
+		expect(visibleChipCount([10, 10, 10], 54, 0, 8, 8)).toBe(3);
+		// One pixel short of that total no longer fits all three.
+		expect(visibleChipCount([10, 10, 10], 53, 0, 8, 8)).toBeLessThan(3);
 	});
 });

@@ -48,6 +48,14 @@
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
 
+	// The row below renders with `gap-2` (line ~175) — Tailwind's `gap-2` is
+	// 0.5rem, 8px at the default 16px root font size. Kept as a named
+	// constant (rather than re-derived from computed style) so the overflow
+	// math in `visibleChipCount` and the row's actual class stay visibly in
+	// sync; if the Tailwind gap scale on the row ever changes, update both
+	// together (CR-01).
+	const CHIP_ROW_GAP_PX = 8;
+
 	const DOT_TONE_CLASS: Record<HealthTone, string> = {
 		success: 'bg-success',
 		warning: 'bg-warning',
@@ -144,7 +152,13 @@
 	});
 
 	let visibleCount = $derived(
-		visibleChipCount(chipWidths, availableWidth, reservedWidth, overflowTriggerWidth)
+		visibleChipCount(
+			chipWidths,
+			availableWidth,
+			reservedWidth,
+			overflowTriggerWidth,
+			CHIP_ROW_GAP_PX
+		)
 	);
 	let visibleSources = $derived(sources.slice(0, visibleCount));
 	let hiddenSources = $derived(sources.slice(visibleCount));

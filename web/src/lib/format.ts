@@ -252,15 +252,23 @@ export function worstHealthTone(sources: SourceStatus[]): HealthTone {
  * Returns how many chips fit inline given their natural widths (in
  * order), the row's available width, the width reserved for the trailing
  * controls (Clear filters / Refresh all — never pushed into overflow),
- * and the overflow trigger's own width.
+ * the overflow trigger's own width, and the row's real inter-item gap
+ * (the `gap-2` / 8px spacing the flex row applies between every adjacent
+ * child — CR-01).
  *
- * `reservedWidth` is subtracted from `availableWidth` first. If every
- * chip's combined width fits that budget, every chip is visible and no
- * overflow trigger is needed — the trigger's width is never charged in
- * that case, since nothing is deferred to it. Only once the full set
- * does NOT fit is the budget further reduced by `overflowTriggerWidth`
- * (the trigger itself now occupies row space) and chips are accumulated
- * in order against that reduced budget.
+ * `reservedWidth` is subtracted from `availableWidth` first. Every visible
+ * chip charges its own width plus the gap that precedes it (no gap before
+ * the first chip), plus one trailing gap between the last visible item and
+ * the reserved trailing group — `N` chips therefore consume `N-1` between-
+ * chip gaps and 1 trailing gap, never zero, since the trailing group is
+ * always rendered. If every chip's combined width (plus those gaps) fits
+ * that budget, every chip is visible and no overflow trigger is needed —
+ * the trigger's width is never charged in that case, since nothing is
+ * deferred to it. Only once the full set does NOT fit is the budget
+ * further reduced by `overflowTriggerWidth` plus two more gaps (one
+ * between the last visible chip and the trigger, one between the trigger
+ * and the trailing group), and chips are accumulated in order against
+ * that reduced budget, each still charging its own preceding gap.
  *
  * Accumulation uses a strict `>` comparison, so a chip that would exceed
  * the budget by any fraction of a pixel is excluded rather than rendered
@@ -275,18 +283,27 @@ export function visibleChipCount(
 	chipWidths: number[],
 	availableWidth: number,
 	reservedWidth: number,
-	overflowTriggerWidth: number
+	overflowTriggerWidth: number,
+	gapWidth: number
 ): number {
 	const budget = availableWidth - reservedWidth;
-	const total = chipWidths.reduce((sum, width) => sum + width, 0);
+	const gapsAmong = (n: number) => (n > 0 ? (n - 1) * gapWidth : 0);
+	// +1 trailing gap: the space between the last visible item (chip or
+	// trigger) and the reserved trailing group.
+	const total =
+		chipWidths.reduce((sum, width) => sum + width, 0) +
+		gapsAmong(chipWidths.length) +
+		(chipWidths.length > 0 ? gapWidth : 0);
 	if (total <= budget) return chipWidths.length;
 
-	const overflowBudget = budget - overflowTriggerWidth;
+	// One more gap for the trigger itself, plus the gap before it.
+	const overflowBudget = budget - overflowTriggerWidth - gapWidth * 2;
 	let used = 0;
 	let count = 0;
 	for (const width of chipWidths) {
-		if (used + width > overflowBudget) break;
-		used += width;
+		const candidateGap = count > 0 ? gapWidth : 0;
+		if (used + candidateGap + width > overflowBudget) break;
+		used += candidateGap + width;
 		count += 1;
 	}
 	return count;
