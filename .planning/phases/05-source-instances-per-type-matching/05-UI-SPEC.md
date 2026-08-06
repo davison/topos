@@ -1,7 +1,7 @@
 ---
 phase: 5
 slug: source-instances-per-type-matching
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1, unchanged — no re-init; components.json still records these contract values per STATE.md's 2026-08 decision log, even though shadcn-svelte's live CLI/registry has since retired this baseColor/style combination — every actual color the app renders comes from web/src/app.css's hand-authored hex tokens, not the CLI)"
 created: 2026-08-06
@@ -159,21 +159,25 @@ Accent reserved for: unchanged list from Phase 2 (CTA, links, focus rings, selec
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Probe run over 2 elements this phase materially changes (source display-name surfaces; rendition iframe content-shape parity) — Phase 1/2/3/4's own already-resolved rows for these same components (basic empty/loading/populated states of the chip rows, detail pane, stream list) are inherited unchanged and not re-derived here. **11 applicable considerations: 9 covered, 0 backstop, 2 dismissed (not applicable — no new async state introduced), 0 unresolved.**
+Probe run (ui-consideration-probe engine, 2026-08-06, user-confirmed element kinds and resolutions) over the 2 elements this phase materially changes — E1: source display-name surfaces (interactive-control/nav + list); E2: rendition iframe content-shape parity (media/content). Phase 1/2/3/4's own already-resolved rows for these same components (basic empty/loading/populated states of the chip rows, detail pane, stream list) are inherited unchanged and not re-derived here. **15 applicable considerations: 11 covered, 0 backstop, 4 dismissed (reasons recorded), 0 unresolved.**
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| long-text | interactive-control/nav: source display name (filter chip label, health chip label, CTA label, stale-item tooltip) | ✅ covered | `display_name` is now user-authored config (KERN-06's own "Home email"/"Work email" example) rather than Phase 2's assumption of a short, developer-fixed string. Every render site reuses the truncation pattern `WebspaceHeader.svelte`'s `<h1>` already establishes for the (also user-authored) webspace title: single-line truncate with an ellipsis plus a native `title` attribute exposing the full string on hover — no new wrapping/clamping mechanism is introduced. |
-| zero-one-many | interactive-control/nav: two instances of the same plugin type shown side by side (filter chips, health chips) | ✅ covered | D-09's load-time uniqueness check on `display_name` guarantees every label the UI ever renders is already distinct before it reaches the browser — the UI performs no client-side disambiguation (no auto-numbering, no suffixing); it only needs to trust and render the value the API returns. |
-| empty | interactive-control/nav: `display_name` absent from an API response | ✅ covered | D-09: `display_name` defaults to the instance key when unset in config — the kernel never emits an empty string for it, so the UI never needs its own empty-string handling beyond the general "unavailable client-side" fallback row in the Copywriting Contract. |
-| partial | nav: health chip row with two same-type instances, one healthy and one degraded | ✅ covered | Carries forward Phase 2 E1 `partial`'s rule verbatim (each chip renders strictly from its own `SourceStatus` record) — this phase's identity fix at the API/index layer (KERN-06) is what makes that guarantee actually hold once two instances share one plugin type; previously they would have silently shared one status object keyed by plugin kind. This is also the UI-visible face of the Security Domain's cross-instance-leakage concern in 05-RESEARCH.md. |
-| populated | media: rendition iframe — email content shape | ✅ covered | Post-D-11 kernel-owned wrap must render visually identical to today's `plugins/proton/body.go` output — see Rendition Content Contract's email profile above. Parity requirement, not new design. |
-| populated | media: rendition iframe — markdown content shape | ✅ covered | Same parity requirement against `plugins/silverbullet/render.go`'s current output — see Rendition Content Contract's markdown profile above. |
-| populated | media: rendition iframe — chat content shape | ✅ covered | Same parity requirement against `plugins/signal/render.go`'s current output, including the no-accent-on-bubble/sender/timestamp rule — see Rendition Content Contract's chat profile above. |
-| overflow | media: rendition iframe scrollbar (all three content shapes) | ✅ covered | Unchanged thin, theme-matched scrollbar (Quick task 260805-j98) reproduced identically in the kernel-owned stylesheet — the existing per-plugin render-test scrollbar assertions must relocate with the code they test (05-RESEARCH.md Task Ordering step 7), not merely be redescribed here. |
-| long-text | media: rendition iframe body text (all three content shapes) | ✅ covered | Unchanged — content wraps naturally within the iframe's own document (`overflow-wrap: anywhere` on chat bubble bodies; standard flow elsewhere); this phase moves *where* the rule lives, not what it does. |
-| loading | media: rendition iframe (mid-move transitional state) | ➖ dismissed | Not a real user-facing state — 05-CONTEXT.md's own Anti-Pattern is explicit that D-11 is a clean, atomic contract break (each plugin's cutover to kernel-owned wrapping lands in the same task as the kernel gaining that content-shape's policy); there is no shipped intermediate state where a rendition is unstyled or double-wrapped for a real user to see. |
-| error | media: rendition iframe (kernel-side sanitizer misconfigured) | ➖ dismissed | Covered by 05-RESEARCH.md's Security Domain as a sequencing/testing requirement (land the kernel sanitizer before removing any plugin's own), not a designed UI state — a sanitizer bug is a defect to prevent by construction and test, not a state this contract should describe copy or layout for. |
+| empty | E1 interactive-control/nav: `display_name` absent from an API response | ✅ covered | D-09: `display_name` defaults to the instance key when unset in config — the kernel never emits an empty string for it, so the UI never needs its own empty-string handling beyond the general "unavailable client-side" fallback row in the Copywriting Contract (falls back to instance id, never plugin kind). |
+| loading | E1 interactive-control/nav: chip row while `GET /api/sources` is in flight | ➖ dismissed | No new async state is introduced this phase — the chips' loading states were resolved in Phase 2's UI-SPEC and are inherited unchanged; only the label's data source changes. |
+| error | E1 interactive-control/nav: health chip error/unreachable states; display-name fetch failure | ✅ covered | Health-chip error and unreachable copy rows are contracted in the Copywriting Contract above ("{display_name} — last error…", "{display_name} — unreachable since…"), and a client-side `display_name` miss falls back to the instance id per the fallback row. |
+| populated | E1 interactive-control/nav: chips rendering API-sourced instance display names | ✅ covered | Normal state renders each instance's config-authored `display_name` from `GET /api/sources` keyed by instance identity; D-09's load-time uniqueness guarantees every rendered label is distinct. |
+| partial | E1 nav: health chip row with two same-type instances, one healthy and one degraded | ✅ covered | Carries forward Phase 2 E1 `partial`'s rule verbatim (each chip renders strictly from its own `SourceStatus` record) — this phase's identity fix at the API/index layer (KERN-06) is what makes that guarantee actually hold once two instances share one plugin type; previously they would have silently shared one status object keyed by plugin kind. This is also the UI-visible face of the Security Domain's cross-instance-leakage concern in 05-RESEARCH.md. |
+| overflow | E1 interactive-control/nav: long labels exceeding chip width; chip row exceeding pane width | ✅ covered | Long labels use the truncation resolution below (single-line truncate + `title`); the chip row's wrap behavior is inherited unchanged from Phase 2. |
+| zero-one-many | E1 interactive-control/nav: two instances of the same plugin type shown side by side (filter chips, health chips) | ✅ covered | D-09's load-time uniqueness check on `display_name` guarantees every label the UI ever renders is already distinct before it reaches the browser — the UI performs no client-side disambiguation (no auto-numbering, no suffixing); it only needs to trust and render the value the API returns. Zero/one/many chip-row layout is inherited from Phase 2. |
+| long-text | E1 interactive-control/nav: source display name (filter chip label, health chip label, CTA label, stale-item tooltip) | ✅ covered | `display_name` is now user-authored config (KERN-06's own "Home email"/"Work email" example) rather than Phase 2's assumption of a short, developer-fixed string. Every render site reuses the truncation pattern `WebspaceHeader.svelte`'s `<h1>` already establishes for the (also user-authored) webspace title: single-line truncate with an ellipsis plus a native `title` attribute exposing the full string on hover — no new wrapping/clamping mechanism is introduced. |
+| empty | E2 media: rendition iframe with no/empty content | ➖ dismissed | Empty-content handling is unchanged by this phase — D-11 moves *where* the wrapping/styling lives (plugin → kernel), not what is shown for absent content; the detail pane's empty/absent states were resolved in Phase 3 and are inherited unchanged. |
+| loading | E2 media: rendition iframe (mid-move transitional state) | ➖ dismissed | Not a real user-facing state — 05-CONTEXT.md's own Anti-Pattern is explicit that D-11 is a clean, atomic contract break (each plugin's cutover to kernel-owned wrapping lands in the same task as the kernel gaining that content-shape's policy); there is no shipped intermediate state where a rendition is unstyled or double-wrapped for a real user to see. |
+| error | E2 media: rendition iframe (kernel-side sanitizer misconfigured) | ➖ dismissed | Covered by 05-RESEARCH.md's Security Domain as a sequencing/testing requirement (land the kernel sanitizer before removing any plugin's own), not a designed UI state — a sanitizer bug is a defect to prevent by construction and test, not a state this contract should describe copy or layout for. The detail pane's load-error copy is already contracted in the Copywriting Contract. |
+| populated | E2 media: rendition iframe — email, markdown, and chat content shapes | ✅ covered | Post-D-11 kernel-owned wrap must render visually identical to today's per-plugin output for all three shapes — `plugins/proton/body.go` (email), `plugins/silverbullet/render.go` (markdown), `plugins/signal/render.go` (chat, including the no-accent-on-bubble/sender/timestamp rule) — see the Rendition Content Contract profiles above. Parity requirement, not new design. |
+| partial | E2 media: chat transcript sub-states (tombstones, quotes, attachments, reactions) | ✅ covered | The chat profile's `.tombstone`, `.quote`, `.attachment`, and `.reaction` rules are carried forward verbatim into the kernel-owned stylesheet — partial/degraded message content keeps its existing designed presentation. |
+| overflow | E2 media: rendition iframe scrollbar (all three content shapes) | ✅ covered | Unchanged thin, theme-matched scrollbar (Quick task 260805-j98) reproduced identically in the kernel-owned stylesheet — the existing per-plugin render-test scrollbar assertions must relocate with the code they test (05-RESEARCH.md Task Ordering step 7), not merely be redescribed here. |
+| long-text | E2 media: rendition iframe body text (all three content shapes) | ✅ covered | Unchanged — content wraps naturally within the iframe's own document (`overflow-wrap: anywhere` on chat bubble bodies; standard flow elsewhere); this phase moves *where* the rule lives, not what it does. |
 
 ---
 
@@ -189,11 +193,11 @@ No third-party registries declared for Phase 5 — no new shadcn blocks of any k
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG (non-blocking — no focal point declared for main screen; acceptable for a wiring-only phase, revisit when Phase 6 redesigns these surfaces)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 2026-08-06)
