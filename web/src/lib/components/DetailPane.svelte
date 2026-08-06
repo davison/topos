@@ -6,7 +6,7 @@
 	import OpenInSource from '$lib/components/OpenInSource.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
-	import { detailPaneState, detailBodyVariant, formatItemDate } from '$lib/format';
+	import { detailPaneState, detailBodyVariant, formatItemDate, highlightText } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
 	// renders from it synchronously, before getItem(id) resolves (stage
@@ -93,12 +93,23 @@
 	<!-- The one physical rendering of loaded extracted text — shared by
 	     the media branch (below a fixed-height preview box) and the
 	     text-only branch (alone, taking the pane's full remaining
-	     height), so the typography can never drift between the two. -->
+	     height), so the typography can never drift between the two.
+	     UI-09: each segment comes from highlightText (format.ts), the
+	     client half of the shared kernel/client term-derivation rule —
+	     matched segments carry the .search-highlight class defined below,
+	     unmatched segments carry no class. Highlighting changes colour
+	     only, never size or weight: highlighted text still inherits this
+	     block's own type role. Segment text is rendered through Svelte's
+	     default text binding — never via a raw-HTML directive — so no
+	     escaping is needed here: highlightText itself never returns
+	     markup. -->
 	{#snippet loadedTextBlock()}
 		<div
 			class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
 		>
-			{content?.text}
+			{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
+				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+			{/each}
 		</div>
 	{/snippet}
 
@@ -205,3 +216,18 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* UI-09 search-term highlighting for the text/media body variants.
+	   Same visual treatment as the kernel's own <mark> rule
+	   (kernel/httpapi/rendition.go's renditionBaseStyle), expressed
+	   through the existing Tailwind theme tokens for warning/background
+	   (web/src/app.css: --warning, --background) rather than raw hex,
+	   since both tokens are already available in this document. */
+	.search-highlight {
+		background-color: var(--warning);
+		color: var(--background);
+		border-radius: 2px;
+		padding: 0 1px;
+	}
+</style>

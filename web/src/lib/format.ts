@@ -331,3 +331,96 @@ export const searchCopy = Object.freeze({
 export function noMatchesHeading(query: string): string {
 	return `No matches for "${query}"`;
 }
+
+// --- Search-term highlighting (UI-09) ---
+//
+// This section is the client half of UI-09's shared term-derivation rule.
+// The kernel half lives in kernel/httpapi/rendition.go's own
+// highlightTerms (Task 1 of this phase) and is DELIBERATELY duplicated
+// here — the two implementations must stay in step, term-for-term and
+// tie-break-for-tie-break, so what the client highlights in a plain-text
+// or media body never disagrees with what the kernel highlights inside a
+// sandboxed iframe for the same search query.
+
+/**
+ * Derives the bounded, literal term set a search query highlights:
+ * trims, splits on whitespace, lowercases, de-duplicates, drops any term
+ * shorter than 2 characters, and caps the result at the first 8 terms.
+ * Returns an empty array for an empty or all-dropped query. Identical
+ * rule to kernel/httpapi/rendition.go's highlightTerms — see that
+ * function's doc comment for why the two must never diverge.
+ */
+export function highlightTerms(query: string): string[] {
+	const fields = query.split(/\s+/).filter((f) => f.length > 0);
+	const seen = new Set<string>();
+	const terms: string[] = [];
+	for (const raw of fields) {
+		const term = raw.toLowerCase();
+		if (term.length < 2) continue;
+		if (seen.has(term)) continue;
+		seen.add(term);
+		terms.push(term);
+		if (terms.length === 8) break;
+	}
+	return terms;
+}
+
+/**
+ * Splits text into an ordered SnippetSegment[] — the same shape
+ * parseSnippet returns, so StreamRow.svelte's existing
+ * `{#each parseSnippet(snippet) as segment, i (i)}` render loop is
+ * reusable verbatim against this function's output too. Case-insensitive
+ * literal index scanning only: the query is never turned into a RegExp,
+ * so a query carrying regex metacharacters is matched literally and can
+ * never throw or over-match. At each scan position, terms are tried
+ * longest-first (matching the kernel's own tie-break exactly) so a
+ * longer term always wins over a shorter overlapping one — no nested or
+ * duplicated segments are ever produced.
+ *
+ * An empty query, an empty text, or a zero-match scan degrades to a
+ * single unmatched segment holding the whole text (or an empty array for
+ * empty text) — never an error. Follows noMatchesHeading's discipline
+ * above: this function returns data, never a markup string, so Svelte's
+ * default text binding does the escaping; it is never rendered via
+ * `{@html}`.
+ *
+ * The round-trip invariant this function guarantees: concatenating every
+ * returned segment's `text` reproduces `text` exactly — no character is
+ * ever lost or duplicated.
+ */
+export function highlightText(text: string, query: string): SnippetSegment[] {
+	if (text === '') return [];
+
+	const terms = highlightTerms(query);
+	if (terms.length === 0) return [{ text, match: false }];
+
+	// Longest-first so a longer term always wins over a shorter
+	// overlapping one at the same scan position.
+	const sorted = [...terms].sort((a, b) => b.length - a.length);
+	const lower = text.toLowerCase();
+
+	const segments: SnippetSegment[] = [];
+	let cursor = 0;
+	let i = 0;
+	while (i < text.length) {
+		let matchLen = 0;
+		for (const term of sorted) {
+			if (lower.startsWith(term, i)) {
+				matchLen = term.length;
+				break;
+			}
+		}
+		if (matchLen === 0) {
+			i += 1;
+			continue;
+		}
+		if (i > cursor) segments.push({ text: text.slice(cursor, i), match: false });
+		segments.push({ text: text.slice(i, i + matchLen), match: true });
+		i += matchLen;
+		cursor = i;
+	}
+	if (cursor < text.length) segments.push({ text: text.slice(cursor), match: false });
+	if (segments.length === 0) segments.push({ text, match: false });
+
+	return segments;
+}
