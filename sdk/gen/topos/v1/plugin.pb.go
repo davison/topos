@@ -162,10 +162,30 @@ func (*DescribeRequest) Descriptor() ([]byte, []int) {
 }
 
 type DescribeResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	SourceType      string                 `protobuf:"bytes,1,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`                // "paperless"
-	DisplayName     string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`             // "paperless-ngx"
-	ContractVersion string                 `protobuf:"bytes,3,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"` // "topos.v1"
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SourceType  string                 `protobuf:"bytes,1,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`    // "paperless"
+	DisplayName string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"` // "paperless-ngx"
+	// contract_version names the contract GENERATION ("topos.v2" as of Phase
+	// 5's typed match-field break), versioned independently of the proto
+	// package path (which stays "topos.v1" — no wire-incompatible message
+	// numbering reset, only additive/replaced fields within the same
+	// package). Do not confuse this string with the go_package/package
+	// "topos.v1" above: a plugin built against the pre-Phase-5 contract also
+	// reports "topos.v1" here, so contract_version — not the proto package —
+	// is what a reader should compare to know which MatchRequest shape a
+	// plugin expects. sdk.Handshake.ProtocolVersion (bumped 1->2 alongside
+	// this) is the actual fail-fast: a stale binary never reaches the point
+	// of returning this field at all.
+	ContractVersion string `protobuf:"bytes,3,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"` // "topos.v2"
+	// match_vocabulary is the field-name vocabulary this plugin's Match RPC
+	// reads from MatchRequest.match_fields, declared by the plugin itself —
+	// the kernel holds no built-in table of known plugin types (D-05). The
+	// four in-repo examples are "folders" (proton), "tags" (paperless,
+	// silverbullet), "conversations" (signal), "pages" (silverbullet) —
+	// illustrations only, explicitly not a closed set. A future plugin type
+	// (e.g. Phase 8's WhatsApp) declares its own vocabulary here with no
+	// proto change required.
+	MatchVocabulary []string `protobuf:"bytes,4,rep,name=match_vocabulary,json=matchVocabulary,proto3" json:"match_vocabulary,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -221,16 +241,80 @@ func (x *DescribeResponse) GetContractVersion() string {
 	return ""
 }
 
-type MatchRequest struct {
+func (x *DescribeResponse) GetMatchVocabulary() []string {
+	if x != nil {
+		return x.MatchVocabulary
+	}
+	return nil
+}
+
+// StringList wraps a repeated string as a map value — proto3 maps cannot
+// have a repeated field as their value type directly.
+type StringList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Keywords      []string               `protobuf:"bytes,1,rep,name=keywords,proto3" json:"keywords,omitempty"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StringList) Reset() {
+	*x = StringList{}
+	mi := &file_topos_v1_plugin_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StringList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StringList) ProtoMessage() {}
+
+func (x *StringList) ProtoReflect() protoreflect.Message {
+	mi := &file_topos_v1_plugin_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StringList.ProtoReflect.Descriptor instead.
+func (*StringList) Descriptor() ([]byte, []int) {
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *StringList) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type MatchRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// future edit must never resurrect this field name
+	// under a new number (see sdk/contract_test.go's
+	// TestContractDeclaresMatchVocabulary).
+	// match_fields maps a field name (one entry in the plugin's own declared
+	// match_vocabulary) to the list of values that field must match against.
+	// Every value comparison is exact and case-insensitive (D-04) — no
+	// substring, prefix, glob, or hierarchy expansion. A key the plugin did
+	// not declare in its own match_vocabulary is treated as absent, never as
+	// an error (validation of unknown keys against config already happened
+	// kernel-side at config load, D-05). An empty values list for a declared
+	// key matches nothing for that field, never everything.
+	MatchFields   map[string]*StringList `protobuf:"bytes,2,rep,name=match_fields,json=matchFields,proto3" json:"match_fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MatchRequest) Reset() {
 	*x = MatchRequest{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[2]
+	mi := &file_topos_v1_plugin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +326,7 @@ func (x *MatchRequest) String() string {
 func (*MatchRequest) ProtoMessage() {}
 
 func (x *MatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[2]
+	mi := &file_topos_v1_plugin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,12 +339,12 @@ func (x *MatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MatchRequest.ProtoReflect.Descriptor instead.
 func (*MatchRequest) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{2}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *MatchRequest) GetKeywords() []string {
+func (x *MatchRequest) GetMatchFields() map[string]*StringList {
 	if x != nil {
-		return x.Keywords
+		return x.MatchFields
 	}
 	return nil
 }
@@ -274,7 +358,7 @@ type MatchResponse struct {
 
 func (x *MatchResponse) Reset() {
 	*x = MatchResponse{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[3]
+	mi := &file_topos_v1_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -286,7 +370,7 @@ func (x *MatchResponse) String() string {
 func (*MatchResponse) ProtoMessage() {}
 
 func (x *MatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[3]
+	mi := &file_topos_v1_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -299,7 +383,7 @@ func (x *MatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MatchResponse.ProtoReflect.Descriptor instead.
 func (*MatchResponse) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{3}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *MatchResponse) GetItems() []*Item {
@@ -330,7 +414,7 @@ type Item struct {
 
 func (x *Item) Reset() {
 	*x = Item{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[4]
+	mi := &file_topos_v1_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -342,7 +426,7 @@ func (x *Item) String() string {
 func (*Item) ProtoMessage() {}
 
 func (x *Item) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[4]
+	mi := &file_topos_v1_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -355,7 +439,7 @@ func (x *Item) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Item.ProtoReflect.Descriptor instead.
 func (*Item) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{4}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Item) GetSourceId() string {
@@ -459,7 +543,7 @@ type FetchRequest struct {
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[5]
+	mi := &file_topos_v1_plugin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -471,7 +555,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[5]
+	mi := &file_topos_v1_plugin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -484,7 +568,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{5}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FetchRequest) GetSourceId() string {
@@ -521,7 +605,7 @@ type FetchResponse struct {
 
 func (x *FetchResponse) Reset() {
 	*x = FetchResponse{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[6]
+	mi := &file_topos_v1_plugin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -533,7 +617,7 @@ func (x *FetchResponse) String() string {
 func (*FetchResponse) ProtoMessage() {}
 
 func (x *FetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[6]
+	mi := &file_topos_v1_plugin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -546,7 +630,7 @@ func (x *FetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResponse.ProtoReflect.Descriptor instead.
 func (*FetchResponse) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{6}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FetchResponse) GetAvailable() bool {
@@ -606,7 +690,7 @@ type HealthRequest struct {
 
 func (x *HealthRequest) Reset() {
 	*x = HealthRequest{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[7]
+	mi := &file_topos_v1_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -618,7 +702,7 @@ func (x *HealthRequest) String() string {
 func (*HealthRequest) ProtoMessage() {}
 
 func (x *HealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[7]
+	mi := &file_topos_v1_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -631,7 +715,7 @@ func (x *HealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthRequest.ProtoReflect.Descriptor instead.
 func (*HealthRequest) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{7}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 type HealthResponse struct {
@@ -645,7 +729,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_topos_v1_plugin_proto_msgTypes[8]
+	mi := &file_topos_v1_plugin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -657,7 +741,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_topos_v1_plugin_proto_msgTypes[8]
+	mi := &file_topos_v1_plugin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -670,7 +754,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{8}
+	return file_topos_v1_plugin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HealthResponse) GetReachable() bool {
@@ -699,14 +783,21 @@ var File_topos_v1_plugin_proto protoreflect.FileDescriptor
 const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\n" +
 	"\x15topos/v1/plugin.proto\x12\btopos.v1\"\x11\n" +
-	"\x0fDescribeRequest\"\x81\x01\n" +
+	"\x0fDescribeRequest\"\xac\x01\n" +
 	"\x10DescribeResponse\x12\x1f\n" +
 	"\vsource_type\x18\x01 \x01(\tR\n" +
 	"sourceType\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12)\n" +
-	"\x10contract_version\x18\x03 \x01(\tR\x0fcontractVersion\"*\n" +
-	"\fMatchRequest\x12\x1a\n" +
-	"\bkeywords\x18\x01 \x03(\tR\bkeywords\"5\n" +
+	"\x10contract_version\x18\x03 \x01(\tR\x0fcontractVersion\x12)\n" +
+	"\x10match_vocabulary\x18\x04 \x03(\tR\x0fmatchVocabulary\"$\n" +
+	"\n" +
+	"StringList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"\xc0\x01\n" +
+	"\fMatchRequest\x12J\n" +
+	"\fmatch_fields\x18\x02 \x03(\v2'.topos.v1.MatchRequest.MatchFieldsEntryR\vmatchFields\x1aT\n" +
+	"\x10MatchFieldsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
+	"\x05value\x18\x02 \x01(\v2\x14.topos.v1.StringListR\x05value:\x028\x01J\x04\b\x01\x10\x02R\bkeywords\"5\n" +
 	"\rMatchResponse\x12$\n" +
 	"\x05items\x18\x01 \x03(\v2\x0e.topos.v1.ItemR\x05items\"\x9e\x04\n" +
 	"\x04Item\x12\x1b\n" +
@@ -783,41 +874,45 @@ func file_topos_v1_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_topos_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_topos_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_topos_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_topos_v1_plugin_proto_goTypes = []any{
 	(LinkFidelity)(0),        // 0: topos.v1.LinkFidelity
 	(ContentVariant)(0),      // 1: topos.v1.ContentVariant
 	(*DescribeRequest)(nil),  // 2: topos.v1.DescribeRequest
 	(*DescribeResponse)(nil), // 3: topos.v1.DescribeResponse
-	(*MatchRequest)(nil),     // 4: topos.v1.MatchRequest
-	(*MatchResponse)(nil),    // 5: topos.v1.MatchResponse
-	(*Item)(nil),             // 6: topos.v1.Item
-	(*FetchRequest)(nil),     // 7: topos.v1.FetchRequest
-	(*FetchResponse)(nil),    // 8: topos.v1.FetchResponse
-	(*HealthRequest)(nil),    // 9: topos.v1.HealthRequest
-	(*HealthResponse)(nil),   // 10: topos.v1.HealthResponse
-	nil,                      // 11: topos.v1.Item.ProvenanceEntry
-	nil,                      // 12: topos.v1.FetchResponse.ProvenanceEntry
+	(*StringList)(nil),       // 4: topos.v1.StringList
+	(*MatchRequest)(nil),     // 5: topos.v1.MatchRequest
+	(*MatchResponse)(nil),    // 6: topos.v1.MatchResponse
+	(*Item)(nil),             // 7: topos.v1.Item
+	(*FetchRequest)(nil),     // 8: topos.v1.FetchRequest
+	(*FetchResponse)(nil),    // 9: topos.v1.FetchResponse
+	(*HealthRequest)(nil),    // 10: topos.v1.HealthRequest
+	(*HealthResponse)(nil),   // 11: topos.v1.HealthResponse
+	nil,                      // 12: topos.v1.MatchRequest.MatchFieldsEntry
+	nil,                      // 13: topos.v1.Item.ProvenanceEntry
+	nil,                      // 14: topos.v1.FetchResponse.ProvenanceEntry
 }
 var file_topos_v1_plugin_proto_depIdxs = []int32{
-	6,  // 0: topos.v1.MatchResponse.items:type_name -> topos.v1.Item
-	0,  // 1: topos.v1.Item.fidelity:type_name -> topos.v1.LinkFidelity
-	11, // 2: topos.v1.Item.provenance:type_name -> topos.v1.Item.ProvenanceEntry
-	1,  // 3: topos.v1.FetchRequest.variant:type_name -> topos.v1.ContentVariant
-	12, // 4: topos.v1.FetchResponse.provenance:type_name -> topos.v1.FetchResponse.ProvenanceEntry
-	2,  // 5: topos.v1.SourcePlugin.Describe:input_type -> topos.v1.DescribeRequest
-	4,  // 6: topos.v1.SourcePlugin.Match:input_type -> topos.v1.MatchRequest
-	7,  // 7: topos.v1.SourcePlugin.Fetch:input_type -> topos.v1.FetchRequest
-	9,  // 8: topos.v1.SourcePlugin.Health:input_type -> topos.v1.HealthRequest
-	3,  // 9: topos.v1.SourcePlugin.Describe:output_type -> topos.v1.DescribeResponse
-	5,  // 10: topos.v1.SourcePlugin.Match:output_type -> topos.v1.MatchResponse
-	8,  // 11: topos.v1.SourcePlugin.Fetch:output_type -> topos.v1.FetchResponse
-	10, // 12: topos.v1.SourcePlugin.Health:output_type -> topos.v1.HealthResponse
-	9,  // [9:13] is the sub-list for method output_type
-	5,  // [5:9] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	12, // 0: topos.v1.MatchRequest.match_fields:type_name -> topos.v1.MatchRequest.MatchFieldsEntry
+	7,  // 1: topos.v1.MatchResponse.items:type_name -> topos.v1.Item
+	0,  // 2: topos.v1.Item.fidelity:type_name -> topos.v1.LinkFidelity
+	13, // 3: topos.v1.Item.provenance:type_name -> topos.v1.Item.ProvenanceEntry
+	1,  // 4: topos.v1.FetchRequest.variant:type_name -> topos.v1.ContentVariant
+	14, // 5: topos.v1.FetchResponse.provenance:type_name -> topos.v1.FetchResponse.ProvenanceEntry
+	4,  // 6: topos.v1.MatchRequest.MatchFieldsEntry.value:type_name -> topos.v1.StringList
+	2,  // 7: topos.v1.SourcePlugin.Describe:input_type -> topos.v1.DescribeRequest
+	5,  // 8: topos.v1.SourcePlugin.Match:input_type -> topos.v1.MatchRequest
+	8,  // 9: topos.v1.SourcePlugin.Fetch:input_type -> topos.v1.FetchRequest
+	10, // 10: topos.v1.SourcePlugin.Health:input_type -> topos.v1.HealthRequest
+	3,  // 11: topos.v1.SourcePlugin.Describe:output_type -> topos.v1.DescribeResponse
+	6,  // 12: topos.v1.SourcePlugin.Match:output_type -> topos.v1.MatchResponse
+	9,  // 13: topos.v1.SourcePlugin.Fetch:output_type -> topos.v1.FetchResponse
+	11, // 14: topos.v1.SourcePlugin.Health:output_type -> topos.v1.HealthResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_topos_v1_plugin_proto_init() }
@@ -831,7 +926,7 @@ func file_topos_v1_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_topos_v1_plugin_proto_rawDesc), len(file_topos_v1_plugin_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -17,11 +17,50 @@ message DescribeRequest {}
 message DescribeResponse {
   string source_type      = 1;  // "paperless"
   string display_name     = 2;  // "paperless-ngx"
-  string contract_version = 3;  // "topos.v1"
+  // contract_version names the contract GENERATION ("topos.v2" as of Phase
+  // 5's typed match-field break), versioned independently of the proto
+  // package path (which stays "topos.v1" — no wire-incompatible message
+  // numbering reset, only additive/replaced fields within the same
+  // package). Do not confuse this string with the go_package/package
+  // "topos.v1" above: a plugin built against the pre-Phase-5 contract also
+  // reports "topos.v1" here, so contract_version — not the proto package —
+  // is what a reader should compare to know which MatchRequest shape a
+  // plugin expects. sdk.Handshake.ProtocolVersion (bumped 1->2 alongside
+  // this) is the actual fail-fast: a stale binary never reaches the point
+  // of returning this field at all.
+  string contract_version = 3;  // "topos.v2"
+  // match_vocabulary is the field-name vocabulary this plugin's Match RPC
+  // reads from MatchRequest.match_fields, declared by the plugin itself —
+  // the kernel holds no built-in table of known plugin types (D-05). The
+  // four in-repo examples are "folders" (proton), "tags" (paperless,
+  // silverbullet), "conversations" (signal), "pages" (silverbullet) —
+  // illustrations only, explicitly not a closed set. A future plugin type
+  // (e.g. Phase 8's WhatsApp) declares its own vocabulary here with no
+  // proto change required.
+  repeated string match_vocabulary = 4;
 }
 
-message MatchRequest  { repeated string keywords = 1; }  // exact, case-insensitive (D-03)
-message MatchResponse { repeated Item   items    = 1; }
+// StringList wraps a repeated string as a map value — proto3 maps cannot
+// have a repeated field as their value type directly.
+message StringList { repeated string values = 1; }
+
+message MatchRequest {
+  reserved 1;
+  reserved "keywords"; // retired by Phase 5's typed match-field break — a
+                        // future edit must never resurrect this field name
+                        // under a new number (see sdk/contract_test.go's
+                        // TestContractDeclaresMatchVocabulary).
+  // match_fields maps a field name (one entry in the plugin's own declared
+  // match_vocabulary) to the list of values that field must match against.
+  // Every value comparison is exact and case-insensitive (D-04) — no
+  // substring, prefix, glob, or hierarchy expansion. A key the plugin did
+  // not declare in its own match_vocabulary is treated as absent, never as
+  // an error (validation of unknown keys against config already happened
+  // kernel-side at config load, D-05). An empty values list for a declared
+  // key matches nothing for that field, never everything.
+  map<string, StringList> match_fields = 2;
+}
+message MatchResponse { repeated Item items = 1; }
 
 enum LinkFidelity {
   LINK_FIDELITY_UNSPECIFIED       = 0;

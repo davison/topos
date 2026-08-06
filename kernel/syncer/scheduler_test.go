@@ -24,9 +24,10 @@ type countingSource struct {
 	calls int
 }
 
-func (c *countingSource) Name() string       { return c.name }
-func (c *countingSource) SourceType() string { return c.sourceType }
-func (c *countingSource) Match(context.Context, []string) (*toposv1.MatchResponse, error) {
+func (c *countingSource) Name() string              { return c.name }
+func (c *countingSource) SourceType() string        { return c.sourceType }
+func (c *countingSource) MatchVocabulary() []string { return []string{"keywords"} }
+func (c *countingSource) Match(context.Context, map[string][]string) (*toposv1.MatchResponse, error) {
 	c.mu.Lock()
 	c.calls++
 	c.mu.Unlock()

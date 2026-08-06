@@ -30,10 +30,11 @@ type fakeSource struct {
 	calls int
 }
 
-func (f *fakeSource) Name() string       { return f.name }
-func (f *fakeSource) SourceType() string { return f.sourceType }
+func (f *fakeSource) Name() string              { return f.name }
+func (f *fakeSource) SourceType() string        { return f.sourceType }
+func (f *fakeSource) MatchVocabulary() []string { return []string{"keywords"} }
 
-func (f *fakeSource) Match(_ context.Context, _ []string) (*toposv1.MatchResponse, error) {
+func (f *fakeSource) Match(_ context.Context, _ map[string][]string) (*toposv1.MatchResponse, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()

@@ -17,8 +17,16 @@ import (
 // ProtocolVersion must be bumped only for breaking wire-protocol changes,
 // not for additive contract changes (which the SourcePlugin.Describe RPC's
 // contract_version field is for).
+//
+// ProtocolVersion 2 (Phase 5, 05-RESEARCH.md Pitfall 5): MatchRequest's
+// shape changed from a flat `keywords` list to a typed `match_fields` map
+// — a breaking wire change, not an additive one. This is the deliberate
+// fail-fast for that break: a plugin binary built against ProtocolVersion
+// 1 fails cleanly at the go-plugin handshake (before Describe or Match is
+// ever called), never confusingly at its first Match call with an empty or
+// misinterpreted match map.
 var Handshake = plugin.HandshakeConfig{
-	ProtocolVersion:  1,
+	ProtocolVersion:  2,
 	MagicCookieKey:   "TOPOS_PLUGIN",
 	MagicCookieValue: "topos-source-plugin-v1",
 }

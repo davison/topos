@@ -74,6 +74,35 @@ func TestContractEnumsZeroValueUnspecified(t *testing.T) {
 	}
 }
 
+// TestContractDeclaresMatchVocabulary is Phase 5's contract-shape gate
+// (option-a, D-04/D-05): the published proto must declare both
+// DescribeResponse's match_vocabulary field and MatchRequest's match_fields
+// map, and the retired "keywords" field name must appear only inside a
+// `reserved` clause — never as a live field number — so a future edit
+// cannot silently resurrect it under a new tag.
+func TestContractDeclaresMatchVocabulary(t *testing.T) {
+	stripped := stripComments(readProto(t))
+
+	if !strings.Contains(stripped, "match_vocabulary") {
+		t.Errorf("expected %s to declare match_vocabulary on DescribeResponse", protoRelPath)
+	}
+	if !strings.Contains(stripped, "match_fields") {
+		t.Errorf("expected %s to declare match_fields on MatchRequest", protoRelPath)
+	}
+
+	reservedRe := regexp.MustCompile(`reserved\s+"keywords"\s*;`)
+	if !reservedRe.MatchString(stripped) {
+		t.Errorf("expected %s to retire the old \"keywords\" field name via a reserved clause", protoRelPath)
+	}
+
+	// "keywords" must not appear as a live field name (e.g.
+	// "repeated string keywords = 1;") outside the reserved clause itself.
+	liveFieldRe := regexp.MustCompile(`\bkeywords\s*=\s*\d+\s*;`)
+	if liveFieldRe.MatchString(stripped) {
+		t.Errorf("expected %s to NOT declare a live \"keywords\" field — it must remain retired via reserved only", protoRelPath)
+	}
+}
+
 func readProto(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(protoRelPath)

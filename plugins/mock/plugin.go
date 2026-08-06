@@ -24,7 +24,7 @@ import (
 const (
 	sourceType      = "mock"
 	displayName     = "Mock Source"
-	contractVersion = "topos.v1"
+	contractVersion = "topos.v2"
 
 	// sourceSystem stands in for a real base URL / connection string — the
 	// mock has no real instance, but Provenance's "source_system" key is
@@ -32,6 +32,13 @@ const (
 	// placeholder rather than an omitted key.
 	sourceSystem = "mock://in-memory"
 )
+
+// matchVocabulary is the field-name vocabulary this plugin declares in its
+// Describe response and reads from MatchRequest.match_fields. "labels" is
+// the mock's own native categorization — each fixed item's Labels slice —
+// exactly the role a paperless-ngx tag name or an IMAP folder name plays
+// for a real plugin (see the worked example in docs/plugin-contract.md).
+var matchVocabulary = []string{"labels"}
 
 // mockItems is the plugin's fixed, in-memory item set — no network call,
 // no filesystem read, no configuration. Four items with deliberately
@@ -175,19 +182,21 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		SourceType:      sourceType,
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
+		MatchVocabulary: matchVocabulary,
 	}, nil
 }
 
 // Match is called only at sync time, never at request time (contract:
-// "RPC semantics: Match"). The kernel passes the full, unordered keyword
-// list of one webspace; the plugin returns every item whose native
-// categorization matches ANY of those keywords, exactly and
-// case-insensitively — never a substring or prefix match. This mock's
-// "native categorization" is each item's fixed Labels slice, exactly the
-// role a paperless-ngx tag name or an IMAP folder name plays for a real
-// plugin (see the worked example in docs/plugin-contract.md).
+// "RPC semantics: Match"). The kernel resolves one webspace's match input
+// down to this instance's own declared vocabulary and sends it as
+// MatchRequest.match_fields; this mock reads only the "labels" key (its one
+// declared field) and ignores any other key present in the map. The plugin
+// returns every item whose native categorization (its fixed Labels slice)
+// matches ANY of the supplied values, exactly and case-insensitively —
+// never a substring or prefix match. An empty or absent "labels" value list
+// matches nothing (see the worked example in docs/plugin-contract.md).
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	keywords := req.GetKeywords()
+	keywords := req.GetMatchFields()["labels"].GetValues()
 	var items []*toposv1.Item
 	for _, it := range mockItems {
 		if labelsMatchAnyKeyword(it.GetLabels(), keywords) {

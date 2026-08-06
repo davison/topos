@@ -39,12 +39,13 @@ var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
 // Plugin is one launched, handshaken source plugin subprocess.
 type Plugin struct {
-	name        string // config key under [sources.<name>] — THE instance identity (D-08)
-	sourceType  string // learned via Describe, not trusted from the filename — plugin kind only, never identity
-	pluginName  string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
-	displayName string // resolved instance display name (config display_name, or name if unset) — D-09
-	client      *goplugin.Client
-	impl        sdk.SourcePlugin
+	name            string // config key under [sources.<name>] — THE instance identity (D-08)
+	sourceType      string // learned via Describe, not trusted from the filename — plugin kind only, never identity
+	pluginName      string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
+	displayName     string // resolved instance display name (config display_name, or name if unset) — D-09
+	matchVocabulary []string
+	client          *goplugin.Client
+	impl            sdk.SourcePlugin
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -74,9 +75,21 @@ func (p *Plugin) DisplayName() string { return p.displayName }
 // predecessor this makes obsolete).
 func (p *Plugin) PluginDisplayName() string { return p.pluginName }
 
-// Match calls the plugin's Match RPC. Satisfies correlate.Source.
-func (p *Plugin) Match(ctx context.Context, keywords []string) (*toposv1.MatchResponse, error) {
-	return p.impl.Match(ctx, &toposv1.MatchRequest{Keywords: keywords})
+// MatchVocabulary returns the field-name vocabulary this plugin declared in
+// its Describe response (DescribeResponse.match_vocabulary) — the set of
+// keys correlate.matchFieldsFor may populate in a Match request sent to
+// this instance. Satisfies correlate.Source.
+func (p *Plugin) MatchVocabulary() []string { return p.matchVocabulary }
+
+// Match calls the plugin's Match RPC, wrapping each declared field's value
+// list in a StringList (proto3 map values cannot be repeated fields
+// directly). Satisfies correlate.Source.
+func (p *Plugin) Match(ctx context.Context, fields map[string][]string) (*toposv1.MatchResponse, error) {
+	matchFields := make(map[string]*toposv1.StringList, len(fields))
+	for k, v := range fields {
+		matchFields[k] = &toposv1.StringList{Values: v}
+	}
+	return p.impl.Match(ctx, &toposv1.MatchRequest{MatchFields: matchFields})
 }
 
 // Fetch calls the plugin's Fetch RPC.
@@ -196,12 +209,13 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 	}
 
 	return &Plugin{
-		name:        name,
-		sourceType:  desc.GetSourceType(),
-		pluginName:  desc.GetDisplayName(),
-		displayName: instanceDisplayName,
-		client:      client,
-		impl:        impl,
+		name:            name,
+		sourceType:      desc.GetSourceType(),
+		pluginName:      desc.GetDisplayName(),
+		displayName:     instanceDisplayName,
+		matchVocabulary: desc.GetMatchVocabulary(),
+		client:          client,
+		impl:            impl,
 	}, nil
 }
 

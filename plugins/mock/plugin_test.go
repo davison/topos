@@ -22,9 +22,20 @@ func TestDescribe_ReturnsMockIdentity(t *testing.T) {
 	if resp.GetDisplayName() == "" {
 		t.Error("expected a non-empty display_name")
 	}
-	if resp.GetContractVersion() != "topos.v1" {
-		t.Errorf("expected contract_version %q, got %q", "topos.v1", resp.GetContractVersion())
+	if resp.GetContractVersion() != "topos.v2" {
+		t.Errorf("expected contract_version %q, got %q", "topos.v2", resp.GetContractVersion())
 	}
+	if len(resp.GetMatchVocabulary()) != 1 || resp.GetMatchVocabulary()[0] != "labels" {
+		t.Errorf("expected match_vocabulary [\"labels\"], got %v", resp.GetMatchVocabulary())
+	}
+}
+
+// matchFieldsReq builds a MatchRequest carrying a single "labels" field —
+// the shape the kernel sends this plugin at sync time.
+func matchFieldsReq(labels []string) *toposv1.MatchRequest {
+	return &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"labels": {Values: labels},
+	}}
 }
 
 // TestMatch_KeywordMatchingOneItemsLabelReturnsExactlyThatItem proves
@@ -32,7 +43,7 @@ func TestDescribe_ReturnsMockIdentity(t *testing.T) {
 // items labelled "meeting", and only those.
 func TestMatch_KeywordMatchingOneItemsLabelReturnsExactlyThatItem(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"MEETING"}})
+	resp, err := p.Match(context.Background(), matchFieldsReq([]string{"MEETING"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -57,7 +68,7 @@ func TestMatch_KeywordMatchingOneItemsLabelReturnsExactlyThatItem(t *testing.T) 
 // match — mirrors the contract's "house" vs "Household" example.
 func TestMatch_NoSubstringMatching(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"dem"}})
+	resp, err := p.Match(context.Background(), matchFieldsReq([]string{"dem"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
@@ -70,12 +81,45 @@ func TestMatch_NoSubstringMatching(t *testing.T) {
 // keyword matching nothing returns an empty item list, not an error.
 func TestMatch_NonMatchingKeywordReturnsZeroItemsAndNilError(t *testing.T) {
 	p := NewSourcePlugin()
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"no-such-keyword"}})
+	resp, err := p.Match(context.Background(), matchFieldsReq([]string{"no-such-keyword"}))
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 	if len(resp.GetItems()) != 0 {
 		t.Errorf("expected zero items, got %d", len(resp.GetItems()))
+	}
+}
+
+// TestMatch_UndeclaredKeyIsIgnored proves a match_fields key outside the
+// plugin's declared vocabulary ("tags", which the mock never declares) is
+// ignored entirely — the plugin matches only on its own declared "labels"
+// field, per D-05's "unknown key is absent, not an error" rule.
+func TestMatch_UndeclaredKeyIsIgnored(t *testing.T) {
+	p := NewSourcePlugin()
+	req := &toposv1.MatchRequest{MatchFields: map[string]*toposv1.StringList{
+		"labels": {Values: []string{"demo"}},
+		"tags":   {Values: []string{"should-be-ignored"}},
+	}}
+	resp, err := p.Match(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != len(mockItems) {
+		t.Fatalf("expected the undeclared 'tags' key to be ignored and all %d 'demo'-labelled items returned, got %d", len(mockItems), len(resp.GetItems()))
+	}
+}
+
+// TestMatch_EmptyValueListMatchesNothing proves a declared field with an
+// empty values list matches nothing for that field, rather than matching
+// everything.
+func TestMatch_EmptyValueListMatchesNothing(t *testing.T) {
+	p := NewSourcePlugin()
+	resp, err := p.Match(context.Background(), matchFieldsReq(nil))
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 0 {
+		t.Errorf("expected zero items for an empty 'labels' value list, got %d", len(resp.GetItems()))
 	}
 }
 
@@ -88,7 +132,7 @@ func TestMatch_EveryItemHasValidFidelityAndDeepLink(t *testing.T) {
 	p := NewSourcePlugin()
 	// Every fixed item carries the "demo" label, so this returns all of
 	// them.
-	resp, err := p.Match(context.Background(), &toposv1.MatchRequest{Keywords: []string{"demo"}})
+	resp, err := p.Match(context.Background(), matchFieldsReq([]string{"demo"}))
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}

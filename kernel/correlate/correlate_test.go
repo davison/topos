@@ -14,17 +14,29 @@ import (
 )
 
 // fakeSource is a test double satisfying correlate.Source without launching
-// a real plugin subprocess.
+// a real plugin subprocess. Its matchFunc receives the "keywords" field of
+// the resolved match_fields map (fakeSource declares a single-field
+// vocabulary, "keywords", mirroring every current in-repo plugin's
+// single-field vocabulary and letting existing tests keep passing a flat
+// []string without change).
 type fakeSource struct {
 	name       string
 	sourceType string
+	vocabulary []string // defaults to []string{"keywords"} when unset (see MatchVocabulary)
 	matchFunc  func(keywords []string) (*toposv1.MatchResponse, error)
 	calls      [][]string
 }
 
 func (f *fakeSource) Name() string       { return f.name }
 func (f *fakeSource) SourceType() string { return f.sourceType }
-func (f *fakeSource) Match(_ context.Context, keywords []string) (*toposv1.MatchResponse, error) {
+func (f *fakeSource) MatchVocabulary() []string {
+	if f.vocabulary != nil {
+		return f.vocabulary
+	}
+	return []string{"keywords"}
+}
+func (f *fakeSource) Match(_ context.Context, fields map[string][]string) (*toposv1.MatchResponse, error) {
+	keywords := fields["keywords"]
 	f.calls = append(f.calls, keywords)
 	return f.matchFunc(keywords)
 }
