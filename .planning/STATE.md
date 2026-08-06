@@ -2,17 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 05
-current_phase_name: source-instances-per-type-matching
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-08-06T13:06:22.413Z"
+last_updated: "2026-08-06T13:32:42.012Z"
 last_activity: 2026-08-06
 progress:
-  total_phases: 5
+  total_phases: 9
   completed_phases: 4
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
+  percent: 44
 ---
 
 # Project State
@@ -27,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 05 (source-instances-per-type-matching) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-08-06
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -80,6 +78,7 @@ Progress: [█████████░] 90%
 | Phase 260805-kt3 P01 | ~20min | 1 tasks | 3 files |
 | Phase 05 P01 | 40min | 3 tasks | 35 files |
 | Phase 05 P02 | ~2h | 3 tasks | 22 files |
+| Phase 05 P03 | 55min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -148,6 +147,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 05-01]: search.go/toSearchResult intentionally kept calling the unchanged toStreamItem(it) signature (out of plan scope) — a new toStreamItemFor(it, resolveDisplayName) sibling serves every other caller, so a search result's source_display_name falls back to the instance id rather than any configured override
 - [Phase ?]: [Phase 05-02]: Task 1 checkpoint locked option-a exactly as proposed — generic MatchRequest.match_fields map, proto package stays topos.v1, sdk.Handshake.ProtocolVersion 1->2, DescribeResponse.contract_version becomes topos.v2 (documented as independent of the proto package path)
 - [Phase ?]: [Phase 05-02]: kernel/syncer test fixtures, four proton test files, and signal's D-06 regression test all required Rule 3 fixes outside this plan's declared file list — same-package compile dependencies and fixture infrastructure needs
+- [Phase ?]: [Phase 05-03]: 05-RESEARCH.md Open Question 1 decided as specified — a match block for an instance excluded by the same webspace's sources allowlist is dead config and fails load, naming both
+- [Phase ?]: [Phase 05-03]: A match field's zero-length value list is treated as a validation failure alongside the plan's named empty-field-name/empty-value cases, reading must_haves' silently-matching-nothing framing broadly
+- [Phase ?]: [Phase 05-03]: pluginhost.ValidateMatchConfig also guards a match block or fallback naming an unlaunched instance, defensive completeness verified via fake-plugin-list fixtures rather than a live subprocess mismatch
 
 ### Pending Todos
 
@@ -183,6 +185,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T13:06:22.399Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-08-06T13:32:42.003Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
