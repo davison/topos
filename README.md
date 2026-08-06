@@ -9,19 +9,21 @@ your data anywhere else.
 
 ## Status and roadmap
 
-Phases 1–4 of an eight-phase v1 are complete: four sources ship today —
+Phases 1–5 of an eight-phase v1 are complete: four sources ship today —
 paperless-ngx, SilverBullet, Proton Mail (via Bridge/IMAP, never marking
 mail read), and Signal Desktop (read strictly read-only from its local
 database) — interleaved in one chronological stream per webspace, with
 source filtering, per-source health and manual refresh, full-text search,
-a live detail pane, and a default-deny agent permission model. What's
-coming, in order:
+a live detail pane, and a default-deny agent permission model. As of
+Phase 5, a plugin can be configured more than once under distinct display
+names ("Home email" / "Work email"), each instance's matching config is
+typed to that plugin's own declared field vocabulary (folders, tags,
+conversation names, pages) rather than one shared keyword list, and every
+text/html rendition is sanitized, wrapped and themed by the kernel at one
+content-serving boundary instead of by each plugin individually — see
+`docs/plugin-contract.md` and `config.example.toml` for the shipped
+shape. What's coming, in order:
 
-- **Phase 5**: named source instances — the same plugin configured more
-  than once ("Home email" / "Work email") — with matching config typed
-  to each plugin (folders, tags, conversation names, pages) replacing
-  the single shared keyword list; rendition presentation moves from
-  plugins into the kernel.
 - **Phase 6**: a scalable source UI surface — one affordance per source
   combining health and filtering, deep-link fidelity cues, search-term
   highlighting in the detail pane, scrollbar date markers.
@@ -96,7 +98,12 @@ environment, and a config file describing your webspaces.
    define at least one `[webspaces.<name>]` block with a `keywords` list
    matching your own paperless-ngx tag names (matching is exact and
    case-insensitive — see the comments in the example file for the exact
-   rule and a worked counterexample).
+   rule and a worked counterexample). `keywords` is a webspace-level
+   fallback applied across every source instance's own declared match
+   fields; a per-instance `[webspaces.<name>.match.<instance>]` block
+   (also documented in `config.example.toml`) replaces that fallback for
+   one instance when you need typed, per-source matching instead — e.g.
+   distinct `folders` for two configured email instances.
 
 ## Build and run
 

@@ -308,15 +308,39 @@ user's own uploaded PDF, for instance) from the kernel's own origin; the
 sandboxing CSP and `nosniff` header are what keep an embedded/rendered
 document from executing as if it were same-origin content.
 
-`text/html` renditions (currently produced only by the SilverBullet
-plugin, rendering a wiki page's markdown) are sanitized by the *producing
-plugin* — via `goldmark` (safe-by-default HTML/URL-scheme rendering) and a
-`bluemonday.UGCPolicy()` pass — before the bytes ever reach the kernel.
-The kernel does not re-sanitize; it relies on the same allowlist-plus-CSP
-mechanism above (in particular the `sandbox` CSP directive, which strips
-script execution, form submission, and top-level navigation from the
-iframe an embedding client renders this content inside) as the second,
-independent layer of defense.
+`text/html` renditions (produced today by the Proton, SilverBullet, and
+Signal plugins — an email body, a rendered wiki page, and a chat
+transcript, respectively) are sanitized, wrapped and themed by the
+**kernel**, not by the producing plugin (D-11). A plugin's `Fetch`
+response carries the bare content fragment plus a declared
+`content_shape` (`CONTENT_SHAPE_EMAIL_HTML`, `CONTENT_SHAPE_MARKDOWN_HTML`,
+or `CONTENT_SHAPE_CHAT_TRANSCRIPT` — see `docs/plugin-contract.md`); this
+route looks up that shape's `bluemonday.Policy`, sanitizes the fragment
+with it, and wraps the sanitized result in one kernel-owned, self-contained
+HTML document (a fixed doctype/head/style skeleton, composed once per
+shape from a shared CSS base plus that shape's own delta rules) before
+writing any byte. This centralizes what used to be three near-identical
+per-plugin sanitize policies and theme stylesheets into one place, so a
+theme change is a one-file edit and sanitization stays inside the trust
+boundary even once plugins are third-party. Sanitization always runs
+strictly **before** wrapping, and the wrapped output is never re-sanitized
+— the injected stylesheet is fixed Go source, never derived from the
+fragment, so it cannot reintroduce anything the policy just stripped.
+
+A `text/html` rendition whose declared `content_shape` is unrecognised —
+including the zero value, `CONTENT_SHAPE_UNSPECIFIED`, which a plugin
+built against the pre-Phase-5 contract could never have set correctly —
+is refused outright: `502 unsupported_content_shape`, with **no body
+written**. The kernel fails closed here rather than ever guessing a
+policy or serving an unsanitized document from its own origin. This is
+the one rendition-serving failure mode that isn't a plugin-reachability
+or MIME-allowlist problem; see the error-code table below.
+
+The kernel's own allowlist-plus-CSP mechanism above (in particular the
+`sandbox` CSP directive, which strips script execution, form submission,
+and top-level navigation from the iframe an embedding client renders this
+content inside) remains a second, independent layer of defense on top of
+the sanitize/wrap boundary — not a replacement for it.
 
 `style-src 'unsafe-inline'` exists specifically so a `text/html`
 rendition's own inline `<style>` block is actually applied inside the
@@ -327,13 +351,13 @@ the app's dark theme) before this directive was added. This does not
 weaken script blocking: `default-src 'none'` (with no `script-src`
 override) and the `sandbox` directive together still deny all script
 execution regardless of `style-src`. It's safe specifically because the
-only inline style any rendition document can ever carry is a fixed
-string the *producing plugin's own Go source* injects strictly after its
-own sanitization pass — SilverBullet's `bluemonday.UGCPolicy()` strips
-any `<style>` element or `style` attribute that originated from page
-content before that trusted stylesheet is ever appended, so a hostile or
-malformed source document cannot smuggle a stylesheet through this
-directive.
+only inline style any rendition document can ever carry is the fixed
+stylesheet **the kernel's own `sanitizeAndWrapRendition` injects strictly
+after its bluemonday policy runs** over the plugin-supplied fragment — the
+policy strips any `<style>` element or `style` attribute that originated
+from plugin/source content before that trusted stylesheet is ever
+appended, so a hostile or malformed source document cannot smuggle a
+stylesheet through this directive.
 
 ### `GET /api/sources`
 
@@ -591,6 +615,7 @@ namespace", above).
 | `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
+| `unsupported_content_shape` | 502 | `GET /api/items/{id}/content` | The rendition's `mime_type` is `text/html` but its plugin-declared `content_shape` is unrecognised or unspecified (`CONTENT_SHAPE_UNSPECIFIED`) — the kernel's sanitize/wrap boundary (D-11) refuses to guess a policy and writes no body. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
 | `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
 | `internal_error` | 500 | any route | An unexpected kernel-side failure (e.g. the local index file itself is unreadable) — not a source or plugin problem. |
