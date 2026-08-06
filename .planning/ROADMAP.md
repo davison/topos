@@ -263,7 +263,7 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 3/3 plans executed
+**Plans**: 4 plans (3 executed, 1 gap closure pending)
 
 Plans:
 **Wave 1**
@@ -277,6 +277,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 06-03-PLAN.md — Deep-link fidelity differentiation and the stream scrollbar's date-marker overlay (UI-08, UI-11)
+
+**Wave 4** *(gap closure — blocked on Wave 2 completion)*
+
+- [ ] 06-04-PLAN.md — Keep the chip row's overflow measurement live for the whole session: ref-driven observer attachment covering all four measured elements (UI-07, closes 06-VERIFICATION.md's single gap)
 
 Notes:
 
