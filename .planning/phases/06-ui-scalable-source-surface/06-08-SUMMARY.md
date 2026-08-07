@@ -163,3 +163,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-ui-scalable-source-surface*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+All created/modified files found on disk; all task commits (`7c69cf2`, `c020f60`) and the summary commit (`ac5a783`) found in git history.
