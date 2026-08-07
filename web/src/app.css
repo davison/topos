@@ -124,10 +124,27 @@
 	 * mirrors :root's palette values verbatim, so mirroring these would
 	 * be pure duplication. If .dark ever diverges from :root, these three
 	 * must be mirrored there too.
+	 *
+	 * --stream-marker / --stream-marker-strong (06-07-PLAN.md, gap G-06-6)
+	 * are MARKER-ONLY tokens — never used for the scrollbar thumb/track
+	 * above. The stream date-marker overlay originally reused
+	 * --scrollbar-thumb at rest, which computed to 1.86:1 contrast against
+	 * --background: below WCAG 1.4.11's 3:1 non-text floor, and only
+	 * 1.35:1 from --border — a rest-state tick in the app's own hairline
+	 * colour, indistinguishable from a stray border fragment. That is what
+	 * produced G-06-6. These two tokens exist so the marker overlay's tone
+	 * is never coupled to the scrollbar's again. 65% is chosen because it
+	 * clears the 3:1 floor against BOTH --background and --card with
+	 * headroom; 100% (opaque --muted-foreground) is the "strong"/major-tick
+	 * tone and the hover/focus tone for a minor tick. Like their scrollbar
+	 * siblings, declared once here and not mirrored into .dark for the same
+	 * reason: .dark mirrors :root's palette verbatim today.
 	 */
 	--scrollbar-thumb: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
 	--scrollbar-thumb-hover: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
 	--scrollbar-track: transparent;
+	--stream-marker: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+	--stream-marker-strong: color-mix(in srgb, var(--muted-foreground) 100%, transparent);
 }
 
 .dark {

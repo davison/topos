@@ -272,10 +272,19 @@
 		  the flex child `main` sizes.
 		-->
 		<div class="relative min-h-0 min-w-0 {selectedItem ? 'w-[480px] shrink-0' : 'flex-1'}">
+			<!-- pr-6 (24px) below reserves a right gutter for
+			     StreamDateMarkers' own lane (UI-11 gap closure G-06-6).
+			     Load-bearing, not cosmetic: without it the marker lane
+			     sits on top of the row list, which alternates between
+			     the card surface and the background in the gaps
+			     between rows -- the ruler would composite against two
+			     different tones banding down its length, the same
+			     "two tones across its own width" defect this gap
+			     closure exists to fix. Do not reclaim this padding. -->
 			<div
 				bind:this={streamScrollEl}
 				bind:clientHeight={streamScrollHeight}
-				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto {selectedItem
+				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-6 {selectedItem
 					? 'w-[480px] shrink-0'
 					: 'flex-1'}"
 			>
