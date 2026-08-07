@@ -29,8 +29,13 @@ var requiredProvenanceKeys = []string{
 
 var validFidelities = map[string]bool{"exact": true, "anchored": true, "conversation-only": true}
 
-func testConfig() *config.Config {
-	return &config.Config{Webspaces: map[string]config.Webspace{}}
+// testConfig returns a *config.Store wrapping a hand-built, empty Config —
+// Rule 3 (07-01-PLAN.md Task 1): Router now takes a *config.Store rather
+// than a bare *config.Config, so this fixture wraps via
+// config.NewStoreForTesting rather than every call site below being
+// rewritten to load a real TOML file.
+func testConfig() *config.Store {
+	return config.NewStoreForTesting(&config.Config{Webspaces: map[string]config.Webspace{}})
 }
 
 func contractFixtureProvenance(sourceID string) map[string]string {

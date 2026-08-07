@@ -2,8 +2,10 @@
 	import { observeResize } from '$lib/resize-observer';
 	import SourceChip from './SourceChip.svelte';
 	import SearchBox from './SearchBox.svelte';
+	import FilterChip from './FilterChip.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import {
 		shouldShowSourceRows,
 		worstHealthTone,
@@ -32,7 +34,12 @@
 		onrefresh,
 		onrefreshall,
 		searchQuery,
-		onsearch
+		onsearch,
+		filters,
+		filterBusy,
+		filterError,
+		onsavefilter,
+		onremovefilter
 	}: {
 		webspace: string;
 		sources: SourceStatus[];
@@ -44,9 +51,32 @@
 		onrefreshall: () => void;
 		searchQuery: string;
 		onsearch: (q: string) => void;
+		// Search-promotion permanent filter stack (D-16-D-19): filters is
+		// the webspace's currently-saved `filter` array (stored order,
+		// never re-sorted — UI-12 ordering edge), rendered as a row of
+		// FilterChip below the source-chip row. filterBusy disables both
+		// the "Save as filter" button and every chip's remove control
+		// while a PUT /api/config write for a filter change is in flight.
+		// filterError, when non-null, renders a destructive Alert below
+		// the chip rows (D-03/D-09 error surfacing) — the caller owns
+		// clearing it on the next successful action.
+		filters: string[];
+		filterBusy: boolean;
+		filterError: string | null;
+		onsavefilter: () => void;
+		onremovefilter: (term: string) => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
+
+	// "Save as filter" (D-19): shown only when the trimmed search query is
+	// non-empty AND is not already an active filter term — a query
+	// byte-identical to an active term offers no affordance, so the
+	// persisted filter list can never contain a duplicate (UI-12 adjacency
+	// edge). A query that is merely a prefix or superstring of an active
+	// term is untouched by this check and still offers the affordance.
+	let trimmedQuery = $derived(searchQuery.trim());
+	let showSaveAsFilter = $derived(trimmedQuery !== '' && !filters.includes(trimmedQuery));
 
 	// The row below renders with `gap-2` (line ~175) — Tailwind's `gap-2` is
 	// 0.5rem, 8px at the default 16px root font size. Kept as a named
@@ -289,8 +319,37 @@
 	  above, it is NOT gated behind shouldShowSourceRows: searching the
 	  local index doesn't depend on any source being reachable, so a
 	  sourceless webspace or a sources-request failure never hides it.
+	  "Save as filter" sits immediately trailing it in the same row
+	  (07-UI-SPEC.md "Save-as-filter affordance").
 	-->
-	<div class="mt-3">
+	<div class="mt-3 flex items-center gap-2">
 		<SearchBox query={searchQuery} onquery={onsearch} />
+		{#if showSaveAsFilter}
+			<Button variant="ghost" size="sm" disabled={filterBusy} onclick={onsavefilter}>
+				Save as filter
+			</Button>
+		{/if}
 	</div>
+
+	<!--
+	  Filter chip row (D-19): its own line below the source-chip row and
+	  the search box — never merged into the source-chip row's
+	  flex-nowrap overflow measurement, since permanent filters and
+	  per-source health/filter are two different concepts sharing this
+	  header. Gated on filters.length so it is ABSENT (not an
+	  empty-styled row) with zero active filters.
+	-->
+	{#if filters.length > 0}
+		<div class="mt-3 flex flex-wrap items-center gap-2">
+			{#each filters as term (term)}
+				<FilterChip {term} disabled={filterBusy} onremove={onremovefilter} />
+			{/each}
+		</div>
+	{/if}
+
+	{#if filterError}
+		<Alert variant="destructive" class="mt-3">
+			<AlertDescription>{filterError}</AlertDescription>
+		</Alert>
+	{/if}
 </header>

@@ -81,13 +81,26 @@ func setupLogger() hclog.Logger {
 	})
 }
 
-// setup loads config, opens the index, and launches every configured
-// plugin. Callers must call host.Shutdown() and store.Close().
-func setup(ctx context.Context, logger hclog.Logger) (*config.Config, *index.Store, *pluginhost.Host, error) {
-	cfg, err := config.Load(configPath())
+// setup loads the config store, opens the index, and launches every
+// configured plugin. Callers must call host.Shutdown() and store.Close().
+//
+// setup returns a *config.Store rather than a bare *config.Config
+// (assumption-delta decision, 07-01-PLAN.md: the running configuration is
+// now a live, versioned resource — see kernel/config/store.go). Every
+// caller below that still needs a plain *config.Config (pluginsDir,
+// pluginhost.Discover, pluginhost.ValidateMatchConfig, newCoordinator,
+// syncer.Scheduler) takes cfgStore.Expanded() for now — a deliberately
+// temporary boot-time snapshot the same way Router's own three legacy
+// handlers do (routes.go), not yet re-launched or re-registered on a
+// config save (D-06/D-07's hot-apply reconcile is 07-02+ scope). Only
+// httpapi.Router receives the *config.Store itself, so the HTTP surface's
+// stream/config routes see a save immediately.
+func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Store, *pluginhost.Host, error) {
+	cfgStore, err := config.NewStore(configPath())
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	cfg := cfgStore.Expanded()
 
 	store, err := index.Open(cfg.Index.Path)
 	if err != nil {
@@ -118,7 +131,7 @@ func setup(ctx context.Context, logger hclog.Logger) (*config.Config, *index.Sto
 		return nil, nil, nil, err
 	}
 
-	return cfg, store, host, nil
+	return cfgStore, store, host, nil
 }
 
 func sourcesFromHost(host *pluginhost.Host) []correlate.Source {
@@ -144,14 +157,14 @@ func runSync() error {
 	ctx := context.Background()
 	logger := setupLogger()
 
-	cfg, store, host, err := setup(ctx, logger)
+	cfgStore, store, host, err := setup(ctx, logger)
 	if err != nil {
 		return err
 	}
 	defer host.Shutdown()
 	defer store.Close()
 
-	coord := newCoordinator(store, cfg, host)
+	coord := newCoordinator(store, cfgStore.Expanded(), host)
 	results := coord.RefreshAll(ctx)
 
 	for _, r := range results {
@@ -169,10 +182,11 @@ func runServe() error {
 	defer cancel()
 	logger := setupLogger()
 
-	cfg, store, host, err := setup(ctx, logger)
+	cfgStore, store, host, err := setup(ctx, logger)
 	if err != nil {
 		return err
 	}
+	cfg := cfgStore.Expanded()
 	defer host.Shutdown()
 	defer store.Close()
 
@@ -198,7 +212,7 @@ func runServe() error {
 	sched := &syncer.Scheduler{Coordinator: coord, Config: cfg, Logger: logger}
 	go sched.Run(ctx)
 
-	router := httpapi.Router(store, cfg, host, host, coord)
+	router := httpapi.Router(store, cfgStore, host, host, coord)
 
 	listen := cfg.Server.Listen
 	if !isLoopback(listen) {

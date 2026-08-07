@@ -53,13 +53,19 @@ type streamResponse struct {
 }
 
 // StreamHandler serves GET /api/webspaces/{webspace}/stream — a free
-// function taking only the index store and config, so this handler is
-// structurally unable to reach a plugin (KERN-02 / Pitfall 1): cfg is
-// inert configuration data, resolved here only to label each item's
-// source_display_name (D-09), never to reach a plugin process. It never
-// calls Match; it only reads the already-correlated index.
-func StreamHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
+// function taking only the index store and the live config store, so this
+// handler is structurally unable to reach a plugin (KERN-02 / Pitfall 1):
+// cfg is inert configuration data, resolved here only to label each item's
+// source_display_name (D-09) and to read the webspace's saved permanent
+// filter (D-16), never to reach a plugin process. It never calls Match; it
+// only reads the already-correlated index. cfg is read fresh from
+// cfgStore as the first statement of the returned closure (not captured
+// once at Router construction, unlike WebspacesHandler/ItemHandler/
+// SourceRefreshHandler) — a filter saved through PUT /api/config must be
+// visible to the very next stream request with no kernel restart (D-06).
+func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
@@ -73,7 +79,7 @@ func StreamHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		items, err := store.StreamItems(ctx, name)
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

@@ -25,23 +25,37 @@ const schemaVersion = 1
 
 // Router builds the chi router serving /api/webspaces,
 // /api/webspaces/{webspace}/stream, /api/items/{id} (+ /content,
-// /thumbnail), /api/sources, the manual-refresh routes, and the mirrored
+// /thumbnail), /api/sources, /api/config (07-01-PLAN.md, the kernel's
+// first mutating surface), the manual-refresh routes, and the mirrored
 // /agent/v1/* namespace (MountAgentRoutes, agent.go).
-// StreamHandler and ItemHandler take cfg alongside *index.Store (05-01-
-// PLAN.md Task 2, D-09) to resolve each item's source_display_name — cfg
-// is inert configuration data, never a plugin handle, so this does not
-// weaken KERN-02 / Pitfall 1: the stream route remains structurally
-// incapable of reaching a plugin (it never imports kernel/pluginhost).
-// The /api/items/* routes are the one deliberate exception: fetcher is
-// the request-time, item-open plugin call path (KERN-03). prober and
-// refresher are the other two: prober drives GET /api/sources's live
-// reachability probe, and refresher is the same kernel/syncer.Coordinator
-// the scheduler and the CLI use, so every caller of a sync reaches the
-// identical single-flight entry point (D-06).
-func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber, refresher Refresher) chi.Router {
+//
+// Router takes cfgStore *config.Store rather than a boot-time
+// *config.Config (assumption-delta decision, 07-01-PLAN.md: the running
+// configuration is the primary noun now, a live hash-identified resource
+// with raw and expanded forms — not a value resolved once at startup).
+// StreamHandler and agentStreamHandler read cfgStore.Expanded() fresh on
+// every request, so a filter saved through PUT /api/config narrows the
+// very next stream request with no kernel restart (D-06/D-16).
+// WebspacesHandler, ItemHandler and SourceRefreshHandler still take a
+// resolved cfg := cfgStore.Expanded() snapshot below — a deliberately
+// temporary gap this tracer plan accepts (07-CONTEXT.md
+// assumption_delta_decision: "a display-name rename is not seen until
+// restart" is a functionality gap, not an architectural one) and 07-02
+// Task 2 fills by threading cfgStore through those three as well. cfg is
+// inert configuration data either way, never a plugin handle, so none of
+// this weakens KERN-02 / Pitfall 1: the stream/webspace/item routes remain
+// structurally incapable of reaching a plugin (they never import
+// kernel/pluginhost). The /api/items/* routes are the one deliberate
+// exception: fetcher is the request-time, item-open plugin call path
+// (KERN-03). prober and refresher are the other two: prober drives
+// GET /api/sources's live reachability probe, and refresher is the same
+// kernel/syncer.Coordinator the scheduler and the CLI use, so every caller
+// of a sync reaches the identical single-flight entry point (D-06).
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher) chi.Router {
 	r := chi.NewRouter()
+	cfg := cfgStore.Expanded()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
-	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfg))
+	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store))
 	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
@@ -49,12 +63,16 @@ func Router(store *index.Store, cfg *config.Config, fetcher Fetcher, prober Heal
 	r.Get("/api/sources", SourcesHandler(store, prober))
 	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfg, refresher))
 	r.Post("/api/sync", SyncRefreshHandler(refresher))
+	// The kernel's first mutating HTTP surface (success criterion 4),
+	// scoped strictly to configuration — see kernel/httpapi/config.go.
+	r.Get("/api/config", ConfigHandler(cfgStore))
+	r.Put("/api/config", ConfigSaveHandler(cfgStore))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
-	// same store/config/fetcher/prober. Every /api/* route above is
+	// same store/cfgStore/fetcher/prober. Every /api/* route above is
 	// unaffected by any grant configuration — grants gate the agent
 	// surface only.
-	MountAgentRoutes(r, store, cfg, fetcher, prober)
+	MountAgentRoutes(r, store, cfgStore, fetcher, prober)
 	// NotFound only fires for requests that matched none of the routes
 	// above, so this never shadows /api/*: any request under /api/ that
 	// falls through here is genuinely unmatched, and every UI route

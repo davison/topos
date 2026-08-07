@@ -4,44 +4,54 @@ package config
 // Config is the root of ~/.config/topos/config.toml (or
 // $XDG_CONFIG_HOME/topos/config.toml). One file holds kernel settings,
 // source connections, and webspace definitions (D-04).
+//
+// json tags mirror every toml tag exactly (07-01-PLAN.md Task 1): the raw
+// (unexpanded) form of this struct is what GET/PUT /api/config serializes
+// over HTTP, so the config document has one stable wire shape shared by
+// TOML-on-disk and JSON-over-the-wire — a field renamed in one tag and not
+// the other would silently desync the UI from the file.
 type Config struct {
-	Server    ServerConfig        `toml:"server"`
-	Index     IndexConfig         `toml:"index"`
-	Plugins   PluginsConfig       `toml:"plugins"`
-	Sync      SyncConfig          `toml:"sync"`
-	Sources   map[string]Source   `toml:"sources"`
-	Webspaces map[string]Webspace `toml:"webspaces"`
+	Server    ServerConfig        `toml:"server" json:"server"`
+	Index     IndexConfig         `toml:"index" json:"index"`
+	Plugins   PluginsConfig       `toml:"plugins" json:"plugins"`
+	Sync      SyncConfig          `toml:"sync" json:"sync"`
+	Sources   map[string]Source   `toml:"sources" json:"sources"`
+	Webspaces map[string]Webspace `toml:"webspaces" json:"webspaces"`
 }
 
 // ServerConfig configures the kernel's loopback HTTP listener.
 type ServerConfig struct {
-	Listen string `toml:"listen"` // default "127.0.0.1:7777"
+	Listen string `toml:"listen" json:"listen"` // default "127.0.0.1:7777"
 }
 
 // IndexConfig configures the local SQLite index file location.
 type IndexConfig struct {
-	Path string `toml:"path"` // default "~/.local/share/topos/index.db"
+	Path string `toml:"path" json:"path"` // default "~/.local/share/topos/index.db"
 }
 
 // PluginsConfig configures where plugin binaries are discovered.
 type PluginsConfig struct {
-	Dir string `toml:"dir"` // default "plugins" (resolved relative to the running executable)
+	Dir string `toml:"dir" json:"dir"` // default "plugins" (resolved relative to the running executable)
 }
 
 // SyncConfig configures the background scheduler's global sync interval
 // (KERN-04, D-05). A source can override this with its own
 // Source.SyncInterval.
 type SyncConfig struct {
-	Interval string `toml:"interval"` // Go duration string; default DefaultSyncInterval ("15m") if empty
+	Interval string `toml:"interval" json:"interval"` // Go duration string; default DefaultSyncInterval ("15m") if empty
 }
 
 // Source configures a single source plugin: which binary to launch and the
 // connection details injected into its subprocess environment.
 type Source struct {
-	Plugin     string `toml:"plugin"`      // plugin binary name, e.g. "topos-plugin-paperless"
-	BaseURL    string `toml:"base_url"`    // "${PAPERLESS_URL}" style env reference
-	Token      string `toml:"token"`       // "${PAPERLESS_TOKEN}" style env reference — never a literal secret (D-04)
-	APIVersion string `toml:"api_version"` // e.g. "10"
+	Plugin string `toml:"plugin" json:"plugin"` // plugin binary name, e.g. "topos-plugin-paperless"
+	// BaseURL and Token carry omitempty on both tags (07-01-PLAN.md Task 1,
+	// RESEARCH.md Pitfall 3): without it, a canonical rewrite of a
+	// local-path source (e.g. Signal, which uses Path instead) would emit
+	// spurious base_url = ""/token = "" keys the operator never typed.
+	BaseURL    string `toml:"base_url,omitempty" json:"base_url,omitempty"`       // "${PAPERLESS_URL}" style env reference
+	Token      string `toml:"token,omitempty" json:"token,omitempty"`             // "${PAPERLESS_TOKEN}" style env reference — never a literal secret (D-04)
+	APIVersion string `toml:"api_version,omitempty" json:"api_version,omitempty"` // e.g. "10"
 	// Username is the IMAP login username for a source using SRC-01's
 	// Proton Mail plugin (Phase 3 deviation, Rule 2: paperless-ngx and
 	// SilverBullet both authenticate with a bearer token alone; IMAP
@@ -50,7 +60,7 @@ type Source struct {
 	// this source type — there is no separate password field. Left empty
 	// for a bearer-token source (paperless, SilverBullet), which never
 	// reads this field.
-	Username string `toml:"username,omitempty"`
+	Username string `toml:"username,omitempty" json:"username,omitempty"`
 	// WebmailBaseURL is the Proton webmail root for this account,
 	// including the account index (e.g. "https://mail.proton.me/u/0") —
 	// required by SRC-01's email plugin to build an ANCHORED deep link
@@ -67,7 +77,7 @@ type Source struct {
 	// id rather than by name, so a link built from a label's name is not
 	// addressable and lands on the inbox instead. Left empty for any
 	// source that has no equivalent webmail concept.
-	WebmailBaseURL string `toml:"webmail_base_url,omitempty"`
+	WebmailBaseURL string `toml:"webmail_base_url,omitempty" json:"webmail_base_url,omitempty"`
 	// CACert is an optional filesystem path to a PEM-encoded CA
 	// certificate a source plugin's HTTP client should trust in addition
 	// to (by replacing, for that plugin's client only) the system trust
@@ -79,12 +89,12 @@ type Source struct {
 	// paperless-ngx) whose instance uses a CA already in the system trust
 	// store; the field itself is generic (not silverbullet-specific) since
 	// any future LAN source could hit the same self-signed-cert situation.
-	CACert string `toml:"ca_cert,omitempty"`
+	CACert string `toml:"ca_cert,omitempty" json:"ca_cert,omitempty"`
 	// SyncInterval optionally overrides [sync] interval for this source
 	// alone (D-05) — e.g. a heavy source can be slowed without affecting
 	// every other configured source. A Go duration string; empty means
 	// "use the global [sync] interval".
-	SyncInterval string `toml:"sync_interval,omitempty"`
+	SyncInterval string `toml:"sync_interval,omitempty" json:"sync_interval,omitempty"`
 	// Path is the filesystem path a local-path source reads from —
 	// Signal Desktop's own config directory (default "~/.config/Signal")
 	// for SRC-02's Signal plugin, the first source with no network
@@ -99,7 +109,7 @@ type Source struct {
 	// the plugin subprocess itself (plugins/signal/main.go), not by the
 	// kernel — the kernel never needs to open this path itself, only
 	// pass it through.
-	Path string `toml:"path,omitempty"`
+	Path string `toml:"path,omitempty" json:"path,omitempty"`
 	// Agent declares this source's per-plugin agent grants (AGENT-01,
 	// D-11): whether an automated caller through /agent/v1 may read this
 	// source's items at all, and whether it may hand actions off through
@@ -108,7 +118,7 @@ type Source struct {
 	// Go zero value, which is default-deny for both grants — there is no
 	// separate "enabled" key that could widen this; the absence of a
 	// grant block IS the deny.
-	Agent AgentGrant `toml:"agent"`
+	Agent AgentGrant `toml:"agent" json:"agent"`
 	// DisplayName is this source instance's operator-authored label,
 	// shown by the UI and published on every HTTP response that names a
 	// source (D-09). Optional: when empty, the instance's display name
@@ -118,7 +128,7 @@ type Source struct {
 	// which instance an item, sync run, or agent grant belongs to — only
 	// renaming the [sources.<id>] map key itself does that, because the
 	// map key, not this field, is the instance's identity.
-	DisplayName string `toml:"display_name,omitempty"`
+	DisplayName string `toml:"display_name,omitempty" json:"display_name,omitempty"`
 }
 
 // AgentGrant is one source's per-plugin agent permission grant (AGENT-01,
@@ -133,12 +143,12 @@ type AgentGrant struct {
 	// the agent item routes. False (the zero value) means the source is
 	// structurally absent from every agent-facing response, exactly as if
 	// it did not exist (T-02-20 — no existence leak).
-	Read bool `toml:"read"`
+	Read bool `toml:"read" json:"read"`
 	// Handoff grants this source's action hand-off capability. Published
 	// as metadata only in this phase (the "capabilities.handoff" field of
 	// /agent/v1/sources) — no route in v1 acts on a Handoff grant; actual
 	// agent-initiated actions are AGENT-11, deferred to v1.x.
-	Handoff bool `toml:"handoff"`
+	Handoff bool `toml:"handoff" json:"handoff"`
 }
 
 // MatchBlock is one source instance's explicit, typed match configuration
@@ -161,7 +171,7 @@ type Webspace struct {
 	// that instance alone; the two are never combined (D-02). A webspace
 	// must declare a non-empty Keywords list, at least one Match block, or
 	// both — declaring neither fails config load (D-06).
-	Keywords []string `toml:"keywords"`
+	Keywords []string `toml:"keywords" json:"keywords"`
 	// Sources is the optional participation allowlist (D-03): when
 	// non-empty, only the named source instances participate in this
 	// webspace — every other configured instance is skipped at sync time,
@@ -169,7 +179,7 @@ type Webspace struct {
 	// no orphaned rows survive the config change. Empty (the zero value)
 	// means every configured instance participates by default. See
 	// Participates.
-	Sources []string `toml:"sources"`
+	Sources []string `toml:"sources" json:"sources"`
 	// Match is keyed by source instance id (the [sources.<id>] config
 	// map key, D-08) — NOT by plugin type, so two instances of the same
 	// plugin can carry independent blocks. An explicit block for an
@@ -178,7 +188,21 @@ type Webspace struct {
 	// non-empty Sources allowlist is dead config and fails load, a typo
 	// signal rather than a staging feature (05-RESEARCH.md Open Question
 	// 1, decided here).
-	Match map[string]MatchBlock `toml:"match"`
+	Match map[string]MatchBlock `toml:"match" json:"match"`
+	// Filter is the promoted-search permanent filter stack (D-16/D-17/
+	// D-18): each entry is an AND-ed FTS term, appended by "Save as
+	// filter" and removed independently — a stackable, order-preserving
+	// list rather than a set, since the persisted array order is also the
+	// order the UI renders chips in (UI-12 ordering edge). It narrows
+	// GET /api/webspaces/{ws}/stream, GET /api/webspaces/{ws}/search and
+	// GET /agent/v1/webspaces/{ws}/stream identically — the filtered view
+	// IS the webspace for every consumer, human and agent alike (D-16).
+	// Index contents are never narrowed at sync time; this is a
+	// query-time-only FTS filter, so removing a term instantly widens the
+	// stream back out without any resync. Empty (the zero value) means no
+	// permanent filter is active, and a webspace with no filter key
+	// streams byte-identically to its pre-Phase-7 output.
+	Filter []string `toml:"filter,omitempty" json:"filter,omitempty"`
 }
 
 // Participates reports whether source instance participates in webspace w:

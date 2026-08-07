@@ -149,11 +149,47 @@ async function getJSON<T>(path: string): Promise<T> {
 /**
  * postJSON mirrors getJSON's error-envelope handling exactly (same
  * ApiError construction, same fallback for a non-envelope body) for the
- * kernel's POST refresh routes — a failed refresh surfaces the kernel's
- * own error code (e.g. `source_not_found`) rather than a generic message.
+ * kernel's POST routes. body is optional — most POST routes here (refresh,
+ * sync) carry no request body — but when present it is JSON-stringified
+ * with a Content-Type header, the shape PUT /api/config also needs
+ * (07-01-PLAN.md Task 1).
  */
-async function postJSON<T>(path: string): Promise<T> {
-	const res = await fetch(path, { method: 'POST' });
+async function postJSON<T>(path: string, body?: unknown): Promise<T> {
+	const init: RequestInit = { method: 'POST' };
+	if (body !== undefined) {
+		init.headers = { 'Content-Type': 'application/json' };
+		init.body = JSON.stringify(body);
+	}
+	const res = await fetch(path, init);
+	if (!res.ok) {
+		let envelope: ApiErrorEnvelope | undefined;
+		try {
+			envelope = (await res.json()) as ApiErrorEnvelope;
+		} catch {
+			// response body wasn't the error envelope (e.g. the kernel is
+			// entirely unreachable) — fall through to a generic error below.
+		}
+		if (envelope?.error) {
+			throw new ApiError(envelope.error.code, envelope.error.message);
+		}
+		throw new ApiError('http_error', `Request to ${path} failed with status ${res.status}`);
+	}
+	return (await res.json()) as T;
+}
+
+/**
+ * putJSON mirrors getJSON/postJSON's error-envelope handling exactly, for
+ * the kernel's one PUT route (PUT /api/config, the kernel's first mutating
+ * HTTP surface, 07-01-PLAN.md Task 1). Unlike postJSON's optional body,
+ * every PUT caller has one — there is currently exactly one PUT route and
+ * it always carries a request document.
+ */
+async function putJSON<T>(path: string, body: unknown): Promise<T> {
+	const res = await fetch(path, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
 	if (!res.ok) {
 		let envelope: ApiErrorEnvelope | undefined;
 		try {
@@ -269,4 +305,84 @@ export function refreshSource(name: string): Promise<SourceRefreshResponse> {
 /** POST /api/sync */
 export function refreshAll(): Promise<SyncRefreshResponse> {
 	return postJSON<SyncRefreshResponse>('/api/sync');
+}
+
+// --- Config read/write (07-01's kernel/httpapi/config.go, D-16/D-17/D-18) ---
+//
+// Every field below mirrors kernel/config/types.go's json tags exactly —
+// this is the RAW (pre-expansion) config document: `${VAR}` secret
+// references travel verbatim in both directions, never a resolved value
+// (D-05). The wire shape is deliberately the same struct shape TOML
+// decodes into on the kernel side, so a round trip through this client
+// never needs a translation layer.
+
+export interface AgentGrantConfig {
+	read: boolean;
+	handoff: boolean;
+}
+
+export interface SourceConfig {
+	plugin: string;
+	base_url?: string;
+	token?: string;
+	api_version?: string;
+	username?: string;
+	webmail_base_url?: string;
+	ca_cert?: string;
+	sync_interval?: string;
+	path?: string;
+	agent: AgentGrantConfig;
+	display_name?: string;
+}
+
+export interface WebspaceConfig {
+	keywords: string[];
+	sources: string[];
+	match: Record<string, Record<string, string[]>>;
+	// filter is the promoted-search permanent filter stack (D-16/D-17/
+	// D-18): each entry an AND-ed FTS term, appended by "Save as filter"
+	// and removed independently, in stored array order (UI-12 ordering
+	// edge). Optional/absent means no active filter.
+	filter?: string[];
+}
+
+export interface KernelConfig {
+	server: { listen: string };
+	index: { path: string };
+	plugins: { dir: string };
+	sync: { interval: string };
+	sources: Record<string, SourceConfig>;
+	webspaces: Record<string, WebspaceConfig>;
+}
+
+export interface ConfigResponse {
+	schema_version: number;
+	// hash is the base_hash a subsequent putConfig call must echo back
+	// (D-03's optimistic content-hash lock) — a save whose base_hash no
+	// longer matches the file on disk is rejected with
+	// config_changed_on_disk rather than silently overwriting a
+	// concurrent hand-edit.
+	hash: string;
+	config: KernelConfig;
+	// env_vars reports, per ${VAR}/$VAR reference found anywhere in
+	// config, whether that variable is currently set in the kernel
+	// process's own environment — a boolean only, never the value (D-05,
+	// D-15's set/unset secret badge).
+	env_vars: Record<string, boolean>;
+	unknown_keys: string[];
+}
+
+export interface ConfigSaveRequest {
+	base_hash: string;
+	config: KernelConfig;
+}
+
+/** GET /api/config */
+export function getConfig(): Promise<ConfigResponse> {
+	return getJSON<ConfigResponse>('/api/config');
+}
+
+/** PUT /api/config */
+export function putConfig(req: ConfigSaveRequest): Promise<ConfigResponse> {
+	return putJSON<ConfigResponse>('/api/config', req);
 }

@@ -292,19 +292,57 @@ ON CONFLICT(id) DO UPDATE SET
 // timestamp_unix DESC, secondary_timestamp_unix DESC, id ASC — a total,
 // stable chronological order that never depends on SQLite's natural row
 // order.
-func (s *Store) StreamItems(ctx context.Context, webspaceName string) ([]item.Item, error) {
-	const q = `
+// StreamItems returns webspaceName's items in chronological order
+// (newest first), optionally narrowed to only those matching every term in
+// filterTerms (D-16/D-18: a webspace's saved permanent filter — an AND-ed
+// FTS query-time narrowing, never a sync-time one). With no surviving
+// terms, this runs the identical SQL Phase 1-6 always ran, so a webspace
+// with no filter key streams byte-identically to its pre-Phase-7 output.
+// With terms, the query joins through items_fts exactly like Search does,
+// but keeps StreamItems' own chronological ORDER BY (never bm25 rank) and
+// no LIMIT — the filtered view is still the whole stream, just narrower.
+// An FTS5-hostile filter term degrades to an empty slice with a nil error,
+// mirroring Search's own fts5-error degradation, rather than a 500.
+func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string) ([]item.Item, error) {
+	match := BuildMatchQuery(filterTerms, "")
+
+	const baseColumns = `
 SELECT items.id, items.source, items.source_type, items.source_id, items.title, items.preview,
        items.timestamp_unix, items.secondary_timestamp_unix, items.fidelity, items.deep_link,
        items.labels_json, items.provenance_json, items.group_id, items.group_label, items.has_thumbnail,
        items.synced_at
+`
+
+	var rows *sql.Rows
+	var err error
+	if match == "" {
+		const q = baseColumns + `
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-	rows, err := s.db.QueryContext(ctx, q, webspaceName)
+		rows, err = s.db.QueryContext(ctx, q, webspaceName)
+	} else {
+		const q = baseColumns + `
+FROM items_fts
+JOIN items ON items.rowid = items_fts.rowid
+JOIN webspace_items ON webspace_items.item_id = items.id
+WHERE webspace_items.webspace_name = ?
+  AND items_fts MATCH ?
+ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
+`
+		rows, err = s.db.QueryContext(ctx, q, webspaceName, match)
+	}
 	if err != nil {
+		// Mirror Search's fts5-error degradation (03-RESEARCH.md Pattern
+		// 3): BuildMatchQuery's phrase-quoting makes a genuine MATCH
+		// syntax error unreachable in principle, but a malformed filter
+		// term must degrade to "no results" rather than propagate as a
+		// 500 if it ever occurs.
+		if match != "" && strings.Contains(strings.ToLower(err.Error()), "fts5") {
+			return []item.Item{}, nil
+		}
 		return nil, fmt.Errorf("index: stream items for %s: %w", webspaceName, err)
 	}
 	defer rows.Close()
@@ -337,6 +375,38 @@ ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.i
 		return nil, fmt.Errorf("index: iterate stream items for %s: %w", webspaceName, err)
 	}
 	return out, nil
+}
+
+// BuildMatchQuery composes one FTS5 MATCH expression from a webspace's
+// saved permanent filter stack plus an optional live search query (D-16/
+// D-18) — the single shared builder StreamItems, Search and every /agent/v1
+// stream caller all go through, so the filtered view can never disagree
+// with itself across consumers. filterTerms is iterated in its given
+// (stored array) order, never sorted — the persisted order is also the
+// chip-rendering order (UI-12 ordering edge), so the MATCH expression and
+// the UI can never disagree about that order either. Each term has any `"`
+// characters stripped, blanks are skipped, and survivors are phrase-quoted
+// with NO trailing `*` — a saved filter means the word, not a prefix,
+// unlike a live in-progress search term. liveQuery is run through the
+// existing ftsQuery (unchanged: still phrase-quotes and prefix-matches its
+// own last term). The parts join with a single space, FTS5's implicit AND
+// — so a filter stack of ["boiler","quote"] plus a live query of "invoice"
+// requires all three to match. Returns "" when both filterTerms and
+// liveQuery sanitize to nothing, exactly like ftsQuery's own "no query"
+// convention.
+func BuildMatchQuery(filterTerms []string, liveQuery string) string {
+	parts := make([]string, 0, len(filterTerms)+1)
+	for _, term := range filterTerms {
+		term = strings.ReplaceAll(term, `"`, "")
+		if term == "" {
+			continue
+		}
+		parts = append(parts, `"`+term+`"`)
+	}
+	if live := ftsQuery(liveQuery); live != "" {
+		parts = append(parts, live)
+	}
+	return strings.Join(parts, " ")
 }
 
 // SnippetOpen and SnippetClose are the delimiter runes Search wraps a

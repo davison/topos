@@ -31,7 +31,12 @@ func newTestRouter(store *index.Store) http.Handler {
 
 func newTestRouterWithConfig(store *index.Store, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfg))
+	// Rule 3 (07-01-PLAN.md Task 1): StreamHandler now takes a
+	// *config.Store rather than a bare *config.Config — every existing
+	// test fixture here builds a Config by hand, so
+	// config.NewStoreForTesting wraps it rather than every test being
+	// rewritten to load a real TOML file.
+	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, config.NewStoreForTesting(cfg)))
 	return r
 }
 

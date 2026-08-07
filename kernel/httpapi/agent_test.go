@@ -18,7 +18,10 @@ import (
 )
 
 func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber) http.Handler {
-	return Router(store, cfg, fetcher, prober, &fakeRefresher{})
+	// Rule 3 (07-01-PLAN.md Task 1): Router now takes a *config.Store —
+	// every call site in this file still builds a *config.Config by hand,
+	// so wrap it here rather than touching each one.
+	return Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{})
 }
 
 // agentTestItem builds a test item whose Source (instance id) and

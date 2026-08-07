@@ -1,6 +1,10 @@
 package config
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -11,40 +15,113 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Load reads, expands, decodes and validates the config file at path.
-//
-// Secrets are never templated: the raw file bytes are expanded with
-// os.Expand (${VAR} / $VAR references) before TOML decoding, and the
-// expanded result is held in memory only — never written back to disk.
-// A referenced-but-unset environment variable expands to the empty string
-// and is reported by name in the returned error, not silently accepted.
+// Load reads, expands, decodes and validates the config file at path,
+// returning only the expanded runtime config — a thin wrapper over LoadRaw
+// kept so every pre-existing caller (cmd/topos/main.go et al) compiles
+// unchanged. Prefer LoadRaw directly wherever the raw pre-expansion form or
+// the file hash is also needed (config.Store, the save dry-run path).
 func Load(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
+	expanded, _, _, _, err := LoadRaw(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: read %s: %w", path, err)
-	}
-
-	expanded, missing := expandEnv(string(raw))
-
-	var cfg Config
-	if err := toml.Unmarshal([]byte(expanded), &cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
-	}
-
-	applyDefaults(&cfg)
-
-	if err := cfg.expandIndexPathHome(); err != nil {
 		return nil, err
 	}
-	if err := cfg.expandSourceCACertPathsHome(); err != nil {
-		return nil, err
+	return expanded, nil
+}
+
+// LoadRaw reads the config file at path ONCE and produces both forms this
+// phase needs (07-01-PLAN.md Task 1, D-05):
+//
+//   - expanded: the runtime config, exactly what Load has always returned —
+//     os.Expand'd (${VAR}/$VAR resolved against the process environment),
+//     home-dir-expanded, defaulted and validated. This is the form every
+//     plugin/index/sync code path operates over; it may hold secret VALUES
+//     in memory and must never be marshalled back to disk or serialized
+//     over HTTP.
+//   - raw: the same file, decoded WITHOUT os.Expand and WITHOUT home-dir
+//     expansion — both of those touch fields that could be secret-shaped or
+//     machine-specific, so raw retains ${VAR} references and "~"-prefixed
+//     paths verbatim. This is the only form config.Store ever hands to
+//     WriteCanonical or serializes as a GET /api/config response body — a
+//     canonical rewrite of the expanded form would leak a resolved secret
+//     value into the file (T-07-01/T-07-02, D-05's hard requirement).
+//
+// fileHash is the hex-encoded SHA-256 of the raw file bytes, used by
+// config.Store's optimistic clobber lock (D-03). unknownKeys is
+// UnknownKeys' strict-decode probe over the same raw bytes, used by the
+// save path's lossless-rewrite guard (D-01's "flattens comments only", not
+// data). raw applies only applyDefaults — never Validate, since a
+// hand-edited file with ${VAR} references unresolved is not yet in a
+// state Validate's field-presence checks can judge correctly; only
+// expanded is ever validated.
+func LoadRaw(path string) (expanded *Config, raw *Config, fileHash string, unknownKeys []string, err error) {
+	rawBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, "", nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
 
-	if err := cfg.Validate(missing); err != nil {
-		return nil, err
+	expandedStr, missing := expandEnv(string(rawBytes))
+
+	var expandedCfg Config
+	if err := toml.Unmarshal([]byte(expandedStr), &expandedCfg); err != nil {
+		return nil, nil, "", nil, fmt.Errorf("config: parse %s: %w", path, err)
+	}
+	applyDefaults(&expandedCfg)
+	if err := expandedCfg.expandIndexPathHome(); err != nil {
+		return nil, nil, "", nil, err
+	}
+	if err := expandedCfg.expandSourceCACertPathsHome(); err != nil {
+		return nil, nil, "", nil, err
+	}
+	if err := expandedCfg.Validate(missing); err != nil {
+		return nil, nil, "", nil, err
 	}
 
-	return &cfg, nil
+	var rawCfg Config
+	if err := toml.Unmarshal(rawBytes, &rawCfg); err != nil {
+		return nil, nil, "", nil, fmt.Errorf("config: parse %s (raw): %w", path, err)
+	}
+	applyDefaults(&rawCfg)
+
+	sum := sha256.Sum256(rawBytes)
+
+	return &expandedCfg, &rawCfg, hex.EncodeToString(sum[:]), UnknownKeys(rawBytes), nil
+}
+
+// UnknownKeys strict-decodes raw TOML bytes into a throwaway Config and
+// reports every key path the Config struct does not model, sorted for
+// deterministic output. Used by config.Store.Save (D-01's lossless-rewrite
+// prohibition): a canonical rewrite silently drops any key the struct
+// doesn't know about, which is data loss the operator never consented to —
+// this is the probe that catches it before a write happens.
+//
+// A decode error other than *toml.StrictMissingError (e.g. malformed TOML
+// syntax) is not this function's concern — the normal (non-strict) decode
+// elsewhere already reports that — so it returns nil rather than
+// attempting to interpret an unrelated failure as "no unknown keys".
+func UnknownKeys(raw []byte) []string {
+	var probe Config
+	dec := toml.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&probe)
+	if err == nil {
+		return nil
+	}
+
+	var strictErr *toml.StrictMissingError
+	if !errors.As(err, &strictErr) {
+		return nil
+	}
+
+	keySet := make(map[string]struct{}, len(strictErr.Errors))
+	for _, de := range strictErr.Errors {
+		keySet[strings.Join(de.Key(), ".")] = struct{}{}
+	}
+	keys := make([]string, 0, len(keySet))
+	for k := range keySet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // expandEnv expands ${VAR}/$VAR references in raw using the current

@@ -7,9 +7,13 @@
 		refreshSource,
 		refreshAll,
 		searchWebspace,
+		getConfig,
+		putConfig,
+		ApiError,
 		type StreamResponse,
 		type SourceStatus,
-		type SearchResult
+		type SearchResult,
+		type ConfigResponse
 	} from '$lib/api';
 	import {
 		resolveSourceFilters,
@@ -50,6 +54,20 @@
 	let searchState: 'idle' | 'loading' | 'error' | 'ready' = $state('idle');
 	let searchResults = $state<SearchResult[]>([]);
 	let searchRequestSeq = 0;
+
+	// Search-promotion permanent filter state (D-16-D-19, 07-01-PLAN.md
+	// Task 1): configResponse is the last GET/PUT /api/config result —
+	// its `hash` is the base_hash the next putConfig call must echo back
+	// (D-03), and its `config.webspaces[webspace].filter` array is this
+	// webspace's saved permanent filter stack. filterBusy disables the
+	// "Save as filter" button and every chip's remove control while a
+	// write is in flight; filterError surfaces a save rejection (D-09
+	// validation failure or D-03 hash conflict) as a fixed destructive
+	// Alert in the header.
+	let configResponse = $state<ConfigResponse | null>(null);
+	let filterBusy = $state(false);
+	let filterError = $state<string | null>(null);
+	let filters = $derived(configResponse?.config.webspaces[webspace]?.filter ?? []);
 
 	// navGeneration guards against a stale-webspace race: SvelteKit reuses
 	// this page component instance across /w/A -> /w/B navigation (same
@@ -114,6 +132,84 @@
 			response = null;
 			loadState = 'error';
 		}
+	}
+
+	async function loadConfig(gen: number) {
+		try {
+			const res = await getConfig();
+			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
+			configResponse = res;
+		} catch {
+			if (gen !== navGeneration) return;
+			configResponse = null;
+		}
+	}
+
+	// writeFilter is the one write path both saveFilter and removeFilter go
+	// through (Task 2 of 07-01-PLAN.md: "there is no second write path"):
+	// clone the fetched config document, mutate only this webspace's
+	// filter array, putConfig({ base_hash, config }). On success replace
+	// configResponse with the response, clear filterError, and (only for
+	// a save, never a remove) clear the search box back to empty so it is
+	// ready for a further refining search (D-18). On an ApiError, set
+	// filterError to the fixed copy for a hash conflict (D-03) or the
+	// kernel's own verbatim message otherwise (D-09), then refresh
+	// getConfig() so the next attempt starts from current state.
+	async function writeFilter(nextFilters: string[], clearSearchOnSuccess: boolean) {
+		if (!configResponse) return;
+		const gen = navGeneration;
+		const nextConfig = structuredClone(configResponse.config);
+		const existing = nextConfig.webspaces[webspace];
+		nextConfig.webspaces[webspace] = {
+			keywords: existing?.keywords ?? [],
+			sources: existing?.sources ?? [],
+			match: existing?.match ?? {},
+			filter: nextFilters
+		};
+
+		filterBusy = true;
+		try {
+			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			if (gen !== navGeneration) return;
+			configResponse = res;
+			filterError = null;
+			if (clearSearchOnSuccess) {
+				searchQuery = '';
+				searchState = 'idle';
+				searchResults = [];
+			}
+			await load(navGeneration);
+		} catch (err) {
+			if (gen !== navGeneration) return;
+			filterError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? 'Config changed on disk — review and retry.'
+					: err instanceof ApiError
+						? err.message
+						: 'Config changed on disk — review and retry.';
+			await loadConfig(gen);
+		} finally {
+			if (gen === navGeneration) filterBusy = false;
+		}
+	}
+
+	// saveFilter appends the trimmed search query to the end of the
+	// existing filter array (never prepends, never dedupes silently — the
+	// "Save as filter" affordance's own gating in WebspaceHeader.svelte
+	// already prevents offering it for a duplicate term).
+	async function saveFilter() {
+		const term = searchQuery.trim();
+		if (term === '') return;
+		await writeFilter([...filters, term], true);
+	}
+
+	// removeFilter removes exactly one matching element by value, leaving
+	// any others (and their stored order) intact.
+	async function removeFilter(term: string) {
+		await writeFilter(
+			filters.filter((f) => f !== term),
+			false
+		);
 	}
 
 	async function loadSources() {
@@ -247,8 +343,10 @@
 		searchQuery = '';
 		searchState = 'idle';
 		searchResults = [];
+		filterError = null;
 		load(gen);
 		loadSources();
+		loadConfig(gen);
 	});
 </script>
 
@@ -268,6 +366,11 @@
 		onrefreshall={handleRefreshAll}
 		{searchQuery}
 		onsearch={handleSearch}
+		{filters}
+		{filterBusy}
+		{filterError}
+		onsavefilter={saveFilter}
+		onremovefilter={removeFilter}
 	/>
 
 	<main class="flex min-h-0 flex-1 gap-8 px-6 py-8">

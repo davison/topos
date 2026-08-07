@@ -123,8 +123,8 @@ func agentSourcesHandler(store *index.Store, cfg *config.Config, prober HealthPr
 // no dedicated per-source-filtered index query, so this reuses StreamItems
 // (the same read StreamHandler/agentStreamHandler use) rather than adding
 // a new Store method outside this plan's scope.
-func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool) (int, error) {
-	items, err := store.StreamItems(ctx, webspaceName)
+func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool, filterTerms []string) (int, error) {
+	items, err := store.StreamItems(ctx, webspaceName, filterTerms)
 	if err != nil {
 		return 0, err
 	}
@@ -163,7 +163,7 @@ func agentWebspacesHandler(store *index.Store, cfg *config.Config, prober Health
 
 		resp := webspacesResponse{SchemaVersion: schemaVersion, Webspaces: make([]webspaceSummary, 0, len(names))}
 		for _, name := range names {
-			count, err := agentGrantedItemCount(ctx, store, name, granted)
+			count, err := agentGrantedItemCount(ctx, store, name, granted, cfg.Webspaces[name].Filter)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 				return
@@ -182,15 +182,21 @@ func agentWebspacesHandler(store *index.Store, cfg *config.Config, prober Health
 
 // agentStreamHandler serves GET /agent/v1/webspaces/{webspace}/stream: the
 // identical streamResponse shape /api/webspaces/{webspace}/stream reports,
-// with items filtered to the granted source set and sync status
-// aggregated over that same restricted set. An unknown webspace still
-// returns 404 webspace_not_found (the webspace's existence is not a grant
-// question); a known webspace with zero granted items returns 200 with an
-// empty items array (AGENT-01/empty), never 404. Filtering preserves
-// StreamItems' total chronological order — ungranted rows are dropped, the
-// remaining rows are never reordered (AGENT-01/ordering).
-func agentStreamHandler(store *index.Store, cfg *config.Config, prober HealthProber) http.HandlerFunc {
+// with items filtered to the granted source set AND to the webspace's
+// saved permanent filter (D-16: the filtered view IS the webspace for
+// every consumer, human and agent alike), and sync status aggregated over
+// the granted set. An unknown webspace still returns 404
+// webspace_not_found (the webspace's existence is not a grant question); a
+// known webspace with zero granted items returns 200 with an empty items
+// array (AGENT-01/empty), never 404. Filtering preserves StreamItems'
+// total chronological order — ungranted rows are dropped, the remaining
+// rows are never reordered (AGENT-01/ordering). cfg is read fresh from
+// cfgStore as the first statement of the returned closure — the identical
+// live-read treatment StreamHandler gets, so a filter saved through
+// PUT /api/config narrows this surface with no kernel restart either.
+func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
@@ -206,7 +212,7 @@ func agentStreamHandler(store *index.Store, cfg *config.Config, prober HealthPro
 
 		granted := grantedSources(cfg)
 
-		items, err := store.StreamItems(ctx, name)
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
@@ -372,13 +378,21 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 }
 
 // MountAgentRoutes mounts the /agent/v1 namespace on r using the same
-// store/config/Fetcher/HealthProber the human-facing /api/* routes use
+// store/cfgStore/Fetcher/HealthProber the human-facing /api/* routes use
 // (Router, in routes.go) — there is no second store, no second sync
 // pipeline, only a grant-filtered read path over the same data.
-func MountAgentRoutes(r chi.Router, store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber) {
+// agentStreamHandler alone takes cfgStore itself (a live per-request read,
+// matching StreamHandler — D-16's filtered-view-is-the-webspace guarantee
+// applies to this surface too); every other agent handler here resolves
+// cfg := cfgStore.Expanded() once, the same deliberately-temporary
+// boot-snapshot treatment Router gives WebspacesHandler/ItemHandler/
+// SourceRefreshHandler (07-02 Task 2 fills this gap for every handler at
+// once).
+func MountAgentRoutes(r chi.Router, store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber) {
+	cfg := cfgStore.Expanded()
 	r.Get("/agent/v1/sources", agentSourcesHandler(store, cfg, prober))
 	r.Get("/agent/v1/webspaces", agentWebspacesHandler(store, cfg, prober))
-	r.Get("/agent/v1/webspaces/{webspace}/stream", agentStreamHandler(store, cfg, prober))
+	r.Get("/agent/v1/webspaces/{webspace}/stream", agentStreamHandler(store, cfgStore, prober))
 	r.Get("/agent/v1/items/{id}", agentItemHandler(store, cfg, prober, fetcher))
 	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
 	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))

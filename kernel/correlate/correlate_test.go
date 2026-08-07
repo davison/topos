@@ -83,7 +83,7 @@ func TestSyncSource_PersistsMatchedItems(t *testing.T) {
 		t.Fatalf("unexpected results: %+v", results)
 	}
 
-	items, err := store.StreamItems(context.Background(), "house-move")
+	items, err := store.StreamItems(context.Background(), "house-move", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestSyncSource_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	if _, rejections := engine.SyncSource(context.Background(), src); rejections != "" {
 		t.Fatalf("SyncSource (order 1): unexpected rejections %q", rejections)
 	}
-	first, err := store.StreamItems(context.Background(), "ws")
+	first, err := store.StreamItems(context.Background(), "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestSyncSource_KeywordOrderDoesNotAffectResult(t *testing.T) {
 	if _, rejections := engine2.SyncSource(context.Background(), src2); rejections != "" {
 		t.Fatalf("SyncSource (order 2): unexpected rejections %q", rejections)
 	}
-	second, err := store.StreamItems(context.Background(), "ws")
+	second, err := store.StreamItems(context.Background(), "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestSyncSource_RejectsUnspecifiedFidelityAndEmptyDeepLink(t *testing.T) {
 		t.Fatalf("expected the sync to succeed with exactly 1 persisted item, got: %+v", results)
 	}
 
-	items, err := store.StreamItems(context.Background(), "ws")
+	items, err := store.StreamItems(context.Background(), "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 	engine := &Engine{Store: store, Config: cfg}
 	engine.SyncSource(ctx, healthy)
 	engine.SyncSource(ctx, flaky)
-	baseline, err := store.StreamItems(ctx, "house-move")
+	baseline, err := store.StreamItems(ctx, "house-move", nil)
 	if err != nil {
 		t.Fatalf("StreamItems (baseline): %v", err)
 	}
@@ -293,7 +293,7 @@ func TestSyncSource_PartialSourceFailure_HealthySourceItemsPersist(t *testing.T)
 		t.Fatalf("expected one result per (webspace, source), got paperless=%+v silverbullet=%+v", paperlessResults, silverbulletResults)
 	}
 
-	items, err := store.StreamItems(ctx, "house-move")
+	items, err := store.StreamItems(ctx, "house-move", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestSyncSource_SourceMajorPersistsIndependentlyPerWebspace(t *testing.T) {
 	}
 
 	for _, ws := range []string{"house-move", "garden"} {
-		items, err := store.StreamItems(ctx, ws)
+		items, err := store.StreamItems(ctx, ws, nil)
 		if err != nil {
 			t.Fatalf("StreamItems(%s): %v", ws, err)
 		}
@@ -471,7 +471,7 @@ func TestSyncSource_DeallowlistedInstanceRowsCleared(t *testing.T) {
 	if _, rejections := engine.SyncSource(ctx, seed); rejections != "" {
 		t.Fatalf("seed SyncSource: unexpected rejections %q", rejections)
 	}
-	baseline, err := store.StreamItems(ctx, "work")
+	baseline, err := store.StreamItems(ctx, "work", nil)
 	if err != nil {
 		t.Fatalf("StreamItems (baseline): %v", err)
 	}
@@ -502,7 +502,7 @@ func TestSyncSource_DeallowlistedInstanceRowsCleared(t *testing.T) {
 		t.Fatalf("expected a zero-count, error-free result for the de-allowlisted instance, got: %+v", results)
 	}
 
-	items, err := store.StreamItems(ctx, "work")
+	items, err := store.StreamItems(ctx, "work", nil)
 	if err != nil {
 		t.Fatalf("StreamItems (after de-allowlisting): %v", err)
 	}

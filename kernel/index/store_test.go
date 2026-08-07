@@ -69,7 +69,7 @@ func TestReplaceWebspaceSourceItems_OtherSourceRowsUntouched(t *testing.T) {
 		t.Fatalf("replace silverbullet: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws")
+	items, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -127,11 +127,11 @@ func TestReplaceWebspaceSourceItems_TwoWebspacesShareItemNoCollision(t *testing.
 		t.Fatalf("ReplaceWebspaceItems webspace-b: %v", err)
 	}
 
-	itemsA, err := s.StreamItems(ctx, "webspace-a")
+	itemsA, err := s.StreamItems(ctx, "webspace-a", nil)
 	if err != nil {
 		t.Fatalf("StreamItems webspace-a: %v", err)
 	}
-	itemsB, err := s.StreamItems(ctx, "webspace-b")
+	itemsB, err := s.StreamItems(ctx, "webspace-b", nil)
 	if err != nil {
 		t.Fatalf("StreamItems webspace-b: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestStreamItems_TotalOrderingWithTieBreak(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws")
+	items, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestStreamItems_UnknownWebspaceReturnsEmpty(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	items, err := s.StreamItems(ctx, "does-not-exist")
+	items, err := s.StreamItems(ctx, "does-not-exist", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestReplaceWebspaceSourceItems_Idempotent(t *testing.T) {
 	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", items); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
-	first, err := s.StreamItems(ctx, "ws")
+	first, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestReplaceWebspaceSourceItems_Idempotent(t *testing.T) {
 	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", items); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
-	second, err := s.StreamItems(ctx, "ws")
+	second, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestStreamItems_OrdersByPrimaryTimestampDescendingAcrossInsertOrder(t *test
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws")
+	items, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestStreamItems_TiesOnBothTimestampsBreakByIDAscending(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws")
+	items, err := s.StreamItems(ctx, "ws", nil)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
