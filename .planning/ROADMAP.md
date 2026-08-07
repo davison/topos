@@ -263,7 +263,7 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 7/7 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -293,6 +293,10 @@ Plans:
 **Wave 7** *(UAT gap closure — blocked on Wave 6: shared spec/stylesheet files)*
 
 - [x] 06-07-PLAN.md — Rebuild the stream date-marker overlay as a real ruler: own lane, dedicated tokens at 3:1, rail and major/minor hierarchy, scroll and edge gates (UI-11, closes G-06-6)
+
+**Wave 8** *(UAT gap closure — blocked on Waves 6 and 7: shared `SourceChip.svelte`, guard and spec files)*
+
+- [ ] 06-08-PLAN.md — Merged source chip as one polished pill: 44px height parity with the overflow trigger, full-surface filter hit area, circular refresh disc, keyboard-scoped reveal (UI-07, closes G-06-3b)
 
 Notes:
 
