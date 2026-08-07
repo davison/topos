@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 )
 
@@ -25,12 +26,19 @@ type searchResponse struct {
 }
 
 // SearchHandler serves GET /api/webspaces/{webspace}/search?q= — a free
-// function taking only the index store, exactly like StreamHandler, so
-// this handler is structurally unable to reach a plugin (KERN-02). It
+// function taking the index store and the live config store, the same
+// cfgStore *config.Store parameter shape StreamHandler already has, so a
+// filter saved through PUT /api/config narrows the very next search request
+// with no kernel restart (D-06/D-16). cfg is read fresh from cfgStore as
+// the first statement of the returned closure (unchanged treatment from
+// StreamHandler) — it is inert configuration data here too, resolved only
+// to read the webspace's saved permanent filter, never to reach a plugin,
+// so this handler stays structurally unable to reach a plugin (KERN-02). It
 // reads only the already-correlated local index and never triggers a live
 // source call.
-func SearchHandler(store *index.Store) http.HandlerFunc {
+func SearchHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
@@ -55,7 +63,7 @@ func SearchHandler(store *index.Store) http.HandlerFunc {
 			return
 		}
 
-		results, err := store.Search(ctx, name, q)
+		results, err := store.Search(ctx, name, q, cfg.Webspaces[name].Filter)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

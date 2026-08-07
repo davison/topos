@@ -56,7 +56,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	cfg := cfgStore.Expanded()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
-	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store))
+	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, cfgStore))
 	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))

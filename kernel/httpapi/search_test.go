@@ -9,13 +9,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
 )
 
 func newSearchTestRouter(store *index.Store) http.Handler {
+	return newSearchTestRouterWithConfig(store, &config.Config{})
+}
+
+// newSearchTestRouterWithConfig mirrors stream_test.go's
+// newTestRouterWithConfig: SearchHandler now takes the same *config.Store
+// shape StreamHandler does (Task 2), so a filter-bearing test wraps a
+// hand-built *config.Config through config.NewStoreForTesting rather than
+// loading a real TOML file.
+func newSearchTestRouterWithConfig(store *index.Store, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store))
+	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, config.NewStoreForTesting(cfg)))
 	return r
 }
 
@@ -162,6 +172,38 @@ func TestSearchHandler_ZeroMatches(t *testing.T) {
 	}
 	if len(resp.Results) != 0 {
 		t.Errorf("expected zero results, got %d", len(resp.Results))
+	}
+}
+
+// TestSearchHandler_ReadsWebspaceFilterFromLiveConfig (07-01-PLAN.md Task
+// 2, D-16/D-18) proves SearchHandler reads the webspace's saved filter
+// from the live config store and AND-combines it with the live query: an
+// item matching only the live query, with no saved filter term, is absent.
+func TestSearchHandler_ReadsWebspaceFilterFromLiveConfig(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	both := seedSearchableItem(t, store, "ws", "1", "Boiler quote", "a boiler repair quote")
+	seedSearchableItem(t, store, "ws", "2", "Garden fence quote", "replacing the back fence")
+
+	cfg := &config.Config{
+		Webspaces: map[string]config.Webspace{
+			"ws": {Filter: []string{"boiler"}},
+		},
+	}
+	router := newSearchTestRouterWithConfig(store, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/search?q=quote", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp searchResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].ID != both.ID {
+		t.Fatalf("expected exactly the item matching both the saved filter and the live query, got %+v", resp.Results)
 	}
 }
 

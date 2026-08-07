@@ -435,6 +435,24 @@ handoff = false
 # normalization (D-04) in both shapes above — only WHERE the value list
 # comes from (one shared list vs. a typed, per-instance table) changed in
 # Phase 5.
+#
+# filter (D-16/D-17/D-18, OPTIONAL, added Phase 7): a webspace's saved
+# PERMANENT filter — a plain list of exact-word terms, AND-ed together and
+# applied as a query-time narrowing on top of whatever keywords/match
+# already correlated into this webspace. Unlike keywords/match (which
+# decide WHICH items land in the webspace at sync time), filter narrows
+# WHICH of those already-correlated items are shown, and applies
+# identically to GET /api/webspaces/{name}/stream, .../search and the
+# /agent/v1 stream mirror — the filtered view IS the webspace for every
+# consumer. Absent or empty means "no narrowing": a webspace with no
+# filter key streams byte-identically to its pre-Phase-7 output. The
+# topos UI writes this list itself (the "Save as filter" button on a live
+# search, and each filter chip's × to remove one term) — appending to the
+# end, never reordering or deduping silently — but it's a plain TOML
+# string array like any other config field, so hand-editing it (adding,
+# removing, or reordering terms directly in this file) is fully
+# supported; the UI and a hand-edit always agree on this one persisted
+# shape.
 [webspaces.house-move]
 # keywords: the fallback (see above) — every string here is matched,
 # exactly and case-insensitively, against every field each participating,
@@ -452,6 +470,12 @@ handoff = false
 # required whenever this list is non-empty; a webspace declaring it with
 # zero keywords, or any empty-string keyword, fails config load.
 keywords = ["house and home"]
+
+# filter (see above): commented out here since this deployment currently
+# has no saved permanent filter on this webspace — uncomment and edit
+# freely, or just click "Save as filter" on a live search in the UI,
+# which writes this same array.
+# filter = ["boiler"]
 
 # [webspaces.house-move.match.silverbullet] — an EXPLICIT block (D-02):
 # replaces the keywords fallback above for the "silverbullet" instance

@@ -483,15 +483,22 @@ LIMIT 50
 `
 
 // Search returns items associated with webspaceName whose indexed title or
-// preview match rawQuery, ranked best-first by bm25 relevance, each
-// carrying a snippet highlighting the matched term between SnippetOpen and
-// SnippetClose. A missing, empty, or whitespace/quote-only rawQuery (one
-// that sanitizes to "") returns an empty slice and a nil error without
-// querying the database; a rawQuery that matches no item also returns an
+// preview match BOTH every term in filterTerms (the webspace's saved
+// permanent filter, D-16/D-18) AND rawQuery (the live in-progress search
+// text), ranked best-first by bm25 relevance, each carrying a snippet
+// highlighting the matched term between SnippetOpen and SnippetClose. The
+// combined MATCH expression is built by the same BuildMatchQuery StreamItems
+// uses, so a live search AND-combines with the active filter stack rather
+// than escaping it — a further search always refines within the saved
+// filter, never replaces it. The empty-result short circuit now depends on
+// BOTH inputs: it fires only when filterTerms and rawQuery both sanitize to
+// nothing, so a filter-only call (empty rawQuery, non-empty filterTerms)
+// still queries and ranks by relevance rather than returning early. A
+// rawQuery/filterTerms combination that matches no item also returns an
 // empty slice and a nil error. Results are capped at 50 rows. This method
 // only reads the local index — it never triggers a live source call.
-func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string) ([]SearchResult, error) {
-	query := ftsQuery(rawQuery)
+func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filterTerms []string) ([]SearchResult, error) {
+	query := BuildMatchQuery(filterTerms, rawQuery)
 	if query == "" {
 		return []SearchResult{}, nil
 	}

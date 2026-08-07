@@ -618,7 +618,7 @@ func TestSearch_MatchesOnlyTheItemContainingTheWord(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	results, err := s.Search(ctx, "ws", "boiler")
+	results, err := s.Search(ctx, "ws", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -641,7 +641,7 @@ func TestSearch_NoMatchReturnsEmptySliceNilError(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	results, err := s.Search(ctx, "ws", "nonexistentword")
+	results, err := s.Search(ctx, "ws", "nonexistentword", nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -672,7 +672,7 @@ func TestSearch_ScopedToOneWebspaceOnly(t *testing.T) {
 		t.Fatalf("seed webspace-a: %v", err)
 	}
 
-	results, err := s.Search(ctx, "webspace-a", "boiler")
+	results, err := s.Search(ctx, "webspace-a", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -682,7 +682,7 @@ func TestSearch_ScopedToOneWebspaceOnly(t *testing.T) {
 
 	// Sanity: the same query against webspace-b (where the item actually
 	// lives) does return it.
-	resultsB, err := s.Search(ctx, "webspace-b", "boiler")
+	resultsB, err := s.Search(ctx, "webspace-b", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search webspace-b: %v", err)
 	}
@@ -705,7 +705,7 @@ func TestSearch_TitleMatchRanksAbovePreviewMatch(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	results, err := s.Search(ctx, "ws", "boiler")
+	results, err := s.Search(ctx, "ws", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -728,7 +728,7 @@ func TestSearch_SnippetContainsDelimiters(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	results, err := s.Search(ctx, "ws", "boiler")
+	results, err := s.Search(ctx, "ws", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -753,13 +753,97 @@ func TestSearch_EmptyOrWhitespaceQueryReturnsEmptyNoQuery(t *testing.T) {
 	}
 
 	for _, q := range []string{"", "   ", `"`} {
-		results, err := s.Search(ctx, "ws", q)
+		results, err := s.Search(ctx, "ws", q, nil)
 		if err != nil {
 			t.Fatalf("Search(%q): %v", q, err)
 		}
 		if len(results) != 0 {
 			t.Errorf("Search(%q): expected zero results, got %d", q, len(results))
 		}
+	}
+}
+
+// TestSearch_FilterTermsANDCombineWithLiveQuery (07-01-PLAN.md Task 2,
+// D-18) proves a live search AND-combines with the saved filter stack
+// rather than escaping it: with filter = ["boiler"] and a live query of
+// "quote", an item matching only "quote" must be absent from the result
+// set — the saved filter narrows the live query, not the other way round.
+func TestSearch_FilterTermsANDCombineWithLiveQuery(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	both := searchableItem("1", 100, "Boiler quote", "a boiler repair quote")
+	queryOnly := searchableItem("2", 200, "Garden fence quote", "replacing the back fence")
+	filterOnly := searchableItem("3", 300, "Boiler service invoice", "annual boiler service")
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{both, queryOnly, filterOnly}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "quote", []string{"boiler"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected exactly 1 result (matching both the filter and the live query), got %d: %+v", len(results), results)
+	}
+	if results[0].Item.ID != both.ID {
+		t.Errorf("expected the item matching both %q and %q, got %q", "boiler", "quote", results[0].Item.ID)
+	}
+}
+
+// TestSearch_FilterOnlyNoLiveQueryStillQueries proves Store.Search's
+// empty-result short circuit now depends on BOTH inputs (07-01-PLAN.md
+// Task 2): a call with an empty live query but a non-empty filter stack
+// must still query and rank by relevance, not return early as if there
+// were no query at all.
+func TestSearch_FilterOnlyNoLiveQueryStillQueries(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	other := searchableItem("2", 200, "Garden fence quote", "replacing the back fence")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it, other}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	results, err := s.Search(ctx, "ws", "", []string{"boiler"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 1 || results[0].Item.ID != it.ID {
+		t.Fatalf("expected the filter-only call to return exactly the matching item, got %+v", results)
+	}
+}
+
+// TestBuildMatchQuery_FilterTermsCarryNoTrailingStar proves a saved filter
+// term means the word, not a prefix (07-01-PLAN.md Task 1's own contract,
+// re-pinned here against Task 2's AND-combination change): an item
+// containing only "boilerplate" and not the exact word "boiler" must not
+// match a filter of ["boiler"].
+func TestBuildMatchQuery_FilterTermsCarryNoTrailingStar(t *testing.T) {
+	match := BuildMatchQuery([]string{"boiler"}, "")
+	if strings.Contains(match, "boiler*") || strings.HasSuffix(match, "*") {
+		t.Fatalf("expected no trailing * on a filter-only match expression, got %q", match)
+	}
+}
+
+func TestStreamItems_FilterTermCarriesNoTrailingStar(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	exact := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	prefixOnly := searchableItem("2", 200, "Boilerplate legal text", "standard boilerplate wording")
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{exact, prefixOnly}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler"})
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != exact.ID {
+		t.Fatalf("expected only the exact-word match, got %+v", items)
 	}
 }
 
@@ -804,7 +888,7 @@ func TestBackfill_ReopeningAPreexistingIndexFindsItsItems(t *testing.T) {
 	}
 	t.Cleanup(func() { reopened.Close() })
 
-	results, err := reopened.Search(context.Background(), "ws", "boiler")
+	results, err := reopened.Search(context.Background(), "ws", "boiler", nil)
 	if err != nil {
 		t.Fatalf("Search after reopen: %v", err)
 	}

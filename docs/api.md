@@ -481,6 +481,128 @@ sync for that source rather than triggering a fresh one — the reported
 outcome is still that run's real result, never a distinct
 "already-syncing" rejection.
 
+### `GET /api/config`
+
+The kernel's live configuration document — the **RAW, pre-expansion**
+form, never the runtime-expanded one — plus its content hash and the
+set-or-not status of every `${VAR}`/`$VAR` secret reference it contains.
+This is the first read route on this API whose response can change without
+any sync running: a `PUT /api/config` (below) or a hand-edit of
+`config.toml` followed by the kernel's own reload both change what the
+very next `GET /api/config` returns.
+
+```
+$ curl -s http://127.0.0.1:7777/api/config | jq
+{
+  "schema_version": 1,
+  "hash": "3f2a9c1e...",
+  "config": {
+    "server": { "listen": "127.0.0.1:7777" },
+    "sources": {
+      "paperless": { "plugin": "paperless", "base_url": "https://paperless.example.lan", "token": "${PAPERLESS_TOKEN}" }
+    },
+    "webspaces": {
+      "house-move": { "keywords": ["house and home"], "filter": ["boiler"] }
+    }
+  },
+  "env_vars": { "PAPERLESS_TOKEN": true },
+  "unknown_keys": []
+}
+```
+
+**`config` is always the raw, unexpanded document.** A `${VAR}` or `$VAR`
+reference inside a `token`, `base_url`, or any other field is returned
+**verbatim** — never resolved to the secret value it stands in for. The
+expanded, secret-bearing runtime config the kernel actually uses to reach
+a source system is held only in server-side memory and is never the value
+handed to this response (`D-05`); this route is structurally incapable of
+leaking a resolved secret because it never even holds a reference to the
+expanded form.
+
+**`hash`** is the hex-encoded content hash of the on-disk file this
+response was built from — echo it back as `base_hash` on the next
+`PUT /api/config` (below). Two `GET /api/config` calls with no intervening
+write return byte-identical bodies, including this hash.
+
+**`env_vars`** reports, per `${VAR}`/`$VAR` name referenced anywhere in
+`config`, whether that variable is currently **set** in the kernel
+process's own environment — a boolean only, never the value (`D-05` again:
+even a set/unset signal stops short of the secret itself).
+
+**`unknown_keys`** lists any TOML key or table `config.toml` carries that
+the kernel's `Config` struct does not model (e.g. a stray table left over
+from a hand-edit or a prior migration) — sorted, empty array when none. A
+non-empty `unknown_keys` list blocks **every** `PUT /api/config` outright
+(see `config_has_unknown_keys` below), not only a save that touches the
+unrecognised key: the kernel refuses to write a canonical rewrite that
+would silently drop content it doesn't understand (`D-01`'s
+lossless-rewrite prohibition).
+
+### `PUT /api/config`
+
+The kernel's **first mutating HTTP surface** (success criterion 4),
+scoped strictly to configuration — no other route on this API accepts a
+request body that changes persisted state. Saves the given config
+document to `config.toml` and hot-swaps the kernel's running
+configuration in the same call: a filter saved through this route narrows
+the very next `GET /api/webspaces/{webspace}/stream` (or `/search`, or the
+`/agent/v1` mirror) request with **no kernel restart**.
+
+**Request body:**
+
+```json
+{
+  "base_hash": "3f2a9c1e...",
+  "config": { "...": "the full raw config document, as returned by GET /api/config, with your edits applied" }
+}
+```
+
+`base_hash` MUST be the `hash` value from the `GET /api/config` (or a
+previous `PUT /api/config`) response your edit started from — this is the
+`D-03` optimistic-lock clobber guard: the kernel re-reads `config.toml`
+from disk at save time and rejects the write if its current hash no
+longer matches `base_hash` (see `config_changed_on_disk`, below).
+
+**On success:** `200` with the identical `configResponse` shape
+`GET /api/config` returns — the post-save state IS the next `GET`'s state,
+so there is no separate "save result" shape to learn. Before writing
+anything, the kernel validates the would-be config through the exact same
+`(*config.Config).Validate` a hand-edited file must pass at load time
+(`D-09`) — reusing the loader's own validator, never a second rule set —
+and writes `config.toml.bak` (overwriting any previous backup, `D-04`)
+immediately before the new content, via a same-directory temp-file-plus-
+rename so the write is atomic (`D-01`): a kernel killed mid-write leaves
+`config.toml` at its previous content, never truncated or half-written.
+
+```
+$ curl -s -X PUT http://127.0.0.1:7777/api/config \
+    -H 'Content-Type: application/json' \
+    -d '{"base_hash":"3f2a9c1e...","config":{"...":"edited document"}}' | jq
+{ "schema_version": 1, "hash": "9b7e04aa...", "config": { "...": "..." }, "env_vars": { "...": "..." }, "unknown_keys": [] }
+```
+
+**Failure modes**, each mapped to the shared error envelope (see the
+error-code table below): a malformed request body (`invalid_request`,
+`400`), a stale `base_hash` (`config_changed_on_disk`, `409` — the write
+is rejected and `config.toml` is left exactly as the out-of-band change
+left it, no partial write), an on-disk file carrying keys the `Config`
+struct doesn't model (`config_has_unknown_keys`, `409` — refuses rather
+than silently dropping them), or a config that fails validation
+(`config_invalid`, `422`, carrying the validator's own message verbatim —
+no UI-authored paraphrase). Every rejected save writes nothing; the
+kernel's own running configuration is untouched until a save actually
+succeeds.
+
+**Webspace `filter` (`D-16`/`D-17`/`D-18`):** the mechanism this route
+exists to serve for v1 — a webspace's `filter` array (an AND-ed list of
+exact, case-sensitive-stripped terms) narrows
+`GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search`
+and `GET /agent/v1/webspaces/{webspace}/stream` **identically**: the
+filtered view IS the webspace for every consumer, human and agent alike.
+A live search AND-combines with the saved filter stack rather than
+replacing it — a further search always refines within the saved filter.
+See `config.example.toml` for the field's own worked documentation.
+
 ## The `/agent/v1` namespace (`AGENT-01`)
 
 `/agent/v1/*` mirrors the `/api/*` routes above under **default-deny,
@@ -639,14 +761,21 @@ namespace", above).
 | `unsupported_content_shape` | 502 | `GET /api/items/{id}/content` | The rendition's `mime_type` is `text/html` but its plugin-declared `content_shape` is unrecognised or unspecified (`CONTENT_SHAPE_UNSPECIFIED`) — the kernel's sanitize/wrap boundary (D-11) refuses to guess a policy and writes no body. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
 | `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
+| `invalid_request` | 400 | `PUT /api/config` | The request body is not valid JSON, or is missing the `config` field. |
+| `config_changed_on_disk` | 409 | `PUT /api/config` | `base_hash` no longer matches `config.toml`'s current on-disk hash — someone else (another browser tab, a hand-edit, a `topos` CLI run) saved since you last read it. Nothing is written; re-`GET /api/config` and retry. |
+| `config_has_unknown_keys` | 409 | `PUT /api/config` | `config.toml` carries a TOML key or table the `Config` struct doesn't model. The kernel refuses to write a canonical rewrite that would silently drop it — the message names the offending key(s); fix them by hand before any UI save can succeed. |
+| `config_invalid` | 422 | `PUT /api/config` | The submitted config fails the same `(*config.Config).Validate` a hand-edited file must pass at load time. The message is the validator's own error string, verbatim. |
 | `internal_error` | 500 | any route | An unexpected kernel-side failure (e.g. the local index file itself is unreadable) — not a source or plugin problem. |
 
 ## What is not here yet
 
-This API is deliberately incomplete for v1. Not yet present, and not
+This API is read-only over **source data** end to end for the whole of
+v1 — `PUT /api/config` (above) is the one deliberate exception, a
+mutating surface scoped strictly to the kernel's own configuration, never
+to anything a plugin's source system holds. Not yet present, and not
 planned for this phase:
 
 - **Agent-initiated actions** (`AGENT-11`, e.g. "draft an email reply") —
-  this API is read-only end to end for the whole of v1; action hand-off is
-  a v1.x concern layered on top of the `/agent/v1` permission model
-  documented above.
+  no route on either namespace performs an action against a *source*
+  system in v1; action hand-off is a v1.x concern layered on top of the
+  `/agent/v1` permission model documented above.
