@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import StreamRow from './StreamRow.svelte';
+	import StreamLoadingSkeleton from './StreamLoadingSkeleton.svelte';
 	import { searchVariant, searchCopy, noMatchesHeading } from '$lib/format';
 	import type { SearchResult, SourceStatus } from '$lib/api';
 
@@ -33,14 +33,10 @@
 {#if variant === 'idle'}
 	<!-- Renders nothing — the caller shows the stream instead. -->
 {:else if variant === 'loading'}
-	<!-- Identical to StreamList's loading branch: four skeleton rows at
-	     the real row dimensions, so the list doesn't reflow when results
-	     arrive. -->
-	<div class="flex flex-col gap-3">
-		{#each Array(4) as _, i (i)}
-			<Skeleton class="stream-row-surface w-full rounded-lg" />
-		{/each}
-	</div>
+	<!-- Shared with StreamList's loading branch (WR-04): four skeleton
+	     rows at the real row dimensions, so the list doesn't reflow when
+	     results arrive. -->
+	<StreamLoadingSkeleton />
 {:else if variant === 'error'}
 	<!-- Inline, non-blocking: replaces only this region. The search box
 	     and the rest of the page stay fully interactive (T-03-24 backstop
