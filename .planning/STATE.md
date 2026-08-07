@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-06T23:55:06.958Z"
-last_activity: 2026-08-06
+last_updated: "2026-08-07T00:03:05.124Z"
+last_activity: 2026-08-07
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 38
-  completed_plans: 36
+  completed_plans: 37
   percent: 56
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 06 (ui-scalable-source-surface) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
-Last activity: 2026-08-06
+Last activity: 2026-08-07
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Progress: [██████████] 95%
 | Phase 06 P03 | 20min | 3 tasks | 7 files |
 | Phase 06 P04 | ~12min | 1 tasks | 3 files |
 | Phase 06 P05 | ~15min | 3 tasks | 8 files |
+| Phase 06 P06 | ~15min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -170,6 +171,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06-04]: Structural proof is a comment-stripped source-scan guard with balanced-paren extraction, not a raw grep -- a bare grep is what let 06-VERIFICATION.md's gap through once already
 - [Phase ?]: [Phase 06-05]: Promoted .search-highlight from DetailPane.svelte's component-scoped <style> block to app.css @layer components — a Svelte-scoped class cannot be shared across sibling components, the mechanical root cause of G-06-1's vocabulary drift
 - [Phase ?]: [Phase 06-05]: Superseded (not deleted) 03-UI-SPEC.md's Phase 3 weight-only match-emphasis rule with a dated note naming G-06-1, arguing the colour-only treatment restores the 'exactly 2 weights' contract more purely than the retired weight exception did
+- [Phase ?]: [Phase 06-06]: Chose a solid bg-primary fill over a color-corrected ring for the selected chip — a fill paints inside the border box and needs no change to WebspaceHeader.svelte's load-bearing overflow-hidden, whereas even a correctly-colored ring would still be clipped top/bottom by that same ancestor
 
 ### Pending Todos
 
@@ -206,6 +208,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-06T23:55:06.949Z
-Stopped at: Completed 06-05-PLAN.md
+Last session: 2026-08-07T00:03:05.115Z
+Stopped at: Completed 06-06-PLAN.md
 Resume file: None

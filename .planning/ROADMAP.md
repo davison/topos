@@ -288,7 +288,7 @@ Plans:
 
 **Wave 6** *(UAT gap closure — blocked on Wave 5: shared spec/stylesheet files)*
 
-- [ ] 06-06-PLAN.md — Restore a visible selected state on the merged source chip: solid accent fill with re-toned label, dot and refresh (UI-07, closes G-06-3)
+- [x] 06-06-PLAN.md — Restore a visible selected state on the merged source chip: solid accent fill with re-toned label, dot and refresh (UI-07, closes G-06-3)
 
 **Wave 7** *(UAT gap closure — blocked on Wave 6: shared spec/stylesheet files)*
 
@@ -356,7 +356,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 5/7 | In Progress|  |
+| 6. UI — Scalable Source Surface | 6/7 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
