@@ -51,6 +51,16 @@
 	let searchResults = $state<SearchResult[]>([]);
 	let searchRequestSeq = 0;
 
+	// navGeneration guards against a stale-webspace race: SvelteKit reuses
+	// this page component instance across /w/A -> /w/B navigation (same
+	// route file, only page.params.webspace changes), so a slow in-flight
+	// getStream(A)/searchWebspace(A) call can resolve after the user has
+	// already navigated to B. Bumped once per webspace-keyed $effect run
+	// and checked after every await below (both load() and handleSearch())
+	// so a request for a no-longer-current webspace can never overwrite
+	// what's on screen.
+	let navGeneration = 0;
+
 	let selectedItem = $derived(
 		response?.items.find((i) => i.id === selectedId) ??
 			searchResults.find((r) => r.id === selectedId) ??
@@ -92,12 +102,15 @@
 		response ? filterItemsBySource(response.items, selectedSources) : []
 	);
 
-	async function load() {
+	async function load(gen: number) {
 		loadState = 'loading';
 		try {
-			response = await getStream(webspace);
+			const res = await getStream(webspace);
+			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
+			response = res;
 			loadState = 'ready';
 		} catch {
+			if (gen !== navGeneration) return;
 			response = null;
 			loadState = 'error';
 		}
@@ -141,6 +154,17 @@
 		}, 2000);
 	}
 
+	// Clear any in-flight poll interval on component teardown (e.g. the
+	// user navigates away from the /w/[webspace] route tree entirely while
+	// a sync is still running) — without this the interval keeps firing
+	// loadSources() against a torn-down component's state until the
+	// in-flight sync finishes on its own.
+	$effect(() => {
+		return () => {
+			if (pollHandle !== null) clearInterval(pollHandle);
+		};
+	});
+
 	async function handleRefreshSource(name: string) {
 		ensurePolling();
 		try {
@@ -150,7 +174,7 @@
 			// itself is the error surface (D-08) once loadSources() below
 			// picks up the newly recorded sync_runs failure.
 		} finally {
-			await Promise.all([loadSources(), load()]);
+			await Promise.all([loadSources(), load(navGeneration)]);
 		}
 	}
 
@@ -161,7 +185,7 @@
 		} catch {
 			// same as handleRefreshSource above.
 		} finally {
-			await Promise.all([loadSources(), load()]);
+			await Promise.all([loadSources(), load(navGeneration)]);
 		}
 	}
 
@@ -201,13 +225,15 @@
 
 		searchState = 'loading';
 		const seq = ++searchRequestSeq;
+		const gen = navGeneration; // captured now so a webspace nav mid-flight also invalidates this response
 		try {
 			const res = await searchWebspace(webspace, query);
-			if (seq !== searchRequestSeq) return; // a newer request has since superseded this one
+			// a newer search or a webspace navigation has since superseded this one
+			if (seq !== searchRequestSeq || gen !== navGeneration) return;
 			searchResults = res.results;
 			searchState = 'ready';
 		} catch {
-			if (seq !== searchRequestSeq) return;
+			if (seq !== searchRequestSeq || gen !== navGeneration) return;
 			searchResults = [];
 			searchState = 'error';
 		}
@@ -216,11 +242,12 @@
 	// Re-fetch (and drop any stale selection/search) whenever the webspace
 	// route param changes.
 	$effect(() => {
+		const gen = ++navGeneration;
 		selectedId = null;
 		searchQuery = '';
 		searchState = 'idle';
 		searchResults = [];
-		load();
+		load(gen);
 		loadSources();
 	});
 </script>
@@ -304,7 +331,7 @@
 						{response}
 						{selectedId}
 						onselect={(id) => (selectedId = id)}
-						onretry={load}
+						onretry={() => load(navGeneration)}
 						staleSources={staleInstances}
 						{selectedSources}
 						{sourcesByInstance}
