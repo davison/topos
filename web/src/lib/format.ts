@@ -527,7 +527,14 @@ export function highlightTerms(query: string): string[] {
 	const terms: string[] = [];
 	for (const raw of fields) {
 		const term = raw.toLowerCase();
-		if (term.length < 2 || term.length > HIGHLIGHT_TERM_MAX_LENGTH) continue;
+		// Count Unicode code points, not UTF-16 code units (`term.length`),
+		// to match the kernel's `utf8.RuneCountInString` (WR-01) — a plain
+		// `.length` check counts each astral-plane character (emoji, many
+		// CJK Extension B/C characters, etc.) as 2 UTF-16 units, which would
+		// silently diverge from the kernel's rune-counted <2/>64 bounds for
+		// any query containing them. `[...term]` iterates by code point.
+		const runeCount = [...term].length;
+		if (runeCount < 2 || runeCount > HIGHLIGHT_TERM_MAX_LENGTH) continue;
 		if (seen.has(term)) continue;
 		seen.add(term);
 		terms.push(term);
