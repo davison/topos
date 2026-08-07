@@ -847,6 +847,117 @@ func TestStreamItems_FilterTermCarriesNoTrailingStar(t *testing.T) {
 	}
 }
 
+// TestStreamItems_EmptyFilterReturnsIdenticalRowsAndOrder (07-01-PLAN.md
+// Task 3, D-16/D-18) pins the byte-identical-to-pre-Phase-7 contract at
+// the row level: both a nil and an explicitly-empty filter slice must
+// return every row in the same newest-first order StreamItems has always
+// used, with no items_fts join involved at all.
+func TestStreamItems_EmptyFilterReturnsIdenticalRowsAndOrder(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	older := sampleItem("1", 100)
+	newer := sampleItem("2", 200)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{older, newer}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	withNilFilter, err := s.StreamItems(ctx, "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(nil): %v", err)
+	}
+	withEmptyFilter, err := s.StreamItems(ctx, "ws", []string{})
+	if err != nil {
+		t.Fatalf("StreamItems([]string{}): %v", err)
+	}
+
+	if len(withNilFilter) != 2 || len(withEmptyFilter) != 2 {
+		t.Fatalf("expected 2 items for both a nil and an empty filter, got nil=%d empty=%d", len(withNilFilter), len(withEmptyFilter))
+	}
+	if withNilFilter[0].ID != newer.ID || withNilFilter[1].ID != older.ID {
+		t.Fatalf("expected newest-first order with a nil filter, got %v", []string{withNilFilter[0].ID, withNilFilter[1].ID})
+	}
+	if withEmptyFilter[0].ID != newer.ID || withEmptyFilter[1].ID != older.ID {
+		t.Fatalf("expected newest-first order with an empty filter, got %v", []string{withEmptyFilter[0].ID, withEmptyFilter[1].ID})
+	}
+}
+
+// TestStreamItems_SingleTermFilterNarrowsToMatchingRowsChronological
+// (Task 3) proves a single-term filter narrows to only the matching rows,
+// preserving the same newest-first chronological order among the matches
+// — never bm25 rank, which is Search's ordering, not StreamItems'.
+func TestStreamItems_SingleTermFilterNarrowsToMatchingRowsChronological(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	matchOlder := searchableItem("1", 100, "Boiler service invoice", "annual boiler service")
+	matchNewer := searchableItem("2", 200, "Boiler quote", "a boiler repair quote")
+	nonMatch := searchableItem("3", 300, "Garden fence quote", "replacing the back fence")
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{matchOlder, matchNewer, nonMatch}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler"})
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected exactly 2 matching items, got %d: %+v", len(items), items)
+	}
+	if items[0].ID != matchNewer.ID || items[1].ID != matchOlder.ID {
+		t.Fatalf("expected the two matches in newest-first chronological order, got %v", []string{items[0].ID, items[1].ID})
+	}
+}
+
+// TestStreamItems_TwoTermFilterRequiresBoth (Task 3, D-18) proves a
+// two-term filter stack is AND-ed, not OR-ed: an item matching only one
+// of the two terms must be absent.
+func TestStreamItems_TwoTermFilterRequiresBoth(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	both := searchableItem("1", 100, "Boiler quote", "a boiler repair quote")
+	boilerOnly := searchableItem("2", 200, "Boiler service invoice", "annual boiler service")
+	quoteOnly := searchableItem("3", 300, "Garden fence quote", "replacing the back fence")
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{both, boilerOnly, quoteOnly}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler", "quote"})
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != both.ID {
+		t.Fatalf("expected exactly the item matching both filter terms, got %+v", items)
+	}
+}
+
+// TestStreamItems_HostileFilterTermNeverErrors (Task 3) mirrors Search's
+// own fts5-error degradation (03-RESEARCH.md Pattern 3): StreamItems must
+// never surface an error because of what's in a filter term.
+// BuildMatchQuery's phrase-quoting makes a genuine FTS5 MATCH syntax error
+// unreachable in principle (every surviving term is quote-stripped then
+// wrapped in a phrase), so this exercises the class of hostile-shaped
+// input that protection exists for, rather than asserting one specific
+// string is proven to hit the "fts5" error-string branch.
+func TestStreamItems_HostileFilterTermNeverErrors(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	for _, term := range []string{`"`, `*`, `(`, `)`, `NEAR`, `AND OR NOT`} {
+		if _, err := s.StreamItems(ctx, "ws", []string{term}); err != nil {
+			t.Fatalf("StreamItems([]string{%q}): expected a nil error regardless of what the filter term contains, got: %v", term, err)
+		}
+	}
+}
+
 // TestBackfill_ReopeningAPreexistingIndexFindsItsItems simulates opening a
 // pre-Phase-3 index file: an index already holding items, whose items_fts
 // table and triggers are dropped directly through a raw connection (as if
