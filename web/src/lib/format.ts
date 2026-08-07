@@ -602,6 +602,15 @@ export interface DateMarker {
 	itemId: string;
 	timestampUnix: number;
 	topPx: number;
+	/**
+	 * True for a marker whose grouping key one granularity coarser than the
+	 * rendering granularity differs from the previous KEPT marker's — month
+	 * for day/week candidates, year for month candidates. The first marker
+	 * is always major. This is the grouping vocabulary the overlay uses to
+	 * distinguish a month (or year) boundary from a plain date tick (UI-11
+	 * gap closure G-06-6) — see `candidateMarkers`.
+	 */
+	major: boolean;
 }
 
 export type MarkerGranularity = 'day' | 'week' | 'month';
@@ -614,6 +623,58 @@ export type MarkerGranularity = 'day' | 'week' | 'month';
  * construction (see `dateMarkers`'s own doc comment).
  */
 const MARKER_SPACING_FLOOR_PX = 24;
+
+/**
+ * Half the tick hit-area's 16px height (06-UI-SPEC.md's documented
+ * desktop-only spacing exception) — the inset `markerLaneTop` applies at
+ * both ends of the track so a tick centred on its returned offset always
+ * lies entirely inside the pane (UI-11 gap closure G-06-6, defect 4: a
+ * marker at `topPx = 0` was previously always half-rendered above the
+ * pane's top edge).
+ */
+export const MARKER_LANE_INSET_PX = 8;
+
+/**
+ * Whether the stream pane's scroll region actually has a scrollbar to
+ * annotate — true only when the content is strictly taller than the
+ * track; equal heights mean no scrollbar exists, and a non-positive track
+ * is degenerate. This is the missing guard behind defect 5 (UI-11 gap
+ * closure G-06-6): a multi-date stream shorter than its pane has nothing
+ * to navigate between via a scrollbar, so the ruler must render nothing.
+ * Deliberately kept a separate predicate rather than a third parameter on
+ * `dateMarkers` — every existing `dateMarkers` call site and assertion
+ * stays intact, and the gate is legible at the one place that renders.
+ */
+export function streamScrolls(contentHeightPx: number, trackHeightPx: number): boolean {
+	if (trackHeightPx <= 0) return false;
+	return contentHeightPx > trackHeightPx;
+}
+
+/**
+ * Remaps a marker's raw, index-proportional track position into an inset
+ * lane: 0 maps to `MARKER_LANE_INSET_PX`, `trackHeightPx` maps to
+ * `trackHeightPx - MARKER_LANE_INSET_PX`, and the mapping is monotonic and
+ * order-preserving in between — an affine remap of the range
+ * `[0, trackHeightPx]` onto `[inset, trackHeightPx - inset]`. This closes
+ * defect 4 without touching `dateMarkers`'s own position formula:
+ * `dateMarkers` still returns true index-proportional positions, and edge
+ * safety is applied here, at render time. The remap compresses spacing by
+ * a factor of `(trackHeight - 2*inset) / trackHeight` — a fraction of a
+ * pixel at realistic pane heights — so the 24px floor holds in spirit.
+ *
+ * A non-positive track height returns the inset rather than dividing by
+ * zero. A track shorter than twice the inset is a further degenerate case:
+ * the usable range would go negative and the mapping would invert (a
+ * larger `topPx` producing a SMALLER result) — clamped to zero-width
+ * instead, so every position in a too-short track resolves to the same
+ * inset offset rather than an inverted one.
+ */
+export function markerLaneTop(topPx: number, trackHeightPx: number): number {
+	if (trackHeightPx <= 0) return MARKER_LANE_INSET_PX;
+	const usable = Math.max(0, trackHeightPx - 2 * MARKER_LANE_INSET_PX);
+	const fraction = topPx / trackHeightPx;
+	return MARKER_LANE_INSET_PX + fraction * usable;
+}
 
 /**
  * UTC calendar-day key. Unix timestamps are seconds since the epoch in
@@ -657,28 +718,52 @@ function monthKey(timestampUnix: number): string {
 }
 
 /**
+ * UTC calendar-year key. The "coarser key" for month-granularity
+ * candidates, alongside `monthKey` above (the coarser key for day/week
+ * candidates) — see `candidateMarkers`'s `majorKeyOf` parameter.
+ */
+function yearKey(timestampUnix: number): number {
+	return new Date(timestampUnix * 1000).getUTCFullYear();
+}
+
+/**
  * Builds one candidate marker per new period key, walking `items` in the
  * order supplied — never re-sorted, since the marker's whole job is to
  * describe the stream's actual order. Position is index-proportional
  * (`(index / items.length) * trackHeightPx`), valid because the stream is
  * a non-virtualised list of fixed-height rows.
+ *
+ * `majorKeyOf` computes the "coarser key" — one granularity above `keyOf`
+ * (month for day/week candidates, year for month candidates) — and a
+ * marker is `major` when its coarser key differs from the previously
+ * pushed marker's, or when it is the first marker pushed. Since every
+ * marker this function pushes is provisionally "kept" at this stage (only
+ * `enforceSpacingFloor`'s degenerate backstop may thin further, and that
+ * function carries the flag through untouched per its own doc comment),
+ * "the previous pushed marker" and "the previous KEPT marker" coincide
+ * here.
  */
 function candidateMarkers(
 	items: StreamItem[],
 	trackHeightPx: number,
-	keyOf: (timestampUnix: number) => string | number
+	keyOf: (timestampUnix: number) => string | number,
+	majorKeyOf: (timestampUnix: number) => string | number
 ): DateMarker[] {
 	const markers: DateMarker[] = [];
 	let lastKey: string | number | null = null;
+	let lastMajorKey: string | number | null = null;
 	items.forEach((item, index) => {
 		const key = keyOf(item.timestamp_unix);
 		if (key !== lastKey) {
+			const majorKey = majorKeyOf(item.timestamp_unix);
 			markers.push({
 				itemId: item.id,
 				timestampUnix: item.timestamp_unix,
-				topPx: (index / items.length) * trackHeightPx
+				topPx: (index / items.length) * trackHeightPx,
+				major: lastMajorKey === null || majorKey !== lastMajorKey
 			});
 			lastKey = key;
+			lastMajorKey = majorKey;
 		}
 	});
 	return markers;
@@ -740,13 +825,13 @@ export function dateMarkers(items: StreamItem[], trackHeightPx: number): DateMar
 	const firstDay = dayKey(items[0].timestamp_unix);
 	if (items.every((item) => dayKey(item.timestamp_unix) === firstDay)) return [];
 
-	const dayMarkers = candidateMarkers(items, trackHeightPx, dayKey);
+	const dayMarkers = candidateMarkers(items, trackHeightPx, dayKey, monthKey);
 	if (satisfiesSpacingFloor(dayMarkers)) return dayMarkers;
 
-	const weekMarkers = candidateMarkers(items, trackHeightPx, isoWeekKey);
+	const weekMarkers = candidateMarkers(items, trackHeightPx, isoWeekKey, monthKey);
 	if (satisfiesSpacingFloor(weekMarkers)) return weekMarkers;
 
-	const monthMarkers = candidateMarkers(items, trackHeightPx, monthKey);
+	const monthMarkers = candidateMarkers(items, trackHeightPx, monthKey, yearKey);
 	if (satisfiesSpacingFloor(monthMarkers)) return monthMarkers;
 
 	return enforceSpacingFloor(monthMarkers);

@@ -329,7 +329,10 @@ describe('dateMarkers — major flag', () => {
 		const items: StreamItem[] = Array.from({ length: 60 }, (_, i) =>
 			makeItem(`i${i}`, BASE + (startOffset + i) * DAY)
 		);
-		const markers = dateMarkers(items, 300);
+		// Track tall enough that even the shortest (partial, 3-day) leading
+		// ISO week clears the 24px floor, so week granularity is actually
+		// selected rather than falling through to month.
+		const markers = dateMarkers(items, 600);
 
 		// Independently derived from each kept marker's own UTC calendar
 		// month compared against the previous kept marker's month — this is
