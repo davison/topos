@@ -9,7 +9,7 @@
 // sources.test.ts.
 
 import { describe, it, expect } from 'vitest';
-import { dateMarkers } from '$lib/format';
+import { dateMarkers, streamScrolls, markerLaneTop, MARKER_LANE_INSET_PX } from '$lib/format';
 import type { StreamItem } from '$lib/api';
 
 const DAY = 86400;
@@ -224,5 +224,165 @@ describe('dateMarkers — UTC day boundary', () => {
 		expect(markers.map((m) => m.itemId)).toEqual(['before-midnight', 'after-midnight']);
 		expect(markers[0].topPx).toBe(0);
 		expect(markers[1].topPx).toBe(50);
+	});
+});
+
+// --- streamScrolls (UI-11 gap closure G-06-6) ---
+//
+// The missing guard behind defect 5: a multi-date stream shorter than its
+// pane has no scrollbar, so the ruler has nothing to annotate and must
+// render nothing.
+
+describe('streamScrolls', () => {
+	it('is true only when content is strictly taller than the track', () => {
+		expect(streamScrolls(1000, 500)).toBe(true);
+	});
+
+	it('is false when content height equals track height — no scrollbar exists at equality', () => {
+		expect(streamScrolls(500, 500)).toBe(false);
+	});
+
+	it('is false when content is shorter than the track', () => {
+		expect(streamScrolls(300, 500)).toBe(false);
+	});
+
+	it('is false for a zero track height', () => {
+		expect(streamScrolls(1000, 0)).toBe(false);
+	});
+
+	it('is false for a negative track height', () => {
+		expect(streamScrolls(1000, -50)).toBe(false);
+	});
+});
+
+// --- markerLaneTop (UI-11 gap closure G-06-6) ---
+//
+// Closes defect 4 (a tick permanently half-rendered above the pane's top
+// edge) without touching dateMarkers' own index-proportional position
+// formula: the edge safety is applied at render time by remapping the raw
+// position into an inset lane.
+
+describe('markerLaneTop', () => {
+	it('maps 0 to the inset', () => {
+		expect(markerLaneTop(0, 900)).toBe(MARKER_LANE_INSET_PX);
+	});
+
+	it('maps trackHeightPx to trackHeightPx - inset', () => {
+		expect(markerLaneTop(900, 900)).toBe(900 - MARKER_LANE_INSET_PX);
+	});
+
+	it('is monotonic and order-preserving in between', () => {
+		const a = markerLaneTop(200, 900);
+		const b = markerLaneTop(500, 900);
+		const c = markerLaneTop(800, 900);
+		expect(a).toBeLessThan(b);
+		expect(b).toBeLessThan(c);
+	});
+
+	it('returns the inset for a non-positive track height rather than dividing by zero', () => {
+		expect(markerLaneTop(50, 0)).toBe(MARKER_LANE_INSET_PX);
+		expect(markerLaneTop(50, -100)).toBe(MARKER_LANE_INSET_PX);
+	});
+
+	it('clamps rather than inverts when the track is shorter than twice the inset', () => {
+		const shortTrack = MARKER_LANE_INSET_PX; // half of 2*inset
+		const top = markerLaneTop(0, shortTrack);
+		const bottom = markerLaneTop(shortTrack, shortTrack);
+		// Clamped, not inverted: the position at the track's end must never
+		// resolve above the position at the track's start.
+		expect(bottom).toBeGreaterThanOrEqual(top);
+		expect(top).toBe(MARKER_LANE_INSET_PX);
+		expect(bottom).toBe(MARKER_LANE_INSET_PX);
+	});
+});
+
+// --- major/minor hierarchy (UI-11 gap closure G-06-6) ---
+//
+// The grouping vocabulary the flat dash set lacked: a month boundary (day
+// and week granularity) or year boundary (month granularity) now reads
+// differently from a plain date tick.
+
+describe('dateMarkers — major flag', () => {
+	it('is true for the first marker, and true only when the UTC month changes, at day granularity', () => {
+		// Four well-separated day-groups spanning a month boundary: Jan 30,
+		// Jan 31, Feb 1, Feb 2 2024 — 10 items each, on a tall track, so day
+		// granularity is used unthinned (400px apart, well clear of the
+		// 24px floor).
+		const dayOffsets = [29, 30, 31, 32];
+		const items: StreamItem[] = [];
+		dayOffsets.forEach((offset, d) => {
+			for (let i = 0; i < 10; i += 1) {
+				items.push(makeItem(`d${d}-${i}`, BASE + offset * DAY + i * 100));
+			}
+		});
+		const markers = dateMarkers(items, 1600);
+
+		expect(markers.map((m) => m.itemId)).toEqual(['d0-0', 'd1-0', 'd2-0', 'd3-0']);
+		expect(markers.map((m) => m.major)).toEqual([true, false, true, false]);
+	});
+
+	it('is true only when the UTC month changes, at week granularity', () => {
+		// 60 consecutive daily items starting a few days before Jan's end,
+		// thinned to one marker per ISO week (per the existing week-thinning
+		// rule), spanning two month boundaries.
+		const startOffset = 25; // 26 Jan 2024
+		const items: StreamItem[] = Array.from({ length: 60 }, (_, i) =>
+			makeItem(`i${i}`, BASE + (startOffset + i) * DAY)
+		);
+		const markers = dateMarkers(items, 300);
+
+		// Independently derived from each kept marker's own UTC calendar
+		// month compared against the previous kept marker's month — this is
+		// the rule under test, restated without calling it.
+		let lastMonth: number | null = null;
+		const expectedMajors = markers.map((m) => {
+			const month = new Date(m.timestampUnix * 1000).getUTCMonth();
+			const major = lastMonth === null || month !== lastMonth;
+			lastMonth = month;
+			return major;
+		});
+		expect(markers.map((m) => m.major)).toEqual(expectedMajors);
+		expect(markers[0].major).toBe(true);
+		// Sanity: this fixture must actually cross a month boundary, or the
+		// assertion above would pass vacuously with every flag false but
+		// the first.
+		expect(expectedMajors.filter(Boolean).length).toBeGreaterThan(1);
+	});
+
+	it('is true only when the UTC year changes, at month granularity', () => {
+		// Reuses the month-thinning fixture (3-year daily history, 36
+		// monthly markers spanning 2024/2025/2026).
+		const items: StreamItem[] = Array.from({ length: 1095 }, (_, i) =>
+			makeItem(`i${i}`, BASE + i * DAY)
+		);
+		const markers = dateMarkers(items, 2000);
+
+		let lastYear: number | null = null;
+		const expectedMajors = markers.map((m) => {
+			const year = new Date(m.timestampUnix * 1000).getUTCFullYear();
+			const major = lastYear === null || year !== lastYear;
+			lastYear = year;
+			return major;
+		});
+		expect(markers.map((m) => m.major)).toEqual(expectedMajors);
+		expect(expectedMajors.filter(Boolean).length).toBe(3);
+	});
+
+	it('carries the major flag through the degenerate spacing-floor thinning untouched', () => {
+		// The degenerate over-dense fixture (one marker per month for 200
+		// months, thinned to at most 3 kept markers) — every surviving
+		// marker still carries a boolean major flag, and the first is
+		// always major.
+		const items: StreamItem[] = Array.from({ length: 200 }, (_, i) => {
+			const year = 2000 + Math.floor(i / 12);
+			const month = i % 12;
+			return makeItem(`i${i}`, Date.UTC(year, month, 1) / 1000);
+		});
+		const markers = dateMarkers(items, 50);
+
+		expect(markers[0].major).toBe(true);
+		for (const marker of markers) {
+			expect(typeof marker.major).toBe('boolean');
+		}
 	});
 });
