@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 06-ui-scalable-source-surface
 source: [06-VERIFICATION.md]
 started: 2026-08-06T22:30:00Z
@@ -100,5 +100,19 @@ blocked: 0
   reason: "User reported: pass with some cosmetic-only issues. 1. The chip is larger (height) than it needs to be, maybe 5px too many above and below the text. This additional space does not trigger the click event on the chip which is counter-intuitive. 2. Hovering over the chip correctly shows the refresh button, moving to hover over the refresh button additionally highlights the button - but the background highlight is a rounded corner square (looks odd inside the more oval chip). 3. Clicking a refresh button causes the refresh icon to remain visible even when not hovering the chip. It is hidden only when clicking any other area of the page"
   severity: cosmetic
   test: 3
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Three co-located causes in SourceChip.svelte, all shipped in 06-02 (7687dd6); 06-06 did not introduce them. (1) Height/dead zone: chip height (~54px) is driven by the 44x44 refresh Button (size-11, per 06-UI-SPEC.md:140/161 touch-target floor) plus outer div py-1, but the filter onclick lives only on the inner label button (~20px tall) — the ~17px bands above/below are visually chip but click-dead, and the chip stands ~10px taller than the adjacent h-11 overflow trigger (WebspaceHeader.svelte:207). (2) Square hover highlight: the refresh Button's class override (SourceChip.svelte:116-120) supplies no border-radius, so buttonVariants' base rounded-lg (button.svelte:7) shapes the ghost hover fill as a 44px rounded square inside the rounded-full pill. (3) Sticky icon: reveal is opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 (per 06-UI-SPEC.md:44/51); a mouse click focuses the button, focus persists after pointer leaves, :focus-within pins opacity at 100, and outline-none + focus-visible-only ring hides why — focus moves only when clicking elsewhere."
+  artifacts:
+    - path: "web/src/lib/components/SourceChip.svelte"
+      issue: "onclick on inner button only while outer div + size-11 refresh Button drive height (1); no radius override on refresh Button (2); group-focus-within:opacity-100 reveal pins icon after mouse click (3)"
+    - path: "web/src/lib/components/ui/button/button.svelte"
+      issue: "source of rounded-lg default and outline-none/focus-visible-only ring (evidence only, no change needed)"
+    - path: ".planning/phases/06-ui-scalable-source-surface/06-UI-SPEC.md"
+      issue: "lines 44/51 (:focus-within reveal) and 140/161 (44px floor) must be reconciled with the fix — same doc-code drift pattern as G-06-3"
+    - path: "web/src/lib/components/WebspaceHeader.svelte"
+      issue: "line 207 h-11 overflow trigger is the height reference the chip should match"
+  missing:
+    - "Shrink the refresh control (size-7/size-8 visual, rounded-full) and/or move the height driver so the chip lands at h-11; stretch the filter button to fill chip height (self-stretch, vertical padding into the button) so the whole surface is clickable; preserve any kept 44px floor via hit-area extension or invoke the spec's desktop-only exception"
+    - "Add rounded-full to the refresh Button's class override"
+    - "Replace group-focus-within:opacity-100 with a focus-visible-scoped reveal (focus-visible:opacity-100 or group-has-[:focus-visible]:opacity-100) so keyboard reveal stays but mouse-click focus doesn't pin the icon"
+    - "Update 06-UI-SPEC.md:44/51 (and 140/161 floor wording if relaxed) in the same plan so spec and code agree"
+  debug_session: .planning/debug/chip-pill-polish.md
