@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 7
-current_phase_name: Webspace Builder UI
+current_phase: 07
+current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: Phase 7 UI-SPEC approved
-last_updated: "2026-08-07T22:41:46.402Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-08-07T23:59:31.787Z"
 last_activity: 2026-08-07
-last_activity_desc: Phase 06 complete, transitioned to Phase 7
+last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 44
-  completed_plans: 39
+  completed_plans: 40
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-07)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 7 — Webspace Builder UI
+**Current focus:** Phase 07 — webspace-builder-ui
 
 ## Current Position
 
-Phase: 7 — Webspace Builder UI
-Plan: Not started
+Phase: 07 (webspace-builder-ui) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-07 — Phase 06 complete, transitioned to Phase 7
+Last activity: 2026-08-07 — Phase 07 execution started
 
-Progress: [████████████████████] 39/39 plans (100%)
+Progress: [████████████████████] 39/39 plans ([█████████░] 91%)
 
 ## Performance Metrics
 
@@ -93,6 +93,7 @@ Progress: [████████████████████] 39/39 p
 | Phase 06 P06 | ~15min | 2 tasks | 4 files |
 | Phase 06 P07 | 32min | 3 tasks | 7 files |
 | Phase 06 P08 | 13min | 2 tasks | 4 files |
+| Phase 07 P01 | 52min | 3 tasks | 31 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06-07]: Declined date labels at major boundaries (recorded in 06-UI-SPEC.md) — a 12px lane cannot host legible label text without reintroducing the row-banding defect; tooltip + major/minor hierarchy already carry that information
 - [Phase ?]: [Phase 06-08]: Kept source-chip-pill.test.ts as a file separate from source-chip-selected.test.ts (house pattern) — the two guard different axes (colour vs. geometry/interaction) of the same shipped defect class and should fail as distinguishable incidents
 - [Phase ?]: [Phase 06-08]: group-has-[:focus-visible]:opacity-100 (the plan's primary Tailwind arbitrary variant) compiled on the first build attempt, confirmed via grep on the emitted stylesheet — the plan's named fallback (group-has-focus-visible) was not needed
+- [Phase ?]: [Phase 07-01]: assumption-delta locked at Task 1's tracer checkpoint — the running configuration is promoted to the primary noun (config.Store); WebspacesHandler/ItemHandler/SourceRefreshHandler keep a boot-time cfg snapshot as accepted debt for this plan alone (07-02 Task 2 fills the gap)
+- [Phase ?]: [Phase 07-01]: Store.Search's empty-result short circuit depends on BOTH filterTerms and rawQuery sanitizing to nothing — a filter-only call still queries and ranks by relevance rather than returning early
+- [Phase ?]: [Phase 07-01]: $state.snapshot() (not structuredClone) for cloning a fetched config document before mutation — Svelte 5's reactive Proxy unconditionally rejects structuredClone in every engine, a live tracer-checkpoint repro (d8125cf)
 
 ### Pending Todos
 
@@ -219,6 +223,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T22:06:03.054Z
-Stopped at: Phase 7 UI-SPEC approved
-Resume file: /home/darren/projects/davison/topos/.planning/phases/07-webspace-builder-ui/07-UI-SPEC.md
+Last session: 2026-08-07T23:59:31.772Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None

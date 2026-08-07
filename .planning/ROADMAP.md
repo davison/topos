@@ -318,12 +318,12 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Tracer: save a live search as a permanent filter, end to end through the kernel's first mutating route, canonical config rewrite and filtered index read
+- [x] 07-01-PLAN.md — Tracer: save a live search as a permanent filter, end to end through the kernel's first mutating route, canonical config rewrite and filtered index read
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -382,7 +382,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 0/5 | Not started | - |
+| 7. Webspace Builder UI | 1/5 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
