@@ -72,7 +72,7 @@ function extractBetween(source: string, startMarker: string, endMarker: string):
 // The wrapper div's class expression, the display-name span's class
 // expression, the health-dot span's class expression and the refresh
 // Button's element (attrs + children), each scoped to just that fragment.
-const wrapperClassExpr = extractBetween(strippedChip, "'group flex shrink-0", ')}');
+const wrapperClassExpr = extractBetween(strippedChip, '<div', '>');
 const displayNameClassExpr = extractBetween(strippedChip, "'truncate text-[14px]", ')}');
 const healthDotClassExpr = extractBetween(strippedChip, "'size-2 shrink-0", ')}');
 const refreshButtonBlock = extractBetween(strippedChip, '<Button', '</Button>');
@@ -162,14 +162,14 @@ describe('D-01/D-02/D-03/D-04 behaviour is untouched by the styling fix', () => 
 		).toBe(true);
 	});
 
-	it('the refresh control still reveals on group-hover and focus-within (D-03)', () => {
+	it('the refresh control still reveals on group-hover and keyboard focus (D-03)', () => {
 		expect(
 			refreshButtonBlock.includes('group-hover:opacity-100'),
 			'expected the refresh Button to still reveal on group-hover — a styling fix for the selected fill must not regress the hover-reveal behaviour'
 		).toBe(true);
 		expect(
-			refreshButtonBlock.includes('group-focus-within:opacity-100'),
-			'expected the refresh Button to still reveal on group-focus-within — keyboard users must still be able to tab to a visible refresh control'
+			refreshButtonBlock.includes('group-has-[:focus-visible]:opacity-100'),
+			'expected the refresh Button to reveal on group-has-[:focus-visible] (keyboard focus only) — a focus-within-scoped reveal also matches the persistent focus a mouse click leaves on the button, so the icon stays pinned visible until the user clicks elsewhere (this IS G-06-3b)'
 		).toBe(true);
 	});
 

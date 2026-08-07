@@ -73,7 +73,7 @@
 
 <div
 	class={cn(
-		'group flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card py-1 pr-1 pl-2.5',
+		'group flex h-11 shrink-0 items-center rounded-full border border-border bg-card pr-1',
 		selected && 'border-primary bg-primary'
 	)}
 >
@@ -86,7 +86,7 @@
 						type="button"
 						aria-pressed={selected}
 						onclick={() => onfilter(source.name)}
-						class="flex max-w-48 items-center gap-1.5 rounded-full"
+						class="flex max-w-48 items-center gap-1.5 self-stretch rounded-full pr-1.5 pl-2.5"
 					>
 						<span
 							class={cn(
@@ -114,7 +114,7 @@
 		variant="ghost"
 		size="icon"
 		class={cn(
-			'size-11 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
+			'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
 			source.syncing && 'opacity-100',
 			selected && 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
 		)}
