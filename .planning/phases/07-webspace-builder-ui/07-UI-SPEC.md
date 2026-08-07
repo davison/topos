@@ -1,7 +1,7 @@
 ---
 phase: 7
 slug: webspace-builder-ui
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1, unchanged — no re-init; components.json still records these contract values even though shadcn-svelte's live CLI/registry has since retired this baseColor/style combination — every actual color the app renders comes from web/src/app.css's hand-authored hex tokens, not the CLI)"
 created: 2026-08-07
@@ -276,45 +276,82 @@ Accent reserved for: unchanged list from Phase 2/5/6 (CTA, links, focus rings, s
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved over 10 elements this phase adds (E1 webspace switcher + root redirect, E2 zero-webspaces empty state, E3 add-source picker + two-step modal, E4 existing-instance add modal, E5 chip edit menu + edit modals, E6 remove-from-webspace, E7 Manage Sources modal (instance/webspace delete + reload), E8 secret field + badge, E9 save-as-filter + filter chips, E10 save/validate/hash-conflict error surfacing). Phases 1–6's already-resolved rows for the stream list, detail pane, and source-chip base behavior are inherited unchanged and not re-derived here. **34 considerations: 24 covered, 8 dismissed (reasons recorded), 2 backstop, 0 unresolved.**
+Probe run over 10 elements this phase adds (E1 webspace switcher + root redirect, E2 zero-webspaces empty state + create modal, E3 add-source picker + two-step modal, E4 existing-instance add modal, E5 chip edit menu + edit modals, E6 remove-from-webspace, E7 Manage Sources modal, E8 secret field + badge, E9 save-as-filter + filter chips, E10 save/validate/hash-conflict pattern). Engine report: 72 applicable (element × category) pairs; every pair resolved below — user-confirmed in the ui-phase Step 9.5 resolution loop. Phases 1–6's already-resolved rows for the stream list, detail pane, and source-chip base behavior are inherited unchanged and not re-derived here. **72 considerations: 39 covered, 28 dismissed (reasons recorded), 4 backstop, 1 unresolved.**
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | E1 webspace switcher: zero webspaces | ✅ covered | Root redirects to the dedicated zero-webspaces empty state (E2) instead of rendering a switcher with nothing in it — the switcher itself is never shown with an empty menu. |
-| populated | E1 webspace switcher: N webspaces | ✅ covered | One item per webspace in config order, active one weight-emphasized — see Webspace Switcher section. |
-| overflow | E1 webspace switcher: many webspaces | 🧪 backstop | The dropdown menu list is not itself height-capped/scrollable in this spec — a very large webspace count (dozens) would grow the menu past the viewport. Given webspaces are a manually-curated, small-N concept in this project's own model (unlike source instances, which can scale to 10+ per 06-UI-SPEC.md), this is treated as an accepted, untested edge rather than a designed overflow strategy; needs an explicit test or a `max-h`+scroll addition if real usage ever approaches double digits. |
-| zero-one-many | E1 webspace switcher: exactly one webspace | ✅ covered | Menu still renders normally (one item, marked active) — no special-cased single-webspace layout; `+ New webspace` and `Manage sources…` remain reachable regardless of count. |
-| long-text | E1 webspace switcher: long webspace name | ✅ covered | Trigger truncates (`truncate`, unchanged from the existing `<h1>` treatment) with native `title`; menu items wrap rather than truncate (a dropdown menu item has room a header title doesn't). |
-| empty | E2 zero-webspaces empty state | ✅ covered | Full-page centered state with heading/body/CTA — see Webspace Switcher > Root redirect & empty state. |
-| loading | E3 add-source picker: plugin-binary discovery in flight | ➖ dismissed | Plugin discovery is a one-time kernel-boot-time operation surfaced via the config-read response already fetched for the header — no independent async state the picker itself needs to render. |
-| empty | E3 add-source picker: nothing left to add | ✅ covered | Disabled-style single row: `All available sources are already in this webspace.` |
-| error | E3 two-step modal: trial-launch/Describe failure | ✅ covered | `Save anyway` fallback path — see New-Instance Modal Step 1 and Copywriting Contract. |
-| error | E3 two-step modal: validation failure on submit | ✅ covered | Shared Save/Reload State pattern — verbatim kernel message in a destructive `Alert`. |
+| Category | Element | Status | Resolution / Reason |
+|----------|---------|--------|---------------------|
+| empty | E1 switcher: zero webspaces | ✅ covered | Root redirects to the dedicated zero-webspaces empty state (E2) — the switcher is never shown with an empty menu. |
+| loading | E1 switcher | ➖ dismissed | Renders from the already-fetched header config payload; no independent async state to represent. |
+| error | E1 switcher | ➖ dismissed | No new async surface; config-read failure is the existing header-level error state inherited from Phases 1–6, and switching is client-side navigation. |
+| populated | E1 switcher: N webspaces | ✅ covered | One item per webspace in config order, active one weight-emphasized — see Webspace Switcher section. |
+| partial | E1 switcher | ➖ dismissed | Menu items are atomic config entries; no partial state distinct from populated exists. |
+| overflow | E1 switcher: many webspaces | 🧪 backstop | Dropdown list is not height-capped/scrollable in this spec; small-N by curation, but needs an explicit test or `max-h`+scroll if usage approaches double digits. |
+| zero-one-many | E1 switcher: exactly one webspace | ✅ covered | Menu renders normally (one item, marked active); `+ New webspace` / `Manage sources…` reachable regardless of count. |
+| long-text | E1 switcher: long webspace name | ✅ covered | Trigger truncates (`truncate` + native `title`, unchanged from the `<h1>` it replaces); menu items wrap rather than truncate. |
+| empty | E2 zero-webspaces state / blank Name field | ✅ covered | The surface *is* the designed empty state (heading/body/CTA); a blank Name on create is blocked by the shared validation path (D-09). |
+| loading | E2 create modal save in flight | ✅ covered | Shared Save/Reload pattern: submit button disables in flight (see Save / Reload State section). |
+| error | E2 create modal validation failure | ✅ covered | Shared Save/Reload pattern: kernel's verbatim message in a destructive `Alert` above the footer. |
+| partial | E2 create modal | ➖ dismissed | Single-field form; no partial state exists. |
+| overflow | E2 zero-webspaces state | ➖ dismissed | Fixed full-page content; nothing scales with data. |
+| long-text | E2: long webspace name typed | ✅ covered | Helper text steers naming; post-create display inherits E1's trigger truncation. |
+| empty | E3 picker: nothing left to add | ✅ covered | Disabled-style single row: `All available sources are already in this webspace.` |
+| loading | E3 trial-launch/Describe in flight | ✅ covered | Step 1 submit uses the shared disabled-submit in-flight treatment during trial-launch; plugin-binary discovery itself is boot-time config data needing no picker-level loading state. |
+| error | E3 trial-launch failure / validation failure | ✅ covered | `Save anyway` fallback for trial-launch failure; shared Save/Reload pattern for validation — see Step 1 and Copywriting Contract. |
 | populated | E3 two-step modal: normal flow | ✅ covered | Step 1 (static per-plugin-type fields) → Step 2 (Describe-derived match form) — see Add-Source Picker section. |
-| partial | E3 two-step modal: some connection fields present, match vocabulary not yet known | ✅ covered | This *is* Step 1 — the modal structurally cannot show match fields before Step 1 succeeds; the "Save anyway" fallback is the explicit partial-completion exit. |
-| zero-one-many | E3 match-fields form: plugin declares one vs. several vocabulary fields | ✅ covered | One labeled input per declared field, however many — no special single-field layout. |
-| long-text | E3 match-fields form: long comma-separated value list | ✅ covered | Plain text input, no truncation — the field is meant to hold potentially many terms; wraps naturally as a text input's native behavior. |
-| empty | E4 existing-instance add modal: plugin declares zero match fields | ⚠ unresolved | No plugin in this repo currently declares an empty `match_vocabulary` (validated at load time per matchconfig.go), but the form's own empty-vocabulary rendering (a modal with no fields, just Cancel/Add) is not designed here — flagged as a planner assumption: render the modal with only its title and footer buttons if this ever occurs. |
-| populated | E4 existing-instance add modal | ✅ covered | Shares the Match-Fields Form verbatim with Step 2 of E3 — see Add-Source Picker section. |
-| empty | E5 chip edit menu: no editable fields (hypothetical zero-field plugin) | ➖ dismissed | Every real plugin type declares at least a `plugin` binary reference and, for network sources, `base_url`/`token` — there is no configured instance with zero connection fields to edit. |
+| partial | E3: connection known, match vocabulary not yet known | ✅ covered | This *is* Step 1 — match fields structurally cannot render before Step 1 succeeds; `Save anyway` is the explicit partial-completion exit. |
+| overflow | E3 picker popover: many instances/plugin types | 🧪 backstop | Popover list is not height-capped/scrollable in this spec; instances can reach 10+ (06-UI-SPEC.md) — needs a test or `max-h`+scroll matching the Phase 6 overflow popover. |
+| zero-one-many | E3 match form: one vs. several vocabulary fields | ✅ covered | One labeled input per declared field, however many — no special single-field layout. |
+| long-text | E3 match form: long comma-separated list | ✅ covered | Plain text input; wraps/scrolls per native input behavior — the field is meant to hold many terms. |
+| empty | E4: plugin declares zero match fields | ⚠ unresolved — planner must treat as assumption | No current plugin declares an empty `match_vocabulary` (load-time validated); if it ever occurs, render the modal with only its title and Cancel/Add footer. |
+| loading | E4 vocabulary fetch | ➖ dismissed | Vocabulary is read from the already-running plugin via a sub-second local RPC; no loading affordance needed (same reasoning as E8's debounce dismissal). |
+| error | E4 validation failure on submit | ✅ covered | Shared Save/Reload pattern, identical to E3. |
+| partial | E4: some fields left blank | ✅ covered | Blank fields are omitted from the written match block entirely per the Match-Fields Form rule — never written as empty entries. |
+| overflow | E4: many vocabulary fields | ➖ dismissed | All four real plugin types declare ≤3 match fields; form growth is bounded by plugin design. |
+| long-text | E4: long values | ✅ covered | Shared match-form behavior — native input wrap/scroll (see E3 long-text). |
+| empty | E5 chip edit menu: zero-field plugin | ➖ dismissed | Every real plugin type declares at least a binary reference plus connection fields; no configured instance with zero editable fields exists. |
+| loading | E5 edit modals: pre-fill | ➖ dismissed | Pre-filled from already-fetched config state; no independent async fetch. |
+| error | E5 edit modals: validation/hash-conflict | ✅ covered | Shared Save/Reload pattern, identical to E3. |
 | populated | E5 chip edit menu: normal flow | ✅ covered | Three items (`Edit connection…`, `Edit match settings…`, `Remove from this webspace`) — see Chip Edit Menu section. |
-| error | E5 edit-connection modal: validation/hash-conflict failure | ✅ covered | Shared Save/Reload State pattern, identical to E3. |
-| long-text | E5 edit-connection modal: pre-filled long field values (e.g. a long `base_url`) | ✅ covered | Plain text inputs wrap/scroll horizontally per native input behavior — no truncation needed on an editable field (unlike a read-only display like the chip's own name). |
-| populated | E6 remove-from-webspace | ✅ covered | Single menu item, `text-destructive` hover/focus tint, no modal — see Destructive Confirmation Contract's explicit "why this one is lighter-weight" reasoning. |
-| empty | E7 Manage Sources modal: zero source instances configured | ✅ covered | `Source instances` section renders with no rows (the list is simply empty under its heading) — this is a legitimate state (a config with only local-path-less webspaces would be unusual but not invalid) and needs no special empty-row copy since the heading itself already labels the (empty) list. |
-| empty | E7 Manage Sources modal: zero webspaces | ➖ dismissed | Cannot occur — the modal is only reachable from the switcher, which is only reachable once at least one webspace exists (E2 gates root access before this point). |
-| populated | E7 Manage Sources modal | ✅ covered | Two divided lists, edit/delete affordances per row, Reload config footer — see Manage Sources Modal section. |
-| error | E7 instance/webspace delete: the deleted item is currently referenced elsewhere (e.g. deleting an instance that is the *only* participant in a webspace) | ✅ covered | No special-cased block: deleting the instance removes it from every webspace's participant set structurally (its `[sources.<id>]` block and every `match` entry naming it are gone) — a webspace left with zero participating sources renders its existing, already-shipped "no sources configured" chip-row-hidden state (`shouldShowSourceRows`, Phase 2), not a new error. |
-| error | E7 Reload config: invalid file on disk | ✅ covered | `Alert` with the kernel's verbatim error, last-good config keeps running — see Manage Sources Modal footer and Copywriting Contract. |
-| overflow | E7 Manage Sources modal: many instances/webspaces | 🧪 backstop | Same untested-overflow caveat as E1 — the two lists are not height-capped/scrollable in this spec; low real-world likelihood (a personal desktop tool's source/webspace count is human-curated, not open-ended like a stream of items) but not proven, so flagged rather than silently assumed fine. |
-| populated | E8 secret field, both set/unset badge states | ✅ covered | See Secret Field Contract — badge live-updates against the currently-typed variable name. |
-| loading | E8 secret field: env-var lookup in flight (debounced) | ➖ dismissed | Sub-second, local `os.LookupEnv`-backed lookup — no loading affordance needed beyond the badge simply not having updated yet for the current keystroke, same as any debounced-field pattern elsewhere in the web. |
-| empty | E8 secret field: variable-name input left blank | ➖ dismissed | A required secret field (paperless/silverbullet/proton's token) blocks submission via the existing shared validation path (D-09) — no separate blank-specific badge state; the badge simply doesn't render until a name is typed. |
-| empty | E9 filter chip row: no active filters | ✅ covered | Row does not render at all — inherits the same "absent, not empty-styled" convention `shouldShowSourceRows` already established for the chip row. |
-| populated | E9 filter chip row: N active filters | ✅ covered | One chip per stacked term, AND semantics per D-18 — see Search-Promotion Filter Chips section. |
-| zero-one-many | E9 save-as-filter: query already matches an active filter term | ✅ covered | The affordance's own gating (`not already an active filter term`) prevents a duplicate filter chip from ever being created — no dedup-on-save logic needed downstream. |
-| long-text | E9 filter chip: long search term | ✅ covered | Plain quoted text, no truncation specified — filter terms are short, user-typed search queries by construction, not arbitrary long-form text; if this proves wrong in practice, add `max-w` + truncate matching the source chip's own pattern. |
-| error | E10 hash-conflict rejection, across every save surface in this document | ✅ covered | One shared copy string, one shared placement rule (Alert above the footer, modal stays open, values retained) — see Save/Reload State & Error Surfacing section, applied uniformly rather than per-modal. |
+| partial | E5 edit modals | ➖ dismissed | Fixed three-item menu; edit forms follow the same blank-field-omitted rule as E4 (that rule is the partial-state answer). |
+| overflow | E5 chip edit menu | ➖ dismissed | Fixed item set; never grows with data. |
+| zero-one-many | E5 chip edit menu | ➖ dismissed | Same fixed item set regardless of instance count. |
+| long-text | E5 edit modals: long pre-filled values | ✅ covered | Plain text inputs wrap/scroll per native behavior — no truncation on an editable field. |
+| empty | E6 remove-from-webspace | ➖ dismissed | Single static menu item; no data states. |
+| loading | E6 write in flight | ✅ covered | The initiating control disables in flight per the shared Save/Reload pattern. |
+| error | E6 hash-conflict on a modal-less write | ✅ covered | Modal-less writes (chip-menu remove, E9 filter save/remove) surface hash-conflict as a destructive `Alert` in the header region below the chip rows, using the same fixed copy (`Config changed on disk — review and retry.`), cleared on the next successful action — the modal-Alert placement rule's counterpart for surfaces with no modal open. |
+| populated | E6 remove-from-webspace | ✅ covered | Single menu item, `text-destructive` hover/focus tint, no modal — see Destructive Confirmation Contract's lighter-weight reasoning. |
+| partial | E6 | ➖ dismissed | Atomic action; no partial state. |
+| overflow | E6 | ➖ dismissed | Not a scaling surface. |
+| zero-one-many | E6 | ➖ dismissed | Not a collection surface. |
+| long-text | E6 | ➖ dismissed | Fixed menu-item copy. |
+| empty | E7 Manage Sources: zero instances / zero webspaces | ✅ covered | Zero instances renders the (empty) list under its own heading — a legitimate state needing no special copy; zero webspaces is unreachable (E2 gates root access before the switcher exists). |
+| loading | E7 lists | ➖ dismissed | Lists render from already-fetched config; no independent async state. |
+| error | E7 delete-referenced / reload failure | ✅ covered | Deleting an instance structurally removes it everywhere (a webspace left empty shows the existing Phase 2 `shouldShowSourceRows` hidden state); reload failure shows the kernel's verbatim error with last-good config still running. |
+| populated | E7 Manage Sources | ✅ covered | Two divided lists with edit/delete per row, Reload config footer — see Manage Sources Modal section. |
+| partial | E7 | ➖ dismissed | Rows are atomic config entries. |
+| overflow | E7: many instances/webspaces | 🧪 backstop | Lists are not height-capped/scrollable in this spec; low likelihood for a human-curated set, but flagged rather than silently assumed fine. |
+| zero-one-many | E7: any count | ✅ covered | Lists render whatever count uniformly — no single-item special case. |
+| long-text | E7: long display names in rows | ✅ covered | Row labels truncate with native `title`, matching the source chip's own precedent. |
+| empty | E8: variable-name input blank | ➖ dismissed | Badge simply doesn't render until a name is typed; required secret fields block submission via the shared validation path (D-09). |
+| loading | E8: env-var lookup in flight | ➖ dismissed | Debounced, sub-second local lookup — no loading affordance beyond the badge not yet having updated. |
+| error | E8: lookup failure | ➖ dismissed | Badge is informational, never a submit blocker; a failed lookup collapses to no-update, and real save errors ride the shared pattern. |
+| partial | E8 | ➖ dismissed | Single field. |
+| overflow | E8 | ➖ dismissed | Not a scaling surface. |
+| long-text | E8: long variable name | ➖ dismissed | Env-var names are short by convention; the input scrolls natively. |
+| empty | E9 filter row: no active filters | ✅ covered | Row does not render at all — inherits the `shouldShowSourceRows` "absent, not empty-styled" convention. |
+| loading | E9 save/remove in flight | ✅ covered | `Save as filter` and each chip's `×` disable in flight per the shared Save/Reload pattern. |
+| error | E9 hash-conflict on filter writes | ✅ covered | Same modal-less rule as E6: destructive `Alert` in the header region below the chip rows, fixed conflict copy, cleared on next successful action. |
+| populated | E9 filter row: N active filters | ✅ covered | One chip per stacked term, AND semantics per D-18 — see Search-Promotion Filter Chips section. |
+| partial | E9 | ➖ dismissed | Chips are atomic terms. |
+| overflow | E9 filter row: many stacked terms | 🧪 backstop | No wrap/overflow strategy declared for the filter-chip row (unlike the source-chip row's Phase 6 overflow machinery); needs a test or an explicit wrap rule if stacks grow. |
+| zero-one-many | E9: query already an active term | ✅ covered | The affordance's own gating (`not already an active filter term`) prevents duplicate chips — no downstream dedup needed. |
+| long-text | E9: long search term | ✅ covered | Plain quoted text; filter terms are short user-typed queries by construction — if wrong in practice, add `max-w`+truncate matching the source chip. |
+| empty | E10 pattern | ➖ dismissed | A shared pattern definition, not a data surface. |
+| loading | E10: in-flight state | ✅ covered | Defined here: disabled submit, no new spinner component — see Save / Reload State section. |
+| error | E10: validation / hash-conflict | ✅ covered | The section *is* the error contract: verbatim kernel message; fixed conflict copy; modal stays open. |
+| partial | E10: conflict with entered values | ✅ covered | Entered values are retained on rejection — nothing discarded; header/stream silently refresh to current state. |
+| overflow | E10 | ➖ dismissed | Not a scaling surface (message length is long-text, below). |
+| long-text | E10: long kernel error messages | ✅ covered | `Alert` body wraps naturally; verbatim messages render untruncated. |
 
 ---
 
@@ -330,11 +367,11 @@ No third-party registries declared for Phase 7. Registry vetting gate not trigge
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 6/6 dimensions PASS (2026-08-07)
