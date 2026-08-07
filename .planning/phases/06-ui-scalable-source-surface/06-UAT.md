@@ -1,67 +1,72 @@
 ---
-status: diagnosed
+status: testing
 phase: 06-ui-scalable-source-surface
 source: [06-VERIFICATION.md]
-started: 2026-08-06T22:30:00Z
-updated: 2026-08-07T09:00:00Z
+started: 2026-08-07T13:55:00Z
+updated: 2026-08-07T13:55:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 1
+name: Source chip pill geometry, hover disc, and refresh reveal (G-06-3b re-test)
+expected: |
+  The chip reads as one polished 44px pill matching the overflow trigger's height, with its
+  entire surface clickable; the refresh hover highlight is circular; a mouse click on refresh
+  no longer pins the icon after the pointer leaves; keyboard Tab still reveals it; the syncing
+  spinner is unaffected; selected-state fill is unchanged from the prior round's pass.
+awaiting: user response
 
 ## Tests
 
-### 1. Search-term highlighting in the rendition iframe (re-test after G-06-1 fix)
+### 1. Source chip pill geometry, hover disc, and refresh reveal (G-06-3b re-test)
+Run `make dev`, open a webspace, narrow the window until the '+N' overflow trigger appears.
+Confirm a chip is the same height as the trigger beside it, and that clicking anywhere on the
+pill — including its top and bottom edges, not just the text line — toggles the filter. Hover
+a chip, then hover its refresh icon: confirm the highlight is a circular disc inside the oval,
+not a rounded square. Click a refresh icon, then move the pointer off the chip without clicking
+anything else: confirm the icon disappears as the pointer leaves (it must not stay pinned
+visible). Tab into a chip with the keyboard and confirm the refresh icon becomes visible. While
+a source is syncing, confirm the spinning icon stays visible regardless of pointer position.
+Re-confirm a selected chip still fills contrasting blue, identically inline and inside the
+overflow popover.
+expected: The chip reads as one polished 44px pill matching the overflow trigger's height, with its entire surface clickable; the refresh hover highlight is circular; a mouse click on refresh no longer pins the icon after the pointer leaves; keyboard Tab still reveals it; the syncing spinner is unaffected; selected-state fill is unchanged from the prior round's pass.
+result: [pending]
 
-Run `make dev`, search a webspace for a word known to appear in an email or a SilverBullet note, open that item, and confirm the word is highlighted amber inside the detail pane's rendered iframe document (email HTML, SilverBullet markdown, Signal chat transcript) AND in the detail-pane title when it matches there. Search for a word that only appears in an item's title and confirm a visible highlight still appears in both the search-results row and the detail pane. Check the stream/search rows use the same amber treatment (not the old barely-visible bold). Clear the search and confirm all highlights disappear.
+### 2. Search-term highlighting, including title-only match and WR-01 Unicode probe
+Run `make dev`, search a webspace for a word known to appear ONLY in an item's title (not its
+body), and confirm the word is highlighted amber in both the search-results row title AND the
+opened detail-pane title. Then search a word in body text and confirm the results-row snippet
+shows the same amber treatment the detail pane uses. Clear the search and confirm no highlight
+remains anywhere. If practical, also try a search term adjacent to a Turkish-orthography
+capital İ (e.g. a title containing 'İstanbul') and confirm the highlighted span still exactly
+covers the matched characters (06-REVIEW.md WR-01 — a client-side `toLowerCase()`-length-divergence
+bug is not yet fixed and is not caught by any existing test).
+expected: Title-only matches render a visible highlight; snippet, title and detail-pane body share one amber vocabulary; empty query renders byte-identical to pre-phase. The İ case, if exercised, should not be expected to pass — it is a known open bug, included here so it is not silently missed during UAT.
+result: [pending]
 
-expected: One unified amber `.search-highlight` treatment on title, body, and row snippets; title-only matches visibly highlighted; byte-identical rendition output when no query.
-result: pass
+### 3. Selected chip fill (re-validated against new pill markup)
+Run `make dev`, click a source chip and confirm it fills with an obviously visible contrasting
+blue, with label/health-dot/refresh icon all re-toned and legible on the fill. Open the overflow
+popover and confirm a selected chip inside it reads identically to one inline.
+expected: Solid `bg-primary` selected fill, clearly visible at a glance, identical inline and in the popover.
+result: [pending]
 
-### 2. Search-term highlighting in the plain-text/media variant
-
-Search for a word that appears in a paperless document's extracted text, open it, and confirm the word is highlighted amber below the preview box (the plain-text/media detail-pane variant).
-
-expected: The matched word renders in a highlighted span below the document preview.
-result: pass
-
-### 3. Merged source chip — filter, URL round-trip, hover refresh (re-test after G-06-3 fix)
-
-With `make dev` running, click a chip to select it and confirm the chip fills with an obviously visible contrasting blue (the pre-Phase-6 accent blue), with label, health dot, and refresh icon all re-toned to stay readable on the fill. Open the overflow popover (narrow the window if needed) and confirm a selected chip inside the popover reads identically to one inline. Re-confirm the round-1 passes still hold: multi-select narrows the stream, the URL round-trips, hover reveals refresh, refresh does not toggle the filter.
-
-expected: Solid `bg-primary` selected fill, clearly visible at a glance, identical inline and in the popover; filtering behavior unchanged.
-result: issue
-reported: "pass with some cosmetic-only issues. 1. The chip is larger (height) than it needs to be, maybe 5px too many above and below the text. This additional space does not trigger the click event on the chip which is counter-intuitive. 2. Hovering over the chip correctly shows the refresh button, moving to hover over the refresh button additionally highlights the button - but the background highlight is a rounded corner square (looks odd inside the more oval chip). 3. Clicking a refresh button causes the refresh icon to remain visible even when not hovering the chip. It is hidden only when clicking any other area of the page"
-severity: cosmetic
-
-### 4. Chip-row overflow under live window resize
-
-With a webspace loaded and the chip row rendered, narrow the browser window steadily. Confirm chips move off the row into the '+N' trigger as space runs out and the trigger's count rises; widen the window and confirm they return inline and the trigger's count falls or the trigger disappears; confirm that at no width is a chip clipped at the row's trailing edge with no trigger showing, and that 'Clear filters' and 'Refresh all' stay on the row throughout. Then make one source hidden behind the fold unreachable and confirm the trigger's dot turns the destructive tone at that narrowed width.
-
-expected: Single-line row at any instance count and at any window width, including after a post-load resize; overflow popover reachable in two interactions; worst-of health tone surfaced on the trigger at all times.
-result: pass
-
-### 5. Deep-link fidelity differentiation
-
-Open a Signal conversation item and confirm its button reads `Show in {source}` with a window icon and an explanatory hover title; open a paperless or email item and confirm its button reads `Open in {source}` with a navigate icon; confirm the small fidelity badge still shows the raw enum value in all three cases.
-
-expected: Two-class icon/verb/title split, badge unchanged (3 raw values).
-result: pass
-
-### 6. Stream scrollbar date markers (re-test after G-06-6 fix)
-
-Open a webspace whose stream spans several dates. Confirm the rebuilt ruler reads as a deliberate navigation affordance — its own lane clear of the scrollbar, a faint vertical rail, and a visible major/minor tick hierarchy — not as CSS artifacts. Confirm no tick is clipped at the pane's top or bottom edge, ticks show a pointer cursor and a focus ring when tabbed to, hovering shows the date, clicking jumps that date's first row to the top, the scrollbar thumb still drags, rows underneath still click, and ticks disappear both during a search and when the stream is too short to scroll.
-
-expected: Intentional ruler read (rail + two-grade ticks in their own lane, clearly visible against the background); no edge clipping; native scrollbar and row interactivity undisturbed; markers hidden during search and when the stream does not scroll.
-result: pass
+### 4. Stream date-marker ruler
+Run `make dev`, open a webspace whose stream spans several dates. Confirm the ticks sit in
+their own lane clear of the scrollbar, read as a deliberate ruler, month boundaries are visibly
+stronger than day boundaries, no tick is clipped at either edge, hovering shows the date,
+clicking jumps that date's first row to the top, the scrollbar thumb still drags, and ticks
+disappear both during a search and when the stream is too short to scroll.
+expected: The ruler reads as an intentional, polished affordance with a visible major/minor hierarchy, no edge clipping, correct overflow/search gating.
+result: [pending]
 
 ## Summary
 
-total: 6
-passed: 5
-issues: 1
-pending: 0
+total: 4
+passed: 0
+issues: 0
+pending: 4
 skipped: 0
 blocked: 0
 
@@ -96,23 +101,10 @@ blocked: 0
   debug_session: .planning/debug/date-marker-tick-styling.md
 - gap_id: G-06-3b
   truth: "Selected/hover chip treatment reads as one polished oval control: chip height fits its text, the whole chip surface is clickable, the hover-revealed refresh button's highlight follows the chip's pill geometry, and the refresh icon hides again when the pointer leaves the chip after a refresh click."
-  status: failed
+  status: resolved
+  resolved_by: 06-08 (chip wrapper declares h-11 matching WebspaceHeader's overflow trigger with no padding of its own; filter button self-stretch fills the whole pill; refresh Button override size-8 rounded-full paints a circular hover disc; reveal rescoped from group-focus-within to group-has-[:focus-visible] so mouse-click focus no longer pins the icon while keyboard reveal and syncing force-show survive; 06-UI-SPEC.md reveal wording and 44px-floor statements reconciled; source-chip-pill.test.ts recurrence guard proven to trip on each reintroduced defect)
   reason: "User reported: pass with some cosmetic-only issues. 1. The chip is larger (height) than it needs to be, maybe 5px too many above and below the text. This additional space does not trigger the click event on the chip which is counter-intuitive. 2. Hovering over the chip correctly shows the refresh button, moving to hover over the refresh button additionally highlights the button - but the background highlight is a rounded corner square (looks odd inside the more oval chip). 3. Clicking a refresh button causes the refresh icon to remain visible even when not hovering the chip. It is hidden only when clicking any other area of the page"
   severity: cosmetic
   test: 3
   root_cause: "Three co-located causes in SourceChip.svelte, all shipped in 06-02 (7687dd6); 06-06 did not introduce them. (1) Height/dead zone: chip height (~54px) is driven by the 44x44 refresh Button (size-11, per 06-UI-SPEC.md:140/161 touch-target floor) plus outer div py-1, but the filter onclick lives only on the inner label button (~20px tall) — the ~17px bands above/below are visually chip but click-dead, and the chip stands ~10px taller than the adjacent h-11 overflow trigger (WebspaceHeader.svelte:207). (2) Square hover highlight: the refresh Button's class override (SourceChip.svelte:116-120) supplies no border-radius, so buttonVariants' base rounded-lg (button.svelte:7) shapes the ghost hover fill as a 44px rounded square inside the rounded-full pill. (3) Sticky icon: reveal is opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 (per 06-UI-SPEC.md:44/51); a mouse click focuses the button, focus persists after pointer leaves, :focus-within pins opacity at 100, and outline-none + focus-visible-only ring hides why — focus moves only when clicking elsewhere."
-  artifacts:
-    - path: "web/src/lib/components/SourceChip.svelte"
-      issue: "onclick on inner button only while outer div + size-11 refresh Button drive height (1); no radius override on refresh Button (2); group-focus-within:opacity-100 reveal pins icon after mouse click (3)"
-    - path: "web/src/lib/components/ui/button/button.svelte"
-      issue: "source of rounded-lg default and outline-none/focus-visible-only ring (evidence only, no change needed)"
-    - path: ".planning/phases/06-ui-scalable-source-surface/06-UI-SPEC.md"
-      issue: "lines 44/51 (:focus-within reveal) and 140/161 (44px floor) must be reconciled with the fix — same doc-code drift pattern as G-06-3"
-    - path: "web/src/lib/components/WebspaceHeader.svelte"
-      issue: "line 207 h-11 overflow trigger is the height reference the chip should match"
-  missing:
-    - "Shrink the refresh control (size-7/size-8 visual, rounded-full) and/or move the height driver so the chip lands at h-11; stretch the filter button to fill chip height (self-stretch, vertical padding into the button) so the whole surface is clickable; preserve any kept 44px floor via hit-area extension or invoke the spec's desktop-only exception"
-    - "Add rounded-full to the refresh Button's class override"
-    - "Replace group-focus-within:opacity-100 with a focus-visible-scoped reveal (focus-visible:opacity-100 or group-has-[:focus-visible]:opacity-100) so keyboard reveal stays but mouse-click focus doesn't pin the icon"
-    - "Update 06-UI-SPEC.md:44/51 (and 140/161 floor wording if relaxed) in the same plan so spec and code agree"
   debug_session: .planning/debug/chip-pill-polish.md
