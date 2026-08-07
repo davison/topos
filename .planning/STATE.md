@@ -2,17 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 06
-current_phase_name: ui-scalable-source-surface
-status: verifying
-stopped_at: Completed 06-07-PLAN.md
-last_updated: "2026-08-07T00:21:39.607Z"
+status: executing
+last_updated: "2026-08-07T12:20:05.606Z"
 last_activity: 2026-08-07
 progress:
-  total_phases: 6
+  total_phases: 9
   completed_phases: 6
-  total_plans: 38
-  completed_plans: 38
+  total_plans: 39
+  completed_plans: 39
+  percent: 67
 ---
 
 # Project State
@@ -27,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 ## Current Position
 
 Phase: 06 (ui-scalable-source-surface) — EXECUTING
-Plan: 7 of 7
-Status: Phase complete — ready for verification
+Plan: 2 of 8
+Status: Ready to execute
 Last activity: 2026-08-07
 
 Progress: [██████████] 100%
@@ -90,6 +88,7 @@ Progress: [██████████] 100%
 | Phase 06 P05 | ~15min | 3 tasks | 8 files |
 | Phase 06 P06 | ~15min | 2 tasks | 4 files |
 | Phase 06 P07 | 32min | 3 tasks | 7 files |
+| Phase 06 P08 | 13min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -178,6 +177,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 06-07]: 65% color-mix of --muted-foreground chosen for --stream-marker's rest tone (computed 3.81:1 vs --background, 3.67:1 vs --card), superseding the retired --scrollbar-thumb reuse's 1.86:1 that caused G-06-6
 - [Phase ?]: [Phase 06-07]: markerLaneTop clamps the degenerate case (track shorter than twice the inset) to zero usable range rather than allowing an inverted position mapping
 - [Phase ?]: [Phase 06-07]: Declined date labels at major boundaries (recorded in 06-UI-SPEC.md) — a 12px lane cannot host legible label text without reintroducing the row-banding defect; tooltip + major/minor hierarchy already carry that information
+- [Phase ?]: [Phase 06-08]: Kept source-chip-pill.test.ts as a file separate from source-chip-selected.test.ts (house pattern) — the two guard different axes (colour vs. geometry/interaction) of the same shipped defect class and should fail as distinguishable incidents
+- [Phase ?]: [Phase 06-08]: group-has-[:focus-visible]:opacity-100 (the plan's primary Tailwind arbitrary variant) compiled on the first build attempt, confirmed via grep on the emitted stylesheet — the plan's named fallback (group-has-focus-visible) was not needed
 
 ### Pending Todos
 
@@ -214,6 +215,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T00:21:39.592Z
-Stopped at: Completed 06-07-PLAN.md
+Last session: 2026-08-07T12:20:05.597Z
+Stopped at: Completed 06-08-PLAN.md
 Resume file: None
