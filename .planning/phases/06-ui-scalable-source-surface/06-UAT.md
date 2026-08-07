@@ -1,22 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 06-ui-scalable-source-surface
 source: [06-VERIFICATION.md]
 started: 2026-08-06T22:30:00Z
-updated: 2026-08-07T00:40:00Z
+updated: 2026-08-07T09:00:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Search-term highlighting in the rendition iframe (re-test after G-06-1 fix)
-expected: |
-  Matched terms carry the shared amber highlight across every surface: detail-pane
-  title AND body (all three iframe content shapes), search-results rows, and the
-  stream snippet — no barely-visible font-semibold-only treatment anywhere. A
-  title-only match renders a visible highlight. With no search query, rendition
-  output is byte-identical to pre-phase (no mark anywhere).
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -25,7 +17,7 @@ awaiting: user response
 Run `make dev`, search a webspace for a word known to appear in an email or a SilverBullet note, open that item, and confirm the word is highlighted amber inside the detail pane's rendered iframe document (email HTML, SilverBullet markdown, Signal chat transcript) AND in the detail-pane title when it matches there. Search for a word that only appears in an item's title and confirm a visible highlight still appears in both the search-results row and the detail pane. Check the stream/search rows use the same amber treatment (not the old barely-visible bold). Clear the search and confirm all highlights disappear.
 
 expected: One unified amber `.search-highlight` treatment on title, body, and row snippets; title-only matches visibly highlighted; byte-identical rendition output when no query.
-result: [pending]
+result: pass
 
 ### 2. Search-term highlighting in the plain-text/media variant
 
@@ -39,7 +31,9 @@ result: pass
 With `make dev` running, click a chip to select it and confirm the chip fills with an obviously visible contrasting blue (the pre-Phase-6 accent blue), with label, health dot, and refresh icon all re-toned to stay readable on the fill. Open the overflow popover (narrow the window if needed) and confirm a selected chip inside the popover reads identically to one inline. Re-confirm the round-1 passes still hold: multi-select narrows the stream, the URL round-trips, hover reveals refresh, refresh does not toggle the filter.
 
 expected: Solid `bg-primary` selected fill, clearly visible at a glance, identical inline and in the popover; filtering behavior unchanged.
-result: [pending]
+result: issue
+reported: "pass with some cosmetic-only issues. 1. The chip is larger (height) than it needs to be, maybe 5px too many above and below the text. This additional space does not trigger the click event on the chip which is counter-intuitive. 2. Hovering over the chip correctly shows the refresh button, moving to hover over the refresh button additionally highlights the button - but the background highlight is a rounded corner square (looks odd inside the more oval chip). 3. Clicking a refresh button causes the refresh icon to remain visible even when not hovering the chip. It is hidden only when clicking any other area of the page"
+severity: cosmetic
 
 ### 4. Chip-row overflow under live window resize
 
@@ -60,14 +54,14 @@ result: pass
 Open a webspace whose stream spans several dates. Confirm the rebuilt ruler reads as a deliberate navigation affordance — its own lane clear of the scrollbar, a faint vertical rail, and a visible major/minor tick hierarchy — not as CSS artifacts. Confirm no tick is clipped at the pane's top or bottom edge, ticks show a pointer cursor and a focus ring when tabbed to, hovering shows the date, clicking jumps that date's first row to the top, the scrollbar thumb still drags, rows underneath still click, and ticks disappear both during a search and when the stream is too short to scroll.
 
 expected: Intentional ruler read (rail + two-grade ticks in their own lane, clearly visible against the background); no edge clipping; native scrollbar and row interactivity undisturbed; markers hidden during search and when the stream does not scroll.
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 6
-passed: 3
-issues: 0
-pending: 3
+passed: 5
+issues: 1
+pending: 0
 skipped: 0
 blocked: 0
 
@@ -100,3 +94,11 @@ blocked: 0
   test: 6
   root_cause: "Three conjoint causes plus two guaranteed-broken renders. (1) Geometry: overlay inset right-0.5 (2px) puts 7px of each 12px tick ON the ~11px scrollbar — tick and thumb share the same 35%-alpha token so each tick renders two tones that shift while scrolling. (2) Tone: rest tick colour #353d4f is 1.86:1 vs background (below the 3:1 non-text floor) and 1.35:1 from --border — reads as a stray border fragment. (3) Form: no rail, no labels, no major/minor hierarchy, no cursor-pointer, no focus ring. Plus: a tick always renders half-clipped at topPx=0 (candidateMarkers always emits index 0, -translate-y-1/2, no overflow-hidden), and ticks render even when the stream doesn't scroll (no scrollHeight>clientHeight guard). Implementation also diverged from 06-UI-SPEC.md:111 ('left of the scrollbar track'). 06-03-SUMMARY recorded the visual check as human_judgment, never exercised."
   debug_session: .planning/debug/date-marker-tick-styling.md
+- gap_id: G-06-3b
+  truth: "Selected/hover chip treatment reads as one polished oval control: chip height fits its text, the whole chip surface is clickable, the hover-revealed refresh button's highlight follows the chip's pill geometry, and the refresh icon hides again when the pointer leaves the chip after a refresh click."
+  status: failed
+  reason: "User reported: pass with some cosmetic-only issues. 1. The chip is larger (height) than it needs to be, maybe 5px too many above and below the text. This additional space does not trigger the click event on the chip which is counter-intuitive. 2. Hovering over the chip correctly shows the refresh button, moving to hover over the refresh button additionally highlights the button - but the background highlight is a rounded corner square (looks odd inside the more oval chip). 3. Clicking a refresh button causes the refresh icon to remain visible even when not hovering the chip. It is hidden only when clicking any other area of the page"
+  severity: cosmetic
+  test: 3
+  artifacts: []  # Filled by diagnosis
+  missing: []    # Filled by diagnosis
