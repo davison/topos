@@ -1,7 +1,7 @@
 ---
 phase: 06-ui-scalable-source-surface
 verified: 2026-08-07T13:45:00Z
-status: human_needed
+status: passed
 score: 4/4 roadmap success criteria verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,20 +9,25 @@ re_verification:
   previous_status: human_needed
   previous_score: 4/4 roadmap success criteria verified
   gaps_closed:
+
     - "G-06-3b: source chip pill restructured into one h-11 (44px) pill whose filter button self-stretches across the full surface (closing the ~17px click-dead bands above/below the label and the ~10px height overshoot against the adjacent overflow trigger); refresh control's hover fill changed from an implicit rounded-square to an explicit rounded-full disc; refresh reveal rescoped from group-focus-within (which pinned the icon after a mouse click) to group-has-[:focus-visible] (keyboard-only), confirmed compiled into the production stylesheet; 06-UI-SPEC.md's refresh-reveal wording, new chip-geometry constraint bullet, and both touch-target-floor statements reconciled with the shipped code"
   gaps_remaining: []
   regressions: []
 deferred: []
 human_verification:
+
   - test: "Run `make dev`, open a webspace, narrow the window until the '+N' overflow trigger appears. Confirm a chip is the same height as the trigger beside it, and that clicking anywhere on the pill — including its top and bottom edges, not just the text line — toggles the filter. Hover a chip, then hover its refresh icon: confirm the highlight is a circular disc inside the oval, not a rounded square. Click a refresh icon, then move the pointer off the chip without clicking anything else: confirm the icon disappears as the pointer leaves (it must not stay pinned visible). Tab into a chip with the keyboard and confirm the refresh icon becomes visible. While a source is syncing, confirm the spinning icon stays visible regardless of pointer position. Re-confirm a selected chip still fills contrasting blue, identically inline and inside the overflow popover."
     expected: "The chip reads as one polished 44px pill matching the overflow trigger's height, with its entire surface clickable; the refresh hover highlight is circular; a mouse click on refresh no longer pins the icon after the pointer leaves; keyboard Tab still reveals it; the syncing spinner is unaffected; selected-state fill is unchanged from the prior round's pass."
     why_human: "Pixel-level height parity, full-surface hit-testing, hover-fill shape, and pointer-leave/keyboard-focus timing all need a live browser session. The class-string wiring (h-11 on both the wrapper and the trigger, no wrapper padding, self-stretch on the filter button, rounded-full + size-8 on the refresh Button, group-has-[:focus-visible] present and group-focus-within absent, source.syncing force-visible retained) is proven by an 8-assertion source-scan guard (source-chip-pill.test.ts, manually confirmed by the executor to trip on each of the three reintroduced defects) plus a production-build grep confirming the compiled `:has(:focus-visible)` CSS rule actually exists in the emitted stylesheet — but none of this proves the rendered pixel result."
+
   - test: "Run `make dev`, search a webspace for a word known to appear ONLY in an item's title (not its body), and confirm the word is highlighted amber in both the search-results row title AND the opened detail-pane title. Then search a word in body text and confirm the results-row snippet shows the same amber treatment the detail pane uses. Clear the search and confirm no highlight remains anywhere. If practical, also try a search term adjacent to a Turkish-orthography capital İ (e.g. a title containing 'İstanbul') and confirm the highlighted span still exactly covers the matched characters (06-REVIEW.md WR-01 — a client-side `toLowerCase()`-length-divergence bug is not yet fixed and is not caught by any existing test)."
     expected: "Title-only matches render a visible highlight; snippet, title and detail-pane body share one amber vocabulary; empty query renders byte-identical to pre-phase. The İ case, if exercised, should not be expected to pass — it is a known open bug, included here so it is not silently missed during UAT."
     why_human: "Live browser rendering and visual contrast; the ASCII/common-case wiring is proven by search-emphasis.test.ts (15 assertions) and the full client suite, but WR-01's Unicode edge case is proven to still be open by direct code inspection (format.ts:578 still does a single bulk `text.toLowerCase()` and indexes into it positionally; no `İstanbul`-class regression test exists in highlight.test.ts), not by a passing test."
+
   - test: "Run `make dev`, click a source chip and confirm it fills with an obviously visible contrasting blue, with label/health-dot/refresh icon all re-toned and legible on the fill. Open the overflow popover and confirm a selected chip inside it reads identically to one inline."
     expected: "Solid `bg-primary` selected fill, clearly visible at a glance, identical inline and in the popover."
     why_human: "Pixel-level contrast and popover-vs-inline visual parity need a live browser render; the class-string wiring (selected branch resolves through --primary never --accent, all three children re-tone) is proven by source-chip-selected.test.ts's 12 passing assertions, re-validated against the new h-11/self-stretch markup this round (its wrapper-class extraction was re-pointed at the opening `<div>` tag and its D-03 assertion updated for the focus-visible-scoped reveal, both confirmed passing)."
+
   - test: "Run `make dev`, open a webspace whose stream spans several dates. Confirm the ticks sit in their own lane clear of the scrollbar, read as a deliberate ruler, month boundaries are visibly stronger than day boundaries, no tick is clipped at either edge, hovering shows the date, clicking jumps that date's first row to the top, the scrollbar thumb still drags, and ticks disappear both during a search and when the stream is too short to scroll."
     expected: "The ruler reads as an intentional, polished affordance with a visible major/minor hierarchy, no edge clipping, correct overflow/search gating."
     why_human: "The visual 'reads as intentional' judgment and live pointer/focus/click interaction need a real browser session; every computable property (contrast, lane offset, structural geometry) is proven by marker-overlay.test.ts (20 assertions) and markers.test.ts (33 assertions), unchanged since the prior verification round and untouched by 06-08."

@@ -24,12 +24,13 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Named source instances (KERN-06): the config map key is the kernel's source identity everywhere (index rows, sync runs, agent grants, HTTP API, UI display); the same plugin type configures multiple times under distinct display names, with a schema-version-gated index rebuild for existing data — Phase 5
 - ✓ Per-instance typed matching (KERN-07): plugin-declared `match_vocabulary` on the wire (`map<string, StringList> match_fields`, `keywords` retired, contract generation "topos.v2", handshake v1→v2 fail-fast), per-instance `match` blocks with participation allowlist and fail-loud-by-name startup validation, webspace `keywords` as fallback; all five plugins migrated and the operator's live config hand-migrated — Phase 5
 - ✓ Kernel-owned rendition boundary: plugins return content plus a declared `ContentShape`; the kernel sanitizes, wraps, and themes at the CSP boundary (three per-plugin theme copies deleted) — Phase 5
+- ✓ Scalable source surface (UI-07/08/09/11): each source instance appears exactly once in the header as a single merged chip (health + filter toggle + hover-revealed refresh in one 44px pill, overflow popover at high instance counts), deep-link affordances differentiate raise-only from navigating links (closes the 04-UAT follow-up), search terms highlight across stream rows, result titles/snippets and the detail pane (including sanitized renditions, injected kernel-side as HTML tree nodes), and the stream scrollbar carries a date-marker ruler with click-to-jump — Phase 6 (three UAT gap-closure rounds to land the chip polish)
 
 ### Active
 
 - [ ] Define webspaces in a config map: each webspace matches against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–4 proved keyword matching for all four shipped sources; Phase 5 upgraded the shape to per-instance typed match blocks with keywords as fallback; WhatsApp pending)*
 - [ ] WhatsApp plugin — reads WhatsApp desktop/linked-device local store on the same machine
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phases 3–4: email body preview, in-webspace search, and Signal chat-thread preview shipped; WhatsApp previews pending. Follow-up captured in 04-UAT.md: differentiate raise-only vs navigating deep links in the UI)*
+- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phases 3–4: email body preview, in-webspace search, and Signal chat-thread preview shipped; Phase 6 closed the 04-UAT follow-up — raise-only vs navigating deep links are now visually differentiated; WhatsApp previews pending)*
 
 ### Out of Scope
 
@@ -74,6 +75,8 @@ Open one webspace and instantly see and grok all related information across ever
 | Source identity = config-map instance key, split from plugin type (D-08) | Two instances of one plugin binary must never share identity in index rows, grants, or UI; `source_type` stays purely "which plugin kind" | Phase 5: shipped — leak-tested (two instances stay distinct incl. agent grants) |
 | Match contract: generic plugin-declared field map, proto package stays topos.v1, handshake v1→v2 (option-a) | Field names never fixed in the proto — kernel holds no table of known plugin types (D-05); stale binaries fail at handshake, not confusingly at first Match; avoids a full topos.v2 package-move churn | Phase 5: shipped — user-locked at checkpoint; contract republished in docs/plugin-contract.md |
 | Rendition sanitize/wrap/theme moved into the kernel (D-11) | Sanitization must sit inside the trust boundary once plugins can be third-party; one theme edit instead of three plugin copies | Phase 5: shipped — plugins return content + declared ContentShape; UAT confirmed pixel parity |
+| Search-term highlighting injected kernel-side as HTML tree nodes after sanitization | Marking text via `x/net/html` parse/walk/render into text nodes only — never string substitution over sanitized HTML — keeps the sanitizer output as the trust anchor | Phase 6: shipped — attributes/tags proven byte-untouched, multi-byte runes survive |
+| One merged chip per source instance (D-01): health + filter + refresh in a single affordance | Header must stay usable at 10+ instances without duplicated per-source controls | Phase 6: shipped — took three UAT gap-closure rounds (selected-state fill, pill geometry/reveal) to read as one polished control |
 
 ## Evolution
 
@@ -93,4 +96,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-06 after Phase 5*
+*Last updated: 2026-08-07 after Phase 6*

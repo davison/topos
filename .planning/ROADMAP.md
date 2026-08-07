@@ -360,7 +360,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 8/8 | Complete   | 2026-08-07 |
+| 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
