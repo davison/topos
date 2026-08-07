@@ -36,6 +36,12 @@
 	let loadingContent = $state(true);
 	let fetchErrorCode: string | null = $state(null);
 
+	// Guards against a stale-response race: if the user selects item A
+	// (slow fetch), then item B (fast fetch) before A resolves, A's later
+	// resolution must not clobber B's already-rendered content. Mirrors the
+	// searchRequestSeq pattern in +page.svelte's handleSearch.
+	let contentRequestSeq = 0;
+
 	// The one place that decides which of the four mutually exclusive
 	// states this pane shows (D-10) — see format.ts for the full
 	// precedence rule and staleness.test.ts for its unit tests.
@@ -51,8 +57,10 @@
 		loadingContent = true;
 		fetchErrorCode = null;
 		content = null;
+		const seq = ++contentRequestSeq;
 		try {
 			const detail = await getItem(id);
+			if (seq !== contentRequestSeq) return; // a newer selection has since superseded this one
 			content = detail.content;
 		} catch (err) {
 			// Any live-fetch failure (source unreachable, network,
@@ -60,9 +68,10 @@
 			// unreachable or generic-error branch below based on this
 			// item's source's live reachability, not the specific error
 			// code — the deep link stays usable either way.
+			if (seq !== contentRequestSeq) return;
 			fetchErrorCode = err instanceof ApiError ? err.code : 'unknown_error';
 		} finally {
-			loadingContent = false;
+			if (seq === contentRequestSeq) loadingContent = false;
 		}
 	}
 
