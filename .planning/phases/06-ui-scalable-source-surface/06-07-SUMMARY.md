@@ -156,3 +156,7 @@ None - no external service configuration required.
 ---
 *Phase: 06-ui-scalable-source-surface*
 *Completed: 2026-08-07*
+
+## Self-Check: PASSED
+
+All key files (format.ts, markers.test.ts, app.css, StreamDateMarkers.svelte, +page.svelte, marker-overlay.test.ts, 06-UI-SPEC.md) confirmed present on disk. All 4 task/RED-GREEN commits (b321ba2, 5475a00, e7b85dd, fa89dff) confirmed in git log.

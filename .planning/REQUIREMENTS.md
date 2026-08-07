@@ -42,7 +42,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **UI-07**: The header presents each source instance exactly once — one affordance combining health, filter toggle, and refresh — and stays usable as the instance count grows *(added 2026-08-05)*
 - [ ] **UI-08**: "Open in source" affordances visually differentiate links that navigate to the item from links that can only raise the source app's window *(added 2026-08-05; from 04-UAT follow-up)*
 - [x] **UI-09**: After an in-webspace search, matched terms are highlighted in the item title and the rendered content, in both the detail pane and the search-results row *(added 2026-08-05; surface wording disambiguated 2026-08-07 per G-06-1)*
-- [ ] **UI-11**: Scrollbars are thin and theme-matched app-wide; the stream scrollbar carries date markers *(added 2026-08-05; UI-10 was already assigned to the v1.x sync-status polish item)*
+- [x] **UI-11**: Scrollbars are thin and theme-matched app-wide; the stream scrollbar carries date markers *(added 2026-08-05; UI-10 was already assigned to the v1.x sync-status polish item)*
 - [ ] **UI-12**: Webspace builder UI — pick plugin types, configure named instances, save the set as a webspace, and promote a live search into a permanent webspace filter refinable by further search *(added 2026-08-05)*
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
@@ -102,7 +102,7 @@ Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 ins
 | UI-07 | Phase 6 | Gaps Found |
 | UI-08 | Phase 6 | Gaps Found |
 | UI-09 | Phase 6 | Gaps Found |
-| UI-11 | Phase 6 | Gaps Found |
+| UI-11 | Phase 6 | Complete |
 | UI-12 | Phase 7 | Pending |
 | AGENT-01 | Phase 2 | Gaps Found |
 | AGENT-02 | Phase 1 | Complete |

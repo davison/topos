@@ -263,7 +263,7 @@ Notes:
   3. After an in-webspace search, matched terms are highlighted in the detail pane's rendered content across content variants (text, sanitized HTML, chat transcript); the stream is unaffected since it already filters to matches
   4. Scrollbars app-wide are thin and theme-matched; the stream pane's scrollbar carries date markers reflecting the visible chronology
 
-**Plans**: 7 plans (4 executed, 3 UAT gap closure pending)
+**Plans**: 7/7 plans executed
 
 Plans:
 **Wave 1**
@@ -292,7 +292,7 @@ Plans:
 
 **Wave 7** *(UAT gap closure — blocked on Wave 6: shared spec/stylesheet files)*
 
-- [ ] 06-07-PLAN.md — Rebuild the stream date-marker overlay as a real ruler: own lane, dedicated tokens at 3:1, rail and major/minor hierarchy, scroll and edge gates (UI-11, closes G-06-6)
+- [x] 06-07-PLAN.md — Rebuild the stream date-marker overlay as a real ruler: own lane, dedicated tokens at 3:1, rail and major/minor hierarchy, scroll and edge gates (UI-11, closes G-06-6)
 
 Notes:
 
@@ -356,7 +356,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Email in the Webspace | 10/10 | Complete    | 2026-08-02 |
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
-| 6. UI — Scalable Source Surface | 6/7 | In Progress|  |
+| 6. UI — Scalable Source Surface | 7/7 | In Progress|  |
 | 7. Webspace Builder UI | 0/TBD | Not started | - |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
