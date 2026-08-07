@@ -69,6 +69,19 @@
 	let filterError = $state<string | null>(null);
 	let filters = $derived(configResponse?.config.webspaces[webspace]?.filter ?? []);
 
+	// unknownConfigKeys surfaces GET /api/config's `unknown_keys` field
+	// (already computed by the kernel, previously never read by the UI —
+	// deviation, Rule 2: discovered live during the tracer checkpoint that
+	// this plan's config.Store.Save guard, by design, refuses EVERY save
+	// while config.toml carries a hand-authored key the Config struct
+	// doesn't model, anywhere in the file (D-01's lossless-rewrite
+	// prohibition) — so a pre-existing stray key silently blocks "Save as
+	// filter" with only a post-click Alert as feedback. Surfacing this
+	// proactively, before any save is attempted, is what makes that
+	// blocked state discoverable rather than looking like the button does
+	// nothing.
+	let unknownConfigKeys = $derived(configResponse?.unknown_keys ?? []);
+
 	// navGeneration guards against a stale-webspace race: SvelteKit reuses
 	// this page component instance across /w/A -> /w/B navigation (same
 	// route file, only page.params.webspace changes), so a slow in-flight
@@ -369,6 +382,7 @@
 		{filters}
 		{filterBusy}
 		{filterError}
+		{unknownConfigKeys}
 		onsavefilter={saveFilter}
 		onremovefilter={removeFilter}
 	/>

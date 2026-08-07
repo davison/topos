@@ -38,6 +38,7 @@
 		filters,
 		filterBusy,
 		filterError,
+		unknownConfigKeys,
 		onsavefilter,
 		onremovefilter
 	}: {
@@ -63,6 +64,16 @@
 		filters: string[];
 		filterBusy: boolean;
 		filterError: string | null;
+		// unknownConfigKeys is GET /api/config's `unknown_keys` list
+		// (deviation, Rule 2: discovered live during the Task 1 tracer
+		// checkpoint) — a non-empty list means config.toml already
+		// carries a hand-authored key the kernel's Config struct doesn't
+		// model, which blocks EVERY save through this UI outright (the
+		// Store.Save unknown-key guard refuses to write, D-01's
+		// lossless-rewrite prohibition). Rendered proactively, independent
+		// of any save attempt, so that state is never silently discovered
+		// only after a click appears to do nothing.
+		unknownConfigKeys: string[];
 		onsavefilter: () => void;
 		onremovefilter: (term: string) => void;
 	} = $props();
@@ -206,6 +217,23 @@
 	<h1 class="truncate text-[28px] leading-[1.2] font-semibold text-foreground" title={webspace}>
 		{webspace}
 	</h1>
+
+	<!--
+	  config.toml has a hand-authored key the kernel doesn't model (a stray
+	  table left over from a prior manual edit or migration). Store.Save's
+	  unknown-key guard refuses EVERY save while this is true, anywhere in
+	  the file — not only for this webspace — so this renders unconditionally
+	  ahead of any save attempt, rather than only surfacing once a save is
+	  clicked and rejected (the surprise a silent block would otherwise be).
+	-->
+	{#if unknownConfigKeys.length > 0}
+		<Alert variant="destructive" class="mt-3">
+			<AlertDescription>
+				config.toml has keys topos doesn't recognise ({unknownConfigKeys.join(', ')}) — fix these
+				by hand before any change made here can be saved.
+			</AlertDescription>
+		</Alert>
+	{/if}
 
 	{#if showSourceRows}
 		<!--
