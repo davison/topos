@@ -1,21 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 06-ui-scalable-source-surface
 source: [06-VERIFICATION.md]
 started: 2026-08-07T13:55:00Z
-updated: 2026-08-07T13:55:00Z
+updated: 2026-08-07T14:20:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Source chip pill geometry, hover disc, and refresh reveal (G-06-3b re-test)
-expected: |
-  The chip reads as one polished 44px pill matching the overflow trigger's height, with its
-  entire surface clickable; the refresh hover highlight is circular; a mouse click on refresh
-  no longer pins the icon after the pointer leaves; keyboard Tab still reveals it; the syncing
-  spinner is unaffected; selected-state fill is unchanged from the prior round's pass.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -31,7 +24,7 @@ a source is syncing, confirm the spinning icon stays visible regardless of point
 Re-confirm a selected chip still fills contrasting blue, identically inline and inside the
 overflow popover.
 expected: The chip reads as one polished 44px pill matching the overflow trigger's height, with its entire surface clickable; the refresh hover highlight is circular; a mouse click on refresh no longer pins the icon after the pointer leaves; keyboard Tab still reveals it; the syncing spinner is unaffected; selected-state fill is unchanged from the prior round's pass.
-result: [pending]
+result: pass
 
 ### 2. Search-term highlighting, including title-only match and WR-01 Unicode probe
 Run `make dev`, search a webspace for a word known to appear ONLY in an item's title (not its
@@ -43,14 +36,14 @@ capital İ (e.g. a title containing 'İstanbul') and confirm the highlighted spa
 covers the matched characters (06-REVIEW.md WR-01 — a client-side `toLowerCase()`-length-divergence
 bug is not yet fixed and is not caught by any existing test).
 expected: Title-only matches render a visible highlight; snippet, title and detail-pane body share one amber vocabulary; empty query renders byte-identical to pre-phase. The İ case, if exercised, should not be expected to pass — it is a known open bug, included here so it is not silently missed during UAT.
-result: [pending]
+result: pass
 
 ### 3. Selected chip fill (re-validated against new pill markup)
 Run `make dev`, click a source chip and confirm it fills with an obviously visible contrasting
 blue, with label/health-dot/refresh icon all re-toned and legible on the fill. Open the overflow
 popover and confirm a selected chip inside it reads identically to one inline.
 expected: Solid `bg-primary` selected fill, clearly visible at a glance, identical inline and in the popover.
-result: [pending]
+result: pass
 
 ### 4. Stream date-marker ruler
 Run `make dev`, open a webspace whose stream spans several dates. Confirm the ticks sit in
@@ -59,14 +52,14 @@ stronger than day boundaries, no tick is clipped at either edge, hovering shows 
 clicking jumps that date's first row to the top, the scrollbar thumb still drags, and ticks
 disappear both during a search and when the stream is too short to scroll.
 expected: The ruler reads as an intentional, polished affordance with a visible major/minor hierarchy, no edge clipping, correct overflow/search gating.
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 4
-passed: 0
+passed: 4
 issues: 0
-pending: 4
+pending: 0
 skipped: 0
 blocked: 0
 
