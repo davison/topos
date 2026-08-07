@@ -160,7 +160,7 @@
 
 	// writeFilter is the one write path both saveFilter and removeFilter go
 	// through (Task 2 of 07-01-PLAN.md: "there is no second write path"):
-	// clone the fetched config document, mutate only this webspace's
+	// snapshot the fetched config document, mutate only this webspace's
 	// filter array, putConfig({ base_hash, config }). On success replace
 	// configResponse with the response, clear filterError, and (only for
 	// a save, never a remove) clear the search box back to empty so it is
@@ -168,20 +168,47 @@
 	// filterError to the fixed copy for a hash conflict (D-03) or the
 	// kernel's own verbatim message otherwise (D-09), then refresh
 	// getConfig() so the next attempt starts from current state.
+	//
+	// Everything below (including the "config not loaded yet" guard) runs
+	// inside one try/finally so no exit from this function can be silent:
+	// a bug fixed here (07-01 tracer checkpoint, live-dev-session repro)
+	// found that `structuredClone(configResponse.config)` threw
+	// `DataCloneError` every single time, because `configResponse` is a
+	// Svelte 5 `$state` value and `.config` is therefore a deeply-reactive
+	// Proxy — `structuredClone` (the DOM/Node structured-clone algorithm,
+	// distinct from Svelte's own clone helper) unconditionally rejects any
+	// Proxy, in every engine (verified directly: `structuredClone(new
+	// Proxy({}, {}))` throws `DataCloneError` in Node and every browser).
+	// That threw *before* the `try` that wrapped only the network call, so
+	// it surfaced only as an unhandled promise rejection in the browser
+	// console — no chip, no Alert, no PUT ever left the browser. Svelte 5
+	// ships `$state.snapshot()` for exactly this: it deep-clones through
+	// its own `Object.keys`-based walk (never routes a reactive object
+	// itself through `structuredClone`) and returns a plain, non-reactive,
+	// structured-clone-safe object.
 	async function writeFilter(nextFilters: string[], clearSearchOnSuccess: boolean) {
-		if (!configResponse) return;
 		const gen = navGeneration;
-		const nextConfig = structuredClone(configResponse.config);
-		const existing = nextConfig.webspaces[webspace];
-		nextConfig.webspaces[webspace] = {
-			keywords: existing?.keywords ?? [],
-			sources: existing?.sources ?? [],
-			match: existing?.match ?? {},
-			filter: nextFilters
-		};
-
 		filterBusy = true;
 		try {
+			if (!configResponse) {
+				// Reachable in the real world: showSaveAsFilter only reads
+				// searchQuery/filters (filters defaults to [] when
+				// configResponse is still null), so the button can render
+				// and be clicked before the initial getConfig() has
+				// resolved. A bare `return` here was the other silent exit
+				// this fix closes.
+				filterError = 'Config has not finished loading yet — try again in a moment.';
+				return;
+			}
+			const nextConfig = $state.snapshot(configResponse.config);
+			const existing = nextConfig.webspaces[webspace];
+			nextConfig.webspaces[webspace] = {
+				keywords: existing?.keywords ?? [],
+				sources: existing?.sources ?? [],
+				match: existing?.match ?? {},
+				filter: nextFilters
+			};
+
 			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
 			if (gen !== navGeneration) return;
 			configResponse = res;
@@ -199,7 +226,7 @@
 					? 'Config changed on disk — review and retry.'
 					: err instanceof ApiError
 						? err.message
-						: 'Config changed on disk — review and retry.';
+						: 'Something went wrong saving the filter — check the browser console and try again.';
 			await loadConfig(gen);
 		} finally {
 			if (gen === navGeneration) filterBusy = false;
