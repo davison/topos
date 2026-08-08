@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-08T00:50:00.043Z"
+last_updated: "2026-08-08T01:18:47.980Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 44
-  completed_plans: 42
+  completed_plans: 43
   percent: 67
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-08
 
-Progress: [██████████] 95%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -93,6 +93,7 @@ Progress: [██████████] 95%
 | Phase 07 P01 | 52min | 3 tasks | 31 files |
 | Phase 07 P02 | ~2h | 3 tasks | 23 files |
 | Phase 07 P03 | ~8min | 3 tasks | 32 files |
+| Phase 07 P04 | ~1h | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-02]: In-flight sync during apply — cancel and BLOCK until the old scheduler generation fully returns before Host.Reconcile runs, relying on Coordinator.syncOne's pre-existing detached sync_runs finalize for the interrupted sync's own outcome
 - [Phase ?]: [Phase 07-02]: 07-RESEARCH.md assumption A2 confirmed for paperless/silverbullet/proton/signal — all four defer live connectivity past process startup; Proton's NewClient only validates the base_url scheme (imap/imaps), never dials
 - [Phase ?]: [Phase 07-03]: Hand-scaffolded dialog/dropdown-menu/alert-dialog overlay primitives directly against bits-ui's own type/export shape (no confirmed network access for npx shadcn-svelte add); config-edit.ts's cloneConfig uses a JSON round trip (not structuredClone/$state.snapshot) since it's a plain .ts module; last-webspace.ts pulled forward into Task 2 (Rule 3, blocking compile dependency)
+- [Phase ?]: [Phase 07-04]: AddSourceModal mounted inline in WebspaceHeader's chip row (not route-level open/onclose) — bits-ui Popover trigger/content co-location constraint plus the row's own overflow-measurement need for the + button's real DOM position
+- [Phase ?]: [Phase 07-04]: SecretField's set/unset badge reads the caller-supplied envVars snapshot synchronously, not a per-keystroke live lookup — kernel/httpapi/config.go's envVarsIn only reports on names already referenced in the persisted config, and no kernel/ files are in this plan's scope to add a live-arbitrary-name endpoint
+- [Phase ?]: [Phase 07-04]: one-step existing-instance add and chip-menu Edit-match-settings both resolve vocabulary via describePlugin against the instance's own stored config, substituting for GET /api/sources (no match_vocabulary field there today)
 
 ### Pending Todos
 
@@ -226,6 +230,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T00:50:00.034Z
-Stopped at: Completed 07-03-PLAN.md
+Last session: 2026-08-08T01:18:47.970Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None

@@ -335,7 +335,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 07-04-PLAN.md — The "+" source picker: add a configured instance, connect a new plugin type in two steps, the secret env-var field, and the chip edit menu
+- [x] 07-04-PLAN.md — The "+" source picker: add a configured instance, connect a new plugin type in two steps, the secret env-var field, and the chip edit menu
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -382,7 +382,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 3/5 | In Progress|  |
+| 7. Webspace Builder UI | 4/5 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
