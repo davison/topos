@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: "Completed 07-09-PLAN.md — closed 07-VERIFICATION.md gaps[0]: Supervisor.Apply's post-Reconcile failure branches now adopt the new generation via commitGeneration, restoring the hot-apply reliability guarantee"
-last_updated: "2026-08-08T21:48:54.390Z"
+last_updated: "2026-08-08T22:47:51.576Z"
 last_activity: 2026-08-08
-last_activity_desc: Completed 07-09-PLAN.md (gaps[0] closure)
 progress:
-  total_phases: 7
+  total_phases: 9
   completed_phases: 7
   total_plans: 49
-  completed_plans: 48
+  completed_plans: 49
+  percent: 78
 ---
 
 # Project State
@@ -28,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 9 of 9
-Status: All plans complete — pending phase verification
-Last activity: 2026-08-08 — Completed 07-09-PLAN.md (gaps[0] closure)
+Plan: 2 of 10
+Status: Ready to execute
+Last activity: 2026-08-08
 
 Progress: [██████████] 100%
 
@@ -102,6 +99,7 @@ Progress: [██████████] 100%
 | Phase 07 P07 | 22min | 2 tasks | 2 files |
 | Phase 07 P08 | ~20min | 2 tasks | 5 files |
 | Phase 07 P09 | 17min | 2 tasks | 2 files |
+| Phase 07 P10 | ~15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -212,6 +210,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-08]: editMode resets to 'connection' (not null) in resetEditSession — clearing editInstance alone already destroys the {#if} guard's subtree, which is the whole CR-02 fix mechanism; widening editMode's type would fail npm run check
 - [Phase ?]: [Phase 07-08]: edit-modal-state.ts's seedConnectionValues/seedMatchBlock return fresh objects/arrays, never aliasing the config document — deliberate divergence from prior inline seeding, load-bearing for the CR-02 regression test and for EditSourceModal's new untracked reset-on-open effect
 - [Phase ?]: [Phase 07-09]: Rolled forward (never rolled back) every post-Reconcile Apply failure branch through a shared commitGeneration site — closes gaps[0]; folded in a previously-unreported ordering defect in the D-07 index-cleanup branches
+- [Phase ?]: [Phase 07-10]: Apply's post-Reconcile region collapsed to one shared commitGeneration call and one errors.Join-based error return; cleanupRemovedInstances extracted and runs unconditionally before the match-vocabulary check, per-instance failures collected rather than returned early
 
 ### Pending Todos
 
@@ -248,6 +247,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T19:11:01.599Z
-Stopped at: Completed 07-09-PLAN.md — closed 07-VERIFICATION.md gaps[0]: Supervisor.Apply's post-Reconcile failure branches now adopt the new generation via commitGeneration, restoring the hot-apply reliability guarantee
+Last session: 2026-08-08T22:47:51.567Z
+Stopped at: Completed 07-10-PLAN.md — closed 07-VERIFICATION.md gaps[0]: D-07 index cleanup now runs unconditionally on every post-Reconcile Apply path, proven against real launched plugin subprocesses
 Resume file: None
