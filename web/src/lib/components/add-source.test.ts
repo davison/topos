@@ -167,3 +167,29 @@ describe('Step 2 submit path: exactly one putConfig call', () => {
 		).toBe(1);
 	});
 });
+
+describe('saveAnyway: CR-01 regression — resolveNewInstanceId guards every write', () => {
+	const fnBody = extractBetween(stripped, 'async function saveAnyway() {', '\n\t}');
+
+	it('calls resolveNewInstanceId( before upsertSourceInstance(, with a return between them (CR-01)', () => {
+		const guardIndex = fnBody.indexOf('resolveNewInstanceId(');
+		const writeIndex = fnBody.indexOf('upsertSourceInstance(');
+		expect(
+			guardIndex,
+			'expected saveAnyway to call resolveNewInstanceId( — 07-REVIEW.md CR-01 found this guard missing here'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			writeIndex,
+			'expected saveAnyway to call upsertSourceInstance( at all'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			guardIndex,
+			'expected the resolveNewInstanceId( guard to run strictly before upsertSourceInstance( — otherwise CR-01\'s unguarded overwrite is still reachable'
+		).toBeLessThan(writeIndex);
+		const between = fnBody.slice(guardIndex, writeIndex);
+		expect(
+			/\breturn\b/.test(between),
+			'expected a return between resolveNewInstanceId( and upsertSourceInstance( so a not-ok result cannot fall through to the write (CR-01)'
+		).toBe(true);
+	});
+});

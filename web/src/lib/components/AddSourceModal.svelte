@@ -31,6 +31,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { pluginTypeLabel } from '$lib/plugin-fields';
 	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
+	import { resolveNewInstanceId } from '$lib/instance-id';
 	import {
 		describePlugin,
 		putConfig,
@@ -120,20 +121,6 @@
 		newVocabulary = [];
 	}
 
-	// deriveInstanceId turns a typed display name into a candidate
-	// [sources.<id>] map key: lowercased, spaces/punctuation collapsed to
-	// single hyphens, trimmed. Only what the kernel structurally CANNOT
-	// express (a blank id, or one already present) is rejected here —
-	// everything else, including display-name uniqueness, is left to the
-	// kernel's own load-time validator so there is one rule set.
-	function deriveInstanceId(displayName: string): string {
-		return displayName
-			.trim()
-			.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-+|-+$/g, '');
-	}
-
 	// selectExisting reads the instance's declared match vocabulary via
 	// describePlugin, trial-launched against that instance's OWN
 	// already-stored (raw, ${VAR}-reference) connection config. This is a
@@ -206,15 +193,10 @@
 		if (!selectedPluginType || describing) return;
 
 		const displayName = (connectionValues.display_name ?? '').trim();
-		const candidateId = deriveInstanceId(displayName);
-		if (candidateId === '') {
+		const idResult = resolveNewInstanceId(config, displayName);
+		if (!idResult.ok) {
 			describeFailed = false;
-			connectError = 'Enter a display name so this instance has an id.';
-			return;
-		}
-		if (config.sources[candidateId]) {
-			describeFailed = false;
-			connectError = `An instance id "${candidateId}" already exists — choose a different display name.`;
+			connectError = idResult.message;
 			return;
 		}
 
@@ -223,7 +205,7 @@
 		connectError = null;
 		try {
 			const resp = await describePlugin({ plugin: selectedPluginType, source: connectionValues });
-			newInstanceId = candidateId;
+			newInstanceId = idResult.id;
 			newVocabulary = resp.match_vocabulary;
 			matchBlock = {};
 			step = 'match';
@@ -246,14 +228,18 @@
 	async function saveAnyway() {
 		if (!selectedPluginType || savingConnectionOnly) return;
 		const displayName = (connectionValues.display_name ?? '').trim();
-		const candidateId = deriveInstanceId(displayName);
-		if (candidateId === '') return;
+		const idResult = resolveNewInstanceId(config, displayName);
+		if (!idResult.ok) {
+			connectError = idResult.message;
+			return;
+		}
 
+		connectError = null;
 		savingConnectionOnly = true;
 		try {
-			const nextConfig = upsertSourceInstance(config, candidateId, connectionValues);
+			const nextConfig = upsertSourceInstance(config, idResult.id, connectionValues);
 			await putConfig({ base_hash: baseHash, config: nextConfig });
-			savedAnywayMessage = `Saved. Add match settings from ${displayName || candidateId}'s menu once it can connect.`;
+			savedAnywayMessage = `Saved. Add match settings from ${displayName || idResult.id}'s menu once it can connect.`;
 			step = 'connect-saved';
 			onsaved();
 		} catch (err) {
