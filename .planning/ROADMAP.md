@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 8 plans (8 executed; 07-07/07-08 closed the prior CR-01/CR-02 gaps — confirmed. Re-verification 2026-08-08 found 1 new critical gap in supervisor.Apply rollback ordering, see 07-VERIFICATION.md)
+**Plans**: 9 plans (8 executed; 07-07/07-08 closed the prior CR-01/CR-02 gaps — confirmed. Re-verification 2026-08-08 found 1 new critical gap in supervisor.Apply rollback ordering, see 07-VERIFICATION.md — 07-09 planned to close it)
 
 Plans:
 **Wave 1**
@@ -349,6 +349,10 @@ Plans:
 
 - [x] 07-07-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md CR-01/IN-01): every /agent/v1 handler reads the live config per request, so a revoked agent grant is enforced on the next request with no kernel restart
 - [x] 07-08-PLAN.md — Gap closure (07-VERIFICATION.md gaps[1], 07-REVIEW.md CR-02): closing the source edit modal ends the edit session, so a Cancelled draft can never resurface and be saved over real config
+
+**Wave 8** *(gap closure, blocked on Wave 7 completion)*
+
+- [ ] 07-09-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md post-07-07/08 CR-01): a save rejected after Host.Reconcile has already committed adopts the new generation through one shared commit site, so host, coordinator, config and scheduler never disagree and a rejected save cannot silently break a source's sync
 
 Notes:
 
