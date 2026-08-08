@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 **Wave 1**
@@ -327,7 +327,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — Hot apply: plugin host, coordinator and scheduler rebuilt in place on save; explicit Reload for hand-edits; Describe-before-persist for unconfigured plugin types
+- [x] 07-02-PLAN.md — Hot apply: plugin host, coordinator and scheduler rebuilt in place on save; explicit Reload for hand-edits; Describe-before-persist for unconfigured plugin types
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -382,7 +382,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 1/5 | In Progress|  |
+| 7. Webspace Builder UI | 2/5 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage

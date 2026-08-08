@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-08-07T23:59:31.787Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-08-08T00:33:11.811Z"
 last_activity: 2026-08-07
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 44
-  completed_plans: 40
+  completed_plans: 41
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-07 — Phase 07 execution started
 
-Progress: [████████████████████] 39/39 plans ([█████████░] 91%)
+Progress: [████████████████████] 39/39 plans ([█████████░] 93%)
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Progress: [████████████████████] 39/39 p
 | Phase 06 P07 | 32min | 3 tasks | 7 files |
 | Phase 06 P08 | 13min | 2 tasks | 4 files |
 | Phase 07 P01 | 52min | 3 tasks | 31 files |
+| Phase 07 P02 | ~2h | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-01]: assumption-delta locked at Task 1's tracer checkpoint — the running configuration is promoted to the primary noun (config.Store); WebspacesHandler/ItemHandler/SourceRefreshHandler keep a boot-time cfg snapshot as accepted debt for this plan alone (07-02 Task 2 fills the gap)
 - [Phase ?]: [Phase 07-01]: Store.Search's empty-result short circuit depends on BOTH filterTerms and rawQuery sanitizing to nothing — a filter-only call still queries and ranks by relevance rather than returning early
 - [Phase ?]: [Phase 07-01]: $state.snapshot() (not structuredClone) for cloning a fetched config document before mutation — Svelte 5's reactive Proxy unconditionally rejects structuredClone in every engine, a live tracer-checkpoint repro (d8125cf)
+- [Phase ?]: [Phase 07-02]: Apply replaces the *syncer.Coordinator wholesale on every reconcile — Supervisor itself satisfies Fetcher/HealthProber/Refresher (delegating fresh per call) rather than passing sup.Host()/sup.Coordinator() captured once into Router (Rule 1 bug, found during Task 1)
+- [Phase ?]: [Phase 07-02]: In-flight sync during apply — cancel and BLOCK until the old scheduler generation fully returns before Host.Reconcile runs, relying on Coordinator.syncOne's pre-existing detached sync_runs finalize for the interrupted sync's own outcome
+- [Phase ?]: [Phase 07-02]: 07-RESEARCH.md assumption A2 confirmed for paperless/silverbullet/proton/signal — all four defer live connectivity past process startup; Proton's NewClient only validates the base_url scheme (imap/imaps), never dials
 
 ### Pending Todos
 
@@ -223,6 +227,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-07T23:59:31.772Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-08-08T00:32:54.466Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
