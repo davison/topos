@@ -670,3 +670,103 @@ labels = ["demo"]
 		t.Error("expected the supervisor's own recorded config generation (s.cfg) to be the same pointer cfgStore.Expanded() now returns — a rejected save is state repair, not success, but the new generation must still be adopted (07-09's invariant, unweakened)")
 	}
 }
+
+// TestApply_MultipleRemovedInstances_OneCleanupFailureDoesNotAbandonTheRest
+// covers 07-VERIFICATION.md gaps[0].missing[1] — the second, related failure
+// mode in the same loop: an early instance's delete error must not abandon
+// cleanup for every later-sorted instance in the same batch, which strands
+// them permanently for the identical reason gaps[0]'s primary failure mode
+// does (s.cfg advances past the removal on this same Apply call regardless
+// of the cleanup's own outcome).
+//
+// The failure lever is the index store itself: idx.Close() is called after
+// the save and before Apply, so every DeleteSourceItems/DeleteSyncRuns call
+// returns an error. This lever is used because Supervisor.idx is a
+// concrete *index.Store, not an interface — forcing a per-instance SQL
+// failure any other way would require introducing an interface seam that is
+// out of scope for a gap repair. newTestIndex also closes the store in its
+// own t.Cleanup, which is safe because database/sql's Close is idempotent.
+func TestApply_MultipleRemovedInstances_OneCleanupFailureDoesNotAbandonTheRest(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	// "alpha" and "zulu" are both removed — their sorted order is
+	// unambiguous (alpha < zulu) and both ids are distinctive enough to
+	// assert on by substring. "keep" is the survivor.
+	cfgStore := newTestConfigStore(t, `
+[sources.alpha]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.zulu]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.keep]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["labels"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if len(sup.Host().Plugins()) != 3 {
+		t.Fatalf("expected 3 launched plugins at boot, got %d", len(sup.Host().Plugins()))
+	}
+
+	seedRemovedInstanceHistory(t, idx, ctx, "everything", "alpha")
+	seedRemovedInstanceHistory(t, idx, ctx, "everything", "zulu")
+	seedRemovedInstanceHistory(t, idx, ctx, "everything", "keep")
+
+	// next keeps only the survivor. No dangling match-block or allowlist
+	// references to either removed instance, and every match block uses
+	// only the mock plugin's declared vocabulary field ("labels") — this
+	// test must be rejected by the CLEANUP, not by the vocabulary check, so
+	// the config is otherwise entirely valid.
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"keep": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"everything": {Keywords: []string{"labels"}},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// The failure lever: close the index store so every
+	// DeleteSourceItems/DeleteSyncRuns call the cleanup makes returns an
+	// error.
+	if err := idx.Close(); err != nil {
+		t.Fatalf("idx.Close (failure lever): %v", err)
+	}
+
+	applyErr := sup.Apply(ctx)
+	if applyErr == nil {
+		t.Fatal("expected Apply to return a non-nil error — every removed instance's cleanup delete fails against a closed index store")
+	}
+
+	msg := applyErr.Error()
+	if !strings.Contains(msg, "alpha") || !strings.Contains(msg, "zulu") {
+		t.Fatalf("expected the error to name BOTH removed instances — a message naming only the first sorted instance means the loop still returns on its first failure and every later instance in the batch is being abandoned with no retry path, since s.cfg advances on this same call. Got: %v", applyErr)
+	}
+	if !strings.Contains(msg, "delete items for removed source") {
+		t.Errorf("expected the error to carry the \"delete items for removed source\" phrasing, confirming the failures came from the cleanup rather than from anywhere else. Got: %v", applyErr)
+	}
+
+	plugins := sup.Host().Plugins()
+	if len(plugins) != 1 || plugins[0].Name() != "keep" {
+		t.Fatalf("expected only the survivor \"keep\" to remain launched after Apply (pinning that Reconcile committed and the cleanup was genuinely reached, so this test cannot pass vacuously on an error raised before the cleanup) — got %+v", plugins)
+	}
+}

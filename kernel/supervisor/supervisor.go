@@ -207,17 +207,24 @@ func (s *Supervisor) Shutdown() {
 	}
 }
 
-// commitGeneration is the single site every branch of Apply that adopts cfg
-// as the new running generation goes through (07-09-PLAN.md, closing
-// 07-VERIFICATION.md gaps[0]). It performs exactly three steps in exactly
-// this order: install the coordinator built over the host's CURRENT
-// plugin set, record cfg as the generation s.cfg reflects, then start the
-// scheduler against cfg. The order is load-bearing: startScheduler reads
-// s.coord at call time into the syncer.Scheduler value it constructs, so a
-// coordinator installed AFTER startScheduler runs would be invisible to
-// the goroutine already launched — the same class of defect as gaps[0]
-// itself, on a different seam. Caller must hold s.mu (the same convention
-// startScheduler and stopScheduler already state).
+// commitGeneration is reached from exactly one place in Apply — the single
+// shared commit site the whole post-Reconcile region funnels through,
+// whether that region ends in success or in either kind of failure it can
+// return (07-10-PLAN.md; originally 07-09-PLAN.md, closing
+// 07-VERIFICATION.md gaps[0], when Apply still had four separate call
+// sites). NewSupervisor's own inline boot sequence deliberately does not
+// use it: at boot s.host, s.coord and s.cfg are being set for the first
+// time, not adopted as a new generation over a running one, so there is no
+// "single site every branch funnels through" property to preserve there.
+// commitGeneration performs exactly three steps in exactly this order:
+// install the coordinator built over the host's CURRENT plugin set, record
+// cfg as the generation s.cfg reflects, then start the scheduler against
+// cfg. The order is load-bearing: startScheduler reads s.coord at call
+// time into the syncer.Scheduler value it constructs, so a coordinator
+// installed AFTER startScheduler runs would be invisible to the goroutine
+// already launched — the same class of defect as gaps[0] itself, on a
+// different seam. Caller must hold s.mu (the same convention startScheduler
+// and stopScheduler already state).
 func (s *Supervisor) commitGeneration(cfg *config.Config) {
 	s.coord = newCoordinator(s.idx, cfg, s.host)
 	s.cfg = cfg
@@ -263,8 +270,8 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 //     leaves the prior set fully intact. Apply keeps the OLD generation:
 //     it restarts the scheduler against oldCfg, and the running kernel is
 //     simply unchanged.
-//   - After Reconcile commits (every failure beneath it: the
-//     match-vocabulary check, and the two D-07 index-cleanup steps):
+//   - After Reconcile commits (every failure beneath it: the D-07
+//     removed-instance index cleanup, and the match-vocabulary check):
 //     there is no undo. Reconcile has already mutated the launched
 //     plugin set in place — the replaced instance's old subprocess is
 //     killed and dead by the time Reconcile returns nil — and the config
@@ -273,12 +280,31 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 //     the file on disk and with every other per-request
 //     cfgStore.Expanded() read elsewhere in the kernel. The only
 //     self-consistent state left available is the NEW generation, so
-//     every post-Reconcile failure branch adopts newCfg through
-//     commitGeneration and still returns its error unchanged. Re-running
-//     Reconcile against oldCfg.Sources as a rollback is deliberately
-//     rejected: a rollback that performs real subprocess launches can
-//     itself fail, leaving the kernel strictly worse off than the defect
-//     it was meant to fix, with no third recourse.
+//     the whole post-Reconcile region adopts newCfg through the single
+//     commitGeneration call and still returns its error unchanged.
+//     Re-running Reconcile against oldCfg.Sources as a rollback is
+//     deliberately rejected: a rollback that performs real subprocess
+//     launches can itself fail, leaving the kernel strictly worse off
+//     than the defect it was meant to fix, with no third recourse.
+//
+//     The D-07 removed-instance index cleanup (cleanupRemovedInstances)
+//     is part of this regime and therefore runs on EVERY path through
+//     it, not only the success path (07-VERIFICATION.md 2026-08-08
+//     gaps[0]; 07-REVIEW.md's post-07-09 CR-01): once Reconcile has
+//     returned nil the removed instances are already gone from the host,
+//     so their index rows are the only trace left, and gating their
+//     deletion on a check that runs later — such as the match-vocabulary
+//     check immediately below — strands them permanently, because this
+//     same call also advances s.cfg past the removal, after which
+//     removedInstances can never again compute them as removed and no
+//     retry path exists (T-07-13). A per-instance cleanup failure is
+//     collected rather than returned early, so one instance's failure
+//     cannot abandon the rest of the batch. Every collected cleanup
+//     failure is joined via errors.Join with the match-vocabulary error
+//     into the single error Apply returns — vocabulary error first
+//     (D-09: the operator-actionable message must reach the UI verbatim
+//     and lead) — so a rejection and a cleanup fault are both reported
+//     rather than one silently masking the other.
 //
 // Whichever branch Apply exits by, s.host, s.coord, s.cfg and the running
 // scheduler generation always reflect ONE AND THE SAME config generation
@@ -305,6 +331,9 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 // level to fall back to either.
 //
 // See 07-09-PLAN.md for the fix that closed 07-VERIFICATION.md gaps[0].
+// See 07-10-PLAN.md for the fix that closed 07-VERIFICATION.md's
+// 2026-08-08 gaps[0] (07-REVIEW.md's post-07-09 CR-01) — the D-07 cleanup
+// had regressed to running only on the success path.
 func (s *Supervisor) Apply(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
