@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
@@ -54,7 +55,11 @@ const schemaVersion = 1
 // ConfigSaveHandler and ConfigReloadHandler call after a successful
 // config.Store mutation, so a save or reload reconfigures the running
 // kernel in the same request rather than only the file (D-06/D-08).
-func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier) chi.Router {
+// pluginsDir and logger (07-02-PLAN.md Task 3) feed PluginTypesHandler
+// and DescribePluginHandler — the kernel-side half of the "+" chip
+// picker's plugin-type discovery and trial-launch-then-Describe
+// sequencing (D-11 step 1 -> step 2).
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, pluginsDir string, logger hclog.Logger) chi.Router {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
@@ -74,6 +79,12 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// hand-edited file reaches the running kernel; there is deliberately
 	// no file watcher.
 	r.Post("/api/config/reload", ConfigReloadHandler(cfgStore, applier))
+	// GET /api/config/plugin-types and POST /api/config/describe-plugin
+	// (D-11 step 1 -> step 2): the kernel-side half of the "+" chip
+	// picker's plugin-type discovery and trial-launch-then-Describe
+	// sequencing — see kernel/httpapi/config.go.
+	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
+	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, logger))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
 	// same store/cfgStore/fetcher/prober. Every /api/* route above is

@@ -11,6 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
@@ -18,11 +20,11 @@ import (
 )
 
 func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber) http.Handler {
-	// Rule 3 (07-01-PLAN.md Task 1, extended 07-02-PLAN.md Task 1): Router
-	// now takes a *config.Store and an Applier — every call site in this
-	// file still builds a *config.Config by hand, so wrap it here rather
-	// than touching each one.
-	return Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{})
+	// Rule 3 (07-01-PLAN.md Task 1, extended 07-02/07-03-PLAN.md Task 1):
+	// Router now takes a *config.Store, an Applier, a pluginsDir and a
+	// logger — every call site in this file still builds a *config.Config
+	// by hand, so wrap it here rather than touching each one.
+	return Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 }
 
 // agentTestItem builds a test item whose Source (instance id) and

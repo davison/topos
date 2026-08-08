@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
@@ -39,7 +41,7 @@ func liveConfigTestRouter(t *testing.T, contents string) (http.Handler, *config.
 		t.Fatalf("config.NewStore: %v", err)
 	}
 	store := newTestStoreForHTTP(t)
-	router := Router(store, cfgStore, &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{})
+	router := Router(store, cfgStore, &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 	return router, cfgStore, store
 }
 

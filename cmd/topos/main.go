@@ -177,12 +177,13 @@ func runServe() error {
 	}
 	defer sup.Shutdown()
 
-	// sup itself satisfies Fetcher/HealthProber/Refresher (delegating to
-	// its CURRENT host/coordinator on every call) — never sup.Host()/
-	// sup.Coordinator() called once here, which would freeze Router's
-	// refresher in particular at the coordinator Apply later replaces
-	// wholesale (see Supervisor.Refresh's doc comment).
-	router := httpapi.Router(store, cfgStore, sup, sup, sup, sup)
+	// sup itself satisfies Fetcher/HealthProber/Refresher/Applier
+	// (delegating to its CURRENT host/coordinator on every call) — never
+	// sup.Host()/sup.Coordinator() called once here, which would freeze
+	// Router's refresher in particular at the coordinator Apply later
+	// replaces wholesale (see Supervisor.Refresh's doc comment). pdir and
+	// logger feed the plugin-type discovery/describe routes.
+	router := httpapi.Router(store, cfgStore, sup, sup, sup, sup, pdir, logger)
 
 	listen := cfg.Server.Listen
 	if !isLoopback(listen) {

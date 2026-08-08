@@ -13,18 +13,22 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
 )
@@ -359,7 +363,8 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 
 	want := map[allowedNonGetRoute]bool{
 		{"Put", "/api/config"}:                  true,
-		{"Post", "/api/config/reload"}:           true,
+		{"Post", "/api/config/reload"}:          true,
+		{"Post", "/api/config/describe-plugin"}: true,
 		{"Post", "/api/sources/{name}/refresh"}: true,
 		{"Post", "/api/sync"}:                   true,
 	}
@@ -409,10 +414,19 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 
 // TestConfigHandlersGuard_NoPluginCallOtherThanDescribe is the AST second
 // half of success criterion 4 / T-07-05: parses kernel/httpapi/config.go's
-// source and asserts it imports no plugin-facing package and references
-// no Match/Fetch call — the config write path must never grow a route
-// into a plugin RPC beyond the existing read-only Describe path, which
-// lives entirely outside this file.
+// source and asserts it references no Match/Fetch call anywhere — the
+// config write path must never grow a route into a plugin RPC beyond the
+// existing read-only Describe path (07-02-PLAN.md Task 3's
+// DescribePluginType, defined entirely in kernel/pluginhost/host.go, not
+// this file).
+//
+// Unlike 07-01, this guard no longer forbids config.go from importing
+// kernel/pluginhost outright — Task 3 makes that import necessary
+// (DiscoverBinaries/DescribePluginType for the "+" chip picker). The
+// import itself is no longer the boundary this test polices; what
+// config.go's OWN source calls is. A direct import of the generated
+// protobuf/sdk package remains forbidden: config.go has no legitimate
+// reason to construct an RPC request/response type itself.
 func TestConfigHandlersGuard_NoPluginCallOtherThanDescribe(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "config.go", nil, parser.ImportsOnly|parser.ParseComments)
@@ -424,8 +438,8 @@ func TestConfigHandlersGuard_NoPluginCallOtherThanDescribe(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		if strings.Contains(path, "pluginhost") || strings.Contains(path, "/sdk/") {
-			t.Errorf("config.go imports %q — the config handlers must never reach a plugin (success criterion 4); the one existing exception (read-only Describe) lives outside this file", path)
+		if strings.Contains(path, "/sdk/") {
+			t.Errorf("config.go imports %q — the config handlers must never construct a plugin RPC type directly (success criterion 4)", path)
 		}
 	}
 
@@ -441,6 +455,49 @@ func TestConfigHandlersGuard_NoPluginCallOtherThanDescribe(t *testing.T) {
 		}
 		if forbidden[sel.Sel.Name] {
 			t.Errorf("config.go references %q — the config write path must never reach a plugin's Match or Fetch RPC (success criterion 4, T-07-05)", sel.Sel.Name)
+		}
+		return true
+	})
+}
+
+// TestDescribePluginTypeGuard_ReachesNoRPCBeyondDescribe is the AST proof
+// pinning T-07-10/PLUG-02: kernel/pluginhost.DescribePluginType's own
+// function body (not launch(), which it wraps) must reference no
+// Match/Fetch selector — the trial-launch path must never become a
+// general plugin-invocation surface for request-supplied input. Parses
+// kernel/pluginhost/host.go directly (a sibling package directory), per
+// 07-02-PLAN.md Task 3's own declared test location for this assertion.
+func TestDescribePluginTypeGuard_ReachesNoRPCBeyondDescribe(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "../pluginhost/host.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse kernel/pluginhost/host.go: %v", err)
+	}
+
+	var fn *ast.FuncDecl
+	ast.Inspect(f, func(n ast.Node) bool {
+		d, ok := n.(*ast.FuncDecl)
+		if !ok {
+			return true
+		}
+		if d.Name.Name == "DescribePluginType" {
+			fn = d
+			return false
+		}
+		return true
+	})
+	if fn == nil {
+		t.Fatal("DescribePluginType not found in kernel/pluginhost/host.go")
+	}
+
+	forbidden := map[string]bool{"Fetch": true, "Match": true}
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if forbidden[sel.Sel.Name] {
+			t.Errorf("DescribePluginType references %q — the trial-launch path must reach no RPC beyond the Describe call it inherits from launch() (PLUG-02, T-07-10)", sel.Sel.Name)
 		}
 		return true
 	})
@@ -594,4 +651,142 @@ func TestRoutesGuard_NoLocalConfigSnapshot(t *testing.T) {
 		}
 		return true
 	})
+}
+
+// newPluginTypesTestRouter mounts only the two plugin-discovery routes —
+// PluginTypesHandler and DescribePluginHandler are pure functions of
+// pluginsDir, needing no config.Store or index.Store at all.
+func newPluginTypesTestRouter(pluginsDir string) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
+	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, hclog.NewNullLogger()))
+	return r
+}
+
+// TestPluginTypesHandler_ReturnsSortedMockFreeList proves GET
+// /api/config/plugin-types surfaces exactly the discovered, non-excluded
+// binaries, sorted — the same guarantee kernel/pluginhost.DiscoverBinaries
+// itself pins, exercised here through the real HTTP route.
+func TestPluginTypesHandler_ReturnsSortedMockFreeList(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"topos-plugin-silverbullet", "topos-plugin-mock", "topos-plugin-paperless"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o755); err != nil {
+			t.Fatalf("write fixture %s: %v", name, err)
+		}
+	}
+	router := newPluginTypesTestRouter(dir)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config/plugin-types", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp pluginTypesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := []string{"topos-plugin-paperless", "topos-plugin-silverbullet"}
+	if len(resp.PluginTypes) != len(want) {
+		t.Fatalf("expected %v, got %v", want, resp.PluginTypes)
+	}
+	for i := range want {
+		if resp.PluginTypes[i] != want[i] {
+			t.Fatalf("expected sorted, mock-free %v, got %v", want, resp.PluginTypes)
+		}
+	}
+}
+
+// TestDescribePluginHandler_UnknownBinaryReturns404WithoutExecuting proves
+// T-07-09: a request naming a binary DiscoverBinaries does not return is
+// refused 404 plugin_binary_not_found — directory listing, never the
+// caller-supplied name, is the authority over what may be launched.
+func TestDescribePluginHandler_UnknownBinaryReturns404WithoutExecuting(t *testing.T) {
+	dir := t.TempDir() // empty — nothing discoverable at all
+	router := newPluginTypesTestRouter(dir)
+
+	body := `{"plugin":"topos-plugin-does-not-exist","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assertErrorEnvelope(t, rec, http.StatusNotFound, "plugin_binary_not_found")
+}
+
+// buildPaperlessPluginDir builds the repo's real paperless plugin binary
+// fresh, once per test binary run, into a shared temp directory — the
+// acceptance criterion "against the repo's own built plugins" (07-02-
+// PLAN.md Task 3) requires a genuine, non-Signal, non-mock plugin type,
+// and paperless is the simplest of the three remaining real types (no
+// username/webmail fields silverbullet/proton also need beyond
+// base_url/token).
+var (
+	paperlessPluginDirOnce sync.Once
+	paperlessPluginDir     string
+	paperlessPluginDirErr  error
+)
+
+func buildPaperlessPluginDir(t *testing.T) string {
+	t.Helper()
+	paperlessPluginDirOnce.Do(func() {
+		out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/davison/topos").Output()
+		if err != nil {
+			paperlessPluginDirErr = fmt.Errorf("resolve module root: %w", err)
+			return
+		}
+		root := strings.TrimSpace(string(out))
+
+		dir, err := os.MkdirTemp("", "topos-httpapi-describe-test-*")
+		if err != nil {
+			paperlessPluginDirErr = err
+			return
+		}
+
+		bin := filepath.Join(dir, "topos-plugin-paperless")
+		cmd := exec.Command("go", "build", "-o", bin, "./plugins/paperless")
+		cmd.Dir = root
+		if buildOut, err := cmd.CombinedOutput(); err != nil {
+			paperlessPluginDirErr = fmt.Errorf("build paperless plugin: %w\n%s", err, buildOut)
+			return
+		}
+
+		paperlessPluginDir = dir
+	})
+	if paperlessPluginDirErr != nil {
+		t.Fatalf("build paperless plugin fixture: %v", paperlessPluginDirErr)
+	}
+	return paperlessPluginDir
+}
+
+// TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary is
+// the acceptance criterion's own "against the repo's own built plugins"
+// proof: paperless's Describe-declared match_vocabulary (["tags"]) comes
+// back from present-but-unverified connection fields — DescribePluginType
+// never opens a live connection to base_url before Describe answers
+// (plugins/paperless/main.go only checks field presence) — and, since
+// this handler has no config.Store dependency at all, there is
+// structurally no [sources.*] block it could ever write.
+func TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary(t *testing.T) {
+	dir := buildPaperlessPluginDir(t)
+	router := newPluginTypesTestRouter(dir)
+
+	body := `{"plugin":"topos-plugin-paperless","source":{"base_url":"http://paperless.example.test","token":"unverified"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp describePluginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.SourceType != "paperless" {
+		t.Errorf("expected source_type %q, got %q", "paperless", resp.SourceType)
+	}
+	if len(resp.MatchVocabulary) != 1 || resp.MatchVocabulary[0] != "tags" {
+		t.Errorf("expected match_vocabulary [\"tags\"], got %v", resp.MatchVocabulary)
+	}
 }

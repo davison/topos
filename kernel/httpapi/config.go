@@ -9,7 +9,10 @@ import (
 	"reflect"
 	"regexp"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // Applier is the minimal apply-after-save surface ConfigSaveHandler and
@@ -218,5 +221,111 @@ func ConfigReloadHandler(cfgStore *config.Store, applier Applier) http.HandlerFu
 		}
 
 		WriteJSON(w, http.StatusOK, toConfigResponse(cfgStore))
+	}
+}
+
+// pluginTypesResponse is GET /api/config/plugin-types's response: the
+// plugin binaries actually present on disk (pluginhost.DiscoverBinaries),
+// sorted, excluding the mock reference fixture — never a built-in table
+// of known plugin types.
+type pluginTypesResponse struct {
+	SchemaVersion int      `json:"schema_version"`
+	PluginTypes   []string `json:"plugin_types"`
+}
+
+// PluginTypesHandler serves GET /api/config/plugin-types — the kernel
+// half of D-11's "+" chip picker's "New <plugin type>…" list. Only the
+// kernel process can see the plugins/ directory on the desktop machine's
+// filesystem; the browser has no other way to learn which plugin types
+// are installed.
+func PluginTypesHandler(pluginsDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		names, err := pluginhost.DiscoverBinaries(pluginsDir)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		WriteJSON(w, http.StatusOK, pluginTypesResponse{SchemaVersion: schemaVersion, PluginTypes: names})
+	}
+}
+
+// describePluginRequest is POST /api/config/describe-plugin's request
+// body: the plugin binary name (must be a member of
+// pluginhost.DiscoverBinaries' own result set — see DescribePluginHandler)
+// and the connection fields the operator has typed into step 1 of the
+// "New <plugin type>…" modal, not yet persisted anywhere.
+type describePluginRequest struct {
+	Plugin string        `json:"plugin"`
+	Source config.Source `json:"source"`
+}
+
+// describePluginResponse is POST /api/config/describe-plugin's response:
+// the three Describe-derived facts step 2 of the modal needs to build its
+// match-vocabulary-driven form. No connection field from the request is
+// ever echoed back here (T-07-10) — only source_type, the plugin KIND's
+// own display name, and its declared match vocabulary.
+type describePluginResponse struct {
+	SchemaVersion     int      `json:"schema_version"`
+	SourceType        string   `json:"source_type"`
+	PluginDisplayName string   `json:"plugin_display_name"`
+	MatchVocabulary   []string `json:"match_vocabulary"`
+}
+
+// DescribePluginHandler serves POST /api/config/describe-plugin (D-11
+// step 1 -> step 2): trial-launches the named plugin binary against the
+// just-submitted, not-yet-persisted connection fields, calls its Describe
+// RPC, and kills the subprocess before this handler returns — writing
+// nothing to disk and registering nothing on the running kernel's plugin
+// host (see pluginhost.DescribePluginType's own doc comment).
+//
+// The requested plugin MUST be a member of pluginhost.DiscoverBinaries'
+// own result set, checked BEFORE anything is executed (T-07-09): a
+// request naming an arbitrary binary/path is refused 404
+// plugin_binary_not_found and never reaches exec.Command — directory
+// listing, never a caller-supplied path, is the authority over what may
+// be launched.
+func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req describePluginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			WriteError(w, http.StatusBadRequest, "invalid_request", "request body is not valid JSON: "+err.Error())
+			return
+		}
+
+		available, err := pluginhost.DiscoverBinaries(pluginsDir)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		known := false
+		for _, name := range available {
+			if name == req.Plugin {
+				known = true
+				break
+			}
+		}
+		if !known {
+			WriteError(w, http.StatusNotFound, "plugin_binary_not_found", "plugin \""+req.Plugin+"\" is not a discovered plugin binary")
+			return
+		}
+
+		// The submitted source's Plugin field is authoritative from the
+		// validated req.Plugin value, never trusted verbatim from the
+		// request body's nested source object — the two could otherwise
+		// disagree.
+		req.Source.Plugin = req.Plugin
+
+		info, err := pluginhost.DescribePluginType(r.Context(), pluginsDir, req.Source, logger)
+		if err != nil {
+			WriteError(w, http.StatusBadGateway, "plugin_describe_failed", err.Error())
+			return
+		}
+
+		WriteJSON(w, http.StatusOK, describePluginResponse{
+			SchemaVersion:     schemaVersion,
+			SourceType:        info.SourceType,
+			PluginDisplayName: info.PluginDisplayName,
+			MatchVocabulary:   info.MatchVocabulary,
+		})
 	}
 }

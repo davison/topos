@@ -603,6 +603,107 @@ A live search AND-combines with the saved filter stack rather than
 replacing it — a further search always refines within the saved filter.
 See `config.example.toml` for the field's own worked documentation.
 
+### `POST /api/config/reload`
+
+Re-reads `config.toml` from disk through the **identical** validate-then-
+apply path a `PUT /api/config` save uses (`D-08`) — the only way a
+hand-edited config file reaches the running kernel, since this API has no
+file watcher. Takes no request body.
+
+**On success:** `200` with the identical `configResponse` shape
+`GET`/`PUT /api/config` return — the just-reloaded document, its new hash,
+`env_vars` and `unknown_keys`.
+
+**On failure:** `422 config_invalid`, carrying the loader's own error
+message verbatim, and the kernel's previously running configuration is
+left **completely untouched** — the same file-content hash, the same raw
+and expanded documents, the same launched plugins. A bad hand-edit can
+never kill the kernel by way of this route; a subsequent `GET /api/config`
+after a failed reload returns exactly what it would have returned before
+the reload was attempted.
+
+```
+$ curl -s -X POST http://127.0.0.1:7777/api/config/reload | jq
+{ "schema_version": 1, "hash": "9b7e04aa...", "config": { "...": "..." }, "env_vars": { "...": "..." }, "unknown_keys": [] }
+```
+
+An apply failure after a successful reload (the file was valid, but the
+running kernel could not fully reconcile plugin subprocesses against it)
+maps to `500 apply_failed` — see the error-code table below; retry the
+same route once the underlying cause (e.g. a plugin binary temporarily
+missing) is fixed.
+
+### `GET /api/config/plugin-types`
+
+The plugin binaries actually installed in the kernel's configured plugins
+directory — the kernel side of the webspace builder's "+" chip picker's
+"New <plugin type>…" list (`D-11`). Only the kernel process can see this
+directory on the desktop machine's filesystem; there is no built-in table
+of known plugin types anywhere (`docs/plugin-contract.md`'s own `D-05`
+discipline, extended here to discovery).
+
+```
+$ curl -s http://127.0.0.1:7777/api/config/plugin-types | jq
+{ "schema_version": 1, "plugin_types": ["topos-plugin-paperless", "topos-plugin-proton", "topos-plugin-silverbullet"] }
+```
+
+`plugin_types` is sorted and never includes `topos-plugin-mock` — the
+developer/reference fixture PLUG-05's third-party-implementer proof
+builds against, deliberately excluded from the picker so a real
+deployment can never accidentally enable a fixed set of fake demo items.
+
+### `POST /api/config/describe-plugin`
+
+Trial-launches a plugin binary against **just-submitted, not-yet-
+persisted** connection fields, calls its read-only `Describe` RPC, and
+kills the subprocess before this route returns — the kernel half of the
+webspace builder's two-step "New <plugin type>…" modal (`D-11` step 1 ->
+step 2): step 1 collects connection fields; this route answers what match
+fields step 2's form should offer, **before anything is written to
+`config.toml`**.
+
+**Request body:**
+
+```json
+{
+  "plugin": "topos-plugin-paperless",
+  "source": { "base_url": "https://paperless.example.lan", "token": "unverified-but-present" }
+}
+```
+
+`plugin` MUST be a member of `GET /api/config/plugin-types`'s own result
+set — a request naming any other value is refused `404
+plugin_binary_not_found` **before anything is executed**: directory
+listing, never a caller-supplied name, is the authority over what may be
+launched (`T-07-09`). `source`'s connection fields need only be
+**present**, not working — every plugin type defers live connectivity
+past its own startup, so a placeholder token or an unreachable
+`base_url` still reaches `Describe` (verified against all four non-Signal
+plugin types; see `07-02-SUMMARY.md`).
+
+**On success:** `200` with the plugin kind's own facts — never anything
+from the request body echoed back:
+
+```
+$ curl -s -X POST http://127.0.0.1:7777/api/config/describe-plugin \
+    -H 'Content-Type: application/json' \
+    -d '{"plugin":"topos-plugin-paperless","source":{"base_url":"https://paperless.example.lan","token":"unverified"}}' | jq
+{ "schema_version": 1, "source_type": "paperless", "plugin_display_name": "paperless-ngx", "match_vocabulary": ["tags"] }
+```
+
+**This route persists nothing, registers nothing, and reaches no RPC
+beyond `Describe`.** No `[sources.*]` block is added to `config.toml` by
+this call, the trial-launched subprocess is never added to the running
+kernel's plugin host, and `pluginhost.DescribePluginType`'s own body is
+pinned by an AST test to reach no `Match`/`Fetch` call (`T-07-10`,
+`PLUG-02`) — the trial-launch path can never become a general
+plugin-invocation surface for request-supplied input.
+
+**Failure modes:** `404 plugin_binary_not_found` (above), or `502
+plugin_describe_failed` when the trial launch or the `Describe` call
+itself fails (e.g. a malformed `base_url` scheme) — carrying the kernel's
+own error text so the modal can show it beside its "Save anyway" fallback.
+
 ## The `/agent/v1` namespace (`AGENT-01`)
 
 `/agent/v1/*` mirrors the `/api/*` routes above under **default-deny,
@@ -764,7 +865,10 @@ namespace", above).
 | `invalid_request` | 400 | `PUT /api/config` | The request body is not valid JSON, or is missing the `config` field. |
 | `config_changed_on_disk` | 409 | `PUT /api/config` | `base_hash` no longer matches `config.toml`'s current on-disk hash — someone else (another browser tab, a hand-edit, a `topos` CLI run) saved since you last read it. Nothing is written; re-`GET /api/config` and retry. |
 | `config_has_unknown_keys` | 409 | `PUT /api/config` | `config.toml` carries a TOML key or table the `Config` struct doesn't model. The kernel refuses to write a canonical rewrite that would silently drop it — the message names the offending key(s); fix them by hand before any UI save can succeed. |
-| `config_invalid` | 422 | `PUT /api/config` | The submitted config fails the same `(*config.Config).Validate` a hand-edited file must pass at load time. The message is the validator's own error string, verbatim. |
+| `config_invalid` | 422 | `PUT /api/config`, `POST /api/config/reload` | The submitted (or reloaded) config fails the same `(*config.Config).Validate` a hand-edited file must pass at load time. The message is the validator's own error string, verbatim. On a failed reload, the previously running configuration is left completely untouched. |
+| `apply_failed` | 500 | `PUT /api/config`, `POST /api/config/reload` | The file was written/reloaded and is now the kernel's config-of-record, but the running kernel (plugin host, coordinator, scheduler) could not fully reconcile against it — never a silent `200`. Retry `POST /api/config/reload`. |
+| `plugin_binary_not_found` | 404 | `POST /api/config/describe-plugin` | The named `plugin` is not a member of `GET /api/config/plugin-types`'s own result set — refused before anything is executed. |
+| `plugin_describe_failed` | 502 | `POST /api/config/describe-plugin` | The trial launch or its `Describe` call failed (e.g. a malformed `base_url` scheme) — the kernel's own error text, so the modal can show it beside its "Save anyway" fallback. |
 | `internal_error` | 500 | any route | An unexpected kernel-side failure (e.g. the local index file itself is unreadable) — not a source or plugin problem. |
 
 ## What is not here yet

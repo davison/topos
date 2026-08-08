@@ -313,6 +313,43 @@ func (h *Host) Plugins() []*Plugin {
 	return h.plugins
 }
 
+// DescribeInfo is the three Describe-derived facts the "+" chip picker's
+// two-step modal needs to build a match-vocabulary-driven form for a
+// plugin type that has no configured instance yet (D-11 step 1 -> step 2,
+// 07-02-PLAN.md Task 3).
+type DescribeInfo struct {
+	SourceType        string
+	PluginDisplayName string
+	MatchVocabulary   []string
+}
+
+// DescribePluginType trial-launches src (a config.Source naming the
+// plugin binary to run, submitted but not yet persisted anywhere) under a
+// fixed, non-persisted instance name, calls its Describe RPC, and kills
+// the subprocess before returning — writing nothing to disk and
+// registering nothing on any *Host (D-11 step 1 -> step 2). It reuses the
+// existing unexported launch() verbatim (the same binary-stat, handshake,
+// dispense and Describe-call sequence Discover already performs per
+// configured instance) rather than duplicating any of it, and calls no
+// RPC beyond the one Describe call launch() already makes — the trial-
+// launch path must never become a general plugin-invocation surface for
+// request-supplied input (PLUG-02, T-07-10); see
+// kernel/httpapi/config_test.go's AST guard pinning exactly this over
+// this function's own body.
+func DescribePluginType(ctx context.Context, pluginsDir string, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
+	p, err := launch(ctx, pluginsDir, "__trial__", src, logger)
+	if err != nil {
+		return DescribeInfo{}, fmt.Errorf("pluginhost: trial-launch for describe: %w", err)
+	}
+	defer p.Kill()
+
+	return DescribeInfo{
+		SourceType:        p.SourceType(),
+		PluginDisplayName: p.PluginDisplayName(),
+		MatchVocabulary:   p.MatchVocabulary(),
+	}, nil
+}
+
 // SourceHealth is one plugin's live reachability probe result, keyed to
 // its config name and Describe-learned identity. 02-02-PLAN.md's D-08:
 // this is a liveness signal only — last-sync time and last-error are

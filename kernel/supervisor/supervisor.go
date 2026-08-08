@@ -46,7 +46,7 @@ type Supervisor struct {
 	mu     sync.Mutex // serializes Apply calls — never two applies in flight together
 	host   *pluginhost.Host
 	coord  *syncer.Coordinator
-	cfg    *config.Config    // the config.Config the currently running host/coord/scheduler set was built from
+	cfg    *config.Config // the config.Config the currently running host/coord/scheduler set was built from
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the CURRENT scheduler generation's Run has fully returned
 }
