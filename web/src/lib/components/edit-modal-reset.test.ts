@@ -130,3 +130,57 @@ describe('CR-02: the other entry point (Manage sources…) still clears its own 
 		).toBe(true);
 	});
 });
+
+describe('CR-02: EditSourceModal has exactly one seeding site plus an untracked reset-on-open effect', () => {
+	it('imports untrack from svelte and both helpers from $lib/edit-modal-state', () => {
+		expect(
+			strippedEditModal.includes("import { untrack } from 'svelte';"),
+			'expected EditSourceModal.svelte to import untrack from svelte for the reset-on-open effect'
+		).toBe(true);
+		expect(
+			strippedEditModal.includes(
+				"import { seedConnectionValues, seedMatchBlock } from '$lib/edit-modal-state';"
+			),
+			'expected EditSourceModal.svelte to import both seeding helpers from $lib/edit-modal-state'
+		).toBe(true);
+	});
+
+	it('each helper name appears exactly twice — once in a $state initialiser, once in the reset-on-open effect', () => {
+		const seedConnectionCalls = strippedEditModal.match(/seedConnectionValues\(/g) ?? [];
+		const seedMatchCalls = strippedEditModal.match(/seedMatchBlock\(/g) ?? [];
+		expect(
+			seedConnectionCalls.length,
+			'expected exactly 2 call sites for seedConnectionValues( — a third seeding site must never appear unnoticed, and the two existing sites (initialiser + effect) must never drift apart'
+		).toBe(2);
+		expect(
+			seedMatchCalls.length,
+			'expected exactly 2 call sites for seedMatchBlock( — a third seeding site must never appear unnoticed, and the two existing sites (initialiser + effect) must never drift apart'
+		).toBe(2);
+	});
+
+	it('the reset-on-open effect wraps its seeding calls in untrack, with untrack( appearing before the first helper call', () => {
+		const effectBody = extractBetween(strippedEditModal, '$effect(() => {', '\n\t});');
+		const untrackIndex = effectBody.indexOf('untrack(');
+		const firstHelperIndex = effectBody.indexOf('seedConnectionValues(');
+		expect(untrackIndex, 'expected the reset-on-open effect to call untrack(...)').toBeGreaterThanOrEqual(0);
+		expect(
+			firstHelperIndex,
+			'expected the reset-on-open effect to call seedConnectionValues(...)'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			untrackIndex < firstHelperIndex,
+			'a tracked re-seed would wipe the user\'s in-progress typing on any parent config refresh — the seeding calls must sit inside the untracked region, not before it'
+		).toBe(true);
+	});
+
+	it('contains zero occurrences of the old inline seeding expressions it used to hold', () => {
+		expect(
+			strippedEditModal.includes('config.sources[instance] ??'),
+			'expected the old inline connectionValues seeding expression to be gone — edit-modal-state.ts is now the only seeding site'
+		).toBe(false);
+		expect(
+			strippedEditModal.includes('config.webspaces[webspace]?.match?.[instance]'),
+			'expected the old inline matchBlock seeding expression to be gone — edit-modal-state.ts is now the only seeding site'
+		).toBe(false);
+	});
+});

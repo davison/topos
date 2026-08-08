@@ -6,6 +6,7 @@
 	// reuses MatchFieldsForm scoped to THIS webspace's own block only.
 	// Both write through the same shared save-in-flight/error pattern
 	// every other modal in this phase uses.
+	import { untrack } from 'svelte';
 	import {
 		Dialog,
 		DialogContent,
@@ -18,6 +19,7 @@
 	import ConnectionForm from './ConnectionForm.svelte';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import { upsertSourceInstance, setMatchBlock } from '$lib/config-edit';
+	import { seedConnectionValues, seedMatchBlock } from '$lib/edit-modal-state';
 	import { putConfig, ApiError, CONFIG_CONFLICT_MESSAGE, type KernelConfig, type SourceConfig } from '$lib/api';
 
 	let {
@@ -50,20 +52,46 @@
 
 	let displayName = $derived(config.sources[instance]?.display_name ?? instance);
 
-	// Seeded once from the incoming props — callers key this component
-	// (e.g. {#key `${instance}-${mode}`}) so a genuinely different
-	// instance/mode always mounts a fresh EditSourceModal, matching
-	// MatchFieldsForm's own "seed once, key to remount" discipline (see
-	// that component's doc comment for why a reactive re-seed would fight
-	// the user's in-progress typing).
-	let connectionValues = $state<SourceConfig>(
-		config.sources[instance] ?? { plugin: '', agent: { read: false, handoff: false } }
-	);
-	let matchBlock = $state<Record<string, string[]>>(
-		config.webspaces[webspace]?.match?.[instance] ?? {}
-	);
+	// Seeded once from the incoming props via the shared edit-modal-state
+	// helpers (07-08-PLAN.md Task 2, closing 07-REVIEW.md CR-02) — the
+	// route-level caller keys this component (e.g. {#key
+	// `${instance}-${mode}`}) so a genuinely different instance/mode always
+	// mounts a fresh EditSourceModal, matching MatchFieldsForm's own "seed
+	// once, key to remount" discipline. The reset-on-open effect below is a
+	// second, defensive layer: it re-runs these same two helpers whenever
+	// `open` transitions to true, so a caller that keeps this component
+	// mounted across a close (the exact caller-side bug CR-02 found) still
+	// cannot resurface a discarded session's typing.
+	let connectionValues = $state<SourceConfig>(seedConnectionValues(config, instance));
+	let matchBlock = $state<Record<string, string[]>>(seedMatchBlock(config, webspace, instance));
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+
+	// Defensive reset-on-open (CR-02's second layer, matching
+	// CreateWebspaceModal's and ManageSourcesModal's own reset-on-open
+	// effects): re-seed both pieces of form state, and clear the error and
+	// in-flight flag, whenever `open` becomes true.
+	//
+	// This effect tracks the `open` flag and NOTHING else. `open` is read
+	// first, outside `untrack`, so the effect still re-runs on every open
+	// transition; every subsequent read (config/instance/webspace) and
+	// assignment is wrapped in `untrack` — imported from `svelte`, not used
+	// anywhere else in this codebase before this — so a parent config
+	// refresh landing while the modal stays open can NEVER re-run this
+	// effect. Without that, a background config reload mid-edit would
+	// silently discard the user's in-progress typing — the same class of
+	// silent data loss CR-02 itself is, merely inverted. ManageSourcesModal's
+	// own reset-on-open effect DOES track its config prop; that is correct
+	// for its snapshot-refresh purpose and would be wrong for this one.
+	$effect(() => {
+		if (!open) return;
+		untrack(() => {
+			connectionValues = seedConnectionValues(config, instance);
+			matchBlock = seedMatchBlock(config, webspace, instance);
+			error = null;
+			saving = false;
+		});
+	});
 
 	function handleOpenChange(next: boolean) {
 		if (!next) onclose();
