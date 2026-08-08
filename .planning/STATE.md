@@ -2,18 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: Completed 07-06-PLAN.md — CR-01 collision guard closed, gap-closure plan for Phase 07 complete
-last_updated: "2026-08-08T15:34:47.463Z"
+last_updated: "2026-08-08T16:41:14.478Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 7 planning complete
 progress:
-  total_phases: 7
+  total_phases: 9
   completed_phases: 7
   total_plans: 47
-  completed_plans: 45
+  completed_plans: 47
   percent: 78
 ---
 
@@ -29,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 8
 Status: Ready to execute
-Last activity: 2026-08-08 — Phase 7 planning complete
+Last activity: 2026-08-08
 
 Progress: [██████████] 100%
 
@@ -100,6 +96,8 @@ Progress: [██████████] 100%
 | Phase 07 P04 | ~1h | 3 tasks | 16 files |
 | Phase 07 P05 | ~16 min | 3 tasks | 17 files |
 | Phase 07 P06 | ~15min | 2 tasks | 4 files |
+| Phase 07 P07 | 22min | 2 tasks | 2 files |
+| Phase 07 P08 | ~20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -205,6 +203,10 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-05]: TestContract_MutatingRoutesAreConfigScoped duplicates config_test.go's pre-existing routes.go AST scan by design (plan names this exact test/file); its only new coverage is asserting agent.go registers zero non-GET routes
 - [Phase ?]: [Phase 07-06]: resolveNewInstanceId returns a discriminated InstanceIdResult rather than throwing — fits both call sites' existing connectError/message-string control flow with no new exception path
 - [Phase ?]: [Phase 07-06]: saveAnyway's rejection branch deliberately does not clear describeFailed (unlike handleConnectNext) — preserves the Save anyway retry affordance on a colliding name, pinned by a structural test
+- [Phase ?]: [Phase 07-07]: grantedSources kept its existing *config.Config parameter unchanged (pure helper, not a handler) — threading *config.Store into it would hide the 'resolve once, at the top' discipline inside a helper
+- [Phase ?]: [Phase 07-07]: AST guard (TestAgentGuard_EveryHandlerResolvesConfigPerRequest) enumerates the agent handler set by exact name equality and was verified to actually fail via a temporary, git-diff-confirmed-clean revert-and-restore of agentSourcesHandler
+- [Phase ?]: [Phase 07-08]: editMode resets to 'connection' (not null) in resetEditSession — clearing editInstance alone already destroys the {#if} guard's subtree, which is the whole CR-02 fix mechanism; widening editMode's type would fail npm run check
+- [Phase ?]: [Phase 07-08]: edit-modal-state.ts's seedConnectionValues/seedMatchBlock return fresh objects/arrays, never aliasing the config document — deliberate divergence from prior inline seeding, load-bearing for the CR-02 regression test and for EditSourceModal's new untracked reset-on-open effect
 
 ### Pending Todos
 
@@ -241,6 +243,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T14:45:57.856Z
-Stopped at: Completed 07-06-PLAN.md — CR-01 collision guard closed, gap-closure plan for Phase 07 complete
+Last session: 2026-08-08T16:41:14.469Z
+Stopped at: Completed 07-08-PLAN.md — CR-02 (edit modal stale-state resurfacing) closed via single reset-on-close site + untracked reset-on-open effect
 Resume file: None

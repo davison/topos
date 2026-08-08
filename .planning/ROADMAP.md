@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety (completed 2026-08-03)
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
-- [ ] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters
+- [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-08)
 - [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
 
 ## Phase Details
@@ -348,7 +348,7 @@ Plans:
 **Wave 7** *(gap closure, blocked on Wave 6 completion — both plans run in parallel, zero file overlap)*
 
 - [x] 07-07-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md CR-01/IN-01): every /agent/v1 handler reads the live config per request, so a revoked agent grant is enforced on the next request with no kernel restart
-- [ ] 07-08-PLAN.md — Gap closure (07-VERIFICATION.md gaps[1], 07-REVIEW.md CR-02): closing the source edit modal ends the edit session, so a Cancelled draft can never resurface and be saved over real config
+- [x] 07-08-PLAN.md — Gap closure (07-VERIFICATION.md gaps[1], 07-REVIEW.md CR-02): closing the source edit modal ends the edit session, so a Cancelled draft can never resurface and be saved over real config
 
 Notes:
 
@@ -391,7 +391,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 7/8 | In Progress|  |
+| 7. Webspace Builder UI | 8/8 | Complete   | 2026-08-08 |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
