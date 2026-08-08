@@ -10,6 +10,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -322,39 +323,41 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
 
-	if err := pluginhost.ValidateMatchConfig(newCfg, s.host); err != nil {
-		// Post-Reconcile failure (this IS gaps[0]): Host.Reconcile has
-		// already committed its mutation in place and provides no undo, and
-		// the config store already swapped to newCfg before Apply was ever
-		// called — the only self-consistent state available is the new
-		// generation. Re-running Reconcile against oldCfg.Sources as a
-		// rollback is rejected outright: a rollback that performs real
-		// subprocess launches can itself fail, leaving the kernel strictly
-		// worse off than this defect with no third recourse.
-		s.commitGeneration(newCfg)
+	// Reconcile has committed (gaps[0]'s corrected region): the D-07 cleanup
+	// runs unconditionally here, textually and temporally BEFORE the
+	// match-vocabulary check, so the check's outcome can only ADD to the
+	// returned error and can never gate, shorten or skip the cleanup. By
+	// this point the removed instances are already gone from the host
+	// regardless of what the vocabulary check decides; gating the cleanup
+	// on a later check would strand their rows permanently, because the
+	// same call also advances s.cfg past the removal and destroys the diff
+	// (removedInstances(oldCfg, newCfg)) that would ever detect them as
+	// removed again. See 07-10-PLAN.md, closing 07-VERIFICATION.md gaps[0]
+	// and 07-REVIEW.md's post-07-09 CR-01.
+	cleanupErr := s.cleanupRemovedInstances(ctx, oldCfg, newCfg)
+
+	validateErr := pluginhost.ValidateMatchConfig(newCfg, s.host)
+
+	// One shared commit site for the whole post-Reconcile region (07-09's
+	// invariant, strengthened): Reconcile has already committed its
+	// mutation in place and provides no undo, and the config store already
+	// swapped to newCfg before Apply was ever called — the only
+	// self-consistent state available is the new generation, whether this
+	// region ends in success or in either kind of failure above.
+	// Re-running Reconcile against oldCfg.Sources as a rollback is rejected
+	// outright: a rollback that performs real subprocess launches can
+	// itself fail, leaving the kernel strictly worse off than this defect
+	// with no third recourse.
+	s.commitGeneration(newCfg)
+
+	// The vocabulary error leads (D-09: the operator-actionable message
+	// must reach the UI verbatim and first), the cleanup error follows —
+	// errors.Join drops nils, so each single-fault case still produces
+	// byte-identical text to before this restructuring, and a genuine
+	// double fault reports both.
+	if err := errors.Join(validateErr, cleanupErr); err != nil {
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
-
-	// D-07: an instance present before this apply and absent now has its
-	// index rows and sync history removed right away, across every
-	// webspace it participated in — a re-added instance under the same id
-	// must never inherit phantom history (T-07-13). Both failure branches
-	// below adopt the new generation for the same reason the
-	// match-vocabulary branch above does: Reconcile has already committed
-	// by this point, so the new generation is the only self-consistent
-	// state left to adopt.
-	for _, name := range removedInstances(oldCfg, newCfg) {
-		if err := s.idx.DeleteSourceItems(ctx, name); err != nil {
-			s.commitGeneration(newCfg)
-			return fmt.Errorf("supervisor: apply: delete items for removed source %q: %w", name, err)
-		}
-		if err := s.idx.DeleteSyncRuns(ctx, name); err != nil {
-			s.commitGeneration(newCfg)
-			return fmt.Errorf("supervisor: apply: delete sync history for removed source %q: %w", name, err)
-		}
-	}
-
-	s.commitGeneration(newCfg)
 
 	// A match-only edit (a webspace or match block changed, but an
 	// instance's own connection config did not) has no relaunch of its own
@@ -374,6 +377,47 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// cleanupRemovedInstances performs the D-07 index cleanup for every
+// instance named by removedInstances(oldCfg, newCfg) (already sorted, so
+// its reporting order is deterministic run to run) — deleting that
+// instance's items and sync_runs rows so a re-added instance under the
+// same [sources.<id>] key can never inherit phantom history (T-07-13).
+//
+// Must only ever be called AFTER s.host.Reconcile has returned nil: before
+// that point the instance's subprocess is still alive and the pre-Reconcile
+// failure branch can still keep the old generation, so deleting rows there
+// would destroy a still-configured, still-running source's data on a save
+// that was never applied. The cleanup's correctness depends entirely on
+// Reconcile having already committed.
+//
+// A per-instance DeleteSourceItems failure is NOT followed by that same
+// instance's DeleteSyncRuns — that instance is already stranded (T-07-13
+// needs both deletes), so attempting the second buys nothing and muddies
+// the report. Every name is still attempted: a failure never returns early
+// and never abandons any later-sorted instance in the batch. All collected
+// failures are joined into the single error returned once the whole batch
+// has been attempted — errors.Join returns nil when every element is nil
+// or the slice is empty, so the zero-removed-instances case returns nil
+// with no special-casing.
+//
+// The wrapping verbs and message text below are deliberately byte-identical
+// to what Apply produced inline before this extraction, so an
+// operator-visible message is unchanged by this restructuring. The caller
+// supplies the "supervisor: apply: " prefix.
+func (s *Supervisor) cleanupRemovedInstances(ctx context.Context, oldCfg, newCfg *config.Config) error {
+	var failures []error
+	for _, name := range removedInstances(oldCfg, newCfg) {
+		if err := s.idx.DeleteSourceItems(ctx, name); err != nil {
+			failures = append(failures, fmt.Errorf("delete items for removed source %q: %w", name, err))
+			continue
+		}
+		if err := s.idx.DeleteSyncRuns(ctx, name); err != nil {
+			failures = append(failures, fmt.Errorf("delete sync history for removed source %q: %w", name, err))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // removedInstances returns the names present in oldCfg.Sources and absent

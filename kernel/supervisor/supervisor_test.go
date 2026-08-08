@@ -286,6 +286,25 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 	}
 }
 
+// seedRemovedInstanceHistory seeds one items row and one finished sync_runs
+// row for instanceID within webspaceName, so a test can prove BOTH tables
+// were cleaned by the D-07 cleanup, not just items (07-VERIFICATION.md
+// gaps[0].missing[2] — no existing test asserts the sync_runs half of
+// T-07-13 at all).
+func seedRemovedInstanceHistory(t *testing.T, idx *index.Store, ctx context.Context, webspaceName, instanceID string) {
+	t.Helper()
+	if err := idx.ReplaceWebspaceSourceItems(ctx, webspaceName, instanceID, []item.Item{testFixtureItem(instanceID, "1")}); err != nil {
+		t.Fatalf("seed items for %s: %v", instanceID, err)
+	}
+	runID, err := idx.StartSyncRun(ctx, instanceID)
+	if err != nil {
+		t.Fatalf("StartSyncRun for %s: %v", instanceID, err)
+	}
+	if err := idx.FinishSyncRun(ctx, runID, "ok", "", 1); err != nil {
+		t.Fatalf("FinishSyncRun for %s: %v", instanceID, err)
+	}
+}
+
 // pluginByName scans plugins for the one launched under instance id name,
 // so the tests below can assert on it without repeating an index loop.
 func pluginByName(plugins []*pluginhost.Plugin, name string) (*pluginhost.Plugin, bool) {
@@ -518,5 +537,136 @@ labels = ["demo"]
 		if p != prior {
 			t.Errorf("expected instance %q's *Plugin pointer to be identical across the retry (a no-op reconcile launches nothing and kills nothing), got a different pointer", p.Name())
 		}
+	}
+}
+
+// TestApply_RemovedInstanceCleanedUpEvenWhenTheSameSaveIsRejected exercises
+// the exact combination 07-VERIFICATION.md gaps[0].missing[2] names as
+// uncovered: one Apply call that both removes a source instance AND is
+// rejected by pluginhost.ValidateMatchConfig for an unrelated reason. It is
+// deliberately the intersection of
+// TestApply_RemovedInstance_PluginGoneAndIndexRowsGone (removes an instance,
+// but the save always succeeds) and
+// TestApply_ValidateMatchConfigFailsAfterReconcile_CoordinatorTracksRelaunchedPlugin
+// (the save is rejected, but nothing is ever removed) — neither existing
+// test alone reaches the branch this one proves: that the D-07 cleanup
+// still runs to completion, for BOTH items and sync_runs, even when the
+// same Apply call is about to return a non-nil error.
+func TestApply_RemovedInstanceCleanedUpEvenWhenTheSameSaveIsRejected(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.removed]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.survivor]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["labels"]
+
+[webspaces.control-only]
+sources = ["survivor"]
+
+[webspaces.control-only.match.survivor]
+labels = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if len(sup.Host().Plugins()) != 2 {
+		t.Fatalf("expected 2 launched plugins at boot, got %d", len(sup.Host().Plugins()))
+	}
+
+	seedRemovedInstanceHistory(t, idx, ctx, "everything", "removed")
+	seedRemovedInstanceHistory(t, idx, ctx, "everything", "survivor")
+
+	// Pre-assertion: both instances have a seeded run BEFORE apply, so the
+	// post-apply assertion below cannot pass vacuously against rows that
+	// were never there in the first place.
+	preRuns, err := idx.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource (pre-apply): %v", err)
+	}
+	if _, ok := preRuns["removed"]; !ok {
+		t.Fatal("expected a seeded sync run for \"removed\" before Apply")
+	}
+	if _, ok := preRuns["survivor"]; !ok {
+		t.Fatal("expected a seeded sync run for \"survivor\" before Apply")
+	}
+
+	// next makes two changes at once, because it is their combination that
+	// reaches the defect:
+	//   - "removed" is absent from next.Sources entirely, and absent from
+	//     every webspace's sources allowlist and match block;
+	//   - "control-only"'s match block for the SURVIVOR now declares a field
+	//     name outside the mock plugin's declared vocabulary ("labels" is
+	//     the only field the mock plugin declares).
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"survivor": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"everything": {Keywords: []string{"labels"}},
+			"control-only": {
+				Sources: []string{"survivor"},
+				Match: map[string]config.MatchBlock{
+					"survivor": {"nonexistent_field": []string{"demo"}},
+				},
+			},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save must succeed — config.Validate is deliberately plugin-independent, so an unknown match FIELD NAME must pass it. If this assertion fires, the test's premise has been invalidated by a change elsewhere and this test is no longer covering the branch it claims to: %v", err)
+	}
+
+	applyErr := sup.Apply(ctx)
+	if applyErr == nil {
+		t.Fatal("expected Apply to return a non-nil error from the vocabulary check")
+	}
+	if !strings.Contains(applyErr.Error(), "nonexistent_field") || !strings.Contains(applyErr.Error(), "control-only") {
+		t.Errorf("expected the error to name the foreign match field and the webspace that declared it — this proves the vocabulary check produced it, rather than Reconcile (a Reconcile error would name a plugin binary instead). Got: %v", applyErr)
+	}
+
+	plugins := sup.Host().Plugins()
+	if len(plugins) != 1 || plugins[0].Name() != "survivor" {
+		t.Fatalf("expected only the \"survivor\" instance to remain launched after Apply (pinning that Reconcile genuinely committed the removal) — got %+v", plugins)
+	}
+
+	if _, ok, err := idx.GetItem(ctx, "removed:1"); err != nil {
+		t.Fatalf("GetItem(removed:1): %v", err)
+	} else if ok {
+		t.Error("gaps[0]/T-07-13: expected the removed instance's items row to be gone after Apply — a present row here means the cleanup was skipped by the vocabulary rejection, and it can never run again because s.cfg has already advanced past the removal on this same Apply call")
+	}
+
+	postRuns, err := idx.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource (post-apply): %v", err)
+	}
+	if _, ok := postRuns["removed"]; ok {
+		t.Error("gaps[0]/T-07-13: expected the removed instance's sync_runs history to be gone after Apply — this is the sync-history half of T-07-13 that no existing test asserts")
+	}
+
+	if _, ok, err := idx.GetItem(ctx, "survivor:1"); err != nil {
+		t.Fatalf("GetItem(survivor:1): %v", err)
+	} else if !ok {
+		t.Error("expected the surviving instance's items row to be untouched by Apply — the cleanup must delete exactly the removed instance's data and nothing else")
+	}
+	if _, ok := postRuns["survivor"]; !ok {
+		t.Error("expected the surviving instance's sync_runs entry to be untouched by Apply")
+	}
+
+	if sup.cfg != cfgStore.Expanded() {
+		t.Error("expected the supervisor's own recorded config generation (s.cfg) to be the same pointer cfgStore.Expanded() now returns — a rejected save is state repair, not success, but the new generation must still be adopted (07-09's invariant, unweakened)")
 	}
 }
