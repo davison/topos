@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-08-08T01:18:47.980Z"
+current_phase: 07
+current_phase_name: webspace-builder-ui
+status: verifying
+stopped_at: Completed 07-05-PLAN.md — Phase 07 (webspace-builder-ui) complete, all 5 plans executed
+last_updated: "2026-08-08T01:37:37.021Z"
 last_activity: 2026-08-08
 progress:
-  total_phases: 9
-  completed_phases: 6
+  total_phases: 7
+  completed_phases: 7
   total_plans: 44
-  completed_plans: 43
-  percent: 67
+  completed_plans: 44
 ---
 
 # Project State
@@ -26,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-08
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -94,6 +96,7 @@ Progress: [██████████] 98%
 | Phase 07 P02 | ~2h | 3 tasks | 23 files |
 | Phase 07 P03 | ~8min | 3 tasks | 32 files |
 | Phase 07 P04 | ~1h | 3 tasks | 16 files |
+| Phase 07 P05 | ~16 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -194,6 +197,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-04]: AddSourceModal mounted inline in WebspaceHeader's chip row (not route-level open/onclose) — bits-ui Popover trigger/content co-location constraint plus the row's own overflow-measurement need for the + button's real DOM position
 - [Phase ?]: [Phase 07-04]: SecretField's set/unset badge reads the caller-supplied envVars snapshot synchronously, not a per-keystroke live lookup — kernel/httpapi/config.go's envVarsIn only reports on names already referenced in the persisted config, and no kernel/ files are in this plan's scope to add a live-arbitrary-name endpoint
 - [Phase ?]: [Phase 07-04]: one-step existing-instance add and chip-menu Edit-match-settings both resolve vocabulary via describePlugin against the instance's own stored config, substituting for GET /api/sources (no match_vocabulary field there today)
+- [Phase ?]: [Phase 07-05]: removeSourceInstance writes sources=[] (never omits the key) on a delete that empties a webspace's allowlist — Webspace.Participates treats empty identically to absent, so [] IS the kernel's own all-instances-participate default encoding
+- [Phase ?]: [Phase 07-05]: CONFIG_CONFLICT_MESSAGE (api.ts) pulled forward into Task 1's commit — every config-writing surface now references the one exported hash-conflict-copy constant by name instead of duplicating the literal string
+- [Phase ?]: [Phase 07-05]: TestContract_MutatingRoutesAreConfigScoped duplicates config_test.go's pre-existing routes.go AST scan by design (plan names this exact test/file); its only new coverage is asserting agent.go registers zero non-GET routes
 
 ### Pending Todos
 
@@ -230,6 +236,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T01:18:47.970Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-08-08T01:37:37.004Z
+Stopped at: Completed 07-05-PLAN.md — Phase 07 (webspace-builder-ui) complete, all 5 plans executed
 Resume file: None
