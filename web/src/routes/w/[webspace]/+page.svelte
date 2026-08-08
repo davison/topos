@@ -128,10 +128,40 @@
 	// existing-instance flow uses (GET /api/sources carries no
 	// match_vocabulary field; see AddSourceModal.svelte's own doc comment
 	// for why). Unused (left []) in 'connection' mode.
+	//
+	// CR-02 (07-REVIEW.md, closed by 07-08-PLAN.md): the render site below
+	// keys EditSourceModal on `${editInstance}-${editMode}`, so reopening
+	// the SAME source in the SAME mode produces an identical key and Svelte
+	// will not remount the component — only dropping editInstance makes the
+	// enclosing `{#if configResponse && editInstance}` guard false, which
+	// destroys the modal subtree outright. A destroyed subtree always
+	// remounts fresh on the next open, regardless of what the `{#key}`
+	// expression evaluates to; that is the whole mechanism. Without this,
+	// the modal's form state — seeded once at mount — would survive from a
+	// previous, abandoned edit session (anything typed and then Cancelled),
+	// and a later save on the reopened session would write that stale
+	// value straight over the real connection config. resetEditSession
+	// below is the ONE place this session is cleared — every close path
+	// (Cancel, the dialog's own outside-click/Escape close, and a
+	// successful save) routes through it.
 	let editOpen = $state(false);
 	let editMode = $state<'connection' | 'match'>('connection');
 	let editInstance = $state<string | null>(null);
 	let editVocabulary = $state<string[]>([]);
+
+	// The single edit-session reset site (mirrors AddSourceModal.svelte's
+	// own single resetFlowState) — handleEditClose and handleEditSaved both
+	// call this and do no clearing of their own. Clearing editInstance
+	// unmounts EditSourceModal immediately, with no exit transition; that
+	// is intentional and matches ManageSourcesModal's own edit-modal close
+	// behavior — do not add a delay or transition-end hook here, since that
+	// would reopen a window where the stale component is still mounted.
+	function resetEditSession() {
+		editOpen = false;
+		editInstance = null;
+		editMode = 'connection';
+		editVocabulary = [];
+	}
 
 	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'remove') {
 		if (kind === 'remove') {
@@ -158,11 +188,11 @@
 	}
 
 	function handleEditClose() {
-		editOpen = false;
+		resetEditSession();
 	}
 
 	async function handleEditSaved() {
-		editOpen = false;
+		resetEditSession();
 		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
 	}
 
