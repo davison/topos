@@ -13,7 +13,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **KERN-05**: User can full-text search within a webspace (FTS5 over indexed metadata/previews)
 - [x] **KERN-06**: Sources are named instances — the same plugin type can be configured multiple times, each under a user-chosen display name (e.g. "Home email" / "Work email") used throughout the UI and API *(added 2026-08-05)*
 - [x] **KERN-07**: Matching config is declared per source instance and typed to its plugin (IMAP folders/labels, document tags, chat conversation/group names, wiki tags/pages), replacing the single shared per-webspace keyword list *(added 2026-08-05; supersedes the KERN-01 shared-keyword shape — KERN-01 remains satisfied via migration)*
-- [x] **KERN-08**: Webspace and source-instance configuration is editable through the kernel API (non-secret fields only; secrets stay environment-only), while hand-editing the config file remains supported *(added 2026-08-05)*
+- [ ] **KERN-08**: Webspace and source-instance configuration is editable through the kernel API (non-secret fields only; secrets stay environment-only), while hand-editing the config file remains supported *(added 2026-08-05)*
 
 ### Plugin Architecture
 
@@ -43,7 +43,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 - [x] **UI-08**: "Open in source" affordances visually differentiate links that navigate to the item from links that can only raise the source app's window *(added 2026-08-05; from 04-UAT follow-up)*
 - [x] **UI-09**: After an in-webspace search, matched terms are highlighted in the item title and the rendered content, in both the detail pane and the search-results row *(added 2026-08-05; surface wording disambiguated 2026-08-07 per G-06-1)*
 - [x] **UI-11**: Scrollbars are thin and theme-matched app-wide; the stream scrollbar carries date markers *(added 2026-08-05; UI-10 was already assigned to the v1.x sync-status polish item)*
-- [x] **UI-12**: Webspace builder UI — pick plugin types, configure named instances, save the set as a webspace, and promote a live search into a permanent webspace filter refinable by further search *(added 2026-08-05)*
+- [ ] **UI-12**: Webspace builder UI — pick plugin types, configure named instances, save the set as a webspace, and promote a live search into a permanent webspace filter refinable by further search *(added 2026-08-05)*
 
 ### Agent Readiness (provisions only — the agent itself is v1.x)
 
@@ -82,7 +82,7 @@ Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 ins
 | KERN-05 | Phase 3 | Complete |
 | KERN-06 | Phase 5 | Complete |
 | KERN-07 | Phase 5 | Complete |
-| KERN-08 | Phase 7 | Complete |
+| KERN-08 | Phase 7 | Gaps Found |
 | PLUG-01 | Phase 1 | Complete |
 | PLUG-02 | Phase 1 | Complete |
 | PLUG-03 | Phase 1 | Complete |
@@ -103,7 +103,7 @@ Mapped by roadmap 2026-07-27; extended 2026-08-05 (restructure: Phases 5–7 ins
 | UI-08 | Phase 6 | Complete |
 | UI-09 | Phase 6 | Complete |
 | UI-11 | Phase 6 | Complete |
-| UI-12 | Phase 7 | Complete |
+| UI-12 | Phase 7 | Gaps Found |
 | AGENT-01 | Phase 2 | Gaps Found |
 | AGENT-02 | Phase 1 | Complete |
 | AGENT-10 | — | Deferred (v1.x) |
