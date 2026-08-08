@@ -3,6 +3,7 @@
 	import SourceChip from './SourceChip.svelte';
 	import SearchBox from './SearchBox.svelte';
 	import FilterChip from './FilterChip.svelte';
+	import WebspaceSwitcher from './WebspaceSwitcher.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
@@ -26,6 +27,9 @@
 	// (shouldShowSourceRows, 02-UI-SPEC.md E1/E5, unchanged this phase).
 	let {
 		webspace,
+		webspaces,
+		oncreatewebspace,
+		onmanagesources,
 		sources,
 		sourcesState,
 		selectedSources,
@@ -43,6 +47,14 @@
 		onremovefilter
 	}: {
 		webspace: string;
+		// webspaces backs the WebspaceSwitcher's menu list (D-10) — the
+		// full set of configured webspace names in the kernel's own
+		// deterministic GET /api/config order, owned and fetched by the
+		// caller (the webspace route already fetches config for the
+		// filter-write path, 07-01-PLAN.md).
+		webspaces: string[];
+		oncreatewebspace: () => void;
+		onmanagesources: () => void;
 		sources: SourceStatus[];
 		sourcesState: 'loading' | 'error' | 'ready';
 		selectedSources: Set<string>;
@@ -209,14 +221,18 @@
 
 <header class="shrink-0 border-b border-border bg-card px-6 py-6">
 	<!--
-	  Display role (28px/600/1.2). Webspace names are user-defined
-	  config.toml keys of arbitrary length, so this truncates to one line
-	  with an ellipsis; the title attribute keeps the full name reachable
-	  on hover regardless of how long it is.
+	  D-10: the static <h1> title becomes a webspace switcher — same
+	  Display role (28px/600/1.2), same truncate+title treatment on the
+	  trigger — so it still reads as a heading at rest, but now opens a
+	  drop-down listing every configured webspace plus the "+ New
+	  webspace" / "Manage sources…" escape hatches (D-13).
 	-->
-	<h1 class="truncate text-[28px] leading-[1.2] font-semibold text-foreground" title={webspace}>
+	<WebspaceSwitcher
 		{webspace}
-	</h1>
+		{webspaces}
+		oncreate={oncreatewebspace}
+		onmanage={onmanagesources}
+	/>
 
 	<!--
 	  config.toml has a hand-authored key the kernel doesn't model (a stray

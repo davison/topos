@@ -22,11 +22,14 @@
 		staleSources,
 		filterItemsBySource
 	} from '$lib/format';
+	import { setWebspaceFilter } from '$lib/config-edit';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import StreamDateMarkers from '$lib/components/StreamDateMarkers.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
+	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
+	import { writeLastWebspace } from '$lib/last-webspace';
 
 	// The [webspace] dynamic segment always matches for this route, so
 	// page.params.webspace is never actually undefined at runtime — the
@@ -81,6 +84,38 @@
 	// blocked state discoverable rather than looking like the button does
 	// nothing.
 	let unknownConfigKeys = $derived(configResponse?.unknown_keys ?? []);
+
+	// Webspace switcher / create-webspace state (D-10, 07-03-PLAN.md
+	// Task 2). webspaceNames is every configured webspace's key in the
+	// kernel's own GET /api/config order (Object.keys on an
+	// already-JSON-parsed document preserves the order the response body
+	// itself listed them in — the "config-declared order" wording's actual
+	// stability guarantee: never re-sorted here, never reordered by any
+	// local state). createOpen gates CreateWebspaceModal, shared by both
+	// the switcher's "+ New webspace" item and (once 07-03 Task 3 lands)
+	// the root route's zero-webspaces empty-state CTA.
+	let webspaceNames = $derived(
+		configResponse ? Object.keys(configResponse.config.webspaces) : []
+	);
+	let createOpen = $state(false);
+
+	// onmanagesources is a no-op-safe placeholder (07-UI-SPEC.md D-13's
+	// "Manage sources…" escape hatch gets its real modal in 07-05) — the
+	// menu item is wired and reachable now, never rendered disabled, but
+	// clicking it does nothing until that plan lands.
+	function handleManageSources() {}
+
+	async function handleWebspaceCreated(name: string) {
+		createOpen = false;
+		writeLastWebspace(name);
+		// Refresh this page's own config snapshot before navigating away —
+		// keeps the current webspace's switcher list current even if
+		// navigation is ever interrupted, rather than relying solely on the
+		// destination route's own webspace-keyed effect to pick up the new
+		// entry.
+		await loadConfig(navGeneration);
+		await goto(`/w/${encodeURIComponent(name)}`);
+	}
 
 	// navGeneration guards against a stale-webspace race: SvelteKit reuses
 	// this page component instance across /w/A -> /w/B navigation (same
@@ -159,33 +194,29 @@
 	}
 
 	// writeFilter is the one write path both saveFilter and removeFilter go
-	// through (Task 2 of 07-01-PLAN.md: "there is no second write path"):
-	// snapshot the fetched config document, mutate only this webspace's
-	// filter array, putConfig({ base_hash, config }). On success replace
-	// configResponse with the response, clear filterError, and (only for
-	// a save, never a remove) clear the search box back to empty so it is
-	// ready for a further refining search (D-18). On an ApiError, set
-	// filterError to the fixed copy for a hash conflict (D-03) or the
+	// through (07-01-PLAN.md Task 2: "there is no second write path"):
+	// mutate only this webspace's filter array via setWebspaceFilter
+	// (07-03-PLAN.md Task 2 — the single place a webspace's config is
+	// edited, config-edit.ts), putConfig({ base_hash, config }). On success
+	// replace configResponse with the response, clear filterError, and
+	// (only for a save, never a remove) clear the search box back to empty
+	// so it is ready for a further refining search (D-18). On an ApiError,
+	// set filterError to the fixed copy for a hash conflict (D-03) or the
 	// kernel's own verbatim message otherwise (D-09), then refresh
 	// getConfig() so the next attempt starts from current state.
 	//
 	// Everything below (including the "config not loaded yet" guard) runs
-	// inside one try/finally so no exit from this function can be silent:
+	// inside one try/finally so no exit from this function can be silent —
 	// a bug fixed here (07-01 tracer checkpoint, live-dev-session repro)
 	// found that `structuredClone(configResponse.config)` threw
 	// `DataCloneError` every single time, because `configResponse` is a
 	// Svelte 5 `$state` value and `.config` is therefore a deeply-reactive
-	// Proxy — `structuredClone` (the DOM/Node structured-clone algorithm,
-	// distinct from Svelte's own clone helper) unconditionally rejects any
-	// Proxy, in every engine (verified directly: `structuredClone(new
-	// Proxy({}, {}))` throws `DataCloneError` in Node and every browser).
-	// That threw *before* the `try` that wrapped only the network call, so
-	// it surfaced only as an unhandled promise rejection in the browser
-	// console — no chip, no Alert, no PUT ever left the browser. Svelte 5
-	// ships `$state.snapshot()` for exactly this: it deep-clones through
-	// its own `Object.keys`-based walk (never routes a reactive object
-	// itself through `structuredClone`) and returns a plain, non-reactive,
-	// structured-clone-safe object.
+	// Proxy — `structuredClone` (the DOM/Node structured-clone algorithm)
+	// unconditionally rejects any Proxy, in every engine. setWebspaceFilter
+	// clones via a JSON round trip internally (config-edit.ts's own
+	// cloneConfig), which reads through a reactive Proxy exactly as a plain
+	// property access would — this route no longer needs to call
+	// `$state.snapshot()` itself.
 	async function writeFilter(nextFilters: string[], clearSearchOnSuccess: boolean) {
 		const gen = navGeneration;
 		filterBusy = true;
@@ -200,14 +231,7 @@
 				filterError = 'Config has not finished loading yet — try again in a moment.';
 				return;
 			}
-			const nextConfig = $state.snapshot(configResponse.config);
-			const existing = nextConfig.webspaces[webspace];
-			nextConfig.webspaces[webspace] = {
-				keywords: existing?.keywords ?? [],
-				sources: existing?.sources ?? [],
-				match: existing?.match ?? {},
-				filter: nextFilters
-			};
+			const nextConfig = setWebspaceFilter(configResponse.config, webspace, nextFilters);
 
 			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
 			if (gen !== navGeneration) return;
@@ -397,6 +421,9 @@
 <div class="flex h-full min-h-0 flex-col">
 	<WebspaceHeader
 		{webspace}
+		webspaces={webspaceNames}
+		oncreatewebspace={() => (createOpen = true)}
+		onmanagesources={handleManageSources}
 		{sources}
 		{sourcesState}
 		{selectedSources}
@@ -413,6 +440,16 @@
 		onsavefilter={saveFilter}
 		onremovefilter={removeFilter}
 	/>
+
+	{#if configResponse}
+		<CreateWebspaceModal
+			open={createOpen}
+			config={configResponse.config}
+			baseHash={configResponse.hash}
+			onclose={() => (createOpen = false)}
+			oncreated={handleWebspaceCreated}
+		/>
+	{/if}
 
 	<main class="flex min-h-0 flex-1 gap-8 px-6 py-8">
 		<!--

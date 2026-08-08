@@ -23,10 +23,23 @@
 //  2. A source-scan (house pattern: this project's vitest config runs
 //     environment: 'node' with no component-mount harness, matching
 //     source-chip-pill.test.ts / unknown-config-keys.test.ts) proving the
-//     fix — $state.snapshot instead of structuredClone — is actually in
-//     place, and that every early exit from writeFilter (including the
-//     "config not loaded yet" guard and the generic-error catch branch)
-//     sets filterError rather than returning silently.
+//     fix is actually in place, and that every early exit from writeFilter
+//     (including the "config not loaded yet" guard and the generic-error
+//     catch branch) sets filterError rather than returning silently.
+//
+// 07-03-PLAN.md Task 2 update: writeFilter's own inline mutation (which
+// originally called `$state.snapshot(configResponse.config)` directly, the
+// fix this file was first written to pin) moved into config-edit.ts's
+// setWebspaceFilter — "there is one place a webspace's config is edited"
+// (07-01-PLAN.md Task 2's own rule, now literally true). setWebspaceFilter
+// clones via config-edit.ts's cloneConfig, a JSON round trip rather than
+// $state.snapshot() — config-edit.ts is a plain .ts module (not
+// .svelte.ts), so the $state.snapshot() rune compiler macro isn't callable
+// there at all. JSON.stringify/parse reads every property through a
+// reactive Proxy exactly as a plain property access would (safe outside a
+// reactive $effect), so the invariant this file exists to guard — never
+// structuredClone the reactive config document — still holds; only the
+// mechanism (and which file owns it) has moved.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -84,7 +97,7 @@ const writeFilterBlock = extractBetween(
 	'async function saveFilter'
 );
 
-describe('writeFilter clones configResponse.config with $state.snapshot, never structuredClone', () => {
+describe('writeFilter clones configResponse.config safely, never structuredClone', () => {
 	it('does not call structuredClone on the reactive config document', () => {
 		expect(
 			/structuredClone\s*\(/.test(writeFilterBlock),
@@ -92,11 +105,24 @@ describe('writeFilter clones configResponse.config with $state.snapshot, never s
 		).toBe(false);
 	});
 
-	it('clones via $state.snapshot(configResponse.config) instead', () => {
+	it('mutates through setWebspaceFilter(configResponse.config, ...) instead of an inline mutation', () => {
 		expect(
-			/\$state\.snapshot\(\s*configResponse\.config\s*\)/.test(writeFilterBlock),
-			'expected writeFilter to deep-clone through $state.snapshot(configResponse.config) — Svelte\'s own Object.keys-based clone, which never routes a reactive proxy through structuredClone and returns a plain, structured-clone-safe object'
+			/setWebspaceFilter\(\s*configResponse\.config\s*,/.test(writeFilterBlock),
+			'expected writeFilter to delegate to config-edit.ts\'s setWebspaceFilter(configResponse.config, webspace, nextFilters) — the one place a webspace\'s config is edited (07-01/07-03 Task 2) — rather than mutating a snapshot inline'
 		).toBe(true);
+	});
+});
+
+describe('config-edit.ts never routes the reactive config document through structuredClone', () => {
+	const configEditPath = join(here, '..', 'config-edit.ts');
+	const rawConfigEdit = readFileSync(configEditPath, 'utf-8');
+	const strippedConfigEdit = stripComments(rawConfigEdit);
+
+	it('cloneConfig (setWebspaceFilter\'s own clone mechanism) contains no structuredClone call', () => {
+		expect(
+			/structuredClone\s*\(/.test(strippedConfigEdit),
+			'found a structuredClone( call in config-edit.ts — cloneConfig must clone via a JSON round trip (JSON.parse(JSON.stringify(...))), which reads through a reactive Proxy exactly as a plain property access would, rather than structuredClone, which throws DataCloneError on any Proxy'
+		).toBe(false);
 	});
 });
 
