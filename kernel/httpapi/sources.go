@@ -150,8 +150,15 @@ type sourceRefreshResponse struct {
 // envelope shape every other not-found route uses, and the message names
 // only the requested value, never the configured set (T-02-09): this
 // route must not be usable to enumerate which source names exist.
-func SourceRefreshHandler(cfg *config.Config, refresher Refresher) http.HandlerFunc {
+// cfgStore is resolved fresh as the first statement of the returned
+// closure (07-02-PLAN.md Task 2) so a source added by a save is
+// refreshable through this route immediately, with no kernel restart —
+// previously a source added after Router construction could never be
+// found here, since {name} was checked against a config snapshot frozen
+// at boot.
+func SourceRefreshHandler(cfgStore *config.Store, refresher Refresher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		name := chi.URLParam(r, "name")
 		if _, ok := cfg.Sources[name]; !ok {
 			WriteError(w, http.StatusNotFound, "source_not_found", "source \""+name+"\" was not found")

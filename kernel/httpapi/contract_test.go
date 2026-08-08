@@ -6,6 +6,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -40,10 +41,22 @@ func testConfig() *config.Store {
 
 // fakeApplier is the shared test double for the Applier interface Router
 // now requires (07-02-PLAN.md Task 1) — every test below that doesn't
-// itself exercise apply behavior wires a no-op success.
-type fakeApplier struct{ err error }
+// itself exercise apply behavior wires a no-op success. called records
+// whether Apply was ever invoked, for tests proving a handler calls it at
+// all (07-02-PLAN.md Task 2's reload route).
+type fakeApplier struct {
+	err    error
+	called bool
+}
 
-func (f *fakeApplier) Apply(ctx context.Context) error { return f.err }
+func (f *fakeApplier) Apply(ctx context.Context) error {
+	f.called = true
+	return f.err
+}
+
+// errApplyBoom is a fixed sentinel error for tests proving a handler maps
+// an Applier failure onto 500 apply_failed.
+var errApplyBoom = errors.New("apply: boom")
 
 func contractFixtureProvenance(sourceID string) map[string]string {
 	return map[string]string{

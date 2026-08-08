@@ -22,9 +22,15 @@ type webspacesResponse struct {
 
 // WebspacesHandler serves GET /api/webspaces: the configured webspace list
 // (name + keywords, from config) enriched with the current item count and
-// last sync status (from the index).
-func WebspacesHandler(store *index.Store, cfg *config.Config) http.HandlerFunc {
+// last sync status (from the index). cfgStore is resolved fresh as the
+// first statement of the returned closure (07-02-PLAN.md Task 2 — closes
+// the boot-time snapshot gap 07-01-PLAN.md deliberately left open here),
+// so a webspace added or edited through PUT /api/config or
+// POST /api/config/reload is visible on the very next request with no
+// kernel restart.
+func WebspacesHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		ctx := r.Context()
 
 		counts, err := store.Webspaces(ctx)

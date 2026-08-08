@@ -49,9 +49,14 @@ func newTestConfigStoreFromFile(t *testing.T, contents string) *config.Store {
 }
 
 func newConfigTestRouter(cfgStore *config.Store) http.Handler {
+	return newConfigTestRouterWithApplier(cfgStore, &fakeApplier{})
+}
+
+func newConfigTestRouterWithApplier(cfgStore *config.Store, applier Applier) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/api/config", ConfigHandler(cfgStore))
-	r.Put("/api/config", ConfigSaveHandler(cfgStore, &fakeApplier{}))
+	r.Put("/api/config", ConfigSaveHandler(cfgStore, applier))
+	r.Post("/api/config/reload", ConfigReloadHandler(cfgStore, applier))
 	return r
 }
 
@@ -354,6 +359,7 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 
 	want := map[allowedNonGetRoute]bool{
 		{"Put", "/api/config"}:                  true,
+		{"Post", "/api/config/reload"}:           true,
 		{"Post", "/api/sources/{name}/refresh"}: true,
 		{"Post", "/api/sync"}:                   true,
 	}
@@ -435,6 +441,156 @@ func TestConfigHandlersGuard_NoPluginCallOtherThanDescribe(t *testing.T) {
 		}
 		if forbidden[sel.Sel.Name] {
 			t.Errorf("config.go references %q — the config write path must never reach a plugin's Match or Fetch RPC (success criterion 4, T-07-05)", sel.Sel.Name)
+		}
+		return true
+	})
+}
+
+// doPathRequest issues a request against an arbitrary path (unlike
+// doConfigRequest, hardcoded to "/api/config") — needed for
+// POST /api/config/reload, mounted alongside it on the same test router.
+func doPathRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if body == "" {
+		req = httptest.NewRequest(method, path, nil)
+	} else {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestConfigReloadHandler_ValidHandEditAppliesAndReturnsNewDocument is the
+// HTTP-layer half of D-08: a hand-edited, valid config.toml reaches the
+// running kernel through POST /api/config/reload — the response carries
+// the newly reloaded document and hash, and the applier is invoked so the
+// running kernel catches up too.
+func TestConfigReloadHandler_ValidHandEditAppliesAndReturnsNewDocument(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	applier := &fakeApplier{}
+	router := newConfigTestRouterWithApplier(cfgStore, applier)
+
+	handEdited := []byte(`
+[webspaces.house-move]
+keywords = ["hand-edited"]
+`)
+	if err := os.WriteFile(cfgStore.Path(), handEdited, 0o600); err != nil {
+		t.Fatalf("simulate hand-edit: %v", err)
+	}
+
+	rec := doPathRequest(t, router, http.MethodPost, "/api/config/reload", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp configResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got := resp.Config.Webspaces["house-move"].Keywords; len(got) != 1 || got[0] != "hand-edited" {
+		t.Errorf("expected the reloaded document to reflect the hand-edit, got %v", got)
+	}
+	if resp.Hash != cfgStore.Hash() {
+		t.Errorf("expected the response hash to match the reloaded Store's own hash")
+	}
+	if !applier.called {
+		t.Error("expected ConfigReloadHandler to call Applier.Apply on a successful reload")
+	}
+}
+
+// TestConfigReloadHandler_InvalidFileReturns422AndKeepsLastGoodConfig is
+// the HTTP-layer half of D-08's "the kernel never dies on a bad reload":
+// a syntactically valid but semantically invalid hand-edit is rejected
+// 422 config_invalid with the loader's own message, and a subsequent
+// GET /api/config still returns the PREVIOUS good document and hash,
+// completely unchanged.
+func TestConfigReloadHandler_InvalidFileReturns422AndKeepsLastGoodConfig(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	router := newConfigTestRouter(cfgStore)
+
+	beforeHash := cfgStore.Hash()
+	beforeGET := doConfigRequest(t, router, http.MethodGet, "")
+	var before configResponse
+	if err := json.Unmarshal(beforeGET.Body.Bytes(), &before); err != nil {
+		t.Fatalf("unmarshal GET before reload: %v", err)
+	}
+
+	// Syntactically valid TOML, semantically invalid config: a webspace
+	// declaring neither a keywords fallback nor any match block.
+	invalid := []byte(`
+[webspaces.house-move]
+keywords = []
+`)
+	if err := os.WriteFile(cfgStore.Path(), invalid, 0o600); err != nil {
+		t.Fatalf("simulate invalid hand-edit: %v", err)
+	}
+
+	rec := doPathRequest(t, router, http.MethodPost, "/api/config/reload", "")
+	assertErrorEnvelope(t, rec, http.StatusUnprocessableEntity, "config_invalid")
+
+	if cfgStore.Hash() != beforeHash {
+		t.Errorf("expected the Store's hash to be untouched by a failed reload, got %q want %q", cfgStore.Hash(), beforeHash)
+	}
+
+	afterGET := doConfigRequest(t, router, http.MethodGet, "")
+	if afterGET.Code != http.StatusOK {
+		t.Fatalf("expected GET /api/config to still succeed after a failed reload, got %d", afterGET.Code)
+	}
+	var after configResponse
+	if err := json.Unmarshal(afterGET.Body.Bytes(), &after); err != nil {
+		t.Fatalf("unmarshal GET after failed reload: %v", err)
+	}
+	if after.Hash != before.Hash {
+		t.Errorf("expected GET /api/config to still report the previous good hash after a failed reload, got %q want %q", after.Hash, before.Hash)
+	}
+	gotKeywords := after.Config.Webspaces["house-move"].Keywords
+	if len(gotKeywords) != 1 || gotKeywords[0] != "house-move" {
+		t.Errorf("expected GET /api/config to still report the previous good document after a failed reload, got keywords %v", gotKeywords)
+	}
+}
+
+// TestConfigReloadHandler_ApplyFailureReturns500ApplyFailed proves the
+// reload route surfaces an apply failure the same way the save route
+// does — never a silent 200 when the file reloaded fine but the running
+// kernel could not fully catch up.
+func TestConfigReloadHandler_ApplyFailureReturns500ApplyFailed(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	router := newConfigTestRouterWithApplier(cfgStore, &fakeApplier{err: errApplyBoom})
+
+	rec := doPathRequest(t, router, http.MethodPost, "/api/config/reload", "")
+	assertErrorEnvelope(t, rec, http.StatusInternalServerError, "apply_failed")
+}
+
+// TestRoutesGuard_NoLocalConfigSnapshot is the AST proof for
+// 07-02-PLAN.md Task 2's own acceptance criterion: routes.go must declare
+// no local *config.Config value at all — after this task, every mounted
+// handler reads cfgStore fresh per request, so a future handler cannot
+// reintroduce a captured boot-time snapshot (the identifier "cfg", which
+// every prior snapshot in this file was named) without this test failing.
+func TestRoutesGuard_NoLocalConfigSnapshot(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "routes.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse routes.go: %v", err)
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		id, ok := n.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if id.Name == "cfg" {
+			t.Errorf("routes.go declares or references a local %q identifier — every mounted handler must read live config via cfgStore instead of a boot-time snapshot (07-02-PLAN.md Task 2)", id.Name)
 		}
 		return true
 	})

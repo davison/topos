@@ -46,7 +46,10 @@ func (f *fakeRefresher) RefreshAll(context.Context) []syncer.RunResult {
 func newTestSourcesRouter(store *index.Store, cfg *config.Config, prober HealthProber, refresher Refresher) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/api/sources", SourcesHandler(store, prober))
-	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfg, refresher))
+	// Rule 3 (07-02-PLAN.md Task 2): SourceRefreshHandler now takes a
+	// *config.Store — every call site in this file still builds a
+	// *config.Config by hand, so wrap it here rather than touching each one.
+	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(config.NewStoreForTesting(cfg), refresher))
 	r.Post("/api/sync", SyncRefreshHandler(refresher))
 	return r
 }

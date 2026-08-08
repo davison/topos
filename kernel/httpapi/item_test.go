@@ -42,7 +42,10 @@ func newTestItemRouter(store *index.Store, fetcher Fetcher) http.Handler {
 
 func newTestItemRouterWithConfig(store *index.Store, cfg *config.Config, fetcher Fetcher) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
+	// Rule 3 (07-02-PLAN.md Task 2): ItemHandler now takes a *config.Store —
+	// every call site in this file still builds a *config.Config by hand,
+	// so wrap it here rather than touching each one.
+	r.Get("/api/items/{id}", ItemHandler(store, config.NewStoreForTesting(cfg), fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
 	return r

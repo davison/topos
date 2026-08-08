@@ -33,44 +33,47 @@ const schemaVersion = 1
 // *config.Config (assumption-delta decision, 07-01-PLAN.md: the running
 // configuration is the primary noun now, a live hash-identified resource
 // with raw and expanded forms — not a value resolved once at startup).
-// StreamHandler and agentStreamHandler read cfgStore.Expanded() fresh on
-// every request, so a filter saved through PUT /api/config narrows the
-// very next stream request with no kernel restart (D-06/D-16).
-// WebspacesHandler, ItemHandler and SourceRefreshHandler still take a
-// resolved cfg := cfgStore.Expanded() snapshot below — a deliberately
-// temporary gap this tracer plan accepts (07-CONTEXT.md
-// assumption_delta_decision: "a display-name rename is not seen until
-// restart" is a functionality gap, not an architectural one) and 07-02
-// Task 2 fills by threading cfgStore through those three as well. cfg is
-// inert configuration data either way, never a plugin handle, so none of
-// this weakens KERN-02 / Pitfall 1: the stream/webspace/item routes remain
-// structurally incapable of reaching a plugin (they never import
-// kernel/pluginhost). The /api/items/* routes are the one deliberate
-// exception: fetcher is the request-time, item-open plugin call path
-// (KERN-03). prober and refresher are the other two: prober drives
-// GET /api/sources's live reachability probe, and refresher is the same
-// kernel/syncer.Coordinator the scheduler and the CLI use, so every caller
-// of a sync reaches the identical single-flight entry point (D-06).
-// applier is the apply-after-save seam (07-02-PLAN.md Task 1;
-// kernel/supervisor.Supervisor satisfies it structurally) ConfigSaveHandler
-// calls after a successful config.Store.Save, so a save reconfigures the
-// running kernel in the same request rather than only the file (D-06).
+// Every handler below resolves cfgStore.Expanded() fresh as the first
+// statement of its own returned closure (07-02-PLAN.md Task 2 closed the
+// last three handlers' boot-time snapshot gap 07-01 deliberately left
+// open — there is no longer a local cfg value captured once here), so a
+// filter, display-name edit, or newly added source saved through
+// PUT /api/config or POST /api/config/reload is visible on the very next
+// request to ANY route with no kernel restart (D-06/D-08/D-16). cfg is
+// inert configuration data everywhere it's read, never a plugin handle,
+// so none of this weakens KERN-02 / Pitfall 1: the stream/webspace/item
+// routes remain structurally incapable of reaching a plugin (they never
+// import kernel/pluginhost). The /api/items/* routes are the one
+// deliberate exception: fetcher is the request-time, item-open plugin
+// call path (KERN-03). prober and refresher are the other two: prober
+// drives GET /api/sources's live reachability probe, and refresher is
+// the same kernel/syncer.Coordinator the scheduler and the CLI use, so
+// every caller of a sync reaches the identical single-flight entry point
+// (D-06). applier is the apply-after-save/reload seam (07-02-PLAN.md
+// Task 1; kernel/supervisor.Supervisor satisfies it structurally)
+// ConfigSaveHandler and ConfigReloadHandler call after a successful
+// config.Store mutation, so a save or reload reconfigures the running
+// kernel in the same request rather than only the file (D-06/D-08).
 func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier) chi.Router {
 	r := chi.NewRouter()
-	cfg := cfgStore.Expanded()
-	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
+	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, cfgStore))
-	r.Get("/api/items/{id}", ItemHandler(store, cfg, fetcher))
+	r.Get("/api/items/{id}", ItemHandler(store, cfgStore, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
 	r.Get("/api/sources", SourcesHandler(store, prober))
-	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfg, refresher))
+	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfgStore, refresher))
 	r.Post("/api/sync", SyncRefreshHandler(refresher))
 	// The kernel's first mutating HTTP surface (success criterion 4),
 	// scoped strictly to configuration — see kernel/httpapi/config.go.
 	r.Get("/api/config", ConfigHandler(cfgStore))
 	r.Put("/api/config", ConfigSaveHandler(cfgStore, applier))
+	// POST /api/config/reload (D-08): re-reads config.toml through the
+	// same validate-then-apply path a save uses — the only way a
+	// hand-edited file reaches the running kernel; there is deliberately
+	// no file watcher.
+	r.Post("/api/config/reload", ConfigReloadHandler(cfgStore, applier))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
 	// same store/cfgStore/fetcher/prober. Every /api/* route above is

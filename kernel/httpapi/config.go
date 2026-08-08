@@ -188,3 +188,35 @@ func ConfigSaveHandler(cfgStore *config.Store, applier Applier) http.HandlerFunc
 		WriteJSON(w, http.StatusOK, toConfigResponse(cfgStore))
 	}
 }
+
+// ConfigReloadHandler serves POST /api/config/reload (D-08): re-reads
+// config.toml from disk through the identical validate-then-apply path a
+// UI save uses — the only way a hand-edited file reaches the running
+// kernel, since there is deliberately no file watcher (07-CONTEXT.md).
+//
+// cfgStore.Reload's own documented contract (kernel/config/store.go)
+// loads into locals and swaps only on full success — a failed reload
+// therefore leaves the previous raw/expanded pointers and hash completely
+// untouched, so this handler's 422 response is never followed by a
+// half-applied in-memory state: the running kernel keeps serving exactly
+// the last-good configuration it was already serving, and never exits.
+func ConfigReloadHandler(cfgStore *config.Store, applier Applier) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := cfgStore.Reload(); err != nil {
+			WriteError(w, http.StatusUnprocessableEntity, "config_invalid", err.Error())
+			return
+		}
+
+		// Same apply-after-mutate discipline as ConfigSaveHandler: the file
+		// is already reloaded and cfgStore's pointers already swapped by
+		// this point, so an apply failure here is a runtime reconciliation
+		// problem, never a config-validity one — never a silent 200.
+		if err := applier.Apply(r.Context()); err != nil {
+			WriteError(w, http.StatusInternalServerError, "apply_failed",
+				"config.toml was reloaded and is now the kernel's config-of-record, but the running kernel could not fully apply it — retry POST /api/config/reload: "+err.Error())
+			return
+		}
+
+		WriteJSON(w, http.StatusOK, toConfigResponse(cfgStore))
+	}
+}

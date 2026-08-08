@@ -86,11 +86,15 @@ func itemIDParam(r *http.Request) string {
 // ItemHandler serves GET /api/items/{id}: an index read to resolve the
 // composite id to source (instance id) /source_id and the item's own
 // metadata, plus exactly one request-time plugin Fetch call (full variant)
-// for the live extracted text and rendition descriptor (KERN-03). cfg
-// resolves the item's source_display_name (D-09) — inert configuration
-// data, never a plugin call.
-func ItemHandler(store *index.Store, cfg *config.Config, fetcher Fetcher) http.HandlerFunc {
+// for the live extracted text and rendition descriptor (KERN-03). cfgStore
+// is resolved fresh as the first statement of the returned closure
+// (07-02-PLAN.md Task 2) to label source_display_name (D-09) — inert
+// configuration data, never a plugin call — so a display-name edit saved
+// through PUT /api/config is visible on the very next item request with no
+// kernel restart.
+func ItemHandler(store *index.Store, cfgStore *config.Store, fetcher Fetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		id := itemIDParam(r)
 		ctx := r.Context()
 
