@@ -244,16 +244,66 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 // detached sync_runs finalize (kernel/syncer/coordinator.go) — identical
 // to how kernel shutdown already handles a mid-flight sync — so no
 // sync_runs row is ever left stranded at status "running" by an apply.
+// This paragraph's contract is unchanged by 07-09 and remains pinned by
+// TestApply_MidFlightSyncLeavesNoStrandedRunningRow.
 //
-// On any error, Apply changes nothing further and returns: the caller
-// (ConfigSaveHandler/ConfigReloadHandler) decides how to surface it. The
-// config file and the swapped config.Store state are already valid by
-// construction — Store.Save/Reload validate before swapping — so an
-// error here is a runtime reconciliation problem (e.g. a plugin binary
-// failed to relaunch), never a config-validity problem. A failed apply
-// restarts the scheduler against the previously running (unchanged) host
-// and coordinator pairing, so periodic sync does not stall indefinitely
-// while the operator retries the save or reloads the file.
+// Apply has exactly two error regimes, divided by whether s.host.Reconcile
+// has committed (07-VERIFICATION.md gaps[0] — corrected here; this
+// comment previously claimed a failed apply ALWAYS restarts the scheduler
+// against an unchanged host, which was only ever true for the first of
+// these two regimes, and 07-VERIFICATION.md named this doc comment as
+// contradicting the code beneath it):
+//
+//   - Before Reconcile commits (Reconcile itself returns a non-nil
+//     error): the previously running plugin set is genuinely untouched —
+//     Reconcile's own documented guarantee (kernel/pluginhost/host.go,
+//     T-07-11) is that every new/changed launch is attempted before
+//     anything currently running is torn down, so a launch failure
+//     leaves the prior set fully intact. Apply keeps the OLD generation:
+//     it restarts the scheduler against oldCfg, and the running kernel is
+//     simply unchanged.
+//   - After Reconcile commits (every failure beneath it: the
+//     match-vocabulary check, and the two D-07 index-cleanup steps):
+//     there is no undo. Reconcile has already mutated the launched
+//     plugin set in place — the replaced instance's old subprocess is
+//     killed and dead by the time Reconcile returns nil — and the config
+//     store already swapped to newCfg before Apply was ever called, so
+//     cfgStore.Expanded() is already the config-of-record, agreeing with
+//     the file on disk and with every other per-request
+//     cfgStore.Expanded() read elsewhere in the kernel. The only
+//     self-consistent state left available is the NEW generation, so
+//     every post-Reconcile failure branch adopts newCfg through
+//     commitGeneration and still returns its error unchanged. Re-running
+//     Reconcile against oldCfg.Sources as a rollback is deliberately
+//     rejected: a rollback that performs real subprocess launches can
+//     itself fail, leaving the kernel strictly worse off than the defect
+//     it was meant to fix, with no third recourse.
+//
+// Whichever branch Apply exits by, s.host, s.coord, s.cfg and the running
+// scheduler generation always reflect ONE AND THE SAME config generation
+// as each other — never a new host paired with a stale coordinator, which
+// is the shape gaps[0] took before this fix.
+//
+// Adopting the new generation on a post-Reconcile failure is state
+// repair, not success: it does NOT convert a rejected save into an
+// apparent one. Apply still returns a non-nil error on every one of these
+// branches, so ConfigSaveHandler/ConfigReloadHandler still answer 500
+// apply_failed and the operator is still told the runtime may be out of
+// sync with the file until a successful reload
+// (kernel/httpapi/config.go).
+//
+// D-08's "an invalid file on reload keeps the last-good config running"
+// guarantee is enforced upstream of Apply entirely, in
+// config.Store.Reload, which validates before it swaps — a structurally
+// invalid file never reaches Apply at all. A match-vocabulary rejection
+// is a different class: only a live post-launch cross-check against a
+// launched plugin's declared vocabulary can detect it
+// (pluginhost.ValidateMatchConfig's own doc comment), so by the time
+// Apply can reject it, Reconcile has already run and the store has
+// already swapped — there is no last-known-good config left at the store
+// level to fall back to either.
+//
+// See 07-09-PLAN.md for the fix that closed 07-VERIFICATION.md gaps[0].
 func (s *Supervisor) Apply(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -288,7 +338,11 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// D-07: an instance present before this apply and absent now has its
 	// index rows and sync history removed right away, across every
 	// webspace it participated in — a re-added instance under the same id
-	// must never inherit phantom history (T-07-13).
+	// must never inherit phantom history (T-07-13). Both failure branches
+	// below adopt the new generation for the same reason the
+	// match-vocabulary branch above does: Reconcile has already committed
+	// by this point, so the new generation is the only self-consistent
+	// state left to adopt.
 	for _, name := range removedInstances(oldCfg, newCfg) {
 		if err := s.idx.DeleteSourceItems(ctx, name); err != nil {
 			s.commitGeneration(newCfg)
