@@ -10,6 +10,7 @@
 		getConfig,
 		putConfig,
 		listPluginTypes,
+		describePlugin,
 		ApiError,
 		type StreamResponse,
 		type SourceStatus,
@@ -23,13 +24,14 @@
 		staleSources,
 		filterItemsBySource
 	} from '$lib/format';
-	import { setWebspaceFilter } from '$lib/config-edit';
+	import { setWebspaceFilter, removeSourceFromWebspace } from '$lib/config-edit';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import StreamDateMarkers from '$lib/components/StreamDateMarkers.svelte';
 	import SearchResults from '$lib/components/SearchResults.svelte';
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
+	import EditSourceModal from '$lib/components/EditSourceModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
 	// The [webspace] dynamic segment always matches for this route, so
@@ -116,6 +118,77 @@
 	// (its first eager sync's items, if any landed already).
 	async function handleSourceAdded() {
 		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
+
+	// Chip menu state (D-12, 07-04-PLAN.md Task 3). editVocabulary is
+	// resolved via describePlugin against the instance's own stored
+	// connection config — the same substitute Task 1's one-step
+	// existing-instance flow uses (GET /api/sources carries no
+	// match_vocabulary field; see AddSourceModal.svelte's own doc comment
+	// for why). Unused (left []) in 'connection' mode.
+	let editOpen = $state(false);
+	let editMode = $state<'connection' | 'match'>('connection');
+	let editInstance = $state<string | null>(null);
+	let editVocabulary = $state<string[]>([]);
+
+	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'remove') {
+		if (kind === 'remove') {
+			await handleRemoveSource(name);
+			return;
+		}
+		if (!configResponse) return;
+		editInstance = name;
+		editMode = kind;
+		editVocabulary = [];
+		if (kind === 'match') {
+			try {
+				const source = configResponse.config.sources[name];
+				const resp = await describePlugin({ plugin: source.plugin, source });
+				editVocabulary = resp.match_vocabulary;
+			} catch {
+				// Match settings can still be viewed/edited against whatever
+				// vocabulary resolved (possibly none) — a describe failure
+				// here is not fatal, it just means the form renders no
+				// fields until the instance can connect again.
+			}
+		}
+		editOpen = true;
+	}
+
+	function handleEditClose() {
+		editOpen = false;
+	}
+
+	async function handleEditSaved() {
+		editOpen = false;
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
+
+	// handleRemoveSource is a modal-less write (D-12/07-UI-SPEC.md's
+	// Destructive Confirmation Contract: reversible in one more click via
+	// "+", destroys no data) — reuses filterBusy/filterError, the same
+	// disable-while-in-flight state and header error region every other
+	// modal-less write (Save as filter / remove filter) already uses.
+	async function handleRemoveSource(name: string) {
+		if (!configResponse) return;
+		filterBusy = true;
+		try {
+			const nextConfig = removeSourceFromWebspace(configResponse.config, webspace, name);
+			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			configResponse = res;
+			filterError = null;
+			await Promise.all([loadSources(), load(navGeneration)]);
+		} catch (err) {
+			filterError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? 'Config changed on disk — review and retry.'
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong removing this source — check the browser console and try again.';
+			await loadConfig(navGeneration);
+		} finally {
+			filterBusy = false;
+		}
 	}
 
 	// onmanagesources is a no-op-safe placeholder (07-UI-SPEC.md D-13's
@@ -479,6 +552,7 @@
 		{pluginTypes}
 		envVars={configResponse?.env_vars ?? {}}
 		onsourceadded={handleSourceAdded}
+		onedit={handleChipEdit}
 	/>
 
 	{#if configResponse}
@@ -489,6 +563,23 @@
 			onclose={() => (createOpen = false)}
 			oncreated={handleWebspaceCreated}
 		/>
+	{/if}
+
+	{#if configResponse && editInstance}
+		{#key `${editInstance}-${editMode}`}
+			<EditSourceModal
+				open={editOpen}
+				mode={editMode}
+				instance={editInstance}
+				{webspace}
+				config={configResponse.config}
+				baseHash={configResponse.hash}
+				envVars={configResponse.env_vars}
+				vocabulary={editVocabulary}
+				onclose={handleEditClose}
+				onsaved={handleEditSaved}
+			/>
+		{/key}
 	{/if}
 
 	<main class="flex min-h-0 flex-1 gap-8 px-6 py-8">

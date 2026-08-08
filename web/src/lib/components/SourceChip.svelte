@@ -6,7 +6,16 @@
 		TooltipProvider,
 		TooltipTrigger
 	} from '$lib/components/ui/tooltip/index.js';
+	import {
+		DropdownMenu,
+		DropdownMenuTrigger,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuSeparator
+	} from '$lib/components/ui/dropdown-menu/index.js';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import { cn } from '$lib/utils.js';
 	import { healthTone, formatRelativeTime, type HealthTone } from '$lib/format';
 	import type { SourceStatus } from '$lib/api';
@@ -19,16 +28,24 @@
 	// (06-UI-SPEC.md "Header Redesign") — reusing it unforked in both
 	// places is what keeps truncation and per-instance isolation identical
 	// regardless of where a given chip is currently visible.
+	//
+	// D-12 (07-04-PLAN.md Task 3) adds a third control: an edit menu
+	// trailing the refresh button, offering Edit connection…/Edit match
+	// settings…/Remove from this webspace via `onedit`. A measurement
+	// clone (WebspaceHeader.svelte's invisible `measureEl` row) passes a
+	// no-op `onedit` — see this file's own guard, chip-edit-menu.test.ts.
 	let {
 		source,
 		selected,
 		onfilter,
-		onrefresh
+		onrefresh,
+		onedit
 	}: {
 		source: SourceStatus;
 		selected: boolean;
 		onfilter: (name: string) => void;
 		onrefresh: (name: string) => void;
+		onedit: (name: string, kind: 'connection' | 'match' | 'remove') => void;
 	} = $props();
 
 	let tone = $derived(healthTone(source));
@@ -68,6 +85,19 @@
 	function handleRefreshClick(event: MouseEvent) {
 		event.stopPropagation();
 		onrefresh(source.name);
+	}
+
+	// stopPropagation before anything else — this is the D-12 versus Phase
+	// 6 D-01 collision, and the single most important line in this
+	// component's edit-menu control: opening the menu must never also
+	// toggle the chip's filter state. bits-ui's own trigger props are
+	// still invoked afterward (props.onclick?.(event)) so the menu's own
+	// interaction handling (its VoiceOver click-detail-0 case; real mouse
+	// opens are driven by the trigger's own onpointerdown, untouched here)
+	// keeps working.
+	function handleEditClick(event: MouseEvent, triggerOnClick?: (e: MouseEvent) => void) {
+		event.stopPropagation();
+		triggerOnClick?.(event);
 	}
 </script>
 
@@ -123,4 +153,43 @@
 	>
 		<RefreshCw class={cn('size-4', source.syncing && 'animate-spin')} />
 	</Button>
+
+	<DropdownMenu>
+		<DropdownMenuTrigger>
+			{#snippet child({ props })}
+				<Button
+					{...props}
+					variant="ghost"
+					size="icon"
+					class={cn(
+						'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+						selected &&
+							'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
+					)}
+					aria-label={`Edit ${source.display_name}`}
+					onclick={(event: MouseEvent) =>
+						handleEditClick(event, (props as { onclick?: (e: MouseEvent) => void }).onclick)}
+				>
+					<EllipsisVertical class="size-4" />
+				</Button>
+			{/snippet}
+		</DropdownMenuTrigger>
+		<DropdownMenuContent>
+			<DropdownMenuItem onSelect={() => onedit(source.name, 'connection')}>
+				<Pencil aria-hidden="true" />
+				Edit connection…
+			</DropdownMenuItem>
+			<DropdownMenuItem onSelect={() => onedit(source.name, 'match')}>
+				<Pencil aria-hidden="true" />
+				Edit match settings…
+			</DropdownMenuItem>
+			<DropdownMenuSeparator />
+			<DropdownMenuItem
+				class="text-foreground hover:text-destructive focus:text-destructive data-highlighted:text-destructive"
+				onSelect={() => onedit(source.name, 'remove')}
+			>
+				Remove from this webspace
+			</DropdownMenuItem>
+		</DropdownMenuContent>
+	</DropdownMenu>
 </div>

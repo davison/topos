@@ -50,7 +50,8 @@
 		baseHash,
 		pluginTypes,
 		envVars,
-		onsourceadded
+		onsourceadded,
+		onedit
 	}: {
 		webspace: string;
 		// webspaces backs the WebspaceSwitcher's menu list (D-10) — the
@@ -112,6 +113,12 @@
 		// lookup, is what the badge reads.
 		envVars: Record<string, boolean>;
 		onsourceadded: () => void;
+		// onedit (D-12, Task 3) is threaded to every real SourceChip below —
+		// including the clones inside the overflow popover, so a chip there
+		// behaves identically to one in the row — but explicitly NOT to the
+		// invisible measurement clones, which keep a no-op handler so a
+		// measurement clone can never dispatch an edit.
+		onedit: (name: string, kind: 'connection' | 'match' | 'remove') => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
@@ -319,6 +326,7 @@
 					selected={selectedSources.has(source.name)}
 					{onfilter}
 					{onrefresh}
+					{onedit}
 				/>
 			{/each}
 
@@ -350,6 +358,7 @@
 									selected={selectedSources.has(source.name)}
 									{onfilter}
 									{onrefresh}
+									{onedit}
 								/>
 							{/each}
 						</div>
@@ -416,6 +425,7 @@
 					selected={selectedSources.has(source.name)}
 					onfilter={() => {}}
 					onrefresh={() => {}}
+					onedit={() => {}}
 				/>
 			{/each}
 		</div>
