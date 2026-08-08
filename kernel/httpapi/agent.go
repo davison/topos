@@ -89,8 +89,9 @@ type agentSourcesResponse struct {
 // to the granted set and wrapped with each source's own capabilities. A
 // zero-grant config returns 200 with an empty array, never an error
 // (AGENT-01/empty).
-func agentSourcesHandler(store *index.Store, cfg *config.Config, prober HealthProber) http.HandlerFunc {
+func agentSourcesHandler(store *index.Store, cfgStore *config.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		ctx := r.Context()
 		granted := grantedSources(cfg)
 
@@ -143,8 +144,9 @@ func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName
 // (structural filtering, not a cosmetic count adjustment — a webspace
 // whose only items belong to an ungranted source reports item_count 0,
 // exactly as if that source had never synced anything).
-func agentWebspacesHandler(store *index.Store, cfg *config.Config, prober HealthProber) http.HandlerFunc {
+func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		ctx := r.Context()
 		granted := grantedSources(cfg)
 
@@ -250,8 +252,9 @@ func agentItemNotFound(w http.ResponseWriter, id string) {
 // agentItemHandler serves GET /agent/v1/items/{id}: the identical
 // itemDetailResponse shape /api/items/{id} reports for a granted item: an
 // ungranted item is reported as not-found, never with a distinct code.
-func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProber, fetcher Fetcher) http.HandlerFunc {
+func agentItemHandler(store *index.Store, cfgStore *config.Store, prober HealthProber, fetcher Fetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		id := itemIDParam(r)
 		ctx := r.Context()
 
@@ -300,8 +303,9 @@ func agentItemHandler(store *index.Store, cfg *config.Config, prober HealthProbe
 // behavior below (allowlist check, hardened header set) is copied
 // verbatim from renditionHandler; the only added step is the grant check
 // before any plugin call is made.
-func agentRenditionHandler(store *index.Store, cfg *config.Config, prober HealthProber, fetcher Fetcher, variant toposv1.ContentVariant) http.HandlerFunc {
+func agentRenditionHandler(store *index.Store, cfgStore *config.Store, prober HealthProber, fetcher Fetcher, variant toposv1.ContentVariant) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
 		id := itemIDParam(r)
 		ctx := r.Context()
 
@@ -380,20 +384,27 @@ func agentRenditionHandler(store *index.Store, cfg *config.Config, prober Health
 // MountAgentRoutes mounts the /agent/v1 namespace on r using the same
 // store/cfgStore/Fetcher/HealthProber the human-facing /api/* routes use
 // (Router, in routes.go) — there is no second store, no second sync
-// pipeline, only a grant-filtered read path over the same data.
-// agentStreamHandler alone takes cfgStore itself (a live per-request read,
-// matching StreamHandler — D-16's filtered-view-is-the-webspace guarantee
-// applies to this surface too); every other agent handler here resolves
-// cfg := cfgStore.Expanded() once, the same deliberately-temporary
-// boot-snapshot treatment Router gives WebspacesHandler/ItemHandler/
-// SourceRefreshHandler (07-02 Task 2 fills this gap for every handler at
-// once).
+// pipeline, only a grant-filtered read path over the same data. Every
+// handler registered below — agentSourcesHandler, agentWebspacesHandler,
+// agentStreamHandler, agentItemHandler, agentRenditionHandler — resolves
+// the running config from cfgStore as the first statement of its own
+// request closure, matching StreamHandler/WebspacesHandler/ItemHandler/
+// SourceRefreshHandler (07-02-PLAN.md Task 2's fix, extended to this
+// namespace here). This function itself holds no config value at all: a
+// handler registered here later has nothing stale in scope to be
+// accidentally handed.
+//
+// The agent namespace in particular cannot tolerate a router-construction-
+// time resolution the way a merely-cosmetic surface might: a revoked
+// agent.read grant that stays in force until the process restarts is a
+// live authorization-bypass window on AGENT-01's default-deny model, and
+// D-06 promises the operator that a config save applies immediately — a
+// promise this namespace broke until 07-REVIEW.md's CR-01 was closed here.
 func MountAgentRoutes(r chi.Router, store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber) {
-	cfg := cfgStore.Expanded()
-	r.Get("/agent/v1/sources", agentSourcesHandler(store, cfg, prober))
-	r.Get("/agent/v1/webspaces", agentWebspacesHandler(store, cfg, prober))
+	r.Get("/agent/v1/sources", agentSourcesHandler(store, cfgStore, prober))
+	r.Get("/agent/v1/webspaces", agentWebspacesHandler(store, cfgStore, prober))
 	r.Get("/agent/v1/webspaces/{webspace}/stream", agentStreamHandler(store, cfgStore, prober))
-	r.Get("/agent/v1/items/{id}", agentItemHandler(store, cfg, prober, fetcher))
-	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
-	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))
+	r.Get("/agent/v1/items/{id}", agentItemHandler(store, cfgStore, prober, fetcher))
+	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfgStore, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
+	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfgStore, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))
 }
