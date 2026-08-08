@@ -400,7 +400,10 @@
 	}
 
 	// Re-fetch (and drop any stale selection/search) whenever the webspace
-	// route param changes.
+	// route param changes. writeLastWebspace records this visit (D-10,
+	// 07-03-PLAN.md Task 3) so the root route's redirect always lands here
+	// next time — every visit updates the memory, not only navigation via
+	// the switcher.
 	$effect(() => {
 		const gen = ++navGeneration;
 		selectedId = null;
@@ -408,6 +411,7 @@
 		searchState = 'idle';
 		searchResults = [];
 		filterError = null;
+		writeLastWebspace(webspace);
 		load(gen);
 		loadSources();
 		loadConfig(gen);
