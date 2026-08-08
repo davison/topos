@@ -17,10 +17,14 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
@@ -289,5 +293,271 @@ keywords = ["house-move"]
 	router.ServeHTTP(itemRec2, itemReq2)
 	if itemRec2.Code != http.StatusOK {
 		t.Fatalf("expected 200 for the newly granted item to reflect the save on the SAME router instance with no restart, got %d: %s", itemRec2.Code, itemRec2.Body.String())
+	}
+}
+
+// --- TestAgentGuard_EveryHandlerResolvesConfigPerRequest support (AST) ---
+//
+// This mirrors contract_test.go's own AST-scanning precedent
+// (nonGetRoutesInFile / TestContract_MutatingRoutesAreConfigScoped):
+// token.NewFileSet + parser.ParseFile + ast.Inspect over the plain source
+// filename, run from the package directory go test already sets as its
+// working directory.
+
+// astParseAgentGo parses kernel/httpapi/agent.go's current source.
+func astParseAgentGo(t *testing.T) *ast.File {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "agent.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse agent.go: %v", err)
+	}
+	return f
+}
+
+// funcDeclsEndingIn returns every top-level (non-method) function
+// declaration in f whose name ends in suffix.
+func funcDeclsEndingIn(f *ast.File, suffix string) []*ast.FuncDecl {
+	var out []*ast.FuncDecl
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil {
+			continue
+		}
+		if len(fd.Name.Name) >= len(suffix) && fd.Name.Name[len(fd.Name.Name)-len(suffix):] == suffix {
+			out = append(out, fd)
+		}
+	}
+	return out
+}
+
+// funcDeclNamed returns the top-level (non-method) function declaration in
+// f named name, or nil if none exists.
+func funcDeclNamed(f *ast.File, name string) *ast.FuncDecl {
+	for _, decl := range f.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil {
+			continue
+		}
+		if fd.Name.Name == name {
+			return fd
+		}
+	}
+	return nil
+}
+
+// paramCount returns fd's total parameter count, expanding grouped
+// parameter names (e.g. `a, b string`) to their individual count.
+func paramCount(fd *ast.FuncDecl) int {
+	if fd.Type.Params == nil {
+		return 0
+	}
+	count := 0
+	for _, field := range fd.Type.Params.List {
+		if len(field.Names) == 0 {
+			count++
+			continue
+		}
+		count += len(field.Names)
+	}
+	return count
+}
+
+// hasParamOfType reports whether fd declares any parameter of type
+// *pkg.typeName (e.g. *config.Config).
+func hasParamOfType(fd *ast.FuncDecl, pkg, typeName string) bool {
+	if fd.Type.Params == nil {
+		return false
+	}
+	for _, field := range fd.Type.Params.List {
+		if isStarSelector(field.Type, pkg, typeName) {
+			return true
+		}
+	}
+	return false
+}
+
+// isStarSelector reports whether expr is exactly *pkg.typeName.
+func isStarSelector(expr ast.Expr, pkg, typeName string) bool {
+	star, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := star.X.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return ident.Name == pkg && sel.Sel.Name == typeName
+}
+
+// isExpandedCall reports whether expr is a call whose selector name is
+// Expanded — the store's config-resolution method (config.Store.Expanded).
+func isExpandedCall(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	return sel.Sel.Name == "Expanded"
+}
+
+// countExpandedCalls walks node and counts every call expression whose
+// selector name is Expanded.
+func countExpandedCalls(node ast.Node) int {
+	count := 0
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Expanded" {
+			count++
+		}
+		return true
+	})
+	return count
+}
+
+// returnedFuncLit returns the func literal fd's body returns (the
+// http.HandlerFunc closure every agent handler constructor builds), or
+// nil if fd's body returns no func literal.
+func returnedFuncLit(fd *ast.FuncDecl) *ast.FuncLit {
+	var lit *ast.FuncLit
+	for _, stmt := range fd.Body.List {
+		ret, ok := stmt.(*ast.ReturnStmt)
+		if !ok {
+			continue
+		}
+		for _, res := range ret.Results {
+			if fl, ok := res.(*ast.FuncLit); ok {
+				lit = fl
+			}
+		}
+	}
+	return lit
+}
+
+func sortedBoolKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedFuncDeclKeys(m map[string]*ast.FuncDecl) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestAgentGuard_EveryHandlerResolvesConfigPerRequest pins the invariant
+// Task 1 established as a structural, AST-enforced guarantee: a future
+// handler added to agent.go with the pre-fix shape (a resolved
+// *config.Config parameter, or a config resolved inside MountAgentRoutes)
+// cannot silently reintroduce CR-01's authorization-bypass window. A
+// behavioural test alone would not catch a NEW handler added with the old
+// shape — that is exactly how this defect survived 07-02's /api/* gap
+// closure, so this guard is structural rather than behavioural.
+func TestAgentGuard_EveryHandlerResolvesConfigPerRequest(t *testing.T) {
+	f := astParseAgentGo(t)
+
+	// Assertion 1: the handler set is enumerated, not sampled. A new
+	// handler is not forbidden, but whoever adds one must extend this
+	// guard to cover it.
+	wantHandlers := map[string]bool{
+		"agentSourcesHandler":   true,
+		"agentWebspacesHandler": true,
+		"agentStreamHandler":    true,
+		"agentItemHandler":      true,
+		"agentRenditionHandler": true,
+	}
+	gotHandlers := make(map[string]*ast.FuncDecl)
+	for _, fd := range funcDeclsEndingIn(f, "Handler") {
+		gotHandlers[fd.Name.Name] = fd
+	}
+	if len(gotHandlers) != len(wantHandlers) {
+		t.Fatalf("expected exactly the handler set %v declared in agent.go, got %d: %v — a new handler is not forbidden, but whoever adds one must extend this guard to cover it",
+			sortedBoolKeys(wantHandlers), len(gotHandlers), sortedFuncDeclKeys(gotHandlers))
+	}
+	for name := range wantHandlers {
+		if _, ok := gotHandlers[name]; !ok {
+			t.Errorf("expected handler %q to be declared in agent.go — a new handler is not forbidden, but whoever adds or renames one must extend this guard to cover it", name)
+		}
+	}
+	for name := range gotHandlers {
+		if !wantHandlers[name] {
+			t.Errorf("unexpected handler %q declared in agent.go and not covered by this guard — a new handler is not forbidden, but whoever adds one must extend this guard to cover it", name)
+		}
+	}
+
+	// Assertion 2: no handler receives a resolved config. A handler
+	// holding a config resolved before the request began (CR-01) serves a
+	// grant set that a revocation cannot reach until the process
+	// restarts.
+	for name, fd := range gotHandlers {
+		if hasParamOfType(fd, "config", "Config") {
+			t.Errorf("%s takes a parameter of type *config.Config (CR-01): a handler holding a config resolved before the request began serves a grant set that a revocation cannot reach until the process restarts", name)
+		}
+	}
+
+	// Assertion 3: grantedSources keeps the resolved-config parameter —
+	// the store is threaded as far as the handler closure and no further,
+	// so the "resolve once, at the top of the request" discipline stays
+	// visible at every call site rather than hiding inside a helper.
+	grantedSourcesDecl := funcDeclNamed(f, "grantedSources")
+	if grantedSourcesDecl == nil {
+		t.Fatal("expected grantedSources to be declared in agent.go")
+	}
+	if n := paramCount(grantedSourcesDecl); n != 1 {
+		t.Errorf("expected grantedSources to declare exactly 1 parameter, got %d", n)
+	} else if !hasParamOfType(grantedSourcesDecl, "config", "Config") {
+		t.Error("expected grantedSources' one parameter to be of type *config.Config — the store is threaded as far as the handler closure and no further, so the 'resolve once, at the top of the request' discipline stays visible at every call site rather than hiding inside a helper")
+	}
+
+	// Assertion 4: nothing is resolved at mount time. A config resolved in
+	// MountAgentRoutes is a snapshot every handler registered below it
+	// would silently inherit — precisely the defect this guard pins.
+	mountDecl := funcDeclNamed(f, "MountAgentRoutes")
+	if mountDecl == nil {
+		t.Fatal("expected MountAgentRoutes to be declared in agent.go")
+	}
+	if n := countExpandedCalls(mountDecl.Body); n != 0 {
+		t.Errorf("expected MountAgentRoutes' body to contain zero Expanded() calls, got %d — a config resolved in this function is a snapshot every handler registered below it would silently inherit, which is precisely the defect this guard pins", n)
+	}
+
+	// Assertion 5: resolved once, first, per request. Two resolutions in
+	// one request body would let a save landing between them produce a
+	// response mixing a pre-save granted set with post-save display names
+	// or webspace filters.
+	for name, fd := range gotHandlers {
+		lit := returnedFuncLit(fd)
+		if lit == nil {
+			t.Errorf("%s: expected a returned http.HandlerFunc closure (func literal)", name)
+			continue
+		}
+		if len(lit.Body.List) == 0 {
+			t.Errorf("%s: expected the returned closure to have at least one statement", name)
+			continue
+		}
+		first := lit.Body.List[0]
+		assign, ok := first.(*ast.AssignStmt)
+		if !ok || len(assign.Rhs) != 1 || !isExpandedCall(assign.Rhs[0]) {
+			t.Errorf("%s: expected the closure's first statement to assign from a single call to the store's config-resolution method (Expanded) — a resolution anywhere but first, or a second resolution later in the body, would let a save landing mid-request produce a response mixing a pre-save granted set with post-save display names or webspace filters", name)
+		}
+		if n := countExpandedCalls(lit); n != 1 {
+			t.Errorf("%s: expected exactly one Expanded() call in the closure body, got %d — a second resolution reintroduces CR-01's defect at a smaller time scale", name, n)
+		}
 	}
 }
