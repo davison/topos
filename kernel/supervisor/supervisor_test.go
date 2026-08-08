@@ -274,3 +274,238 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 		t.Errorf("expected the mid-flight sync run to carry a finished time, got: %+v", run)
 	}
 }
+
+// pluginByName scans plugins for the one launched under instance id name,
+// so the tests below can assert on it without repeating an index loop.
+func pluginByName(plugins []*pluginhost.Plugin, name string) (*pluginhost.Plugin, bool) {
+	for _, p := range plugins {
+		if p.Name() == name {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// TestApply_ValidateMatchConfigFailsAfterReconcile_CoordinatorTracksRelaunchedPlugin
+// exercises the exact ordering 07-VERIFICATION.md gaps[0].missing[1] names
+// as uncovered: Host.Reconcile succeeds (it commits its result by mutating
+// the launched plugin set in place) and pluginhost.ValidateMatchConfig then
+// fails on the SAME Apply call. This is the branch
+// TestApply_MidFlightSyncLeavesNoStrandedRunningRow deliberately never
+// reaches — that test forces Reconcile itself to fail, so the host is never
+// mutated at all. Here Reconcile succeeds and the vocabulary check is what
+// rejects the save, which is the exact shape gaps[0] describes: a rejected
+// save must not leave s.coord (and s.cfg) disagreeing with the host that
+// Reconcile already committed.
+func TestApply_ValidateMatchConfigFailsAfterReconcile_CoordinatorTracksRelaunchedPlugin(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	// "changing" is the instance whose connection config will change in the
+	// rejected save below. "control" is the untouched control instance,
+	// named by the second webspace's sources allowlist and match block.
+	cfgStore := newTestConfigStore(t, `
+[sources.changing]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+display_name = "before"
+
+[sources.control]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["labels"]
+
+[webspaces.control-only]
+sources = ["control"]
+
+[webspaces.control-only.match.control]
+labels = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	beforePlugin, ok := pluginByName(sup.Host().Plugins(), "changing")
+	if !ok {
+		t.Fatalf("expected instance %q launched at boot", "changing")
+	}
+	beforeCoord := sup.Coordinator()
+
+	// next makes two changes at once, because it is their combination that
+	// reaches the defect: the "changing" instance's config.Source differs
+	// from what it was launched with (Reconcile must relaunch it), and the
+	// "control-only" webspace's match block for the CONTROL instance now
+	// declares a field name outside the mock plugin's declared vocabulary
+	// ("labels" is the only field the mock declares).
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"changing": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused", DisplayName: "after"},
+			"control":  {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"everything": {Keywords: []string{"labels"}},
+			"control-only": {
+				Sources: []string{"control"},
+				Match: map[string]config.MatchBlock{
+					"control": {"nonexistent_field": []string{"demo"}},
+				},
+			},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save must succeed — config.Validate is deliberately plugin-independent, so an unknown match FIELD NAME must pass it. If this assertion fires, the test's premise has been invalidated by a change elsewhere and this test is no longer covering the branch it claims to: %v", err)
+	}
+
+	err = sup.Apply(ctx)
+	if err == nil {
+		t.Fatal("expected Apply to return a non-nil error from the vocabulary check")
+	}
+	if !strings.Contains(err.Error(), "nonexistent_field") || !strings.Contains(err.Error(), "control-only") {
+		t.Errorf("expected the error to name the foreign match field and the webspace that declared it — this is what proves the vocabulary check produced the error rather than Reconcile (a Reconcile error would name a plugin binary instead). Got: %v", err)
+	}
+
+	plugins := sup.Host().Plugins()
+	if len(plugins) != 2 {
+		t.Fatalf("expected 2 launched plugins after apply, got %d", len(plugins))
+	}
+	afterPlugin, ok := pluginByName(plugins, "changing")
+	if !ok {
+		t.Fatalf("expected instance %q still launched after apply", "changing")
+	}
+	if afterPlugin == beforePlugin {
+		t.Fatal("expected a NEW *Plugin pointer for the changed instance after Reconcile committed — this pins the premise that Reconcile genuinely committed, so the test cannot silently degrade into asserting nothing")
+	}
+	if got := afterPlugin.DisplayName(); got != "after" {
+		t.Errorf("expected the relaunched instance to reflect the new display name, got %q", got)
+	}
+
+	if sup.Coordinator() == beforeCoord {
+		t.Error("expected the coordinator to have been rebuilt (a different pointer) even though Apply returned an error")
+	}
+
+	if sup.cfg != cfgStore.Expanded() {
+		t.Error("expected the supervisor's own recorded config generation (s.cfg) to be the same pointer cfgStore.Expanded() now returns")
+	}
+
+	// The real point of the test: the coordinator must dispatch against the
+	// subprocess that is actually alive, not the one Reconcile already
+	// killed.
+	result, err := sup.Refresh(ctx, "changing")
+	if err != nil {
+		t.Fatalf("gaps[0]: expected Refresh against the relaunched instance to succeed after a rejected apply, got error: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Errorf("gaps[0]: expected Refresh's Status to be \"ok\" after a rejected apply — a non-ok status here means the coordinator is dispatching syncs against the subprocess Host.Reconcile already killed, silently breaking this source's sync until some later apply happens to succeed all the way through. Got: %+v", result)
+	}
+	// Coalesced is tolerated either way: the scheduler generation the apply
+	// just started also fires an immediate refresh for a changed instance,
+	// and Refresh is documented as single-flight, so joining an in-flight
+	// run is a legitimate outcome here and must not be asserted against.
+}
+
+// TestApply_RejectedSaveIsIdempotent_SecondApplyDoesNotRelaunchSubprocesses
+// is the UI-12 idempotency edge: applying the same already-rejected config a
+// second time — the documented POST /api/config/reload recovery path, which
+// re-reads the same still-invalid file — fails again with the same error,
+// and launches nothing and kills nothing, because the previous apply
+// already adopted the new generation and Host.Reconcile finds every
+// instance's source already equal to what the config declares.
+func TestApply_RejectedSaveIsIdempotent_SecondApplyDoesNotRelaunchSubprocesses(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.changing]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+display_name = "before"
+
+[sources.control]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["labels"]
+
+[webspaces.control-only]
+sources = ["control"]
+
+[webspaces.control-only.match.control]
+labels = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"changing": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused", DisplayName: "after"},
+			"control":  {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"everything": {Keywords: []string{"labels"}},
+			"control-only": {
+				Sources: []string{"control"},
+				Match: map[string]config.MatchBlock{
+					"control": {"nonexistent_field": []string{"demo"}},
+				},
+			},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	firstErr := sup.Apply(ctx)
+	if firstErr == nil {
+		t.Fatal("expected the first Apply to be rejected by the vocabulary check")
+	}
+
+	pluginsAfterFirst := sup.Host().Plugins()
+	pointers := make(map[string]*pluginhost.Plugin, len(pluginsAfterFirst))
+	for _, p := range pluginsAfterFirst {
+		pointers[p.Name()] = p
+	}
+
+	// This is the documented recovery path: POST /api/config/reload over
+	// the same still-invalid file, with no intervening save. It is a cheap
+	// no-op reconcile precisely because the previous apply adopted the new
+	// generation, so Host.Reconcile finds every instance's config.Source
+	// already equal to what the config declares.
+	secondErr := sup.Apply(ctx)
+	if secondErr == nil {
+		t.Fatal("expected the second Apply (retrying the same rejected save) to fail again")
+	}
+	if secondErr.Error() != firstErr.Error() {
+		t.Errorf("expected the second Apply's error to match the first verbatim (same rejected save, same failure), got first=%q second=%q", firstErr, secondErr)
+	}
+
+	pluginsAfterSecond := sup.Host().Plugins()
+	if len(pluginsAfterSecond) != len(pluginsAfterFirst) {
+		t.Fatalf("expected the same number of launched plugins across both applies, got %d then %d", len(pluginsAfterFirst), len(pluginsAfterSecond))
+	}
+	for _, p := range pluginsAfterSecond {
+		prior, ok := pointers[p.Name()]
+		if !ok {
+			t.Errorf("instance %q present after the second apply but not the first", p.Name())
+			continue
+		}
+		if p != prior {
+			t.Errorf("expected instance %q's *Plugin pointer to be identical across the retry (a no-op reconcile launches nothing and kills nothing), got a different pointer", p.Name())
+		}
+	}
+}
