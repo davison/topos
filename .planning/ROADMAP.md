@@ -347,7 +347,7 @@ Plans:
 
 **Wave 7** *(gap closure, blocked on Wave 6 completion — both plans run in parallel, zero file overlap)*
 
-- [ ] 07-07-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md CR-01/IN-01): every /agent/v1 handler reads the live config per request, so a revoked agent grant is enforced on the next request with no kernel restart
+- [x] 07-07-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md CR-01/IN-01): every /agent/v1 handler reads the live config per request, so a revoked agent grant is enforced on the next request with no kernel restart
 - [ ] 07-08-PLAN.md — Gap closure (07-VERIFICATION.md gaps[1], 07-REVIEW.md CR-02): closing the source edit modal ends the edit session, so a Cancelled draft can never resurface and be saved over real config
 
 Notes:
@@ -391,7 +391,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 6/6 | Gaps Found |  |
+| 7. Webspace Builder UI | 7/8 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
