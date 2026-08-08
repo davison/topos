@@ -27,6 +27,29 @@
 # field that instance's plugin declares (D-01). See "[webspaces.<name>]",
 # near the bottom of this file, for the full worked shape and every
 # load-time failure this can produce.
+#
+# The UI can write this file too (Phase 7, KERN-08): every builder surface
+# — creating/editing a webspace, adding/editing/removing a source
+# instance, saving a search as a permanent filter — persists through the
+# kernel's PUT /api/config, the same file this comment lives in. A UI save
+# rewrites config.toml in a CANONICAL, MINIMAL form: it round-trips every
+# key this file's Config struct models, but flattens hand-written
+# comments (like this one) and re-orders tables to Go's own struct field
+# order — expect a save from the UI to change this file's surrounding
+# prose even where it doesn't touch a value you care about. Your previous
+# content is never silently lost: every write backs it up to
+# config.toml.bak first (overwriting any earlier backup), immediately
+# before the new content lands via an atomic temp-file-plus-rename. Hand-
+# editing remains fully supported in both directions — the UI and a
+# hand-edit always agree on this one persisted shape, and a change you
+# make by hand reaches the running kernel via the UI's own
+# "Manage sources… -> Reload config" button (POST /api/config/reload),
+# without a restart; there is deliberately no file watcher, so a hand-edit
+# sits inert until that button is clicked. See docs/api.md's
+# "PUT /api/config" and "POST /api/config/reload" sections for the full
+# write/reload contract, including the optimistic-lock guard that refuses
+# a UI save started from a config.toml that's since changed out from
+# under it.
 
 [server]
 # listen: host:port the kernel's HTTP API and embedded web UI bind to.
@@ -415,6 +438,20 @@ handoff = false
 # other configured instance is skipped at sync time for this webspace,
 # and any rows it previously wrote here are cleared so no orphaned rows
 # survive the config change.
+#
+# The webspace builder UI's own interaction with this key (D-14, Phase 7):
+# the FIRST time a source is added to a webspace through the UI's "+"
+# picker, the UI writes an EXPLICIT sources list — seeded with every
+# instance that was already participating (the all-instances-participate
+# default this key's absence already meant), plus the one just added —
+# rather than leaving the key absent. A hand-written webspace with no
+# sources key keeps the all-instances-participate default exactly as
+# documented above; the builder never retroactively adds this key to a
+# webspace you haven't touched in the UI, and never converts an explicit
+# allowlist back into an absent key on your behalf either (deleting the
+# last named instance through "Manage sources…" writes sources = [] —
+# which this key's own default rule above still reads as
+# all-instances-participate, not as "nothing participates").
 #
 # Five load-time failures the kernel names explicitly, by webspace and/or
 # instance:

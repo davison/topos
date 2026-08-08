@@ -9,7 +9,7 @@ your data anywhere else.
 
 ## Status and roadmap
 
-Phases 1–5 of an eight-phase v1 are complete: four sources ship today —
+Phases 1–7 of an eight-phase v1 are complete: four sources ship today —
 paperless-ngx, SilverBullet, Proton Mail (via Bridge/IMAP, never marking
 mail read), and Signal Desktop (read strictly read-only from its local
 database) — interleaved in one chronological stream per webspace, with
@@ -20,16 +20,18 @@ names ("Home email" / "Work email"), each instance's matching config is
 typed to that plugin's own declared field vocabulary (folders, tags,
 conversation names, pages) rather than one shared keyword list, and every
 text/html rendition is sanitized, wrapped and themed by the kernel at one
-content-serving boundary instead of by each plugin individually — see
-`docs/plugin-contract.md` and `config.example.toml` for the shipped
-shape. What's coming, in order:
+content-serving boundary instead of by each plugin individually. Phase 6
+gave the header a scalable source surface — one merged chip per instance,
+deep-link fidelity cues, search-term highlighting, scrollbar date markers.
+Phase 7 added a **webspace builder UI**: create/edit a webspace and its
+source instances entirely from the browser (no more hand-editing TOML to
+get started), promote a live search into a webspace's permanent filter,
+and pull a hand-edited `config.toml` into the running kernel on demand via
+a Reload config affordance — the config write path this introduced is the
+kernel's first mutating HTTP surface, scoped strictly to configuration; see
+`docs/plugin-contract.md`, `docs/api.md` and `config.example.toml` for the
+shipped shape. What's coming next:
 
-- **Phase 6**: a scalable source UI surface — one affordance per source
-  combining health and filtering, deep-link fidelity cues, search-term
-  highlighting in the detail pane, scrollbar date markers.
-- **Phase 7**: a webspace builder UI — configure sources and webspaces
-  without hand-editing TOML; promote a live search into a webspace's
-  permanent filter.
 - **Phase 8**: WhatsApp, as a linked-device client with its own
   persistent message store — deliberately last, as the highest-risk
   source: everything above stays useful if it has to degrade.

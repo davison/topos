@@ -8,9 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
@@ -297,5 +301,103 @@ func TestContract_StreamCalledTwiceIsByteIdentical(t *testing.T) {
 	if rec1.Body.String() != rec2.Body.String() {
 		t.Errorf("expected byte-identical stream responses with no intervening sync:\nfirst=%s\nsecond=%s",
 			rec1.Body.String(), rec2.Body.String())
+	}
+}
+
+// nonGetRoutesInFile parses the named Go source file and returns every
+// (method, path) pair registered via a call of the shape
+// `<receiver>.<Method>("<path>", ...)` where method is anything other than
+// Get/NotFound — the same AST-walk shape config_test.go's own
+// TestRoutesGuard_NonGetRoutesScopedToConfig already established for
+// routes.go, factored out here so TestContract_MutatingRoutesAreConfigScoped
+// (below) can apply the identical scan to BOTH routes.go (the /api/*
+// mutating-surface allowlist) and agent.go (the /agent/v1 GET-only
+// guarantee) without duplicating the walk logic twice.
+func nonGetRoutesInFile(t *testing.T, filename, receiverName string) []allowedNonGetRoute {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", filename, err)
+	}
+
+	var found []allowedNonGetRoute
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		recv, ok := sel.X.(*ast.Ident)
+		if !ok || recv.Name != receiverName {
+			return true
+		}
+		method := sel.Sel.Name
+		if method == "Get" || method == "NotFound" {
+			return true
+		}
+		if len(call.Args) == 0 {
+			return true
+		}
+		lit, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		path, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return true
+		}
+		found = append(found, allowedNonGetRoute{method: method, path: path})
+		return true
+	})
+	return found
+}
+
+// TestContract_MutatingRoutesAreConfigScoped is the mechanical half of
+// ROADMAP success criterion 4 (T-07-05), read directly against the real
+// Router this file's other tests exercise: the complete set of non-GET
+// routes Router registers must equal an explicit, named list — the config
+// save, the config reload, the plugin-describe route, and the two
+// pre-existing manual-refresh routes — so both an added AND a removed
+// mutating route fail this test outright, forcing a deliberate decision
+// and a threat-model row rather than a quiet append. This duplicates
+// config_test.go's own TestRoutesGuard_NonGetRoutesScopedToConfig scan
+// over routes.go by design (07-05-PLAN.md Task 3 names this exact test,
+// in this exact file) rather than replacing it — that guard stays exactly
+// as it is; this one ADDS the second assertion no route under /agent/v1
+// is non-GET, closing the gap a routes.go-only scan can't see (every
+// /agent/v1 route is registered inside agent.go's own MountAgentRoutes,
+// not routes.go).
+func TestContract_MutatingRoutesAreConfigScoped(t *testing.T) {
+	want := map[allowedNonGetRoute]bool{
+		{method: "Put", path: "/api/config"}:                  true,
+		{method: "Post", path: "/api/config/reload"}:          true,
+		{method: "Post", path: "/api/config/describe-plugin"}: true,
+		{method: "Post", path: "/api/sources/{name}/refresh"}: true,
+		{method: "Post", path: "/api/sync"}:                   true,
+	}
+
+	found := nonGetRoutesInFile(t, "routes.go", "r")
+	if len(found) != len(want) {
+		t.Fatalf("expected exactly %d non-GET route(s) registered in routes.go, got %d: %+v", len(want), len(found), found)
+	}
+	for _, rt := range found {
+		if !want[rt] {
+			t.Errorf("unexpected non-GET route registered in routes.go: %s %s — a new mutating route must be a deliberate, reviewed decision (success criterion 4) with its own threat-model row, never a silent append", rt.method, rt.path)
+		}
+	}
+
+	// AGENT-11 (agent-initiated actions) is explicitly out of scope for v1
+	// (docs/api.md's "What is not here yet") — this asserts that by
+	// construction, not by convention: /agent/v1 registers no non-GET
+	// route at all today, and a future PR adding one fails this test
+	// outright rather than silently widening the agent surface into a
+	// write path.
+	agentFound := nonGetRoutesInFile(t, "agent.go", "r")
+	if len(agentFound) != 0 {
+		t.Errorf("expected zero non-GET routes registered in agent.go (the /agent/v1 namespace is GET-only in v1 — AGENT-11 is a v1.x concern), got %d: %+v", len(agentFound), agentFound)
 	}
 }
