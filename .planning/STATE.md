@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: Completed 07-05-PLAN.md — Phase 07 (webspace-builder-ui) complete, all 5 plans executed
-last_updated: "2026-08-08T08:02:51.538Z"
+last_updated: "2026-08-08T14:45:57.865Z"
 last_activity: 2026-08-08
-last_activity_desc: Phase 07 planning complete
 progress:
-  total_phases: 7
+  total_phases: 9
   completed_phases: 7
   total_plans: 45
-  completed_plans: 44
+  completed_plans: 45
+  percent: 78
 ---
 
 # Project State
@@ -28,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 5 of 5
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-08 — Phase 07 planning complete
+Last activity: 2026-08-08
 
 Progress: [██████████] 100%
 
@@ -98,6 +95,7 @@ Progress: [██████████] 100%
 | Phase 07 P03 | ~8min | 3 tasks | 32 files |
 | Phase 07 P04 | ~1h | 3 tasks | 16 files |
 | Phase 07 P05 | ~16 min | 3 tasks | 17 files |
+| Phase 07 P06 | ~15min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -201,6 +199,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-05]: removeSourceInstance writes sources=[] (never omits the key) on a delete that empties a webspace's allowlist — Webspace.Participates treats empty identically to absent, so [] IS the kernel's own all-instances-participate default encoding
 - [Phase ?]: [Phase 07-05]: CONFIG_CONFLICT_MESSAGE (api.ts) pulled forward into Task 1's commit — every config-writing surface now references the one exported hash-conflict-copy constant by name instead of duplicating the literal string
 - [Phase ?]: [Phase 07-05]: TestContract_MutatingRoutesAreConfigScoped duplicates config_test.go's pre-existing routes.go AST scan by design (plan names this exact test/file); its only new coverage is asserting agent.go registers zero non-GET routes
+- [Phase ?]: [Phase 07-06]: resolveNewInstanceId returns a discriminated InstanceIdResult rather than throwing — fits both call sites' existing connectError/message-string control flow with no new exception path
+- [Phase ?]: [Phase 07-06]: saveAnyway's rejection branch deliberately does not clear describeFailed (unlike handleConnectNext) — preserves the Save anyway retry affordance on a colliding name, pinned by a structural test
 
 ### Pending Todos
 
@@ -237,6 +237,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T01:37:37.004Z
-Stopped at: Completed 07-05-PLAN.md — Phase 07 (webspace-builder-ui) complete, all 5 plans executed
+Last session: 2026-08-08T14:45:57.856Z
+Stopped at: Completed 07-06-PLAN.md — CR-01 collision guard closed, gap-closure plan for Phase 07 complete
 Resume file: None
