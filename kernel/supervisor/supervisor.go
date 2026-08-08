@@ -206,6 +206,23 @@ func (s *Supervisor) Shutdown() {
 	}
 }
 
+// commitGeneration is the single site every branch of Apply that adopts cfg
+// as the new running generation goes through (07-09-PLAN.md, closing
+// 07-VERIFICATION.md gaps[0]). It performs exactly three steps in exactly
+// this order: install the coordinator built over the host's CURRENT
+// plugin set, record cfg as the generation s.cfg reflects, then start the
+// scheduler against cfg. The order is load-bearing: startScheduler reads
+// s.coord at call time into the syncer.Scheduler value it constructs, so a
+// coordinator installed AFTER startScheduler runs would be invisible to
+// the goroutine already launched — the same class of defect as gaps[0]
+// itself, on a different seam. Caller must hold s.mu (the same convention
+// startScheduler and stopScheduler already state).
+func (s *Supervisor) commitGeneration(cfg *config.Config) {
+	s.coord = newCoordinator(s.idx, cfg, s.host)
+	s.cfg = cfg
+	s.startScheduler(cfg)
+}
+
 // Apply is the seam every successful config.Store.Save/Reload must call
 // (D-06): it reconciles the launched plugin set against the just-swapped
 // config, removes index rows for any instance no longer configured
@@ -247,12 +264,24 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	s.stopScheduler()
 
 	if err := s.host.Reconcile(ctx, newCfg.Sources, s.logger); err != nil {
+		// Pre-Reconcile failure: Reconcile's own T-07-11 guarantee means the
+		// previously running plugin set is genuinely untouched, so the OLD
+		// generation is the consistent one here — this is the mirror image
+		// of every branch below and must stay asymmetric with them.
 		s.startScheduler(oldCfg)
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
 
 	if err := pluginhost.ValidateMatchConfig(newCfg, s.host); err != nil {
-		s.startScheduler(oldCfg)
+		// Post-Reconcile failure (this IS gaps[0]): Host.Reconcile has
+		// already committed its mutation in place and provides no undo, and
+		// the config store already swapped to newCfg before Apply was ever
+		// called — the only self-consistent state available is the new
+		// generation. Re-running Reconcile against oldCfg.Sources as a
+		// rollback is rejected outright: a rollback that performs real
+		// subprocess launches can itself fail, leaving the kernel strictly
+		// worse off than this defect with no third recourse.
+		s.commitGeneration(newCfg)
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
 
@@ -262,21 +291,16 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// must never inherit phantom history (T-07-13).
 	for _, name := range removedInstances(oldCfg, newCfg) {
 		if err := s.idx.DeleteSourceItems(ctx, name); err != nil {
-			s.startScheduler(newCfg)
-			s.coord = newCoordinator(s.idx, newCfg, s.host)
-			s.cfg = newCfg
+			s.commitGeneration(newCfg)
 			return fmt.Errorf("supervisor: apply: delete items for removed source %q: %w", name, err)
 		}
 		if err := s.idx.DeleteSyncRuns(ctx, name); err != nil {
-			s.startScheduler(newCfg)
-			s.coord = newCoordinator(s.idx, newCfg, s.host)
-			s.cfg = newCfg
+			s.commitGeneration(newCfg)
 			return fmt.Errorf("supervisor: apply: delete sync history for removed source %q: %w", name, err)
 		}
 	}
 
-	s.coord = newCoordinator(s.idx, newCfg, s.host)
-	s.startScheduler(newCfg)
+	s.commitGeneration(newCfg)
 
 	// A match-only edit (a webspace or match block changed, but an
 	// instance's own connection config did not) has no relaunch of its own
@@ -295,7 +319,6 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 		}
 	}
 
-	s.cfg = newCfg
 	return nil
 }
 

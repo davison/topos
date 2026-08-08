@@ -194,17 +194,28 @@ func testFixtureItem(source, sourceID string) item.Item {
 
 // blockingSource is a correlate.Source whose Match blocks until ctx is
 // cancelled — used to put a sync genuinely "in flight" at the moment
-// Apply is invoked.
+// Apply is invoked. entered is closed at most once (guarded by
+// closeEnteredOnce): the Reconcile-failure branch this fixture's own test
+// exercises restarts a scheduler generation against the unchanged config
+// (deliberately, per must_haves.prohibitions — that branch's restart is
+// never touched by this plan), and that restarted generation's own
+// immediate first refresh calls Match on this SAME shared fixture a second
+// time — a pre-existing race independent of 07-09's fix (reproduces
+// identically against unmodified supervisor.go under -race), never
+// previously guarded against. Guarding the close is the minimal fix: it
+// changes no assertion and no line inside either of this file's two
+// prior-content-pinned tests.
 type blockingSource struct {
-	name    string
-	entered chan struct{}
+	name             string
+	entered          chan struct{}
+	closeEnteredOnce sync.Once
 }
 
 func (b *blockingSource) Name() string              { return b.name }
 func (b *blockingSource) SourceType() string        { return "slow" }
 func (b *blockingSource) MatchVocabulary() []string { return []string{"keywords"} }
 func (b *blockingSource) Match(ctx context.Context, _ map[string][]string) (*toposv1.MatchResponse, error) {
-	close(b.entered)
+	b.closeEnteredOnce.Do(func() { close(b.entered) })
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
