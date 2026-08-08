@@ -13,7 +13,8 @@ import {
 	setWebspaceFilter,
 	setMatchBlock,
 	addSourceToWebspace,
-	removeSourceFromWebspace
+	removeSourceFromWebspace,
+	upsertSourceInstance
 } from './config-edit';
 import type { KernelConfig } from './api';
 
@@ -244,6 +245,61 @@ describe('removeSourceFromWebspace', () => {
 		const cfg = fixtureConfig();
 		const before = JSON.stringify(cfg);
 		removeSourceFromWebspace(cfg, 'house-move', 'paperless');
+		expect(JSON.stringify(cfg)).toBe(before);
+	});
+});
+
+describe('upsertSourceInstance', () => {
+	it('writes a brand-new instance', () => {
+		const cfg = fixtureConfig();
+		const next = upsertSourceInstance(cfg, 'proton-home', {
+			plugin: 'topos-plugin-proton',
+			base_url: 'imaps://mail.example',
+			username: 'me@example.com',
+			token: '${PROTON_TOKEN}',
+			agent: { read: false, handoff: false }
+		});
+		expect(next.sources['proton-home']).toEqual({
+			plugin: 'topos-plugin-proton',
+			base_url: 'imaps://mail.example',
+			username: 'me@example.com',
+			token: '${PROTON_TOKEN}',
+			agent: { read: false, handoff: false }
+		});
+	});
+
+	it('replaces an existing instance wholesale', () => {
+		const cfg = fixtureConfig();
+		const next = upsertSourceInstance(cfg, 'paperless', {
+			plugin: 'topos-plugin-paperless',
+			base_url: 'https://paperless.renamed',
+			token: '${PAPERLESS_TOKEN_2}',
+			agent: { read: true, handoff: false }
+		});
+		expect(next.sources['paperless'].base_url).toBe('https://paperless.renamed');
+		expect(next.sources['paperless'].token).toBe('${PAPERLESS_TOKEN_2}');
+	});
+
+	it('leaves every other instance untouched', () => {
+		const cfg = fixtureConfig();
+		const next = upsertSourceInstance(cfg, 'paperless', {
+			plugin: 'topos-plugin-paperless',
+			base_url: 'https://paperless.renamed',
+			token: '${X}',
+			agent: { read: true, handoff: false }
+		});
+		expect(next.sources['silverbullet']).toEqual(cfg.sources['silverbullet']);
+	});
+
+	it('leaves the input document untouched', () => {
+		const cfg = fixtureConfig();
+		const before = JSON.stringify(cfg);
+		upsertSourceInstance(cfg, 'paperless', {
+			plugin: 'topos-plugin-paperless',
+			base_url: 'https://mutated',
+			token: '${X}',
+			agent: { read: true, handoff: false }
+		});
 		expect(JSON.stringify(cfg)).toBe(before);
 	});
 });

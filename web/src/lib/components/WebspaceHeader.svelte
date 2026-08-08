@@ -49,6 +49,7 @@
 		config,
 		baseHash,
 		pluginTypes,
+		envVars,
 		onsourceadded
 	}: {
 		webspace: string;
@@ -105,6 +106,11 @@
 		config: KernelConfig | null;
 		baseHash: string;
 		pluginTypes: string[];
+		// envVars is the last GET/PUT /api/config response's own env_vars
+		// presence map (D-15's secret-field set/unset badge source) — see
+		// SecretField.svelte's doc comment for why this, not a per-keystroke
+		// lookup, is what the badge reads.
+		envVars: Record<string, boolean>;
 		onsourceadded: () => void;
 	} = $props();
 
@@ -362,7 +368,14 @@
 			-->
 			{#if config}
 				<div bind:this={addSourceWrapperEl} class="shrink-0">
-					<AddSourceModal {webspace} {config} {baseHash} {pluginTypes} onsaved={onsourceadded} />
+					<AddSourceModal
+						{webspace}
+						{config}
+						{baseHash}
+						{pluginTypes}
+						{envVars}
+						onsaved={onsourceadded}
+					/>
 				</div>
 			{/if}
 

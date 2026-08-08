@@ -116,3 +116,54 @@ describe('one-step modal: MatchFieldsForm alone, no connection fields', () => {
 		).toBe(true);
 	});
 });
+
+describe('two-step modal: step indicator reads both "1. Connect" and "2. Match"', () => {
+	const connectDialogBlock = extractBetween(
+		stripped,
+		"open={step === 'connect' || step === 'match' || step === 'connect-saved'}",
+		'</Dialog>'
+	);
+
+	it('renders "1. Connect"', () => {
+		expect(connectDialogBlock.includes('1. Connect')).toBe(true);
+	});
+
+	it('renders "2. Match"', () => {
+		expect(connectDialogBlock.includes('2. Match')).toBe(true);
+	});
+});
+
+describe('Step 1 failure branch: exact copy plus a Save anyway action', () => {
+	it('renders the exact "Couldn\'t verify this connection." copy', () => {
+		expect(
+			stripped.includes("Couldn't verify this connection."),
+			'expected the Step 1 failure branch to render the exact frozen copy'
+		).toBe(true);
+	});
+
+	it('renders a "Save anyway" action', () => {
+		expect(stripped.includes('Save anyway')).toBe(true);
+	});
+
+	it('the Save anyway action is gated on the describe-failed flag', () => {
+		expect(
+			/\{#if describeFailed\}/.test(stripped),
+			'expected the Save anyway button to be gated on a describe-failed flag, so it never appears before Step 1 has actually failed'
+		).toBe(true);
+	});
+});
+
+describe('Step 2 submit path: exactly one putConfig call', () => {
+	it('submitMatch calls putConfig exactly once', () => {
+		const fnBody = extractBetween(
+			stripped,
+			'async function submitMatch(event: SubmitEvent) {',
+			'\n\t}'
+		);
+		const calls = fnBody.match(/putConfig\(/g) ?? [];
+		expect(
+			calls.length,
+			'expected submitMatch to call putConfig exactly once — two sequential saves could leave a configured-but-unparticipating instance if the second failed'
+		).toBe(1);
+	});
+});

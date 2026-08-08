@@ -18,7 +18,7 @@
 // fully plain, non-reactive document regardless of whether the caller
 // passed a $state value or an already-plain object.
 
-import type { KernelConfig, WebspaceConfig } from './api';
+import type { KernelConfig, SourceConfig, WebspaceConfig } from './api';
 
 /**
  * Deep-clones a KernelConfig document. Safe against a Svelte 5 reactive
@@ -168,5 +168,22 @@ export function removeSourceFromWebspace(
 		match,
 		sources: existing.sources.filter((s) => s !== instance)
 	};
+	return next;
+}
+
+/**
+ * Returns a new document with `[sources.<instanceId>]` set to `source` —
+ * writing a brand-new instance (the two-step "New {plugin type}…" flow's
+ * Step 1 "Save anyway" and Step 2 submit paths, 07-04-PLAN.md Task 2) or
+ * replacing an existing one wholesale (the chip menu's "Edit
+ * connection…" flow, Task 3). Every other instance is untouched.
+ */
+export function upsertSourceInstance(
+	cfg: KernelConfig,
+	instanceId: string,
+	source: SourceConfig
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	next.sources[instanceId] = source;
 	return next;
 }

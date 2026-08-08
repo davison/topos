@@ -27,16 +27,18 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
+	import ConnectionForm from './ConnectionForm.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import { pluginTypeLabel } from '$lib/plugin-fields';
-	import { addSourceToWebspace } from '$lib/config-edit';
-	import { describePlugin, putConfig, ApiError, type KernelConfig } from '$lib/api';
+	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
+	import { describePlugin, putConfig, ApiError, type KernelConfig, type SourceConfig } from '$lib/api';
 
 	let {
 		webspace,
 		config,
 		baseHash,
 		pluginTypes,
+		envVars,
 		onsaved
 	}: {
 		webspace: string;
@@ -46,6 +48,10 @@
 		// plugin binary name (GET /api/config/plugin-types), excluding the
 		// mock reference fixture — the picker's "New {plugin type}…" rows.
 		pluginTypes: string[];
+		// envVars is the last GET/PUT /api/config response's own env_vars
+		// presence map — see SecretField.svelte's doc comment for why this
+		// (not a per-keystroke lookup) is what the secret badge reads.
+		envVars: Record<string, boolean>;
 		// onsaved fires after any flow below completes a successful save —
 		// the caller (the webspace route, via WebspaceHeader) refreshes
 		// getConfig()/loadSources()/load() so the new chip and its items
@@ -70,13 +76,24 @@
 	let pickerEmpty = $derived(availableInstances.length === 0 && pluginTypes.length === 0);
 
 	// --- Shared save-in-flight state (D-09/D-03's shared error contract) ---
-	let step = $state<'existing' | null>(null);
+	let step = $state<'existing' | 'connect' | 'match' | 'connect-saved' | null>(null);
 	let selectedInstance = $state<string | null>(null);
 	let existingVocabulary = $state<string[]>([]);
 	let matchBlock = $state<Record<string, string[]>>({});
 	let loadingVocabulary = $state(false);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+
+	// --- Two-step new-instance flow state ---
+	let selectedPluginType = $state<string | null>(null);
+	let connectionValues = $state<SourceConfig>({ plugin: '', agent: { read: false, handoff: false } });
+	let describing = $state(false);
+	let describeFailed = $state(false);
+	let connectError = $state<string | null>(null);
+	let savingConnectionOnly = $state(false);
+	let savedAnywayMessage = $state('');
+	let newInstanceId = $state<string | null>(null);
+	let newVocabulary = $state<string[]>([]);
 
 	function resetFlowState() {
 		step = null;
@@ -85,6 +102,29 @@
 		matchBlock = {};
 		saving = false;
 		error = null;
+		selectedPluginType = null;
+		connectionValues = { plugin: '', agent: { read: false, handoff: false } };
+		describing = false;
+		describeFailed = false;
+		connectError = null;
+		savingConnectionOnly = false;
+		savedAnywayMessage = '';
+		newInstanceId = null;
+		newVocabulary = [];
+	}
+
+	// deriveInstanceId turns a typed display name into a candidate
+	// [sources.<id>] map key: lowercased, spaces/punctuation collapsed to
+	// single hyphens, trimmed. Only what the kernel structurally CANNOT
+	// express (a blank id, or one already present) is rejected here —
+	// everything else, including display-name uniqueness, is left to the
+	// kernel's own load-time validator so there is one rule set.
+	function deriveInstanceId(displayName: string): string {
+		return displayName
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '');
 	}
 
 	// selectExisting reads the instance's declared match vocabulary via
@@ -120,15 +160,132 @@
 		}
 	}
 
-	// selectPluginType is wired by the picker below (Task 2 fills in the
-	// two-step Connect/Match flow this opens).
+	// selectPluginType opens Step 1 ("Connect {Plugin Type}") of the
+	// two-step new-instance flow — nothing is persisted until Step 1's
+	// Describe call succeeds (advancing to Step 2) or "Save anyway" is
+	// used after a Describe failure.
 	function selectPluginType(plugin: string) {
 		pickerOpen = false;
-		void plugin;
+		selectedPluginType = plugin;
+		connectionValues = { plugin, agent: { read: false, handoff: false } };
+		describeFailed = false;
+		connectError = null;
+		step = 'connect';
 	}
 
 	function handleExistingOpenChange(next: boolean) {
 		if (!next) resetFlowState();
+	}
+
+	function handleConnectOpenChange(next: boolean) {
+		if (!next) resetFlowState();
+	}
+
+	function backToConnect() {
+		step = 'connect';
+		error = null;
+	}
+
+	// handleConnectNext trial-launches the plugin against Step 1's
+	// just-typed, not-yet-persisted connection fields (describePlugin,
+	// 07-02) — writing nothing. On success it advances to Step 2 with the
+	// returned match vocabulary; on failure (including Proton's own
+	// base-url-scheme rejection, which surfaces through this exact path
+	// with the plugin's own message — not a special case to code around)
+	// it renders the fixed failure copy plus the kernel's own error text
+	// and reveals "Save anyway".
+	async function handleConnectNext(event: SubmitEvent) {
+		event.preventDefault();
+		if (!selectedPluginType || describing) return;
+
+		const displayName = (connectionValues.display_name ?? '').trim();
+		const candidateId = deriveInstanceId(displayName);
+		if (candidateId === '') {
+			describeFailed = false;
+			connectError = 'Enter a display name so this instance has an id.';
+			return;
+		}
+		if (config.sources[candidateId]) {
+			describeFailed = false;
+			connectError = `An instance id "${candidateId}" already exists — choose a different display name.`;
+			return;
+		}
+
+		describing = true;
+		describeFailed = false;
+		connectError = null;
+		try {
+			const resp = await describePlugin({ plugin: selectedPluginType, source: connectionValues });
+			newInstanceId = candidateId;
+			newVocabulary = resp.match_vocabulary;
+			matchBlock = {};
+			step = 'match';
+		} catch (err) {
+			describeFailed = true;
+			const detail =
+				err instanceof ApiError
+					? err.message
+					: 'check the browser console and try again.';
+			connectError = `Couldn't verify this connection. ${detail}`;
+		} finally {
+			describing = false;
+		}
+	}
+
+	// saveAnyway persists the connection-only instance immediately after a
+	// Describe failure — the one deliberate connection-only write in this
+	// flow, closing the modal and surfacing a follow-up notice naming
+	// where to add match settings once the source can connect.
+	async function saveAnyway() {
+		if (!selectedPluginType || savingConnectionOnly) return;
+		const displayName = (connectionValues.display_name ?? '').trim();
+		const candidateId = deriveInstanceId(displayName);
+		if (candidateId === '') return;
+
+		savingConnectionOnly = true;
+		try {
+			const nextConfig = upsertSourceInstance(config, candidateId, connectionValues);
+			await putConfig({ base_hash: baseHash, config: nextConfig });
+			savedAnywayMessage = `Saved. Add match settings from ${displayName || candidateId}'s menu once it can connect.`;
+			step = 'connect-saved';
+			onsaved();
+		} catch (err) {
+			connectError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? 'Config changed on disk — review and retry.'
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong saving this connection — check the browser console and try again.';
+		} finally {
+			savingConnectionOnly = false;
+		}
+	}
+
+	// submitMatch performs ONE save writing the source block, the match
+	// block and the extended sources allowlist together — two sequential
+	// saves would leave a configured-but-unparticipating instance if the
+	// second failed, and would burn the base hash.
+	async function submitMatch(event: SubmitEvent) {
+		event.preventDefault();
+		if (!newInstanceId || !selectedPluginType || saving) return;
+		saving = true;
+		error = null;
+		try {
+			const withSource = upsertSourceInstance(config, newInstanceId, connectionValues);
+			const nextConfig = addSourceToWebspace(withSource, webspace, newInstanceId, matchBlock);
+			await putConfig({ base_hash: baseHash, config: nextConfig });
+			resetFlowState();
+			onsaved();
+		} catch (err) {
+			error =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? 'Config changed on disk — review and retry.'
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong adding this source — check the browser console and try again.';
+		} finally {
+			saving = false;
+		}
 	}
 
 	async function submitExisting(event: SubmitEvent) {
@@ -239,5 +396,98 @@
 				<Button type="submit" disabled={saving}>Add source</Button>
 			</DialogFooter>
 		</form>
+	</DialogContent>
+</Dialog>
+
+<!--
+  Two-step "New {plugin type}…" flow (D-11): Step 1 connects a new
+  instance (ConnectionForm, static per-plugin-type fields), Step 2 asks
+  only for match settings, driven by whatever vocabulary Step 1's
+  describePlugin call returned — no field names are hardcoded per plugin
+  type here. A distinct Dialog from the one-step existing-instance modal
+  above (max-w-lg, wider — Step 1 carries more fields), gated on every
+  step this flow can be in, including the post-"Save anyway" confirmation.
+-->
+<Dialog
+	open={step === 'connect' || step === 'match' || step === 'connect-saved'}
+	onOpenChange={handleConnectOpenChange}
+>
+	<DialogContent class="max-w-lg">
+		{#if step === 'connect-saved'}
+			<DialogHeader>
+				<DialogTitle
+					>Connect {selectedPluginType ? pluginTypeLabel(selectedPluginType) : ''}</DialogTitle
+				>
+			</DialogHeader>
+			<p class="text-[14px] leading-[1.4] text-foreground">{savedAnywayMessage}</p>
+			<DialogFooter>
+				<Button type="button" onclick={resetFlowState}>Done</Button>
+			</DialogFooter>
+		{:else}
+			<div class="flex items-center gap-1.5 text-[14px] leading-[1.4] text-muted-foreground">
+				<span class={step === 'connect' ? 'font-semibold text-foreground' : ''}>1. Connect</span>
+				<span aria-hidden="true">/</span>
+				<span class={step === 'match' ? 'font-semibold text-foreground' : ''}>2. Match</span>
+			</div>
+
+			{#if step === 'connect'}
+				<DialogHeader>
+					<DialogTitle
+						>Connect {selectedPluginType ? pluginTypeLabel(selectedPluginType) : ''}</DialogTitle
+					>
+				</DialogHeader>
+				<form onsubmit={handleConnectNext}>
+					<ConnectionForm
+						pluginBinary={selectedPluginType ?? ''}
+						values={connectionValues}
+						{envVars}
+						onchange={(next) => (connectionValues = next)}
+					/>
+
+					{#if connectError}
+						<Alert variant="destructive" class="mt-4">
+							<AlertDescription>{connectError}</AlertDescription>
+						</Alert>
+					{/if}
+
+					<DialogFooter>
+						<Button type="button" variant="ghost" onclick={resetFlowState}>Cancel</Button>
+						{#if describeFailed}
+							<Button
+								type="button"
+								variant="ghost"
+								disabled={savingConnectionOnly}
+								onclick={saveAnyway}
+							>
+								Save anyway
+							</Button>
+						{/if}
+						<Button type="submit" disabled={describing}>Next</Button>
+					</DialogFooter>
+				</form>
+			{:else if step === 'match'}
+				<DialogHeader>
+					<DialogTitle>Match settings for {webspace}</DialogTitle>
+				</DialogHeader>
+				<form onsubmit={submitMatch}>
+					<MatchFieldsForm
+						vocabulary={newVocabulary}
+						values={matchBlock}
+						onchange={(block) => (matchBlock = block)}
+					/>
+
+					{#if error}
+						<Alert variant="destructive" class="mt-4">
+							<AlertDescription>{error}</AlertDescription>
+						</Alert>
+					{/if}
+
+					<DialogFooter>
+						<Button type="button" variant="ghost" onclick={backToConnect}>Back</Button>
+						<Button type="submit" disabled={saving}>Add source</Button>
+					</DialogFooter>
+				</form>
+			{/if}
+		{/if}
 	</DialogContent>
 </Dialog>

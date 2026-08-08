@@ -477,6 +477,7 @@
 		config={configResponse?.config ?? null}
 		baseHash={configResponse?.hash ?? ''}
 		{pluginTypes}
+		envVars={configResponse?.env_vars ?? {}}
 		onsourceadded={handleSourceAdded}
 	/>
 
