@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 5/5 plans executed
+**Plans**: 6 plans (5 executed, 1 gap closure pending)
 
 Plans:
 **Wave 1**
@@ -340,6 +340,10 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 07-05-PLAN.md — "Manage sources…" escape hatch with both destructive confirmations, the shared save/reload state pattern, and the published config-API contract
+
+**Wave 6** *(gap closure, blocked on Wave 5 completion)*
+
+- [ ] 07-06-PLAN.md — Gap closure (07-VERIFICATION.md CR-01): one shared instance-id collision guard both AddSourceModal write paths call, so "Save anyway" can never overwrite an existing source instance
 
 Notes:
 
