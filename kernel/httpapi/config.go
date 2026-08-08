@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,6 +11,19 @@ import (
 
 	"github.com/davison/topos/kernel/config"
 )
+
+// Applier is the minimal apply-after-save surface ConfigSaveHandler and
+// ConfigReloadHandler depend on — *supervisor.Supervisor satisfies this
+// structurally. Kept as an interface, rather than an import of
+// kernel/supervisor, so kernel/httpapi never imports the supervisor
+// package: the config write path must never grow a dependency on plugin
+// process lifecycle beyond the read-only trial-launch it already needs
+// for DescribePluginType (success criterion 4, T-07-11).
+type Applier interface {
+	// Apply reconciles the running kernel against the config.Store's
+	// current swapped state (D-06/D-07). See kernel/supervisor.Supervisor.Apply.
+	Apply(ctx context.Context) error
+}
 
 // configResponse is the shared shape both GET /api/config and a successful
 // PUT /api/config return — one envelope, no separate "save result" shape
@@ -126,12 +140,14 @@ type configSaveRequest struct {
 }
 
 // ConfigSaveHandler serves PUT /api/config — the kernel's first mutating
-// HTTP surface (success criterion 4). It does no config logic itself:
-// every rule (the clobber guard, the unknown-key guard, the validate-dry-
-// run, the canonical write, the hot-swap) lives in config.Store.Save; this
-// handler only decodes the request, calls Save, and maps Save's error
-// classes onto the shared HTTP error envelope.
-func ConfigSaveHandler(cfgStore *config.Store) http.HandlerFunc {
+// HTTP surface (success criterion 4). It does very little config logic
+// itself: every rule up to and including the write (the clobber guard,
+// the unknown-key guard, the validate-dry-run, the canonical write, the
+// in-memory hot-swap) lives in config.Store.Save; this handler decodes
+// the request, calls Save, calls applier.Apply to reconcile the running
+// kernel against the just-swapped config (D-06), and maps both calls'
+// error classes onto the shared HTTP error envelope.
+func ConfigSaveHandler(cfgStore *config.Store, applier Applier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req configSaveRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -152,6 +168,20 @@ func ConfigSaveHandler(cfgStore *config.Store) http.HandlerFunc {
 			default:
 				WriteError(w, http.StatusUnprocessableEntity, "config_invalid", err.Error())
 			}
+			return
+		}
+
+		// T-07-11 / D-06: the file is already written and cfgStore's
+		// in-memory pointers already swapped by this point — an apply
+		// failure here means the RUNNING kernel (plugin host, coordinator,
+		// scheduler) has not fully caught up with that swap. This is never
+		// a silent 200: the response says so explicitly, and names
+		// POST /api/config/reload (kernel/httpapi's Task 2 addition) as the
+		// recovery path, since a reload re-runs this exact validate-then-
+		// apply sequence against the file that IS now on disk.
+		if err := applier.Apply(r.Context()); err != nil {
+			WriteError(w, http.StatusInternalServerError, "apply_failed",
+				"config.toml was written and is now the kernel's config-of-record, but the running kernel could not fully apply it — the runtime configuration may be out of sync with the file until a successful POST /api/config/reload: "+err.Error())
 			return
 		}
 

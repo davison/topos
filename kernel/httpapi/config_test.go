@@ -51,7 +51,7 @@ func newTestConfigStoreFromFile(t *testing.T, contents string) *config.Store {
 func newConfigTestRouter(cfgStore *config.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/api/config", ConfigHandler(cfgStore))
-	r.Put("/api/config", ConfigSaveHandler(cfgStore))
+	r.Put("/api/config", ConfigSaveHandler(cfgStore, &fakeApplier{}))
 	return r
 }
 

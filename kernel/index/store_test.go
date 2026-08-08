@@ -1007,3 +1007,114 @@ func TestBackfill_ReopeningAPreexistingIndexFindsItsItems(t *testing.T) {
 		t.Fatalf("expected the pre-existing item %q to be found after backfill, got %+v", it.ID, results)
 	}
 }
+
+// TestDeleteSourceItems_RemovesOnlyThatInstancesRowsEverywhere is the
+// load-bearing proof for D-07's removed-instance cleanup
+// (07-02-PLAN.md Task 1): deleting one source instance's items must clear
+// its rows from items, cascade to webspace_items across EVERY webspace it
+// participated in, and drop its entries from items_fts (via the existing
+// items_ad trigger) — while leaving a sibling instance's rows in every one
+// of those tables completely untouched.
+func TestDeleteSourceItems_RemovesOnlyThatInstancesRowsEverywhere(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	removedItem := sampleItemForSource("paperless", "1", 100)
+	keptItem := sampleItemForSource("silverbullet", "notes/a", 200)
+
+	if err := s.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", []item.Item{removedItem}); err != nil {
+		t.Fatalf("seed paperless/house-move: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(ctx, "work", "paperless", []item.Item{removedItem}); err != nil {
+		t.Fatalf("seed paperless/work: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(ctx, "house-move", "silverbullet", []item.Item{keptItem}); err != nil {
+		t.Fatalf("seed silverbullet/house-move: %v", err)
+	}
+
+	if err := s.DeleteSourceItems(ctx, "paperless"); err != nil {
+		t.Fatalf("DeleteSourceItems: %v", err)
+	}
+
+	if _, ok, err := s.GetItem(ctx, removedItem.ID); err != nil {
+		t.Fatalf("GetItem after delete: %v", err)
+	} else if ok {
+		t.Errorf("expected paperless item %q to be gone from items after DeleteSourceItems", removedItem.ID)
+	}
+
+	for _, ws := range []string{"house-move", "work"} {
+		items, err := s.StreamItems(ctx, ws, nil)
+		if err != nil {
+			t.Fatalf("StreamItems(%s): %v", ws, err)
+		}
+		for _, it := range items {
+			if it.Source == "paperless" {
+				t.Errorf("expected no paperless items to remain in webspace %q after DeleteSourceItems, got %v", ws, idsOf(items))
+			}
+		}
+	}
+
+	if _, ok, err := s.GetItem(ctx, keptItem.ID); err != nil {
+		t.Fatalf("GetItem for kept item: %v", err)
+	} else if !ok {
+		t.Errorf("expected silverbullet item %q to survive DeleteSourceItems(\"paperless\") untouched", keptItem.ID)
+	}
+
+	results, err := s.Search(ctx, "house-move", "preview", nil)
+	if err != nil {
+		t.Fatalf("Search after delete: %v", err)
+	}
+	for _, r := range results {
+		if r.Item.Source == "paperless" {
+			t.Errorf("expected items_fts to no longer surface the deleted paperless item %q", r.Item.ID)
+		}
+	}
+}
+
+// TestDeleteSourceItems_UnknownSourceIsANoOp proves deleting a source with
+// zero rows succeeds without error — Apply may call this for an instance
+// whose sync never wrote anything.
+func TestDeleteSourceItems_UnknownSourceIsANoOp(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.DeleteSourceItems(context.Background(), "does-not-exist"); err != nil {
+		t.Fatalf("expected no error deleting a source with zero rows, got: %v", err)
+	}
+}
+
+// TestDeleteSyncRuns_ClearsOnlyThatSourcesHistory proves the sync_runs
+// cleanup paired with DeleteSourceItems (T-07-13) is scoped to the named
+// source instance alone.
+func TestDeleteSyncRuns_ClearsOnlyThatSourcesHistory(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	removedRunID, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, removedRunID, "ok", "", 1); err != nil {
+		t.Fatalf("FinishSyncRun(paperless): %v", err)
+	}
+	keptRunID, err := s.StartSyncRun(ctx, "silverbullet")
+	if err != nil {
+		t.Fatalf("StartSyncRun(silverbullet): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, keptRunID, "ok", "", 1); err != nil {
+		t.Fatalf("FinishSyncRun(silverbullet): %v", err)
+	}
+
+	if err := s.DeleteSyncRuns(ctx, "paperless"); err != nil {
+		t.Fatalf("DeleteSyncRuns: %v", err)
+	}
+
+	runs, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if _, ok := runs["paperless"]; ok {
+		t.Errorf("expected paperless's sync_runs history to be gone, got %+v", runs["paperless"])
+	}
+	if _, ok := runs["silverbullet"]; !ok {
+		t.Errorf("expected silverbullet's sync_runs history to survive DeleteSyncRuns(\"paperless\") untouched")
+	}
+}

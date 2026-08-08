@@ -288,6 +288,33 @@ ON CONFLICT(id) DO UPDATE SET
 	return nil
 }
 
+// DeleteSourceItems removes every items row belonging to source instance
+// source, in one statement (D-07's removed-instance cleanup,
+// 07-02-PLAN.md Task 1). The existing ON DELETE CASCADE on
+// webspace_items.item_id (schema.go) already clears that instance's rows
+// across every webspace it participated in, and the existing items_ad
+// trigger already keeps items_fts in sync on any items delete — no new
+// trigger is needed. Safe to call for a source with zero rows (a no-op).
+func (s *Store) DeleteSourceItems(ctx context.Context, source string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM items WHERE source = ?`, source); err != nil {
+		return fmt.Errorf("index: delete items for source %q: %w", source, err)
+	}
+	return nil
+}
+
+// DeleteSyncRuns clears source's entire sync_runs history. Paired with
+// DeleteSourceItems (T-07-13): a source instance removed from config and
+// later re-added under the same [sources.<id>] key must start with no
+// inherited items and no inherited sync history — without this, a
+// removed-then-re-added instance would show phantom old runs even though
+// its items were correctly cleared.
+func (s *Store) DeleteSyncRuns(ctx context.Context, source string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM sync_runs WHERE source = ?`, source); err != nil {
+		return fmt.Errorf("index: delete sync runs for source %q: %w", source, err)
+	}
+	return nil
+}
+
 // StreamItems returns every item associated with webspaceName, ordered
 // timestamp_unix DESC, secondary_timestamp_unix DESC, id ASC — a total,
 // stable chronological order that never depends on SQLite's natural row

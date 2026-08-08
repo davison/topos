@@ -1,0 +1,276 @@
+package supervisor
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
+	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/item"
+	"github.com/davison/topos/kernel/pluginhost"
+	"github.com/davison/topos/kernel/syncer"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
+)
+
+func newTestIndex(t *testing.T) *index.Store {
+	t.Helper()
+	s, err := index.Open(filepath.Join(t.TempDir(), "index.db"))
+	if err != nil {
+		t.Fatalf("index.Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+// buildMockPluginDir builds the repo's plugins/mock reference plugin
+// fresh, once per test binary run, into a shared temp directory — the
+// real-subprocess fixture the "removed instance" test below needs
+// (kernel/pluginhost.Plugin.Kill() panics on a hand-built value with no
+// real client, exactly as kernel/pluginhost/reconcile_test.go's own
+// identically-named helper documents).
+var (
+	mockPluginDirOnce sync.Once
+	mockPluginDir     string
+	mockPluginDirErr  error
+)
+
+func buildMockPluginDir(t *testing.T) string {
+	t.Helper()
+	mockPluginDirOnce.Do(func() {
+		out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/davison/topos").Output()
+		if err != nil {
+			mockPluginDirErr = fmt.Errorf("resolve module root: %w", err)
+			return
+		}
+		root := strings.TrimSpace(string(out))
+
+		dir, err := os.MkdirTemp("", "topos-supervisor-test-*")
+		if err != nil {
+			mockPluginDirErr = err
+			return
+		}
+
+		bin := filepath.Join(dir, "topos-plugin-mock")
+		cmd := exec.Command("go", "build", "-o", bin, "./plugins/mock")
+		cmd.Dir = root
+		if buildOut, err := cmd.CombinedOutput(); err != nil {
+			mockPluginDirErr = fmt.Errorf("build mock plugin: %w\n%s", err, buildOut)
+			return
+		}
+
+		mockPluginDir = dir
+	})
+	if mockPluginDirErr != nil {
+		t.Fatalf("build mock plugin fixture: %v", mockPluginDirErr)
+	}
+	return mockPluginDir
+}
+
+// newTestConfigStore writes contents to a real temp config.toml and wraps
+// it in a *config.Store — Apply reads live state off cfgStore.Expanded(),
+// and a Save/Reload-backed *config.Store (rather than
+// config.NewStoreForTesting) is what lets a test drive Apply through the
+// exact same swap path ConfigSaveHandler/ConfigReloadHandler use in
+// production.
+func newTestConfigStore(t *testing.T, contents string) *config.Store {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	s, err := config.NewStore(path)
+	if err != nil {
+		t.Fatalf("config.NewStore: %v", err)
+	}
+	return s
+}
+
+// TestApply_RemovedInstance_PluginGoneAndIndexRowsGone drives Apply
+// through a REAL config.Store.Save swap (the production path) over two
+// genuinely launched mock-plugin instances, then removes one via a second
+// save: Host.Plugins() must no longer contain it and its index rows must
+// be gone, while the surviving instance's plugin and rows are untouched.
+func TestApply_RemovedInstance_PluginGoneAndIndexRowsGone(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	// base_url/token are required by config.Validate's unconditional
+	// presence check even for the mock plugin, which ignores both
+	// (STATE.md's documented, deliberately-not-relaxed limitation) — dummy
+	// values only, never read by plugins/mock.
+	cfgStore := newTestConfigStore(t, `
+[sources.keep]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.remove]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.demo]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if len(sup.Host().Plugins()) != 2 {
+		t.Fatalf("expected 2 launched plugins at boot, got %d", len(sup.Host().Plugins()))
+	}
+
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "demo", "remove", []item.Item{testFixtureItem("remove", "1")}); err != nil {
+		t.Fatalf("seed removed-instance items: %v", err)
+	}
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "demo", "keep", []item.Item{testFixtureItem("keep", "1")}); err != nil {
+		t.Fatalf("seed kept-instance items: %v", err)
+	}
+
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"keep": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"demo": {Keywords: []string{"demo"}},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	plugins := sup.Host().Plugins()
+	if len(plugins) != 1 || plugins[0].Name() != "keep" {
+		t.Fatalf("expected only the 'keep' instance to remain launched after Apply, got %+v", plugins)
+	}
+
+	if _, ok, err := idx.GetItem(ctx, "remove:1"); err != nil {
+		t.Fatalf("GetItem(remove:1): %v", err)
+	} else if ok {
+		t.Error("expected the removed instance's index rows to be gone after Apply")
+	}
+	if _, ok, err := idx.GetItem(ctx, "keep:1"); err != nil {
+		t.Fatalf("GetItem(keep:1): %v", err)
+	} else if !ok {
+		t.Error("expected the surviving instance's index rows to be untouched by Apply")
+	}
+}
+
+// testFixtureItem builds a minimal, valid item.Item — kept local to this
+// file rather than importing kernel/index's own test fixtures
+// (unexported, different package).
+func testFixtureItem(source, sourceID string) item.Item {
+	return item.Item{
+		ID:            item.ID(source, sourceID),
+		Source:        source,
+		SourceType:    "mock",
+		SourceID:      sourceID,
+		Title:         "Doc " + sourceID,
+		Preview:       "preview text",
+		TimestampUnix: 100,
+		Fidelity:      item.FidelityExact,
+		DeepLink:      "http://example.test/" + sourceID,
+		Provenance:    map[string]string{"source_type": "mock"},
+	}
+}
+
+// blockingSource is a correlate.Source whose Match blocks until ctx is
+// cancelled — used to put a sync genuinely "in flight" at the moment
+// Apply is invoked.
+type blockingSource struct {
+	name    string
+	entered chan struct{}
+}
+
+func (b *blockingSource) Name() string              { return b.name }
+func (b *blockingSource) SourceType() string        { return "slow" }
+func (b *blockingSource) MatchVocabulary() []string { return []string{"keywords"} }
+func (b *blockingSource) Match(ctx context.Context, _ map[string][]string) (*toposv1.MatchResponse, error) {
+	close(b.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// TestApply_MidFlightSyncLeavesNoStrandedRunningRow proves the must_have:
+// "An apply that lands while a sync is in flight cancels that sync's
+// scheduler context and leaves no sync_runs row stranded at status
+// running." Apply's own Reconcile step is deliberately made to fail here
+// (the fake source names a plugin binary that does not exist in an empty
+// pluginsDir) — the point under test is entirely upstream of Reconcile:
+// Apply's stopScheduler call must cancel the OLD scheduler generation's
+// context and wait for its Run to fully return BEFORE anything else
+// happens, so a mid-flight sync is always finalised (via
+// Coordinator.syncOne's own existing detached finalize,
+// kernel/syncer/coordinator.go) rather than left stranded, regardless of
+// whether Reconcile itself goes on to succeed.
+func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
+	idx := newTestIndex(t)
+	blocker := &blockingSource{name: "slow", entered: make(chan struct{})}
+
+	cfg := &config.Config{
+		Sync:      config.SyncConfig{Interval: "1h"},
+		Sources:   map[string]config.Source{"slow": {Plugin: "topos-plugin-does-not-exist"}},
+		Webspaces: map[string]config.Webspace{"demo": {Keywords: []string{"keywords"}}},
+	}
+
+	s := &Supervisor{
+		idx:        idx,
+		cfgStore:   config.NewStoreForTesting(cfg),
+		pluginsDir: t.TempDir(), // empty — Reconcile's launch attempt for "slow" fails deterministically
+		logger:     hclog.NewNullLogger(),
+		baseCtx:    context.Background(),
+		host:       &pluginhost.Host{},
+		cfg:        cfg,
+	}
+	engine := &correlate.Engine{Store: idx, Config: cfg}
+	s.coord = syncer.NewCoordinator(idx, engine, []correlate.Source{blocker})
+	s.startScheduler(cfg)
+
+	select {
+	case <-blocker.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("blocking source's Match was never called — the scheduler's immediate first refresh did not fire")
+	}
+
+	applyErr := make(chan error, 1)
+	go func() { applyErr <- s.Apply(context.Background()) }()
+
+	select {
+	case err := <-applyErr:
+		if err == nil {
+			t.Fatal("expected Apply to fail (Reconcile's launch of a nonexistent plugin binary) — a nil error would mean this test's own setup is not exercising Reconcile at all")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Apply did not return in time — it must not block forever waiting on a source whose context it already cancelled")
+	}
+
+	runs, err := idx.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	run := runs["slow"]
+	if run.Status == "running" {
+		t.Errorf("expected the mid-flight sync to be finalised (not left at status \"running\") by the time Apply returns, got: %+v", run)
+	}
+	if run.FinishedUnix == 0 {
+		t.Errorf("expected the mid-flight sync run to carry a finished time, got: %+v", run)
+	}
+}

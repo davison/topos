@@ -16,6 +16,17 @@ import (
 // Coordinator.Refresh — never the correlation engine directly, so every
 // scheduled sync still goes through the coordinator's single-flight
 // guarantee (D-05, D-06).
+//
+// A Scheduler value is a single generation: Run has no add/remove-source
+// capability once started (07-RESEARCH.md Pitfall 1). kernel/supervisor's
+// Apply (07-02-PLAN.md Task 1, D-06/D-07's hot-apply) is the only caller
+// that needs a source set to change at runtime — it does so by cancelling
+// the current generation's context, waiting for its Run call to return,
+// and starting a brand new *Scheduler against the newly swapped config,
+// rather than this type growing any in-place mutation of its own. Every
+// fresh generation's Run fires each configured source's first refresh
+// immediately, by the existing design below — which is what gives an
+// apply its eager D-07 reconcile for free, with no second mechanism.
 type Scheduler struct {
 	Coordinator *Coordinator
 	Config      *config.Config

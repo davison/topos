@@ -51,7 +51,11 @@ const schemaVersion = 1
 // GET /api/sources's live reachability probe, and refresher is the same
 // kernel/syncer.Coordinator the scheduler and the CLI use, so every caller
 // of a sync reaches the identical single-flight entry point (D-06).
-func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher) chi.Router {
+// applier is the apply-after-save seam (07-02-PLAN.md Task 1;
+// kernel/supervisor.Supervisor satisfies it structurally) ConfigSaveHandler
+// calls after a successful config.Store.Save, so a save reconfigures the
+// running kernel in the same request rather than only the file (D-06).
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier) chi.Router {
 	r := chi.NewRouter()
 	cfg := cfgStore.Expanded()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfg))
@@ -66,7 +70,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// The kernel's first mutating HTTP surface (success criterion 4),
 	// scoped strictly to configuration — see kernel/httpapi/config.go.
 	r.Get("/api/config", ConfigHandler(cfgStore))
-	r.Put("/api/config", ConfigSaveHandler(cfgStore))
+	r.Put("/api/config", ConfigSaveHandler(cfgStore, applier))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
 	// same store/cfgStore/fetcher/prober. Every /api/* route above is

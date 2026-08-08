@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
@@ -44,8 +46,15 @@ type Plugin struct {
 	pluginName      string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
 	displayName     string // resolved instance display name (config display_name, or name if unset) — D-09
 	matchVocabulary []string
-	client          *goplugin.Client
-	impl            sdk.SourcePlugin
+	// src is the config.Source this instance was launched with — Reconcile
+	// (07-02-PLAN.md Task 1, D-06/D-07) compares a currently-configured
+	// instance's config.Source against this value to decide whether the
+	// instance is unchanged (subprocess left running untouched) or has a
+	// different connection config (subprocess relaunched). Never used for
+	// anything beyond that diff.
+	src    config.Source
+	client *goplugin.Client
+	impl   sdk.SourcePlugin
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -109,7 +118,12 @@ func (p *Plugin) Kill() {
 
 // Host owns the lifecycle of every launched plugin subprocess.
 type Host struct {
-	plugins []*Plugin
+	// pluginsDir is the directory Discover launched every plugin binary
+	// from — retained (07-02-PLAN.md Task 1) so Reconcile can launch a
+	// replacement/added instance later without a caller having to thread
+	// the directory through a second time.
+	pluginsDir string
+	plugins    []*Plugin
 }
 
 // Discover launches one subprocess per configured source, in pluginsDir,
@@ -117,7 +131,7 @@ type Host struct {
 // called immediately to learn its source_type — the kernel never trusts a
 // plugin's identity from its filename (T-01-07).
 func Discover(ctx context.Context, pluginsDir string, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
-	h := &Host{}
+	h := &Host{pluginsDir: pluginsDir}
 
 	for name, src := range sources {
 		p, err := launch(ctx, pluginsDir, name, src, logger)
@@ -129,6 +143,80 @@ func Discover(ctx context.Context, pluginsDir string, sources map[string]config.
 	}
 
 	return h, nil
+}
+
+// Reconcile brings the launched plugin set in line with sources, in place
+// (07-02-PLAN.md Task 1, D-06/D-07's hot-apply): for every configured
+// instance not currently launched, or currently launched with a different
+// config.Source than sources now declares, it launches a replacement via
+// the same unexported launch() Discover uses and kills the instance it
+// replaces; every currently launched instance absent from sources is
+// killed and dropped; every other instance's subprocess is left running
+// completely untouched, so a save that edits one source's config never
+// blips an unrelated source's reachability.
+//
+// Every new/changed launch is attempted before anything currently running
+// is torn down: a launch failure kills only what THIS call itself
+// launched, leaves the previously running set fully intact, and returns
+// an error naming the offending instance — a partial apply must never
+// look successful (T-07-11). Instance names are iterated in sorted order
+// so which instance is reported first on a multi-failure config is
+// deterministic run to run, matching this package's existing discipline
+// (matchconfig.go).
+func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, logger hclog.Logger) error {
+	existing := make(map[string]*Plugin, len(h.plugins))
+	for _, p := range h.plugins {
+		existing[p.name] = p
+	}
+
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	kept := make(map[string]*Plugin, len(names))
+	var toLaunch []string
+	for _, name := range names {
+		p, ok := existing[name]
+		if ok && reflect.DeepEqual(p.src, sources[name]) {
+			kept[name] = p
+			continue
+		}
+		toLaunch = append(toLaunch, name)
+	}
+
+	launched := make(map[string]*Plugin, len(toLaunch))
+	for _, name := range toLaunch {
+		p, err := launch(ctx, h.pluginsDir, name, sources[name], logger)
+		if err != nil {
+			for _, lp := range launched {
+				lp.Kill()
+			}
+			return fmt.Errorf("pluginhost: reconcile: launch source %q: %w", name, err)
+		}
+		launched[name] = p
+	}
+
+	// Every launch this call needed has now succeeded — only now kill the
+	// instances being replaced or removed, and commit the new plugin set.
+	for name, p := range existing {
+		if _, stillKept := kept[name]; stillKept {
+			continue
+		}
+		p.Kill()
+	}
+
+	next := make([]*Plugin, 0, len(kept)+len(launched))
+	for _, name := range names {
+		if p, ok := kept[name]; ok {
+			next = append(next, p)
+			continue
+		}
+		next = append(next, launched[name])
+	}
+	h.plugins = next
+	return nil
 }
 
 func launch(ctx context.Context, pluginsDir, name string, src config.Source, logger hclog.Logger) (*Plugin, error) {
@@ -214,6 +302,7 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		pluginName:      desc.GetDisplayName(),
 		displayName:     instanceDisplayName,
 		matchVocabulary: desc.GetMatchVocabulary(),
+		src:             src,
 		client:          client,
 		impl:            impl,
 	}, nil

@@ -13,11 +13,9 @@ import (
 	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
-	"github.com/davison/topos/kernel/correlate"
 	"github.com/davison/topos/kernel/httpapi"
 	"github.com/davison/topos/kernel/index"
-	"github.com/davison/topos/kernel/pluginhost"
-	"github.com/davison/topos/kernel/syncer"
+	"github.com/davison/topos/kernel/supervisor"
 )
 
 func main() {
@@ -81,91 +79,51 @@ func setupLogger() hclog.Logger {
 	})
 }
 
-// setup loads the config store, opens the index, and launches every
-// configured plugin. Callers must call host.Shutdown() and store.Close().
-//
-// setup returns a *config.Store rather than a bare *config.Config
-// (assumption-delta decision, 07-01-PLAN.md: the running configuration is
-// now a live, versioned resource — see kernel/config/store.go). Every
-// caller below that still needs a plain *config.Config (pluginsDir,
-// pluginhost.Discover, pluginhost.ValidateMatchConfig, newCoordinator,
-// syncer.Scheduler) takes cfgStore.Expanded() for now — a deliberately
-// temporary boot-time snapshot the same way Router's own three legacy
-// handlers do (routes.go), not yet re-launched or re-registered on a
-// config save (D-06/D-07's hot-apply reconcile is 07-02+ scope). Only
-// httpapi.Router receives the *config.Store itself, so the HTTP surface's
-// stream/config routes see a save immediately.
-func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Store, *pluginhost.Host, error) {
+// setup loads the config store and opens the index. Callers must call
+// store.Close(); the plugin host/coordinator/scheduler triple is built
+// separately, by supervisor.NewSupervisor (below) — setup no longer
+// builds it itself (07-02-PLAN.md Task 1: that boot sequence moved into
+// kernel/supervisor so it is the ONE construction sequence runServe,
+// runSync, and a future hot-apply all share, rather than being
+// duplicated here and re-derived again inside Supervisor.Apply).
+func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Store, error) {
 	cfgStore, err := config.NewStore(configPath())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	cfg := cfgStore.Expanded()
 
 	store, err := index.Open(cfg.Index.Path)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	pdir, err := pluginsDir(cfg)
-	if err != nil {
-		store.Close()
-		return nil, nil, nil, err
-	}
-
-	host, err := pluginhost.Discover(ctx, pdir, cfg.Sources, logger)
-	if err != nil {
-		store.Close()
-		return nil, nil, nil, err
-	}
-
-	// D-05's second validation phase: cross-check every webspace's match
-	// configuration against each launched plugin's own declared
-	// vocabulary. This must happen after Discover (it needs the launched
-	// *Host) and before any sync — a rejected config must never leave
-	// subprocesses running, so both the host and the store are torn down
-	// on failure here, exactly as the two error paths above already do.
-	if err := pluginhost.ValidateMatchConfig(cfg, host); err != nil {
-		host.Shutdown()
-		store.Close()
-		return nil, nil, nil, err
-	}
-
-	return cfgStore, store, host, nil
-}
-
-func sourcesFromHost(host *pluginhost.Host) []correlate.Source {
-	plugins := host.Plugins()
-	sources := make([]correlate.Source, len(plugins))
-	for i, p := range plugins {
-		sources[i] = p
-	}
-	return sources
-}
-
-// newCoordinator builds the correlate.Engine + syncer.Coordinator pair
-// every sync in the system — the scheduler, the manual refresh routes,
-// and this CLI — must go through. Neither runSync nor runServe may call
-// the correlation engine's sync methods directly; the coordinator is the
-// only entry point (D-06).
-func newCoordinator(store *index.Store, cfg *config.Config, host *pluginhost.Host) *syncer.Coordinator {
-	engine := &correlate.Engine{Store: store, Config: cfg}
-	return syncer.NewCoordinator(store, engine, sourcesFromHost(host))
+	return cfgStore, store, nil
 }
 
 func runSync() error {
 	ctx := context.Background()
 	logger := setupLogger()
 
-	cfgStore, store, host, err := setup(ctx, logger)
+	cfgStore, store, err := setup(ctx, logger)
 	if err != nil {
 		return err
 	}
-	defer host.Shutdown()
 	defer store.Close()
 
-	coord := newCoordinator(store, cfgStore.Expanded(), host)
-	results := coord.RefreshAll(ctx)
+	cfg := cfgStore.Expanded()
+	pdir, err := pluginsDir(cfg)
+	if err != nil {
+		return err
+	}
+
+	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, pdir, logger)
+	if err != nil {
+		return err
+	}
+	defer sup.Shutdown()
+
+	results := sup.Coordinator().RefreshAll(ctx)
 
 	for _, r := range results {
 		if r.Status == "error" {
@@ -182,12 +140,11 @@ func runServe() error {
 	defer cancel()
 	logger := setupLogger()
 
-	cfgStore, store, host, err := setup(ctx, logger)
+	cfgStore, store, err := setup(ctx, logger)
 	if err != nil {
 		return err
 	}
 	cfg := cfgStore.Expanded()
-	defer host.Shutdown()
 	defer store.Close()
 
 	// Repair sync_runs rows stranded at "running" by a previous kernel that
@@ -203,16 +160,29 @@ func runServe() error {
 		logger.Info("reconciled interrupted sync runs from a previous kernel session", "rows", n)
 	}
 
-	coord := newCoordinator(store, cfg, host)
+	pdir, err := pluginsDir(cfg)
+	if err != nil {
+		return err
+	}
 
-	// Background scheduler (KERN-04, D-05): one goroutine per configured
-	// source, first run immediate (replacing Phase 1's one-shot startup
-	// goroutine), then repeating at each source's resolved sync_interval.
-	// Cancelled via the same ctx that's cancelled when runServe returns.
-	sched := &syncer.Scheduler{Coordinator: coord, Config: cfg, Logger: logger}
-	go sched.Run(ctx)
+	// supervisor.NewSupervisor performs the boot sequence Phase 1-6 built
+	// directly into this function (Discover, ValidateMatchConfig, build
+	// the coordinator, start the scheduler) — see kernel/supervisor for
+	// why: a config save now needs to repeat this same sequence in place
+	// (D-06/D-07), so it lives in one package the HTTP layer can also
+	// call into via Supervisor.Apply, rather than being duplicated here.
+	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, pdir, logger)
+	if err != nil {
+		return err
+	}
+	defer sup.Shutdown()
 
-	router := httpapi.Router(store, cfgStore, host, host, coord)
+	// sup itself satisfies Fetcher/HealthProber/Refresher (delegating to
+	// its CURRENT host/coordinator on every call) — never sup.Host()/
+	// sup.Coordinator() called once here, which would freeze Router's
+	// refresher in particular at the coordinator Apply later replaces
+	// wholesale (see Supervisor.Refresh's doc comment).
+	router := httpapi.Router(store, cfgStore, sup, sup, sup, sup)
 
 	listen := cfg.Server.Listen
 	if !isLoopback(listen) {
