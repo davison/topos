@@ -386,3 +386,44 @@ export function getConfig(): Promise<ConfigResponse> {
 export function putConfig(req: ConfigSaveRequest): Promise<ConfigResponse> {
 	return putJSON<ConfigResponse>('/api/config', req);
 }
+
+// --- Plugin-type discovery / Describe (07-02's kernel/httpapi/config.go,
+// D-11's "+" chip picker) ---
+
+export interface PluginTypesResponse {
+	schema_version: number;
+	// plugin_types is every discovered plugin BINARY name (e.g.
+	// "topos-plugin-paperless"), excluding the mock reference fixture —
+	// the "New {plugin type}…" picker row list.
+	plugin_types: string[];
+}
+
+/** GET /api/config/plugin-types */
+export function listPluginTypes(): Promise<PluginTypesResponse> {
+	return getJSON<PluginTypesResponse>('/api/config/plugin-types');
+}
+
+export interface DescribePluginRequest {
+	// plugin is the binary name — must be a member of a prior
+	// listPluginTypes() result; the kernel re-checks this itself
+	// (T-07-09) and never trusts this value blindly.
+	plugin: string;
+	// source carries the connection fields typed into step 1, or an
+	// already-configured instance's own stored Source (the one-step
+	// existing-instance add flow reuses this same RPC to learn that
+	// instance's declared match vocabulary — see AddSourceModal.svelte).
+	// Nothing here is persisted by this call.
+	source: SourceConfig;
+}
+
+export interface DescribePluginResponse {
+	schema_version: number;
+	source_type: string;
+	plugin_display_name: string;
+	match_vocabulary: string[];
+}
+
+/** POST /api/config/describe-plugin */
+export function describePlugin(req: DescribePluginRequest): Promise<DescribePluginResponse> {
+	return postJSON<DescribePluginResponse>('/api/config/describe-plugin', req);
+}

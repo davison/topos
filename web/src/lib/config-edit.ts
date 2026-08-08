@@ -18,7 +18,7 @@
 // fully plain, non-reactive document regardless of whether the caller
 // passed a $state value or an already-plain object.
 
-import type { KernelConfig } from './api';
+import type { KernelConfig, WebspaceConfig } from './api';
 
 /**
  * Deep-clones a KernelConfig document. Safe against a Svelte 5 reactive
@@ -71,6 +71,102 @@ export function setWebspaceFilter(cfg: KernelConfig, name: string, terms: string
 		sources: existing?.sources ?? [],
 		match: existing?.match ?? {},
 		filter: terms
+	};
+	return next;
+}
+
+/**
+ * Returns a new document with `[webspaces.<webspace>.match.<instance>]`
+ * set to `block`, or deleted outright when `block` has no fields — an
+ * empty block is never written as `{}` on disk, since the kernel's own
+ * load-time validation (kernel/config/config.go's validateMatchBlocks)
+ * rejects a zero-field match block as a silently-matches-nothing shape. A
+ * webspace absent from the input is created with empty defaults first
+ * (same "never needs a special case" discipline as setWebspaceFilter
+ * above), so a caller never needs to check for its existence first.
+ */
+export function setMatchBlock(
+	cfg: KernelConfig,
+	webspace: string,
+	instance: string,
+	block: Record<string, string[]>
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	const existing = next.webspaces[webspace];
+	const ws: WebspaceConfig = {
+		keywords: existing?.keywords ?? [],
+		sources: existing?.sources ?? [],
+		match: { ...(existing?.match ?? {}) },
+		...(existing?.filter !== undefined ? { filter: existing.filter } : {})
+	};
+	if (Object.keys(block).length === 0) {
+		delete ws.match[instance];
+	} else {
+		ws.match[instance] = block;
+	}
+	next.webspaces[webspace] = ws;
+	return next;
+}
+
+/**
+ * Returns a new document with `instance` added to `webspace`: its match
+ * block set via setMatchBlock, and the webspace's `sources` allowlist
+ * extended to include it (D-14, the add-source picker's own write path).
+ * When the webspace previously had NO allowlist (`sources` empty — Phase
+ * 5 D-03's all-instances-participate default), the allowlist is first
+ * seeded with every currently configured instance — exactly the
+ * participation set "no allowlist" already meant in practice — before
+ * appending `instance`, so a webspace the user is now composing in the UI
+ * becomes explicit about exactly what it already had and never silently
+ * loses a source. A save through setWebspaceFilter (or any other helper
+ * in this file) never takes this seeding step — only this function does,
+ * and only for the instance it is actively adding (D-14's "never as a
+ * side effect of an unrelated save"). When an allowlist already exists,
+ * `instance` is appended to its end without reordering the rest; a name
+ * already present is a no-op beyond that append check.
+ */
+export function addSourceToWebspace(
+	cfg: KernelConfig,
+	webspace: string,
+	instance: string,
+	block: Record<string, string[]>
+): KernelConfig {
+	const withMatch = setMatchBlock(cfg, webspace, instance, block);
+	const ws = withMatch.webspaces[webspace];
+	let sources = ws.sources;
+	if (sources.length === 0) {
+		sources = Object.keys(cfg.sources);
+	}
+	if (!sources.includes(instance)) {
+		sources = [...sources, instance];
+	}
+	ws.sources = sources;
+	return withMatch;
+}
+
+/**
+ * Returns a new document with `instance` removed from `webspace`
+ * entirely: its match block dropped and its allowlist entry (if present)
+ * removed — the chip menu's "Remove from this webspace" write path
+ * (07-04-PLAN.md Task 3). The instance's own `[sources.<id>]` block is
+ * untouched; only this webspace's participation changes. A webspace
+ * absent from the input, or an instance not present in either place, is a
+ * no-op beyond the clone.
+ */
+export function removeSourceFromWebspace(
+	cfg: KernelConfig,
+	webspace: string,
+	instance: string
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	const existing = next.webspaces[webspace];
+	if (!existing) return next;
+	const match = { ...existing.match };
+	delete match[instance];
+	next.webspaces[webspace] = {
+		...existing,
+		match,
+		sources: existing.sources.filter((s) => s !== instance)
 	};
 	return next;
 }

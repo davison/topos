@@ -4,6 +4,7 @@
 	import SearchBox from './SearchBox.svelte';
 	import FilterChip from './FilterChip.svelte';
 	import WebspaceSwitcher from './WebspaceSwitcher.svelte';
+	import AddSourceModal from './AddSourceModal.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Popover, PopoverTrigger, PopoverContent } from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
@@ -13,7 +14,7 @@
 		visibleChipCount,
 		type HealthTone
 	} from '$lib/format';
-	import type { SourceStatus } from '$lib/api';
+	import type { KernelConfig, SourceStatus } from '$lib/api';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import X from '@lucide/svelte/icons/x';
 	import { cn } from '$lib/utils.js';
@@ -44,7 +45,11 @@
 		filterError,
 		unknownConfigKeys,
 		onsavefilter,
-		onremovefilter
+		onremovefilter,
+		config,
+		baseHash,
+		pluginTypes,
+		onsourceadded
 	}: {
 		webspace: string;
 		// webspaces backs the WebspaceSwitcher's menu list (D-10) — the
@@ -88,6 +93,19 @@
 		unknownConfigKeys: string[];
 		onsavefilter: () => void;
 		onremovefilter: (term: string) => void;
+		// Add-source picker/flows (D-11, 07-04-PLAN.md): config/baseHash are
+		// the same last GET/PUT /api/config snapshot the filter-write path
+		// already threads through; null while that fetch is still in
+		// flight, which the trigger below tolerates by simply not rendering
+		// yet — it appears the moment config resolves, same timing the rest
+		// of this row already depends on. pluginTypes is
+		// GET /api/config/plugin-types' own result, fetched by the route
+		// alongside config. onsourceadded fires after any add-source save
+		// completes, so the caller can refresh config/sources/stream state.
+		config: KernelConfig | null;
+		baseHash: string;
+		pluginTypes: string[];
+		onsourceadded: () => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
@@ -151,11 +169,18 @@
 	let measureEl: HTMLDivElement | undefined = $state();
 	let trailingEl: HTMLDivElement | undefined = $state();
 	let overflowTriggerMeasureEl: HTMLButtonElement | undefined = $state();
+	// addSourceWrapperEl wraps AddSourceModal's own trigger button
+	// (D-11) — measured directly (it always renders once `config` is
+	// available, unlike the overflow trigger, so no hidden clone is
+	// needed) and folded into the reserved-width budget below so
+	// visibleChipCount never lets a chip overlap it at tight widths.
+	let addSourceWrapperEl: HTMLDivElement | undefined = $state();
 
 	let availableWidth = $state(0);
 	let chipWidths = $state<number[]>([]);
 	let reservedWidth = $state(0);
 	let overflowTriggerWidth = $state(0);
+	let addSourceWidth = $state(0);
 
 	function widthsEqual(a: number[], b: number[]): boolean {
 		return a.length === b.length && a.every((value, i) => value === b[i]);
@@ -180,6 +205,10 @@
 			const next = overflowTriggerMeasureEl.offsetWidth;
 			if (next !== overflowTriggerWidth) overflowTriggerWidth = next;
 		}
+		if (addSourceWrapperEl) {
+			const next = addSourceWrapperEl.offsetWidth;
+			if (next !== addSourceWidth) addSourceWidth = next;
+		}
 	}
 
 	// Reading all four refs here — not just rowEl/measureEl/trailingEl —
@@ -190,25 +219,42 @@
 	// immediately, and the sources-keyed effect already schedules a
 	// deferred measure on the same mount/update transition.
 	$effect(() =>
-		observeResize([rowEl, measureEl, trailingEl, overflowTriggerMeasureEl], measure)
+		observeResize(
+			[rowEl, measureEl, trailingEl, overflowTriggerMeasureEl, addSourceWrapperEl],
+			measure
+		)
 	);
 
 	// Re-measure whenever the source list itself changes shape (a
 	// different instance count, or a renamed display_name that changes a
 	// chip's natural width) — reading `sources` here is what makes this
 	// effect re-run; the actual DOM read is deferred to a microtask so it
-	// runs after Svelte has applied the resulting DOM update.
+	// runs after Svelte has applied the resulting DOM update. `config` is
+	// read too so the add-source trigger's own arrival (it renders only
+	// once config resolves) also triggers a re-measure.
 	$effect(() => {
 		sources;
 		selectedSources;
+		config;
 		queueMicrotask(measure);
 	});
+
+	// The add-source trigger's own width (plus the one extra gap between
+	// it and the trailing group, per CR-01's per-gap accounting) is folded
+	// into the reserved budget here, at the call site, rather than by
+	// widening visibleChipCount's own parameter list — that function's
+	// signature and its existing tests stay untouched; a new
+	// always-present reserved element is, from that pure function's own
+	// point of view, indistinguishable from a wider trailing group.
+	let combinedReservedWidth = $derived(
+		reservedWidth + addSourceWidth + (addSourceWidth > 0 ? CHIP_ROW_GAP_PX : 0)
+	);
 
 	let visibleCount = $derived(
 		visibleChipCount(
 			chipWidths,
 			availableWidth,
-			reservedWidth,
+			combinedReservedWidth,
 			overflowTriggerWidth,
 			CHIP_ROW_GAP_PX
 		)
@@ -303,6 +349,21 @@
 						</div>
 					</PopoverContent>
 				</Popover>
+			{/if}
+
+			<!--
+			  D-11: the "+" add-source trigger — a sibling inside the chip
+			  row, after the last visible chip / overflow trigger and before
+			  the ml-auto reserved trailing group, so it is never pushed into
+			  the overflow popover and always reachable in one tab stop.
+			  Wrapped for direct width measurement (see addSourceWrapperEl
+			  above); renders only once `config` has resolved (AddSourceModal
+			  needs it to compute the picker's available-instance list).
+			-->
+			{#if config}
+				<div bind:this={addSourceWrapperEl} class="shrink-0">
+					<AddSourceModal {webspace} {config} {baseHash} {pluginTypes} onsaved={onsourceadded} />
+				</div>
 			{/if}
 
 			<!--

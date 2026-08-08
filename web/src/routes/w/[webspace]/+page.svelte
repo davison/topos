@@ -9,6 +9,7 @@
 		searchWebspace,
 		getConfig,
 		putConfig,
+		listPluginTypes,
 		ApiError,
 		type StreamResponse,
 		type SourceStatus,
@@ -72,6 +73,15 @@
 	let filterError = $state<string | null>(null);
 	let filters = $derived(configResponse?.config.webspaces[webspace]?.filter ?? []);
 
+	// pluginTypes backs the "+" add-source picker's "New {plugin type}…"
+	// rows (D-11, 07-04-PLAN.md) — every discovered-but-not-necessarily-
+	// configured plugin binary, fetched once alongside config and held
+	// here rather than re-fetched per webspace visit (the discovered set
+	// is boot-time filesystem state, not webspace-scoped). Declared here
+	// (ahead of loadPluginTypes' own top-level call below) so that call
+	// never reads this binding before its own $state initializer has run.
+	let pluginTypes = $state<string[]>([]);
+
 	// unknownConfigKeys surfaces GET /api/config's `unknown_keys` field
 	// (already computed by the kernel, previously never read by the UI —
 	// deviation, Rule 2: discovered live during the tracer checkpoint that
@@ -98,6 +108,15 @@
 		configResponse ? Object.keys(configResponse.config.webspaces) : []
 	);
 	let createOpen = $state(false);
+
+	// handleSourceAdded refreshes every piece of state a successful
+	// add-source save could have changed (D-07's eager reconcile): the
+	// config document itself (new allowlist/match/source blocks), the
+	// source list (a brand-new instance's health chip), and the stream
+	// (its first eager sync's items, if any landed already).
+	async function handleSourceAdded() {
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
 
 	// onmanagesources is a no-op-safe placeholder (07-UI-SPEC.md D-13's
 	// "Manage sources…" escape hatch gets its real modal in 07-05) — the
@@ -181,6 +200,18 @@
 			loadState = 'error';
 		}
 	}
+
+	// Fetched once (not webspace-scoped, not re-fetched on navigation) —
+	// the discovered plugin binary set is boot-time filesystem state.
+	async function loadPluginTypes() {
+		try {
+			const res = await listPluginTypes();
+			pluginTypes = res.plugin_types;
+		} catch {
+			pluginTypes = [];
+		}
+	}
+	loadPluginTypes();
 
 	async function loadConfig(gen: number) {
 		try {
@@ -443,6 +474,10 @@
 		{unknownConfigKeys}
 		onsavefilter={saveFilter}
 		onremovefilter={removeFilter}
+		config={configResponse?.config ?? null}
+		baseHash={configResponse?.hash ?? ''}
+		{pluginTypes}
+		onsourceadded={handleSourceAdded}
 	/>
 
 	{#if configResponse}
