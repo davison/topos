@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 6 plans (6 executed; re-verification 2026-08-08 found 2 new critical gaps — see 07-VERIFICATION.md)
+**Plans**: 8 plans (6 executed; re-verification 2026-08-08 found 2 new critical gaps — 07-07 and 07-08 planned to close them, see 07-VERIFICATION.md)
 
 Plans:
 **Wave 1**
@@ -344,6 +344,11 @@ Plans:
 **Wave 6** *(gap closure, blocked on Wave 5 completion)*
 
 - [x] 07-06-PLAN.md — Gap closure (07-VERIFICATION.md CR-01): one shared instance-id collision guard both AddSourceModal write paths call, so "Save anyway" can never overwrite an existing source instance
+
+**Wave 7** *(gap closure, blocked on Wave 6 completion — both plans run in parallel, zero file overlap)*
+
+- [ ] 07-07-PLAN.md — Gap closure (07-VERIFICATION.md gaps[0], 07-REVIEW.md CR-01/IN-01): every /agent/v1 handler reads the live config per request, so a revoked agent grant is enforced on the next request with no kernel restart
+- [ ] 07-08-PLAN.md — Gap closure (07-VERIFICATION.md gaps[1], 07-REVIEW.md CR-02): closing the source edit modal ends the edit session, so a Cancelled draft can never resurface and be saved over real config
 
 Notes:
 
