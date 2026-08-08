@@ -187,3 +187,46 @@ export function upsertSourceInstance(
 	next.sources[instanceId] = source;
 	return next;
 }
+
+/**
+ * Returns a new document with `[sources.<instanceId>]` removed entirely,
+ * AND every reference to it cleared from every webspace's own document —
+ * its `[webspaces.<name>.match.<instanceId>]` block, and its position (if
+ * any) in each webspace's `sources` allowlist (07-05-PLAN.md Task 1, the
+ * Manage Sources modal's instance-delete flow). Leaving a dangling
+ * reference behind would fail the kernel's own load-time
+ * validateMatchBlocks/validateSourcesAllowlist checks with a confusing
+ * "unknown instance" message — a delete through this UI must never
+ * produce that half-applied state, so both references are cleared in the
+ * same document this function returns.
+ *
+ * Decision (T-07-26, recorded per this plan's own instruction to read
+ * Webspace.Participates and choose): when removing the instance leaves a
+ * webspace's `sources` allowlist EMPTY, this function writes `sources: []`
+ * rather than attempting to omit the key. There is no meaningful "drop the
+ * key" alternative here — KernelConfig's `sources` field is not optional
+ * on the wire (every WebspaceConfig always carries it), so the only two
+ * representable shapes are a non-empty array or an empty one, and
+ * kernel/config/types.go's own `Participates` treats a zero-length
+ * `Sources` slice identically to an absent/omitted one: "every configured
+ * instance participates by default." Writing `[]` is therefore not a
+ * lesser substitute for omission — it IS the kernel's own encoding of
+ * "back to the all-instances-participate default," which is exactly the
+ * correct semantics once the one instance that allowlist named is gone.
+ */
+export function removeSourceInstance(cfg: KernelConfig, instanceId: string): KernelConfig {
+	const next = cloneConfig(cfg);
+	delete next.sources[instanceId];
+	for (const name of Object.keys(next.webspaces)) {
+		const ws = next.webspaces[name];
+		if (Object.prototype.hasOwnProperty.call(ws.match, instanceId)) {
+			const match = { ...ws.match };
+			delete match[instanceId];
+			ws.match = match;
+		}
+		if (ws.sources.includes(instanceId)) {
+			ws.sources = ws.sources.filter((s) => s !== instanceId);
+		}
+	}
+	return next;
+}

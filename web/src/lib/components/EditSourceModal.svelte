@@ -18,7 +18,7 @@
 	import ConnectionForm from './ConnectionForm.svelte';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import { upsertSourceInstance, setMatchBlock } from '$lib/config-edit';
-	import { putConfig, ApiError, type KernelConfig, type SourceConfig } from '$lib/api';
+	import { putConfig, ApiError, CONFIG_CONFLICT_MESSAGE, type KernelConfig, type SourceConfig } from '$lib/api';
 
 	let {
 		open,
@@ -81,7 +81,7 @@
 		} catch (err) {
 			error =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong saving this connection — check the browser console and try again.';
@@ -102,7 +102,7 @@
 		} catch (err) {
 			error =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong saving match settings — check the browser console and try again.';

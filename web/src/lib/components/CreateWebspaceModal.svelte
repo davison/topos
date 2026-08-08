@@ -14,7 +14,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { addWebspace } from '$lib/config-edit';
-	import { putConfig, ApiError, type KernelConfig } from '$lib/api';
+	import { putConfig, ApiError, CONFIG_CONFLICT_MESSAGE, type KernelConfig } from '$lib/api';
 
 	let {
 		open,
@@ -66,7 +66,7 @@
 			// open with entered values intact on rejection.
 			error =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong creating the webspace — check the browser console and try again.';

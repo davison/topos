@@ -128,6 +128,15 @@ export class ApiError extends Error {
 	}
 }
 
+// CONFIG_CONFLICT_MESSAGE (07-05-PLAN.md Task 2, D-03) is the ONE fixed
+// copy every config-writing surface in the app shows on a
+// config_changed_on_disk rejection — this is the single place that
+// literal string is spelled out; every caller imports this constant
+// rather than re-typing the string, so save-state.test.ts's
+// exactly-one-occurrence guard is a fact about the source tree, not a
+// convention every modal has to remember to follow.
+export const CONFIG_CONFLICT_MESSAGE = 'Config changed on disk — review and retry.';
+
 async function getJSON<T>(path: string): Promise<T> {
 	const res = await fetch(path);
 	if (!res.ok) {
@@ -385,6 +394,20 @@ export function getConfig(): Promise<ConfigResponse> {
 /** PUT /api/config */
 export function putConfig(req: ConfigSaveRequest): Promise<ConfigResponse> {
 	return putJSON<ConfigResponse>('/api/config', req);
+}
+
+/**
+ * POST /api/config/reload (D-08) — re-reads config.toml from disk through
+ * the identical validate-then-apply path a save uses; the only way a
+ * hand-edited file reaches the running kernel, since there is deliberately
+ * no file watcher. Takes no request body. On success, returns the
+ * identical ConfigResponse shape GET/PUT /api/config return. On failure
+ * (422 config_invalid), the kernel's previously running configuration is
+ * left completely untouched — see ManageSourcesModal.svelte's own
+ * handling of the rejection.
+ */
+export function reloadConfig(): Promise<ConfigResponse> {
+	return postJSON<ConfigResponse>('/api/config/reload');
 }
 
 // --- Plugin-type discovery / Describe (07-02's kernel/httpapi/config.go,

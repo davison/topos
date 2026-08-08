@@ -12,6 +12,7 @@
 		listPluginTypes,
 		describePlugin,
 		ApiError,
+		CONFIG_CONFLICT_MESSAGE,
 		type StreamResponse,
 		type SourceStatus,
 		type SearchResult,
@@ -32,6 +33,7 @@
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
 	import EditSourceModal from '$lib/components/EditSourceModal.svelte';
+	import ManageSourcesModal from '$lib/components/ManageSourcesModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
 	// The [webspace] dynamic segment always matches for this route, so
@@ -181,7 +183,7 @@
 		} catch (err) {
 			filterError =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong removing this source — check the browser console and try again.';
@@ -191,11 +193,22 @@
 		}
 	}
 
-	// onmanagesources is a no-op-safe placeholder (07-UI-SPEC.md D-13's
-	// "Manage sources…" escape hatch gets its real modal in 07-05) — the
-	// menu item is wired and reachable now, never rendered disabled, but
-	// clicking it does nothing until that plan lands.
-	function handleManageSources() {}
+	// Manage Sources modal state (D-13, 07-05-PLAN.md Task 1) — the one
+	// escape hatch for instance/webspace deletion and the config-reload
+	// affordance. manageOpen replaces the no-op-safe handleManageSources
+	// placeholder 07-03/07-04 left in its own webspace-route wiring.
+	let manageOpen = $state(false);
+
+	function handleManageSources() {
+		manageOpen = true;
+	}
+
+	async function handleManageSourcesChanged() {
+		// D-07's eager reconcile, same shape as handleSourceAdded above: a
+		// delete or a reload inside the modal can change the config
+		// document, the source list, and the stream all at once.
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
 
 	async function handleWebspaceCreated(name: string) {
 		createOpen = false;
@@ -351,7 +364,7 @@
 			if (gen !== navGeneration) return;
 			filterError =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong saving the filter — check the browser console and try again.';
@@ -580,6 +593,18 @@
 				onsaved={handleEditSaved}
 			/>
 		{/key}
+	{/if}
+
+	{#if configResponse}
+		<ManageSourcesModal
+			open={manageOpen}
+			config={configResponse.config}
+			baseHash={configResponse.hash}
+			envVars={configResponse.env_vars}
+			currentWebspace={webspace}
+			onclose={() => (manageOpen = false)}
+			onchanged={handleManageSourcesChanged}
+		/>
 	{/if}
 
 	<main class="flex min-h-0 flex-1 gap-8 px-6 py-8">

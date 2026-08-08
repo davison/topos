@@ -14,7 +14,8 @@ import {
 	setMatchBlock,
 	addSourceToWebspace,
 	removeSourceFromWebspace,
-	upsertSourceInstance
+	upsertSourceInstance,
+	removeSourceInstance
 } from './config-edit';
 import type { KernelConfig } from './api';
 
@@ -300,6 +301,65 @@ describe('upsertSourceInstance', () => {
 			token: '${X}',
 			agent: { read: true, handoff: false }
 		});
+		expect(JSON.stringify(cfg)).toBe(before);
+	});
+});
+
+describe('removeSourceInstance', () => {
+	it('removes the [sources.<id>] block entirely, leaving every other instance untouched', () => {
+		const cfg = fixtureConfig();
+		const next = removeSourceInstance(cfg, 'paperless');
+		expect(next.sources['paperless']).toBeUndefined();
+		expect(next.sources['silverbullet']).toEqual(cfg.sources['silverbullet']);
+	});
+
+	it('clears the match block AND the allowlist entry in every webspace referencing it (an instance referenced by two webspaces has both cleared)', () => {
+		const cfg = fixtureConfig();
+		// Reference "silverbullet" from BOTH fixture webspaces before removing it.
+		const withRefs = addSourceToWebspace(
+			addSourceToWebspace(cfg, 'house-move', 'silverbullet', { tags: ['x'] }),
+			'catch-all',
+			'silverbullet',
+			{ tags: ['y'] }
+		);
+		expect(withRefs.webspaces['house-move'].match).toHaveProperty('silverbullet');
+		expect(withRefs.webspaces['catch-all'].match).toHaveProperty('silverbullet');
+
+		const next = removeSourceInstance(withRefs, 'silverbullet');
+		expect(next.webspaces['house-move'].match).toEqual({ paperless: { tags: ['house-move'] } });
+		expect(next.webspaces['house-move'].sources).toEqual(['paperless']);
+		expect(next.webspaces['catch-all'].match).toEqual({});
+		// catch-all's allowlist was SEEDED by addSourceToWebspace (D-14, from
+		// every instance configured at seed time: paperless + silverbullet)
+		// before silverbullet was appended — removing silverbullet here
+		// leaves that seeded "paperless" entry in place, it does not empty
+		// the array back out.
+		expect(next.webspaces['catch-all'].sources).toEqual(['paperless']);
+	});
+
+	it('leaves a webspace that never referenced the removed instance byte-identical', () => {
+		const cfg = fixtureConfig();
+		const before = JSON.stringify(cfg.webspaces['catch-all']);
+		const next = removeSourceInstance(cfg, 'paperless');
+		expect(JSON.stringify(next.webspaces['catch-all'])).toBe(before);
+	});
+
+	it('removing an instance no webspace references is a no-op for every webspace document', () => {
+		const cfg = fixtureConfig();
+		const next = removeSourceInstance(cfg, 'silverbullet');
+		expect(next.webspaces).toEqual(cfg.webspaces);
+	});
+
+	it('an allowlist left empty by the removal is written as [] — Webspace.Participates treats empty identically to absent (all instances participate), so this is the kernel default, never a dangling reference', () => {
+		const cfg = fixtureConfig();
+		const next = removeSourceInstance(cfg, 'paperless');
+		expect(next.webspaces['house-move'].sources).toEqual([]);
+	});
+
+	it('leaves the input document untouched', () => {
+		const cfg = fixtureConfig();
+		const before = JSON.stringify(cfg);
+		removeSourceInstance(cfg, 'paperless');
 		expect(JSON.stringify(cfg)).toBe(before);
 	});
 });

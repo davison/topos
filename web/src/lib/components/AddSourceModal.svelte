@@ -31,7 +31,14 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { pluginTypeLabel } from '$lib/plugin-fields';
 	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
-	import { describePlugin, putConfig, ApiError, type KernelConfig, type SourceConfig } from '$lib/api';
+	import {
+		describePlugin,
+		putConfig,
+		ApiError,
+		CONFIG_CONFLICT_MESSAGE,
+		type KernelConfig,
+		type SourceConfig
+	} from '$lib/api';
 
 	let {
 		webspace,
@@ -252,7 +259,7 @@
 		} catch (err) {
 			connectError =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong saving this connection — check the browser console and try again.';
@@ -279,7 +286,7 @@
 		} catch (err) {
 			error =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong adding this source — check the browser console and try again.';
@@ -303,7 +310,7 @@
 			// entered values intact on rejection.
 			error =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
-					? 'Config changed on disk — review and retry.'
+					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong adding this source — check the browser console and try again.';

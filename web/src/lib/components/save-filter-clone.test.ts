@@ -137,11 +137,17 @@ describe('no remaining silent exit in the save path', () => {
 
 	it('the catch block never reuses the disk-conflict copy for an unrelated/unexpected error', () => {
 		const catchBlock = extractBetween(writeFilterBlock, 'catch (err) {', '} finally {');
-		const diskConflictCopy = 'Config changed on disk — review and retry.';
-		const occurrences = catchBlock.split(diskConflictCopy).length - 1;
+		// 07-05-PLAN.md Task 2: the fixed disk-conflict copy now lives as one
+		// exported constant (api.ts's CONFIG_CONFLICT_MESSAGE) rather than a
+		// literal string duplicated per call site — every writing surface,
+		// including this one, references the constant by name. The
+		// invariant this test guards (never reuse the conflict copy as the
+		// fallback for a generic/unexpected error) still holds; only the
+		// mechanism (an identifier, not a repeated literal) has moved.
+		const occurrences = catchBlock.split('CONFIG_CONFLICT_MESSAGE').length - 1;
 		expect(
 			occurrences,
-			'expected the fixed disk-conflict copy to appear exactly once in the catch block (only for the actual config_changed_on_disk ApiError branch) — reusing it as the fallback for a generic/unexpected error mislabels an unrelated failure as a hash conflict, hiding the real cause from the user and from anyone reading a bug report'
+			'expected CONFIG_CONFLICT_MESSAGE to appear exactly once in the catch block (only for the actual config_changed_on_disk ApiError branch) — reusing it as the fallback for a generic/unexpected error mislabels an unrelated failure as a hash conflict, hiding the real cause from the user and from anyone reading a bug report'
 		).toBe(1);
 		expect(
 			/something went wrong/i.test(catchBlock),
