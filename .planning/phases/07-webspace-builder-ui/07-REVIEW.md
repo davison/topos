@@ -1,8 +1,8 @@
 ---
 phase: 07-webspace-builder-ui
-reviewed: 2026-08-08T00:00:00Z
+reviewed: 2026-08-08T14:56:06Z
 depth: standard
-files_reviewed: 78
+files_reviewed: 74
 files_reviewed_list:
   - cmd/topos/main.go
   - config.example.toml
@@ -51,12 +51,9 @@ files_reviewed_list:
   - web/src/lib/components/CreateWebspaceModal.svelte
   - web/src/lib/components/EditSourceModal.svelte
   - web/src/lib/components/FilterChip.svelte
-  - web/src/lib/components/filter-chip.test.ts
   - web/src/lib/components/ManageSourcesModal.svelte
-  - web/src/lib/components/manage-sources.test.ts
   - web/src/lib/components/MatchFieldsForm.svelte
   - web/src/lib/components/save-filter-clone.test.ts
-  - web/src/lib/components/save-state.test.ts
   - web/src/lib/components/SecretField.svelte
   - web/src/lib/components/secret-field.test.ts
   - web/src/lib/components/SourceChip.svelte
@@ -87,6 +84,8 @@ files_reviewed_list:
   - web/src/lib/components/webspace-switcher.test.ts
   - web/src/lib/config-edit.test.ts
   - web/src/lib/config-edit.ts
+  - web/src/lib/instance-id.test.ts
+  - web/src/lib/instance-id.ts
   - web/src/lib/last-webspace.test.ts
   - web/src/lib/last-webspace.ts
   - web/src/lib/node-builtins.d.ts
@@ -95,127 +94,178 @@ files_reviewed_list:
   - web/src/routes/+page.svelte
   - web/src/routes/w/[webspace]/+page.svelte
 findings:
-  critical: 1
-  warning: 5
-  info: 0
-  total: 6
+  critical: 2
+  warning: 2
+  info: 1
+  total: 5
 status: issues_found
 ---
 
 # Phase 07: Code Review Report
 
-**Reviewed:** 2026-08-08T00:00:00Z
+**Reviewed:** 2026-08-08T14:56:06Z
 **Depth:** standard
-**Files Reviewed:** 78 (Go kernel + SvelteKit web UI)
+**Files Reviewed:** 74 (of 91 files listed — 17 generated `ui/` primitive re-exports and trivial `index.ts` barrels were skimmed, not individually cited)
 **Status:** issues_found
 
 ## Summary
 
-This phase adds the webspace-builder UI: config read/write (`GET`/`PUT /api/config`, `POST /api/config/reload`), plugin-type discovery/describe, the "+" add-source picker (one-step existing-instance and two-step new-plugin-type flows), the chip edit menu (edit connection/edit match/remove), the Manage Sources escape hatch (instance/webspace delete, config reload), and the search-promotion permanent-filter feature. The Go side is careful and heavily guarded by AST tests pinning the "config write path never reaches a plugin RPC beyond Describe" invariant, and the D-03/D-05 secret/hash-lock discipline is well tested at both the `config.Store` and HTTP layers.
+This is a re-review of Phase 07 (webspace builder UI) after the 07-06 gap-closure plan. The prior CR-01 finding (`saveAnyway()` in `AddSourceModal.svelte` skipping the instance-id collision guard) is **verified fixed**: `web/src/lib/instance-id.ts` is now the single derivation/collision-check site, both `handleConnectNext` and `saveAnyway` call `resolveNewInstanceId` before every `upsertSourceInstance` write, and `add-source.test.ts` pins the invariant (guard-before-write, return-between, no local `deriveInstanceId` reappearing) structurally. Good.
 
-The most serious defect found is in the frontend: `AddSourceModal.svelte`'s "Save anyway" path (the connection-only save offered after a failed connection test) omits the duplicate-instance-id guard its sibling code path enforces, so editing the display name after a failed test can silently overwrite an existing, unrelated source instance's connection config and agent grants with no confirmation. The remaining findings are functional inconsistencies between the human (`/api/*`) and agent (`/agent/v1/*`) webspace-list endpoints, missing client-side validation that lets a legitimate action fail with a confusing, unrelated kernel error, and a couple of lower-severity robustness gaps.
+This pass found two new BLOCKER-class issues the prior review didn't cover, both load-bearing:
+
+1. A **security-relevant staleness bug** in the `/agent/v1` route mounting (`kernel/httpapi/agent.go`): four of five agent handlers close over a `*config.Config` snapshot captured once at server boot, not the live `*config.Store`. Revoking (or granting) `agent.read` through the UI's hot-apply config save does **not** take effect on `/agent/v1/sources`, `/agent/v1/webspaces`, `/agent/v1/items/{id}`, or `/agent/v1/items/{id}/content|thumbnail` until the kernel process restarts — directly contradicting this phase's own documented D-06 "hot apply, no restart" guarantee, and specifically undermining the one surface (AGENT-01's default-deny grant model) whose entire job is gating automated access to personal data.
+
+2. A **stale-state bug** in the chip-menu "Edit connection…"/"Edit match settings…" flow (`EditSourceModal.svelte` + `web/src/routes/w/[webspace]/+page.svelte`): the modal's local `$state` (the actual field values, including base_url/token) is seeded once at mount and relies on the caller keying the component to force a remount on reopen. The route's own `handleEditClose`/`handleEditSaved` never clear `editInstance`, so canceling an edit and reopening the *same* source's edit modal shows the previously-typed-but-discarded values, not the current config — a user can silently re-save data they believed they'd canceled.
+
+Two further WARNING-level robustness gaps and one INFO item are listed below.
 
 ## Critical Issues
 
-### CR-01: AddSourceModal "Save anyway" can silently overwrite an existing, unrelated source instance
+### CR-01: `/agent/v1` routes (all but the stream route) never see a config save/reload — grant revocation has no effect until kernel restart
 
-**File:** `web/src/lib/components/AddSourceModal.svelte:242-269` (compare with `handleConnectNext`, lines 204-240)
+**File:** `kernel/httpapi/agent.go:391-399` (capture site), corroborated by `kernel/httpapi/routes.go:33-61` and `kernel/httpapi/live_config_test.go` (test coverage gap)
 
-**Issue:** In the two-step "New {plugin type}…" flow, when Step 1's `describePlugin` trial-launch fails, the modal offers a "Save anyway" button that persists the connection-only instance directly via `saveAnyway()`:
+**Issue:** `MountAgentRoutes` is called exactly once, at `Router()` construction time in `runServe()`:
 
-```ts
-async function saveAnyway() {
-    if (!selectedPluginType || savingConnectionOnly) return;
-    const displayName = (connectionValues.display_name ?? '').trim();
-    const candidateId = deriveInstanceId(displayName);
-    if (candidateId === '') return;
-
-    savingConnectionOnly = true;
-    try {
-        const nextConfig = upsertSourceInstance(config, candidateId, connectionValues);
-        await putConfig({ base_hash: baseHash, config: nextConfig });
-        ...
-```
-
-Unlike its sibling `handleConnectNext` (Step 1's "Next" submit handler), which explicitly rejects a `candidateId` that collides with an already-configured instance:
-
-```ts
-if (config.sources[candidateId]) {
-    describeFailed = false;
-    connectError = `An instance id "${candidateId}" already exists — choose a different display name.`;
-    return;
+```go
+func MountAgentRoutes(r chi.Router, store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber) {
+	cfg := cfgStore.Expanded()
+	r.Get("/agent/v1/sources", agentSourcesHandler(store, cfg, prober))
+	r.Get("/agent/v1/webspaces", agentWebspacesHandler(store, cfg, prober))
+	r.Get("/agent/v1/webspaces/{webspace}/stream", agentStreamHandler(store, cfgStore, prober))
+	r.Get("/agent/v1/items/{id}", agentItemHandler(store, cfg, prober, fetcher))
+	r.Get("/agent/v1/items/{id}/content", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW))
+	r.Get("/agent/v1/items/{id}/thumbnail", agentRenditionHandler(store, cfg, prober, fetcher, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL))
 }
 ```
 
-`saveAnyway()` performs **no such check**. The user is free to keep editing `connectionValues.display_name` (the `ConnectionForm` remains fully interactive after a failed describe) between the failed "Next" click and the "Save anyway" click. If the edited display name derives to an id that already exists (e.g. the user types the display name of an existing, working instance, or simply reverts an edit), `upsertSourceInstance(config, candidateId, connectionValues)` unconditionally does `next.sources[instanceId] = source`, clobbering that instance's entire `[sources.<id>]` block — including its `base_url`/`token` reference and, critically, its `agent` grants (`connectionValues.agent` is always freshly initialized to `{ read: false, handoff: false }` for the new-instance flow, so an existing instance's `agent.read = true` grant is silently reset to `false`).
+`cfg` is a `*config.Config` pointer resolved **once**, then closed over by `agentSourcesHandler`, `agentWebspacesHandler`, `agentItemHandler` and `agentRenditionHandler` for the lifetime of the process. Only `agentStreamHandler` receives `cfgStore` itself and re-resolves `cfgStore.Expanded()` per request (`agent.go:199`).
 
-This is reachable through ordinary UI interaction (no dev tools needed), requires no confirmation dialog, and the resulting `PUT /api/config` succeeds (`base_hash` still matches, since nothing else changed the file) — so the overwrite is not caught by the D-03 clobber guard either. The victim instance's previously-working connection is silently replaced with the new, **unverified** (describe-failed) one, and its agent-read grant is silently revoked.
+Compare this to `kernel/httpapi/webspaces.go:31-33`, `kernel/httpapi/item.go:95-97`, and `kernel/httpapi/sources.go:159-161` (`SourceRefreshHandler`), which all explicitly resolve `cfg := cfgStore.Expanded()` as the *first statement inside the returned closure* — i.e., fresh per request. `routes.go`'s own doc comment (lines 37-44) states this was made true for every `/api/*` handler by 07-02-PLAN.md Task 2, and `live_config_test.go` mechanically proves it for exactly those three handlers. `agent.go`'s own doc comment (lines 384-390) claims the four boot-snapshotted agent handlers get "the same deliberately-temporary boot-snapshot treatment Router gives WebspacesHandler/ItemHandler/SourceRefreshHandler" — but that claim is now false for all three of those `/api/*` handlers, and no equivalent live-config test exists for the agent surface. The gap-closure this phase performed for `/api/*` was never extended to `/agent/v1/*`, except for the one stream route.
 
-**Fix:** Reuse the same collision guard in `saveAnyway()` before calling `upsertSourceInstance`:
+**Impact:**
+- An operator who revokes a source's `agent.read`/`agent.handoff` grant via `EditSourceModal`/`AddSourceModal` (a hot-apply `PUT /api/config` or `POST /api/config/reload`, both of which call `Applier.Apply` immediately per D-06) will see the change reflected in `/api/*` and in the UI on the very next request — but an already-running agent client hitting `/agent/v1/sources`, `/agent/v1/webspaces`, `/agent/v1/items/{id}`, or the content/thumbnail routes keeps reading the grant set **as it was when the kernel process started**. A revoked grant continues to permit reads of that source's items (including full content via `agentItemHandler`/`agentRenditionHandler`) until the kernel is restarted. This is a live authorization-bypass window on the one surface (AGENT-01) explicitly designed to be default-deny and grant-scoped.
+- The inverse also breaks correctness: a newly added source with `agent.read = true` is invisible to `/agent/v1/sources`/`/agent/v1/webspaces` and unreadable via `/agent/v1/items/{id}` until restart, even though the human-facing `/api/*` surface and the UI see it immediately.
 
-```ts
-async function saveAnyway() {
-    if (!selectedPluginType || savingConnectionOnly) return;
-    const displayName = (connectionValues.display_name ?? '').trim();
-    const candidateId = deriveInstanceId(displayName);
-    if (candidateId === '') return;
-    if (config.sources[candidateId]) {
-        connectError = `An instance id "${candidateId}" already exists — choose a different display name.`;
-        return;
-    }
-    ...
+**Fix:** Thread `cfgStore` (not a resolved `cfg`) into `agentSourcesHandler`, `agentWebspacesHandler`, `agentItemHandler`, and `agentRenditionHandler`, resolving `cfg := cfgStore.Expanded()` as the first statement inside each returned closure — the identical pattern `agentStreamHandler` and every `/api/*` handler already use:
+
+```go
+func agentSourcesHandler(store *index.Store, cfgStore *config.Store, prober HealthProber) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgStore.Expanded()
+		ctx := r.Context()
+		granted := grantedSources(cfg)
+		// ...
+	}
+}
 ```
-
-Consider factoring the id-derivation + collision-check into one shared helper so this class of bug can't recur when a third save path is added later.
-
-## Warnings
-
-### WR-01: GET /api/webspaces item_count is not narrowed by the webspace's saved filter, unlike GET /agent/v1/webspaces
-
-**File:** `kernel/httpapi/webspaces.go:36-45` vs `kernel/httpapi/agent.go:121-138,146-181`
-
-**Issue:** `WebspacesHandler` computes each webspace's `item_count` via `store.Webspaces(ctx)` (`kernel/index/store.go:621-646`), which counts every row in `webspace_items` unconditionally — it has no `filterTerms` parameter and never reads `cfg.Webspaces[name].Filter`. `agentWebspacesHandler`, by contrast, computes `item_count` via `agentGrantedItemCount`, which calls `store.StreamItems(ctx, webspaceName, granted, cfg.Webspaces[name].Filter)` — i.e. it **does** narrow by the webspace's saved permanent filter, in addition to the grant restriction.
-
-This directly contradicts the design intent stated in `kernel/config/types.go`'s `Webspace.Filter` doc comment ("the filtered view IS the webspace for every consumer, human and agent alike") and creates an observable inconsistency: for a fully-granted config with an active filter, `GET /api/webspaces` and `GET /agent/v1/webspaces` should report identical `item_count` values per `docs/api.md`'s own mirror table (which documents only a grant-based restriction, not a filter difference) but will not. `GET /api/webspaces/{webspace}/stream` (which is filtered) will also disagree with `GET /api/webspaces`'s own `item_count` for the same webspace. No test in this repo (`live_config_test.go`, `sources_test.go`, etc.) exercises `item_count` together with an active `Filter`, so this went unnoticed. The `item_count` field is not currently rendered anywhere in the web UI, which limits present-day user impact, but it is part of the published HTTP contract any external consumer (including a future UI feature) could rely on.
-
-**Fix:** Either thread `filterTerms` through `index.Store.Webspaces` (mirroring `agentGrantedItemCount`'s approach) and use it from `WebspacesHandler`, or — if `item_count` is deliberately meant to report the raw indexed count regardless of filter — document that divergence explicitly in `docs/api.md` and remove the filter narrowing from `agentGrantedItemCount` so both surfaces agree.
-
-### WR-02: CreateWebspaceModal has no client-side check for an existing webspace name
-
-**File:** `web/src/lib/components/CreateWebspaceModal.svelte:52-76`, `web/src/lib/config-edit.ts:40-44`
-
-**Issue:** `handleSubmit` calls `addWebspace(config, trimmed)` with no check that `trimmed` doesn't already exist in `config.webspaces`. `addWebspace` itself documents that a colliding name is "overwritten with an equally empty entry" and treats that as "a kernel-side load-time validation concern." In practice this means: typing an existing webspace's name into "New webspace" always produces a `PUT /api/config` that zeroes that webspace's `keywords`/`sources`/`match` (and therefore always fails kernel `Validate` with "declares neither a keywords fallback nor any match block", since every already-persisted webspace must have had at least one of those to have been saved in the first place). The save is correctly rejected (no actual data loss occurs), but the user sees a confusing validator error that has nothing to do with "this name is taken" — a poor, avoidable UX regression for a webspace-builder UI whose whole purpose is to shield users from raw config semantics.
-
-**Fix:** Add a simple client-side check in `handleSubmit` (or as a `$derived` disabling the submit button) that flags `trimmed in config.webspaces` before calling `putConfig`, with a clear "A webspace named “X” already exists" message.
-
-### WR-03: Adding a new source instance can retroactively invalidate an unrelated webspace elsewhere in the same config
-
-**File:** `web/src/lib/config-edit.ts:128-145,181-189` (`addSourceToWebspace`, `upsertSourceInstance`), consumed by `AddSourceModal.svelte`'s `submitMatch`/`saveAnyway`
-
-**Issue:** `upsertSourceInstance`/`addSourceToWebspace` only ever mutate the target webspace's own `sources`/`match` entries; they never inspect or adjust any *other* configured webspace. Per `kernel/config/config.go`'s `validateFallbackCoverage`, however, a brand-new source instance automatically "participates" in every *other* webspace whose `sources` allowlist is empty (the default, "every instance participates") — and if that other webspace also has an empty `keywords` fallback (i.e. it relies entirely on explicit `match` blocks, a shape `config.example.toml` itself demonstrates), the newly-added instance now has nothing to resolve its match input from there, and `Config.Validate` will reject the **entire** `PUT /api/config` with an error naming that unrelated webspace.
-
-Concretely: a user adds a brand-new plugin instance from webspace **A**'s "+" picker; if webspace **B** (which the user never touched, may not even be visible in the current view) is match-only with a default (empty) `sources` allowlist, the add to **A** fails with a validator message about **B** — a highly confusing failure mode for a UI built specifically to avoid exposing raw config semantics.
-
-**Fix:** At minimum, surface the kernel's `config_invalid` message clearly (already done generically via `err.message`), but consider either (a) having `addSourceToWebspace` proactively add the new instance's id to *every* affected match-only/no-allowlist webspace's own `sources` exclusion list as part of the same save (making the add strictly additive to the target webspace only), or (b) detecting this case client-side and explaining it in the error copy rather than showing the kernel's raw validator string verbatim.
-
-### WR-04: kernel/config/writer.go's atomic write never fsyncs the containing directory
-
-**File:** `kernel/config/writer.go:56-78`
-
-**Issue:** `WriteCanonical` fsyncs the temp file (`tmp.Sync()`) before `os.Rename(tmpPath, path)`, which is necessary but not sufficient for POSIX crash-durability: without an additional `fsync` on the directory file descriptor after the rename, a power loss or hard kernel crash immediately after `os.Rename` returns can, on some filesystems/mount options (e.g. ext4 without `data=ordered`+journal commit having flushed, or certain non-Linux/network filesystems), leave the directory entry pointing at the old inode, or leave `config.toml` and `config.toml.bak` in an inconsistent pairing. The doc comment's guarantee ("a kernel killed mid-write leaves `config.toml` at its previous content, never truncated or half-written") holds for the ordinary "process killed mid-write" case this code already handles well, but is stronger than what's actually durable across a true power-loss event.
-
-**Fix:** After the `os.Rename` succeeds, open and fsync the parent directory (`dir`) as well — the standard "atomic file replace" pattern. Low priority given the realistic threat model (desktop app, not a distributed system), but worth a one-line fix given how much of this phase's design rests on the write path's durability claims.
-
-### WR-05: Removing the last explicitly-allowlisted source from a webspace silently re-admits every other configured source
-
-**File:** `web/src/lib/config-edit.ts:217-232` (`removeSourceInstance`), acknowledged in its own doc comment (T-07-26) but not surfaced to the user anywhere in the UI
-
-**Issue:** When an instance is deleted via "Manage sources… → Delete" and it was the *last* entry in some webspace's explicit `sources` allowlist, `removeSourceInstance` leaves that webspace's `sources` as `[]`. Per `Webspace.Participates` (`kernel/config/types.go:211-221`), an empty `sources` slice means "every configured instance participates by default" — so if that allowlist had been deliberately restrictive (e.g. explicitly excluding a third, unrelated instance), deleting the last named instance silently re-opens the webspace to every other configured source, including ones the user had intentionally excluded. This is a real, user-visible behavior change with no confirmation or explanation in `ManageSourcesModal`'s destructive-delete `AlertDialog` copy ("This removes {instance} from every webspace and deletes its indexed items. This can't be undone.") — the copy does not mention that a webspace's participation model may flip from restrictive to open-to-all as a side effect.
-
-**Fix:** Either have the delete flow keep a (now-empty-of-real-instances) allowlist from silently reopening participation — e.g. write a sentinel that still excludes everything if that was the prior intent — or, more simply, update the `AlertDialogDescription` copy to warn when this specific case applies ("this webspace's remaining sources will change from an explicit list to 'all configured sources'").
+Add a `live_config_test.go`-style regression test asserting a grant revoked via `Store.Save` on the same `*Store`/`Router` stops appearing in `/agent/v1/sources` and starts 404'ing (as `item_not_found`, per T-02-20) on `/agent/v1/items/{id}` on the very next request, with no restart.
 
 ---
 
-_Reviewed: 2026-08-08T00:00:00Z_
+### CR-02: Canceling/reopening the same source's "Edit connection…"/"Edit match settings…" modal resurfaces discarded, unsaved field values — which can then be silently saved
+
+**File:** `web/src/routes/w/[webspace]/+page.svelte:131-167`, `web/src/lib/components/EditSourceModal.svelte:59-65`
+
+**Issue:** `EditSourceModal`'s form state is seeded exactly once, at mount, directly from props:
+
+```svelte
+let connectionValues = $state<SourceConfig>(
+	config.sources[instance] ?? { plugin: '', agent: { read: false, handoff: false } }
+);
+let matchBlock = $state<Record<string, string[]>>(
+	config.webspaces[webspace]?.match?.[instance] ?? {}
+);
+```
+
+The component's own doc comment acknowledges this is deliberate — *"callers key this component ... so a genuinely different instance/mode always mounts a fresh EditSourceModal"* — matching the discipline `MatchFieldsForm.svelte` also documents. That discipline is honored correctly inside `ManageSourcesModal.svelte` (`onclose={() => (editInstance = null)}` at line 366, which drops the `{#if editInstance}` gate entirely and forces a true remount next open), but the **primary** entry point — `SourceChip`'s edit menu, wired through `+page.svelte`'s `handleChipEdit`/`handleEditClose`/`handleEditSaved` — never resets `editInstance`:
+
+```ts
+function handleEditClose() {
+	editOpen = false;   // editInstance is left set
+}
+
+async function handleEditSaved() {
+	editOpen = false;   // editInstance is left set here too
+	await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+}
+```
+
+and the render site only remounts `EditSourceModal` when the `{#key}` value changes:
+
+```svelte
+{#if configResponse && editInstance}
+	{#key `${editInstance}-${editMode}`}
+		<EditSourceModal open={editOpen} mode={editMode} instance={editInstance} ... />
+	{/key}
+{/if}
+```
+
+Because `editInstance`/`editMode` are never cleared, reopening the edit modal for the **same** source in the **same** mode (the common case: open → tweak a field → Cancel → reopen the same source later) produces the identical `{#key}` value, so Svelte does not remount `EditSourceModal` — its `connectionValues`/`matchBlock` `$state` survive untouched from the previous session, including any edits the user typed and then clicked Cancel on. `handleOpenChange`/Cancel only flips `editOpen` to `false` (closing the `Dialog`), it never resets the underlying form state (unlike `AddSourceModal.svelte`'s `resetFlowState()`, which is called on every `onOpenChange(false)`).
+
+**Impact:** A user can type an incorrect `base_url`/token/display name, click Cancel, and later reopen the same source's "Edit connection…" — the incorrect, previously-canceled value is what's shown (not the current config), often indistinguishably from real data since the field looks pre-filled exactly as usual. If they click "Save changes" without noticing (e.g., because they only meant to change one other field), that stale, discarded value is written to `config.toml` via `PUT /api/config`, silently corrupting the real connection config for that source. The same applies to `matchBlock` in `'match'` mode.
+
+**Fix:** Reset `editInstance` (and `editMode`) to `null` in `handleEditClose` (mirroring `ManageSourcesModal.svelte`'s own `onclose={() => (editInstance = null)}`), so every reopen genuinely remounts `EditSourceModal` from current props:
+
+```ts
+function handleEditClose() {
+	editOpen = false;
+	editInstance = null;
+}
+
+async function handleEditSaved() {
+	editOpen = false;
+	editInstance = null;
+	await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+}
+```
+Alternatively/additionally, give `EditSourceModal` its own `$effect(() => { if (open) { connectionValues = ...; matchBlock = ...; } })` reset-on-open, matching `CreateWebspaceModal.svelte`'s and `ManageSourcesModal.svelte`'s own documented "reset local state whenever the modal transitions to open" pattern — this closes the gap even if a future caller makes the same `{#key}`-reset mistake again.
+
+## Warnings
+
+### WR-01: `ManageSourcesModal`'s "Reload config" has no handling for the currently-viewed webspace disappearing from the reloaded file
+
+**File:** `web/src/lib/components/ManageSourcesModal.svelte:174-192`
+
+**Issue:** `confirmDeleteWebspace` explicitly checks whether the deleted webspace was `currentWebspace` and navigates away (`goto('/w/' + remaining[0])` or `goto('/')`) so the user is never left on a route the kernel no longer knows about (lines 149-161). `handleReload`, which can equally cause `currentWebspace` to vanish from the config (a hand-edit that removes or renames the webspace, applied via `POST /api/config/reload`), does no equivalent check:
+
+```ts
+async function handleReload() {
+	if (reloading) return;
+	reloading = true;
+	reloadError = null;
+	try {
+		const res = await reloadConfig();
+		localConfig = res.config;
+		localHash = res.hash;
+		onchanged();
+	} catch (err) { ... } finally { reloading = false; }
+}
+```
+
+**Fix:** After a successful reload, check whether `currentWebspace` is still present in `res.config.webspaces` and navigate away using the same fallback `confirmDeleteWebspace` already implements, for consistency and to avoid leaving the header/stream displaying a webspace the kernel no longer serves.
+
+### WR-02: `SecretField`/`ConnectionForm`'s var-unwrap silently echoes a non-`${VAR}`-shaped stored token verbatim into an editable plaintext field
+
+**File:** `web/src/lib/components/ConnectionForm.svelte:46-51`
+
+**Issue:** `unwrapVar` only strips the `${VAR}`/`$VAR` wrapper when the stored string matches `VAR_PATTERN`; any other shape (e.g., a hand-edited `config.toml` where an operator typed a literal token value instead of a `${VAR}` reference — not structurally prevented by `kernel/config/config.go`'s `Validate`, only a documented convention) is returned unchanged and rendered directly into `SecretField`'s plaintext `<Input>`. `SecretField.svelte`'s own doc comment states its "only content, ever, is an environment variable NAME — never a secret value" (lines 3-8), but this contract is enforced only for the happy-path shape, not defensively. On save, `wrapVar` would then wrap that literal value in `${}`, turning what was a real secret into a broken env-var reference and losing the original credential.
+
+**Fix:** When `unwrapVar` cannot match `VAR_PATTERN`, treat the field as unrecognized/invalid rather than echoing it verbatim — e.g., render a distinct "this field is not a `${VAR}` reference and must be fixed by hand" state instead of populating the plaintext input with what may be a live secret, and avoid silently mangling it into a bogus reference on the next save.
+
+## Info
+
+### IN-01: `agent.go`'s own doc comment is now inaccurate and will mislead future maintainers
+
+**File:** `kernel/httpapi/agent.go:384-390`
+
+**Issue:** The comment above `MountAgentRoutes` claims the four boot-snapshotted agent handlers get "the same deliberately-temporary boot-snapshot treatment Router gives WebspacesHandler/ItemHandler/SourceRefreshHandler" — but per `routes.go`'s own doc comment and the actual code in `webspaces.go`/`item.go`/`sources.go`, none of those three handlers are boot-snapshotted anymore (07-02-PLAN.md Task 2 closed that gap for all of `/api/*`). This comment should be corrected as part of fixing CR-01 above, so it doesn't continue asserting a parity that no longer holds.
+
+**Fix:** Update or remove this comment once CR-01 is fixed; it should describe the live-per-request read the fix introduces, not the historical (now-incorrect) "boot snapshot, matching those three handlers" framing.
+
+---
+
+_Reviewed: 2026-08-08T14:56:06Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
