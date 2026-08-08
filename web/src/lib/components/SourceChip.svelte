@@ -39,13 +39,24 @@
 		selected,
 		onfilter,
 		onrefresh,
-		onedit
+		onedit,
+		busy = false
 	}: {
 		source: SourceStatus;
 		selected: boolean;
 		onfilter: (name: string) => void;
 		onrefresh: (name: string) => void;
 		onedit: (name: string, kind: 'connection' | 'match' | 'remove') => void;
+		// busy (07-05-PLAN.md Task 2, the shared save/reload state pattern's
+		// in-flight rule — E6 "the initiating control disables in flight")
+		// disables ONLY the "Remove from this webspace" item below: it is
+		// the one write this menu can trigger directly, sharing the route's
+		// own filterBusy flag with the modal-less filter-save/-remove path
+		// (both write through the identical putConfig seam). Edit
+		// connection…/Edit match settings… merely open a modal — opening
+		// one while an unrelated write is in flight is harmless, so neither
+		// is gated on this flag.
+		busy?: boolean;
 	} = $props();
 
 	let tone = $derived(healthTone(source));
@@ -186,6 +197,7 @@
 			<DropdownMenuSeparator />
 			<DropdownMenuItem
 				class="text-foreground hover:text-destructive focus:text-destructive data-highlighted:text-destructive"
+				disabled={busy}
 				onSelect={() => onedit(source.name, 'remove')}
 			>
 				Remove from this webspace

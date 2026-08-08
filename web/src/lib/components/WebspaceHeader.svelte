@@ -327,6 +327,7 @@
 					{onfilter}
 					{onrefresh}
 					{onedit}
+					busy={filterBusy}
 				/>
 			{/each}
 
@@ -359,6 +360,7 @@
 									{onfilter}
 									{onrefresh}
 									{onedit}
+									busy={filterBusy}
 								/>
 							{/each}
 						</div>

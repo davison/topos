@@ -10,11 +10,17 @@
 declare module 'node:fs' {
 	export function readFileSync(path: string, encoding: string): string;
 	export function readdirSync(path: string): string[];
+	// statSync's return type is narrowed to exactly the one member
+	// save-state.test.ts's recursive directory walk actually reads
+	// (isDirectory()) — same "nothing more than the exact functions/shapes
+	// the test imports" discipline the rest of this file follows.
+	export function statSync(path: string): { isDirectory(): boolean };
 }
 
 declare module 'node:path' {
 	export function dirname(path: string): string;
 	export function join(...segments: string[]): string;
+	export function relative(from: string, to: string): string;
 }
 
 declare module 'node:url' {
