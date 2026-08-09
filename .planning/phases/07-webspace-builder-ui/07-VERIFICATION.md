@@ -1,7 +1,7 @@
 ---
 phase: 07-webspace-builder-ui
 verified: 2026-08-09T16:50:33Z
-status: human_needed
+status: passed
 score: 138/173 must-haves verified (independently re-run in this session)
 behavior_unverified: 35
 overrides_applied: 0
@@ -9,48 +9,59 @@ re_verification:
   previous_status: human_needed
   previous_score: 111/152
   gaps_closed:
+
     - "G-07-1 (round-2 UAT test 1, minor): a just-created webspace showed 'Couldn't load this webspace — The topos service didn't respond' until Retry. Closed by 07-15: kernel/httpapi/stream.go's new webspaceIsKnown (lines 134-141) is a config-OR-index disjunction — cfg.Webspaces[name] checked first, falling through to store.WebspaceExists only when that answers false — called identically from StreamHandler, SearchHandler (search.go:45) and agentStreamHandler (agent.go:208), confirmed by grep showing all three files and by store.WebspaceExists referenced from exactly one non-comment, non-test line in kernel/httpapi/. On the client, +page.svelte's load() catch (line 351) classifies ApiError('webspace_not_found') into a new 'not-found' loadState distinct from 'error', rendering the new neutral StreamMissing.svelte (no Retry) instead of StreamError's destructive outage copy. Independently re-run: go build clean; go test ./kernel/... all packages ok; go test ./kernel/httpapi/ -run 'Webspace|Stream|Search|Agent' -v — TestStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray, TestStreamHandler_ZeroConfiguredSourcesReturns200EmptyArray, TestStreamHandler_UnknownWebspace404, TestStreamHandler_KnownEmptyWebspaceReturns200EmptyArray (pre-existing, unmodified), TestSearchHandler_ConfigKnownNeverSyncedNoQReturns200EmptyResults/WithQ, TestAgentStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray — all PASS. git diff f25ac59..HEAD -- kernel/index/store.go confirmed comment-only. git diff -- web/src/lib/components/StreamError.svelte confirmed empty (untouched)."
     - "G-07-7 (round-2 UAT test 4, minor): removing a source from a webspace left its items visible in the stream until a manual refresh, even though the chip disappeared immediately. Closed by 07-16: kernel/correlate/correlate.go's new exported ParticipatesIn (line 168) is the one kernel-side participation predicate, called by matchFieldsFor (sync path) and by kernel/supervisor/supervisor.go's new purgeDeparticipatedWebspaceRows (line 499, called from Apply at line 404 — confirmed by direct read to run in the post-Reconcile region, after cleanupRemovedInstances and before the single commitGeneration call, i.e. strictly before ConfigSaveHandler's WriteJSON(200) at kernel/httpapi/config.go:188, since Apply is awaited synchronously at config.go:181). The purge diffs old-vs-new ParticipatesIn per (webspace, instance) pair scoped to names present in both configs and clears exactly the pairs that flipped true→false via a pure local ReplaceWebspaceSourceItems(..., nil) call — no plugin RPC, confirmed by direct read of the function body. On the client, +page.svelte's ensurePolling stop branch (line 509) now also awaits a quiet load(gen, {quiet:true}) refetch when a poll observes syncing fall to false, covering the residual case where an eager resync failed at save time. Independently re-run: go test ./kernel/... all ok; go test ./kernel/supervisor/ -race clean; TestApply_PurgesDeparticipatedWebspaceRows_NarrowingClearsOnlyTheFlippedPair (asserted on the statement immediately after Apply returns, no sleep, no polling — read directly, confirmed genuinely synchronous), _LastSourceRemovedLeavesEmptyShellStreamingNothing, _NoOpConfigPerformsNoClear, _DeletedWebspaceRowsUntouched, _FailureIsJoinedIntoApplyError, TestParticipatesIn_ResolutionShapes, and all four pre-existing TestMatchFieldsFor_* (unmodified bodies) — all PASS."
   gaps_remaining: []
   regressions: []
 deferred: []
 behavior_unverified_items:
+
   - truth: "07-15's two live-kernel backstops: creating a webspace via the UI lands directly on 'Nothing here yet' with no Retry click, and an unconfigured name typed into the address bar renders the not-configured copy (not the outage copy) while the switcher stays usable"
     test: "make dev; webspace title drop-down → + New webspace → type a name → submit. Confirm the modal closes, the app navigates to /w/<name>, and the stream shows 'Nothing here yet' immediately — no error state, no Retry click. Then type an unconfigured name into the address bar and confirm the not-configured copy renders naming it, does NOT say the service didn't respond, and the switcher above still lists real webspaces and still navigates."
     expected: "Both flows work end to end against a live kernel and browser — this is 07-UAT.md round-2 test 1's re-run against the G-07-1 fix"
     why_human: "Requires a live make dev session; not available in this verification environment. Round-2 UAT (07-UAT.md test 1) tested the PRE-fix code and found the transient-error caveat — this is the first live confirmation opportunity since 07-15 landed. Deferred per workflow.human_verify_mode: end-of-phase."
+
   - truth: "07-16's client-side sync-completion refetch: ensurePolling's stop branch actually refetches the stream at runtime when a background sync completes, without ever passing through the loading skeleton, and a failed background refetch leaves the screen untouched"
     test: "make dev; open a chip's ⋮ menu → Remove from this webspace. Confirm the chip AND that source's items disappear together with no manual refresh. Re-add the instance through the '+' picker and confirm its chip returns immediately and, once its sync completes, its items appear WITHOUT a manual refresh. Separately, watch a normal background sync complete on a webspace already being viewed and confirm the stream does not flash a loading skeleton."
     expected: "The purge (kernel-side, behaviorally proven by a passing synchronous Go test) closes the immediate case; the poll's quiet refetch (client-side) closes the residual eager-resync-failed case and must not blank an already-rendered stream"
     why_human: "07-REVIEW.md's WR-02 independently flags that the guard for this exact feature (web/src/routes/webspace-stream-refresh.test.ts) is a comment-stripped source-text scan, not a component-mount/runtime harness — it can pass while the actual interleaving (generation-capture-before-first-await, the quiet flag actually suppressing the loading transition) is broken. This is a concurrency/ordering invariant that presence-and-wiring checks cannot exercise; only a live poll-completion event or a mount-based test can. 07-UAT.md round-2 test 4 tested the PRE-fix code and found stale items persisting — this is the first live confirmation opportunity since 07-16 landed. Deferred per workflow.human_verify_mode: end-of-phase."
+
   - truth: "07-11's two new backstops: creating a webspace via the UI (+ New webspace) navigates to it with an empty stream and no restart, and adding its first source via the chip-row '+' joins only that instance (not every configured instance)"
     test: "make dev; click the webspace title drop-down, choose + New webspace, type a name, submit. Confirm the modal closes, the app navigates to /w/<name> with no restart, config.toml gains a [webspaces.<name>] block, and the stream is EMPTY. Then click the chip-row +, add one existing instance with match fields, and confirm exactly that one chip appears."
     expected: "Both flows work end to end against a live kernel — code-fixed with unit/integration test coverage; round-2 UAT test 1 exercised this live and reported PASS with the G-07-1 caveat now separately closed above"
     why_human: "Requires a live make dev session; not available in this verification environment."
+
   - truth: "07-12's backstop: with zero [webspaces.*] blocks, / shows 'No webspaces yet' with a working Create webspace CTA, and a genuinely unreachable kernel still shows the service-unreachable copy"
     test: "make dev with config.toml carrying zero [webspaces.*] blocks; load /; confirm the empty state and CTA. Then stop the kernel process and reload; confirm the service-unreachable copy still renders for a real outage."
     expected: "Empty state renders correctly when the kernel is healthy; unreachable copy renders only for an actual fetch failure"
     why_human: "Requires a live make dev session and a real config.toml edit; not available in this environment. Round-2 UAT test 2 exercised this live and reported PASS."
+
   - truth: "07-13's two backstops: the two-step 'New Signal…' flow completes end to end with a real path value, and clearing a required field surfaces the missing-field message with zero network requests"
     test: "make dev; + → New Signal…; confirm the path field arrives pre-filled; clear it and click Next, confirm the missing-field message and no network request; restore the value and click Next, confirm the Match step loads and the finished instance appears as a chip."
     expected: "Blank required field blocks submission client-side with no request; a filled field proceeds through Connect → Match → chip appears"
     why_human: "Requires a live make dev session with a real (or fake) Signal/Proton binary; not available in this environment. Round-2 UAT test 3 exercised this live and reported PASS."
+
   - truth: "07-14's two backstops: 'Remove from this webspace' makes the chip disappear immediately with no reload and leaves other webspaces unchanged; the '+' picker re-offers a removed instance and re-adding it restores its chip and items"
     test: "make dev; open a chip's ⋮ menu, choose Remove from this webspace; confirm the chip disappears immediately, config.toml narrows correctly, other webspaces are untouched. Then reopen the + picker and confirm the removed instance is offered again; re-add it and confirm its chip and items return."
     expected: "Both directions (remove, re-add) round-trip correctly against a live kernel"
     why_human: "Requires a live make dev session; not available in this environment. Round-2 UAT test 4 exercised this live and reported PASS on the chip round-trip itself (the items-linger defect is G-07-7, closed separately above)."
+
   - truth: "UAT tests 11/12 (scroll behavior at 15+ webspaces/instances)"
     test: "Configure 15+ webspaces and 15+ source instances via the UI; open the switcher, the '+' picker, and Manage sources…; confirm all three scroll internally rather than growing past the viewport"
     expected: "Fixed max-height with internal scroll in all three surfaces"
     why_human: "Round-2 UAT test 5 (this round's re-run of round-1 tests 11/12) reported PASS live — carried here only because it remains a live-browser-only check with no automatable regression guard in this codebase."
+
   - truth: "A kernel killed between the config.toml.bak write and the atomic rename leaves config.toml fully intact (07-01 backstop)"
     test: "Kill the topos process (SIGKILL) at the instant between the .bak write and the os.Rename call during a config save, then inspect config.toml"
     expected: "config.toml is byte-identical to its pre-save content — never truncated, never half-written"
     why_human: "07-UAT.md round-2 test 6: skipped again — genuinely non-deterministic timing window, unchanged since prior rounds."
+
   - truth: "A kernel killed midway through the D-07 cleanup leaves at most the interrupted instance's sync_runs rows behind; no other instance is left half-cleaned (07-10 backstop)"
     test: "Kill the topos process (SIGKILL) at the instant between one removed instance's DeleteSourceItems call returning and its DeleteSyncRuns call starting, during an Apply that removes 2+ instances, then inspect the index"
     expected: "At most the interrupted instance's sync_runs rows survive; every other instance is either fully cleaned or fully untouched"
     why_human: "07-UAT.md round-2 test 7: skipped again — genuinely non-deterministic timing window, unchanged since prior rounds."
+
   - truth: "handleChipEdit's match-mode describePlugin call resolves without a slower first request's response overwriting a faster second request's state (WR-01 original numbering, carried code-review advisory)"
     test: "make dev; open 'Edit match settings…' on one chip, then before the vocabulary loads, open 'Edit match settings…' or 'Edit connection…' on a different chip; confirm the modal never briefly shows or reverts to the FIRST chip's vocabulary/open state"
     expected: "The second (current) click's state always wins"
@@ -184,3 +195,12 @@ None of these are FAILED; all are present-and-wired (or, for two items, genuinel
 
 _Verified: 2026-08-09T16:50:33Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Acknowledged Gaps
+
+Round-3 UAT (2026-08-09): both live gap-fix confirmations passed (G-07-1, G-07-7). The remaining 8 human-verification items were explicitly dispositioned by the user rather than run manually:
+
+- Tests 3–7 and 10 (07-11/07-12/07-13/07-14 backstops, 15+-item scroll, chip-edit describePlugin race): deferred to Phase 07.1 (Browser E2E Harness), which ports each into an automated Playwright spec against a hermetic kernel. Tracked in 07-UAT.md `## Deferred Follow-Ups`.
+- Tests 8–9 (SIGKILL timing-window backstops from 07-01/07-10): genuinely non-deterministic timing windows, not browser-automatable; accepted risk, consistent with every prior round.
+
+Status was canonicalized to `passed` on this basis: zero issues found, all deliberate skips carry documented dispositions, and security audit reports threats_open: 0.

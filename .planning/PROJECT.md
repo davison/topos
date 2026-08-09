@@ -25,6 +25,7 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Per-instance typed matching (KERN-07): plugin-declared `match_vocabulary` on the wire (`map<string, StringList> match_fields`, `keywords` retired, contract generation "topos.v2", handshake v1→v2 fail-fast), per-instance `match` blocks with participation allowlist and fail-loud-by-name startup validation, webspace `keywords` as fallback; all five plugins migrated and the operator's live config hand-migrated — Phase 5
 - ✓ Kernel-owned rendition boundary: plugins return content plus a declared `ContentShape`; the kernel sanitizes, wraps, and themes at the CSP boundary (three per-plugin theme copies deleted) — Phase 5
 - ✓ Scalable source surface (UI-07/08/09/11): each source instance appears exactly once in the header as a single merged chip (health + filter toggle + hover-revealed refresh in one 44px pill, overflow popover at high instance counts), deep-link affordances differentiate raise-only from navigating links (closes the 04-UAT follow-up), search terms highlight across stream rows, result titles/snippets and the detail pane (including sanitized renditions, injected kernel-side as HTML tree nodes), and the stream scrollbar carries a date-marker ruler with click-to-jump — Phase 6 (three UAT gap-closure rounds to land the chip polish)
+- ✓ Webspace builder UI (KERN-08, UI-12): the kernel API gained its first mutating surface (`PUT /api/config` + reload/describe-plugin, content-hash optimistic lock, canonical TOML rewrite, secrets stay environment-only as `${VAR}` references), config changes hot-apply without restart (plugin host/coordinator/scheduler rebuilt in place, removed instances' index rows purged synchronously), and the UI composes webspaces end to end — create/switch/delete webspaces, add/edit/remove named source instances from the chip row, save a live search as a permanent webspace filter — Phase 7 (three UAT rounds; two gap-closure waves; 108-threat STRIDE register audited to threats_open: 0)
 
 ### Active
 
@@ -96,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-07 after Phase 6*
+*Last updated: 2026-08-09 after Phase 7*

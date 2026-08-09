@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety (completed 2026-08-03)
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
-- [ ] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters
+- [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
 - [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
 
 ## Phase Details
@@ -382,6 +382,17 @@ Notes:
 - "Saveable set as a webspace" and "permanent filter" together turn webspaces from static config into something the user grows interactively — the search-promotion flow is the heart of this phase.
 - Research: MEDIUM. TOML round-tripping (preserving comments/unknown keys) vs. a UI-owned config layer needs a decision before planning.
 
+### Phase 07.1: Browser E2E Harness (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 07.1 to break down)
+
 ### Phase 8: WhatsApp Conversations (Managed Risk)
 
 **Goal**: User's WhatsApp groups for a topic appear in the webspace stream via a linked-device session, and everything else keeps working when that session breaks
@@ -417,7 +428,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 16/16 | In Progress|  |
+| 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
