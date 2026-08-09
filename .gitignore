@@ -22,6 +22,10 @@ kernel/webui/build/*
 /plugins/signal/signal
 /paperless
 
+# Playwright e2e artifacts (traces, screenshots, html report) — never
+# committed; make e2e regenerates them on every run.
+web/e2e/.artifacts/
+
 # local TODOs and notes
 TODO.md
 
