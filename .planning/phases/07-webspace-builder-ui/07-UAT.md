@@ -1,5 +1,5 @@
 ---
-status: partial
+status: diagnosed
 phase: 07-webspace-builder-ui
 source: [07-VERIFICATION.md]
 started: 2026-08-08T23:05:52Z
@@ -133,23 +133,26 @@ blocked: 2
 
 ## Gaps
 
-- gap_id: G-07-6
-  truth: "Chip menu 'Remove from this webspace' removes the source from the webspace: the write round-trips through PUT /api/config and the chip disappears without reload"
+- gap_id: G-07-3
+  truth: "One PUT /api/config call; success navigates; failure keeps modal open with kernel's verbatim message"
   status: failed
-  reason: "User reported: removing a source from a webspace fails silently — all chips briefly show the syncing spinner, then the webspace is unmodified. No error surfaced, no chip removed. (Reported during test 6; the test's own Describe-failure path remains blocked by G-07-5's Signal trial-launch failure.)"
-  severity: major
-  test: 6
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
-
-- gap_id: G-07-5
-  truth: "Two-step New {plugin type}… Connect step trial-launches via describePlugin and advances to the Match step on success"
-  status: failed
-  reason: "User reported: adding a second Signal source fails at Connect/Next — trial-launch for describe cannot start the signal plugin subprocess: go-plugin handshake failure, 'Failed to read any lines from plugin's stdout' (arch, permissions, ELF all correct — the subprocess most likely exited before the handshake, e.g. missing env/keyring access in the trial-launch environment, or the Signal Desktop DB cannot be opened twice)."
-  severity: major
-  test: 5
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  reason: "User reported (corrected paste): creating a new webspace from the modal always fails — kernel rejects the fresh empty block: config: webspace \"uat\" declares neither a keywords fallback nor any match block. The modal correctly stays open showing the kernel's verbatim message, but a just-created webspace necessarily has no keywords/match yet, so UI creation can never succeed."
+  severity: blocker
+  test: 3
+  root_cause: "Cross-phase contract conflict, not a coding bug in either component: 05-03's unconditional keywords-or-match invariant (kernel/config/config.go validateWebspaces ~323, independently re-derived by validateFallbackCoverage ~416) was never reconciled with 07-03/07-04's deliberate D-14 two-write creation flow (create empty shell first, populate match/allowlist in a later PUT). The shell write can never pass the gate on any install; Webspace.Participates treating an empty sources allowlist as all-participate (types.go ~211) blocks the naive exemption."
+  artifacts:
+    - path: "kernel/config/config.go"
+      issue: "validateWebspaces (~323) + validateFallbackCoverage (~416) blanket-reject a source-less webspace shell; no participation-aware exemption"
+    - path: "kernel/config/types.go"
+      issue: "Participates (~211): empty sources allowlist means all-participate, so a fresh shell is not distinguishable as 'no participants yet'"
+    - path: "web/src/lib/config-edit.ts"
+      issue: "addWebspace writes {keywords:[], sources:[], match:{}} per D-14 spec — correct per its own design, but that design collides with the kernel invariant"
+    - path: "web/src/lib/components/CreateWebspaceModal.svelte"
+      issue: "the flow whose PUT can never validate"
+  missing:
+    - "A design decision, then one of: (a) participation-aware exemption in validation for a genuinely source-less shell, (b) the modal's single PUT writes a document that already satisfies the invariant, (c) single-write create-and-seed-first-source flow"
+    - "A live-kernel round-trip test for webspace creation (07-03's tests only asserted the JS object shape)"
+  debug_session: .planning/debug/create-webspace-rejected-empty.md
 
 - gap_id: G-07-4
   truth: "With no webspaces configured, / renders 'No webspaces yet' with a working Create webspace CTA and does not navigate; no redirect loop, no blank page"
@@ -157,15 +160,59 @@ blocked: 2
   reason: "User reported: with zero webspaces configured, / renders the service-unreachable error copy ('Couldn't load this webspace — the topos service didn't respond…') with no Create webspace CTA — the empty state is never reached. The webspaces-exist redirect to the remembered webspace works correctly."
   severity: major
   test: 4
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Client-side TypeError masquerading as kernel-unreachable: with zero [webspaces.*] blocks the kernel's nil Webspaces map (types.go:19, never defaulted in applyDefaults) marshals as \"webspaces\": null on GET /api/config; +page.svelte's onMount calls Object.keys(res.config.webspaces) unguarded inside the same try/catch that catches fetch failures, so the throw renders the generic service-didn't-respond copy. Kernel answers 200 OK. Confirmed by live ephemeral-kernel repro on port 7799."
+  artifacts:
+    - path: "web/src/routes/+page.svelte"
+      issue: "lines 27-44: unguarded Object.keys(res.config.webspaces) inside a catch-all that conflates fetch failure with response-processing exceptions"
+    - path: "kernel/config/types.go"
+      issue: "line 19: Webspaces map never defaulted to {} — serializes as null when config has none"
+    - path: "kernel/config/config.go"
+      issue: "applyDefaults (150-163) does not seed empty Webspaces/Sources maps"
+  missing:
+    - "Frontend: read res.config.webspaces ?? {} defensively and stop conflating processing errors with fetch failures"
+    - "Kernel: default Webspaces (and Sources) to empty maps so /api/config never serializes null, consistent with the existing null→[] normalization convention"
+  debug_session: .planning/debug/root-empty-state-service-error.md
 
-- gap_id: G-07-3
-  truth: "One PUT /api/config call; success navigates; failure keeps modal open with kernel's verbatim message"
+- gap_id: G-07-5
+  truth: "Two-step New {plugin type}… Connect step trial-launches via describePlugin and advances to the Match step on success"
   status: failed
-  reason: "User reported (corrected paste): creating a new webspace from the modal always fails — kernel rejects the fresh empty block: config: webspace \"uat\" declares neither a keywords fallback nor any match block. The modal correctly stays open showing the kernel's verbatim message, but a just-created webspace necessarily has no keywords/match yet, so UI creation can never succeed."
-  severity: blocker
-  test: 3
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  reason: "User reported: adding a second Signal source fails at Connect/Next — trial-launch for describe cannot start the signal plugin subprocess: go-plugin handshake failure, 'Failed to read any lines from plugin's stdout' (arch, permissions, ELF all correct)."
+  severity: major
+  test: 5
+  root_cause: "Two confirmed causes (AND): (1) web/src/lib/plugin-fields.ts marks Signal's path (and Proton's webmail_base_url) required:false with the mandatory value shown only as a placeholder; ConnectionForm never enforces required at submit, so the trial-launch receives path:\"\" and plugins/signal/main.go:47 fatals to stderr and exits pre-handshake. (2) pluginhost.launch never sets goplugin.ClientConfig.Stderr, and go-plugin drains plugin stderr only after handshake — so the child's one-line reason ('WEBSPACES_SOURCE_CONFIG: path is empty') is discarded and go-plugin's four-guess generic error surfaces instead. Not Signal-specific: Proton reproduces identically; blank required fields on any plugin hit the same wall. Confirmed by ephemeral-kernel describe calls: no path → 502 byte-identical to UAT report; with path → 200 with vocabulary; with a WRONG path → 200 (emptiness, not wrongness, triggers it)."
+  artifacts:
+    - path: "web/src/lib/plugin-fields.ts"
+      issue: "signal path and proton webmail_base_url marked required:false though both plugins fatal without them; mandatory defaults live only in placeholders"
+    - path: "web/src/lib/components/ConnectionForm.svelte"
+      issue: "lines 71-82: required only styles the label — no HTML required, no submit-time validation, placeholder never seeds a value"
+    - path: "kernel/pluginhost/host.go"
+      issue: "launch (~222): ClientConfig.Stderr never set — pre-handshake plugin stderr is lost"
+    - path: "plugins/signal/main.go"
+      issue: "line 47: pre-Serve fatal on empty path, stderr-only (same pattern plugins/proton/main.go:56)"
+    - path: "kernel/httpapi/config.go"
+      issue: "DescribePluginHandler (~287): validates binary name only, no required-field check"
+  missing:
+    - "plugin-fields.ts: mark startup-mandatory fields required:true and seed real default values instead of placeholders"
+    - "ConnectionForm/handleConnectNext: enforce required fields at submit so a blank mandatory field never reaches exec.Command"
+    - "pluginhost.launch: capture child stderr (bounded buffer) and append its last line to the wrapped trial-launch error — recurrence guard for the whole pre-handshake-fatal class"
+  debug_session: .planning/debug/signal-trial-launch-handshake.md
 
+- gap_id: G-07-6
+  truth: "Chip menu 'Remove from this webspace' removes the source from the webspace: the write round-trips through PUT /api/config and the chip disappears without reload"
+  status: failed
+  reason: "User reported: removing a source from a webspace fails silently — all chips briefly show the syncing spinner, then the webspace is unmodified. No error surfaced, no chip removed."
+  severity: major
+  test: 6
+  root_cause: "Two independent, each-sufficient defects: (A) config-edit.ts removeSourceFromWebspace (156-172) filters existing.sources directly — for a webspace with no explicit allowlist (empty = all-participate, exactly the user's 'cars' shape) filtering [] yields [] again, a semantic no-op the kernel accepts with 200 (empty allowlist still means ALL participate per types.go Participates 211-221); the add direction already seeds Object.keys(cfg.sources) when empty but remove never mirrored it. (B) WebspaceHeader.svelte's chip row (visibleSources/hiddenSources, 275-276) derives from the unfiltered kernel-wide GET /api/sources with no participation filter at all — even a correct write wouldn't hide the chip. AddSourceModal's participatingSet already implements the needed client-side Participates mirror but was never shared. PUT genuinely succeeds (error path would render a destructive Alert; none appeared), explaining the brief resync spinner + no change."
+  artifacts:
+    - path: "web/src/lib/config-edit.ts"
+      issue: "removeSourceFromWebspace (156-172): filters a possibly-empty allowlist without seeding the current participant set first"
+    - path: "web/src/lib/components/WebspaceHeader.svelte"
+      issue: "chip row (275-276) has no webspace-participation filter — driven by kernel-wide /api/sources verbatim"
+    - path: "web/src/routes/w/[webspace]/+page.svelte"
+      issue: "loadSources (426-444) passes the unfiltered instance list to the header"
+  missing:
+    - "removeSourceFromWebspace: seed currentParticipants = existing.sources.length > 0 ? existing.sources : Object.keys(cfg.sources) before filtering (mirror of addSourceToWebspace's existing pattern)"
+    - "Extract AddSourceModal's participatingSet logic into a shared helper and apply it to WebspaceHeader's chip-row derivation"
+    - "A removeSourceFromWebspace test covering the empty-allowlist (all-participate) fixture"
+  debug_session: .planning/debug/remove-source-silent-noop.md
