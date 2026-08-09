@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -69,13 +70,13 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
-		known, err := store.WebspaceExists(ctx, name)
+		known, err := webspaceIsKnown(ctx, store, cfg, name)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
 		if !known {
-			WriteError(w, http.StatusNotFound, "webspace_not_found", "webspace \""+name+"\" is not configured or has not been synced")
+			writeWebspaceNotFound(w, name)
 			return
 		}
 
@@ -101,6 +102,51 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 
 		WriteJSON(w, http.StatusOK, resp)
 	}
+}
+
+// webspaceIsKnown is the single existence gate every surface that answers
+// "does this webspace exist" asks through (07-15-PLAN.md, closes
+// 07-UAT.md G-07-1.missing[2]'s audit of search.go and agent.go): stream,
+// search and the agent stream mirror all call this and nothing else.
+//
+// It is a deliberate disjunction of two halves, config first:
+//
+//   - The config half answers true the instant name is a key of cfg's
+//     Webspaces map. The create flow's first `PUT /api/config` returns
+//     200 before any sync has ever run (D-06/D-14/D-20) — a webspace is
+//     therefore servable from the moment it is configured, with no
+//     dependency on whether or when the eager resync `Supervisor.Apply`
+//     dispatches as a detached goroutine has actually completed. This is
+//     the half that closes G-07-1: the pre-fix gate asked the index alone
+//     (sync history), which made the create-flow's immediate stream GET
+//     land in a real, and on a zero-configured-sources install
+//     PERMANENT, 404 window.
+//   - The index half falls through to store.WebspaceExists only when the
+//     config half answers false, so a webspace whose `[webspaces.*]`
+//     block was removed from the file while its previously-synced index
+//     rows survive still answers true — TestStreamHandler_
+//     KnownEmptyWebspaceReturns200EmptyArray depends on exactly this
+//     half and must keep passing.
+//
+// The gate is additive by construction: every request that answered true
+// before this change still does (the index half is untouched), and the
+// config half only ever turns a prior 404 into a 200, never the reverse.
+func webspaceIsKnown(ctx context.Context, store *index.Store, cfg *config.Config, name string) (bool, error) {
+	if _, ok := cfg.Webspaces[name]; ok {
+		return true, nil
+	}
+	return store.WebspaceExists(ctx, name)
+}
+
+// writeWebspaceNotFound writes the one webspace_not_found 404 envelope,
+// so its message literal exists once rather than duplicated across
+// stream.go, search.go and agent.go. After webspaceIsKnown, a configured
+// webspace is always servable regardless of sync history, so a 404 here
+// means exactly one thing: name is not in the running configuration (and
+// has no surviving index rows either) — the message no longer claims it
+// might merely be unsynced.
+func writeWebspaceNotFound(w http.ResponseWriter, name string) {
+	WriteError(w, http.StatusNotFound, "webspace_not_found", "webspace \""+name+"\" is not configured")
 }
 
 // toStreamItem converts it into its streamItem representation with

@@ -202,6 +202,32 @@ func TestAgentStreamHandler_KnownWebspaceZeroGrantedItemsReturns200EmptyArray(t 
 	}
 }
 
+// TestAgentStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray
+// (07-15-PLAN.md Task 1, G-07-1.missing[2]) proves the agent stream mirror
+// asks the same config-aware existence gate the human-facing route does —
+// a config-known, never-synced webspace answers 200 with the
+// granted-set-filtered (here: empty) response, never a 404.
+func TestAgentStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{"new-project": {}}}
+	router := newAgentTestRouter(store, cfg, &fakeFetcher{}, &fakeProber{})
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/v1/webspaces/new-project/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a config-known-never-synced webspace through the agent mirror, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Items == nil {
+		t.Error("expected items to be a non-nil empty array, not null")
+	}
+}
+
 // TestAgentStreamHandler_UnknownWebspace404 proves an unknown webspace
 // still returns 404 webspace_not_found through the agent namespace,
 // identically to the human-facing route.

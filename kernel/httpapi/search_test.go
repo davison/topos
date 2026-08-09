@@ -64,6 +64,55 @@ func TestSearchHandler_UnknownWebspace404(t *testing.T) {
 	}
 }
 
+// TestSearchHandler_ConfigKnownNeverSyncedNoQReturns200EmptyResults
+// (07-15-PLAN.md Task 1, G-07-1.missing[2]) proves SearchHandler asks the
+// same config-aware existence gate StreamHandler does — a config-known,
+// never-synced webspace answers 200, not 404, with no `q` supplied.
+func TestSearchHandler_ConfigKnownNeverSyncedNoQReturns200EmptyResults(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{"new-project": {}}}
+	router := newSearchTestRouterWithConfig(store, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/new-project/search", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a config-known-never-synced webspace, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp searchResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Results == nil {
+		t.Error("expected results to be a non-nil empty array, not null")
+	}
+}
+
+// TestSearchHandler_ConfigKnownNeverSyncedWithQReturns200EmptyResults is the
+// mirror case with a non-empty `q` — the config half is consulted before
+// any index query, so this never round-trips into a WebspaceExists lookup.
+func TestSearchHandler_ConfigKnownNeverSyncedWithQReturns200EmptyResults(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{"new-project": {}}}
+	router := newSearchTestRouterWithConfig(store, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/new-project/search?q=boiler", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a config-known-never-synced webspace with a query, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp searchResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Errorf("expected zero results, got %d", len(resp.Results))
+	}
+}
+
 func TestSearchHandler_AbsentQReturns200EmptyResults(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	seedSearchableItem(t, store, "ws", "1", "Boiler invoice", "annual boiler service")

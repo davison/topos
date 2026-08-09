@@ -188,9 +188,12 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 // saved permanent filter (D-16: the filtered view IS the webspace for
 // every consumer, human and agent alike), and sync status aggregated over
 // the granted set. An unknown webspace still returns 404
-// webspace_not_found (the webspace's existence is not a grant question); a
-// known webspace with zero granted items returns 200 with an empty items
-// array (AGENT-01/empty), never 404. Filtering preserves StreamItems'
+// webspace_not_found (the webspace's existence is not a grant question);
+// existence itself is now answered by webspaceIsKnown (07-15-PLAN.md) — a
+// name in the running config OR with surviving index rows — so a
+// config-known webspace is servable through this mirror too, before its
+// first sync. A known webspace with zero granted items returns 200 with an
+// empty items array (AGENT-01/empty), never 404. Filtering preserves StreamItems'
 // total chronological order — ungranted rows are dropped, the remaining
 // rows are never reordered (AGENT-01/ordering). cfg is read fresh from
 // cfgStore as the first statement of the returned closure — the identical
@@ -202,13 +205,13 @@ func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober Healt
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
-		known, err := store.WebspaceExists(ctx, name)
+		known, err := webspaceIsKnown(ctx, store, cfg, name)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
 		if !known {
-			WriteError(w, http.StatusNotFound, "webspace_not_found", "webspace \""+name+"\" is not configured or has not been synced")
+			writeWebspaceNotFound(w, name)
 			return
 		}
 

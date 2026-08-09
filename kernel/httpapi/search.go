@@ -42,13 +42,13 @@ func SearchHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 		name := chi.URLParam(r, "webspace")
 		ctx := r.Context()
 
-		known, err := store.WebspaceExists(ctx, name)
+		known, err := webspaceIsKnown(ctx, store, cfg, name)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
 		if !known {
-			WriteError(w, http.StatusNotFound, "webspace_not_found", "webspace \""+name+"\" is not configured or has not been synced")
+			writeWebspaceNotFound(w, name)
 			return
 		}
 

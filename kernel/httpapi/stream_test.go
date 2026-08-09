@@ -92,6 +92,67 @@ func TestStreamHandler_KnownEmptyWebspaceReturns200EmptyArray(t *testing.T) {
 	}
 }
 
+// TestStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray (07-15-PLAN.md
+// Task 1, G-07-1) proves a webspace named in the running config, with
+// nothing seeded in the index at all, is servable the instant it is
+// configured — the reported create-flow symptom. The pre-fix gate consults
+// only Store.WebspaceExists (sync history), so this fails 404 until the
+// config half of the disjunction lands.
+func TestStreamHandler_ConfigKnownNeverSyncedReturns200EmptyArray(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"new-project": {}, // D-20 empty shell: the create flow's first PUT
+	}}
+	router := newTestRouterWithConfig(store, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/new-project/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a config-known-never-synced webspace, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal stream response: %v", err)
+	}
+	if resp.Items == nil {
+		t.Error("expected items to be a non-nil empty array, not null")
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("expected zero items, got %d", len(resp.Items))
+	}
+}
+
+// TestStreamHandler_ZeroConfiguredSourcesReturns200EmptyArray (07-15-PLAN.md
+// Task 1, G-07-1 corollary) proves the permanent-404 case: on an install
+// with ZERO [sources.*] blocks at all, no sync ever runs, so a
+// sync-history-derived gate 404s forever and Retry can never heal it. The
+// config half removes the dependency on sync timing entirely.
+func TestStreamHandler_ZeroConfiguredSourcesReturns200EmptyArray(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	cfg := &config.Config{
+		Sources:   map[string]config.Source{},
+		Webspaces: map[string]config.Webspace{"new-project": {}},
+	}
+	router := newTestRouterWithConfig(store, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/new-project/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on a zero-configured-sources install (the permanent-404 corollary), got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal stream response: %v", err)
+	}
+	if resp.Items == nil {
+		t.Error("expected items to be a non-nil empty array, not null")
+	}
+}
+
 func TestStreamHandler_ReturnsItemsWithLinkAndProvenance(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()

@@ -143,12 +143,21 @@ label: its configured `[sources.<id>] display_name`, or the instance id
 itself when that key is omitted (`D-09`) — the kernel never emits an empty
 `source_display_name`.
 
-A **known** webspace (one that has completed at least one sync, even a
-zero-item sync) with no matched items returns `200` and `"items": []` —
-never `404` and never a JSON `null` for `items`. An **unconfigured or
-never-synced** webspace returns `404 webspace_not_found` — this is the
+A webspace is **known** — and this route (and `GET /agent/v1/webspaces/
+{webspace}/stream`) answers `200`, with `"items": []` when nothing has
+matched yet — the instant it is named in the running configuration (the
+`[webspaces.<name>]` block a `PUT /api/config` save just wrote), with no
+dependency on whether or when a sync has actually run against it. A
+webspace present only in the local index (its `[webspaces.*]` block was
+later removed from the config while previously-synced rows survive) is
+also known, by the same rule. Only a name in **neither** the running
+config **nor** the index returns `404 webspace_not_found` — this is the
 one place `404` and "empty" mean genuinely different things, and this API
-never conflates them.
+never conflates them. Before `07-15-PLAN.md` this route answered from
+sync history alone, which meant a webspace just created through the UI
+(config-known, index-unknown until its first sync completed) could 404
+transiently, and — on an install with zero configured sources at all,
+where no sync ever runs — permanently; that gap is closed.
 
 **The `sync` object is an aggregate across every configured source**
 (`KERN-04`), not a single most-recent-run — this is a behavior change
@@ -246,7 +255,9 @@ returned, no matter how well it matches `q`.
 
 **Unknown webspace:** `GET /api/webspaces/{unknown}/search?q=...` returns
 `404 webspace_not_found`, identical to the stream route's behavior for the
-same unknown name.
+same unknown name — including the config-known-before-first-sync case:
+a webspace named in the running config but with no synced items yet
+answers `200` here too, never `404`.
 
 This route has **no `/agent/v1` mirror** in this version — see "The
 `/agent/v1` namespace", below, for why.
@@ -855,7 +866,7 @@ namespace", above).
 
 | Code | HTTP status | Route(s) | Meaning |
 |---|---|---|---|
-| `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search` | `{webspace}` is not configured, or has never completed a sync. |
+| `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search`, `GET /agent/v1/webspaces/{webspace}/stream` | `{webspace}` is in neither the running configuration nor the local index. A configured-but-never-synced webspace is NOT this case — it answers `200` with `"items": []` (or `"results": []`) instead. |
 | `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |

@@ -646,9 +646,17 @@ GROUP BY webspaces.name
 }
 
 // WebspaceExists reports whether name has completed at least one sync
-// (i.e. is "known"), regardless of whether that sync matched any items.
-// Used to distinguish a known-but-empty webspace (200, empty array) from
-// an unconfigured/never-synced one (404).
+// (i.e. its ReplaceWebspaceSourceItems insert has ever run for it),
+// regardless of whether that sync matched any items. This answers only
+// the sync-history half of "does this webspace exist" — it is NOT the
+// definition of existence. kernel/httpapi's webspaceIsKnown
+// (07-15-PLAN.md, closes 07-UAT.md G-07-1) is the actual gate every HTTP
+// surface asks through: it checks the running configuration FIRST (a
+// webspace is servable the instant its `PUT /api/config` returns, before
+// any sync has run) and falls through to this query only when the config
+// half answers false, so a webspace whose block was later removed from
+// the file while its rows survive still answers true. Call this directly
+// only when sync history specifically, not existence, is the question.
 func (s *Store) WebspaceExists(ctx context.Context, name string) (bool, error) {
 	var exists int
 	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM webspaces WHERE name = ?`, name).Scan(&exists)
