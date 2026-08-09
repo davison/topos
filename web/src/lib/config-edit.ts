@@ -19,6 +19,7 @@
 // passed a $state value or an already-plain object.
 
 import type { KernelConfig, SourceConfig, WebspaceConfig } from './api';
+import { isEmptyWebspaceShell, webspaceSources } from './participation';
 
 /**
  * Deep-clones a KernelConfig document. Safe against a Svelte 5 reactive
@@ -113,17 +114,35 @@ export function setMatchBlock(
  * block set via setMatchBlock, and the webspace's `sources` allowlist
  * extended to include it (D-14, the add-source picker's own write path).
  * When the webspace previously had NO allowlist (`sources` empty — Phase
- * 5 D-03's all-instances-participate default), the allowlist is first
- * seeded with every currently configured instance — exactly the
- * participation set "no allowlist" already meant in practice — before
- * appending `instance`, so a webspace the user is now composing in the UI
- * becomes explicit about exactly what it already had and never silently
- * loses a source. A save through setWebspaceFilter (or any other helper
- * in this file) never takes this seeding step — only this function does,
- * and only for the instance it is actively adding (D-14's "never as a
- * side effect of an unrelated save"). When an allowlist already exists,
- * `instance` is appended to its end without reordering the rest; a name
- * already present is a no-op beyond that append check.
+ * 5 D-03's all-instances-participate default) AND is not a D-20 empty
+ * webspace shell (see below), the allowlist is first seeded with every
+ * currently configured instance — exactly the participation set "no
+ * allowlist" already meant in practice — before appending `instance`, so
+ * a webspace the user is now composing in the UI becomes explicit about
+ * exactly what it already had and never silently loses a source. A save
+ * through setWebspaceFilter (or any other helper in this file) never
+ * takes this seeding step — only this function does, and only for the
+ * instance it is actively adding (D-14's "never as a side effect of an
+ * unrelated save"). When an allowlist already exists, `instance` is
+ * appended to its end without reordering the rest; a name already present
+ * is a no-op beyond that append check.
+ *
+ * Shell case (D-20, 07-11-PLAN.md, closes 07-UAT.md G-07-3): a webspace
+ * created by `addWebspace` has no participants to preserve — seeding it
+ * from every configured instance there would silently drag every OTHER
+ * source into a webspace the user just created and, worse, produce a
+ * document the kernel rejects, because `validateFallbackCoverage` would
+ * find those dragged-in instances participating with nothing to match. So
+ * a shell's allowlist starts empty and receives only the instance being
+ * added — D-14's own words, "participation is exactly what was added via
+ * +", are literally what this path now writes for a shell.
+ *
+ * The shell test below is evaluated against `cfg` — this function's own,
+ * PRE-setMatchBlock input — rather than the document `setMatchBlock`
+ * returns. Evaluating it after would mean the webspace is never a shell
+ * by the time the question is asked (setMatchBlock has already written a
+ * non-empty `match`), making the shell branch dead code — the one
+ * ordering mistake this change invites.
  */
 export function addSourceToWebspace(
 	cfg: KernelConfig,
@@ -131,10 +150,12 @@ export function addSourceToWebspace(
 	instance: string,
 	block: Record<string, string[]>
 ): KernelConfig {
+	const wasShell = isEmptyWebspaceShell(cfg.webspaces[webspace]);
+
 	const withMatch = setMatchBlock(cfg, webspace, instance, block);
 	const ws = withMatch.webspaces[webspace];
-	let sources = ws.sources;
-	if (sources.length === 0) {
+	let sources = webspaceSources(ws);
+	if (sources.length === 0 && !wasShell) {
 		sources = Object.keys(cfg.sources);
 	}
 	if (!sources.includes(instance)) {

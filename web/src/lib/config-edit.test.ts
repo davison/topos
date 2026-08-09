@@ -226,6 +226,47 @@ describe('addSourceToWebspace', () => {
 		addSourceToWebspace(cfg, 'catch-all', 'silverbullet', { tags: ['x'] });
 		expect(JSON.stringify(cfg)).toBe(before);
 	});
+
+	// --- D-20 shell-aware seeding (07-11-PLAN.md Task 2, closes 07-UAT.md
+	// G-07-3): a webspace created by addWebspace has no participants to
+	// preserve — seeding it from every configured instance would silently
+	// drag every OTHER source into a webspace the user just created, and
+	// produce a document the kernel rejects. ---
+
+	it('does not seed the allowlist with every configured instance for a freshly-created (D-20 empty shell) webspace', () => {
+		const withShell = addWebspace(fixtureConfig(), 'new-project');
+		// A third configured instance exists in this cfg beyond paperless —
+		// the assertion below fails if the seeding branch is still
+		// unconditional.
+		const withThird = upsertSourceInstance(withShell, 'proton-work', {
+			plugin: 'topos-plugin-proton',
+			base_url: 'https://proton.example',
+			token: '${PROTON_TOKEN}',
+			agent: { read: true, handoff: false }
+		});
+		const next = addSourceToWebspace(withThird, 'new-project', 'paperless', { tags: ['x'] });
+		expect(next.webspaces['new-project'].sources).toEqual(['paperless']);
+	});
+
+	it('seeds every configured instance without throwing when a hand-written webspace arrives with a null sources allowlist', () => {
+		const cfg = fixtureConfig();
+		const withNullSources = cloneConfig(cfg);
+		(withNullSources.webspaces['catch-all'] as unknown as { sources: string[] | null }).sources =
+			null;
+		const next = addSourceToWebspace(withNullSources, 'catch-all', 'silverbullet', { tags: ['x'] });
+		expect(next.webspaces['catch-all'].sources).toEqual(['paperless', 'silverbullet']);
+	});
+
+	it('sequenced create-then-compose: addWebspace then addSourceToWebspace twice yields exactly those two instances in add order', () => {
+		const created = addWebspace(fixtureConfig(), 'brand-new');
+		const withFirst = addSourceToWebspace(created, 'brand-new', 'paperless', { tags: ['a'] });
+		const withSecond = addSourceToWebspace(withFirst, 'brand-new', 'silverbullet', { tags: ['b'] });
+		expect(withSecond.webspaces['brand-new'].sources).toEqual(['paperless', 'silverbullet']);
+		expect(withSecond.webspaces['brand-new'].match).toEqual({
+			paperless: { tags: ['a'] },
+			silverbullet: { tags: ['b'] }
+		});
+	});
 });
 
 describe('removeSourceFromWebspace', () => {
