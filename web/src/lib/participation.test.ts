@@ -4,8 +4,15 @@
 // so a two-condition implementation cannot pass.
 
 import { describe, it, expect } from 'vitest';
-import { webspaceKeywords, webspaceSources, webspaceMatch, isEmptyWebspaceShell } from './participation';
-import type { WebspaceConfig } from './api';
+import {
+	webspaceKeywords,
+	webspaceSources,
+	webspaceMatch,
+	isEmptyWebspaceShell,
+	participatingInstances,
+	participatesIn
+} from './participation';
+import type { KernelConfig, WebspaceConfig } from './api';
 
 describe('webspaceKeywords / webspaceSources / webspaceMatch', () => {
 	it('return the empty defaults for an all-empty webspace', () => {
@@ -66,5 +73,135 @@ describe('isEmptyWebspaceShell', () => {
 		expect(
 			isEmptyWebspaceShell({ keywords: [], sources: [], match: { paperless: { tags: ['x'] } } })
 		).toBe(false);
+	});
+});
+
+// --- participatingInstances / participatesIn (07-14-PLAN.md Task 1,
+// closes 07-UAT.md G-07-6's second half) ---
+//
+// A THREE-instance fixture is required throughout: a two-instance fixture
+// cannot distinguish "some but not all participate" from either the
+// all-participate or the empty-set outcome, both of which a wrong (e.g.
+// allowlist-gate-only) implementation would also produce.
+
+function threeInstanceConfig(webspaces: Record<string, WebspaceConfig>): KernelConfig {
+	const source = (plugin: string) => ({ plugin, agent: { read: true, handoff: false } });
+	return {
+		server: { listen: '127.0.0.1:7777' },
+		index: { path: '/tmp/index.db' },
+		plugins: { dir: '/tmp/plugins' },
+		sync: { interval: '5m' },
+		sources: {
+			a: source('topos-plugin-a'),
+			b: source('topos-plugin-b'),
+			c: source('topos-plugin-c')
+		},
+		webspaces
+	};
+}
+
+describe('participatingInstances / participatesIn', () => {
+	// Every case below is collected here, then Both functions are asserted
+	// against the SAME table in the loop that follows — participatesIn is
+	// never independently duplicated case-by-case, so the two cannot
+	// diverge without a test failing.
+	const cases: { name: string; cfg: KernelConfig; webspace: string; expected: string[] }[] = [];
+
+	cases.push({
+		name:
+			'explicit non-empty allowlist with match blocks: named instances participate — chips for a/b only, add-picker offers c',
+		cfg: threeInstanceConfig({
+			cars: {
+				keywords: ['fallback-should-not-matter'],
+				sources: ['a', 'b'],
+				match: { a: { tags: ['x'] }, b: { tags: ['y'] } }
+			}
+		}),
+		webspace: 'cars',
+		expected: ['a', 'b']
+	});
+
+	cases.push({
+		name:
+			'empty allowlist plus non-empty keywords fallback: every configured instance participates — chips for a, b and c',
+		cfg: threeInstanceConfig({
+			cars: { keywords: ['fallback'], sources: [], match: {} }
+		}),
+		webspace: 'cars',
+		expected: ['a', 'b', 'c']
+	});
+
+	cases.push({
+		name:
+			'empty allowlist, no keywords, match blocks for two of three: exactly those two participate — the third has no allowlist exclusion and no match input, so the kernel would sync nothing for it',
+		cfg: threeInstanceConfig({
+			cars: { keywords: [], sources: [], match: { a: { tags: ['x'] }, b: { tags: ['y'] } } }
+		}),
+		webspace: 'cars',
+		expected: ['a', 'b']
+	});
+
+	cases.push({
+		name: 'an 07-11 empty shell: no chips, and the add-picker offers every instance',
+		cfg: threeInstanceConfig({ cars: { keywords: [], sources: [], match: {} } }),
+		webspace: 'cars',
+		expected: []
+	});
+
+	cases.push({
+		name: 'a webspace absent from the config: no chips',
+		cfg: threeInstanceConfig({}),
+		webspace: 'does-not-exist',
+		expected: []
+	});
+
+	cases.push({
+		name:
+			'a webspace arriving with null keywords/sources/match (wire shape older than the TS type): no chips, no exception',
+		cfg: threeInstanceConfig({
+			cars: { keywords: null, sources: null, match: null } as unknown as WebspaceConfig
+		}),
+		webspace: 'cars',
+		expected: []
+	});
+
+	cases.push({
+		name:
+			'an allowlist naming an unconfigured instance: the phantom id never appears — the set is always a subset of the configured instances',
+		cfg: threeInstanceConfig({
+			cars: { keywords: [], sources: ['a', 'ghost'], match: { a: { tags: ['x'] } } }
+		}),
+		webspace: 'cars',
+		expected: ['a']
+	});
+
+	for (const { name, cfg, webspace, expected } of cases) {
+		it(name, () => {
+			const set = participatingInstances(cfg, webspace);
+			expect([...set].sort()).toEqual([...expected].sort());
+			// The set is always a subset of the configured instances — the
+			// assertion that fails if participatingInstances ever iterates the
+			// allowlist instead of cfg.sources.
+			for (const instance of set) {
+				expect(Object.keys(cfg.sources)).toContain(instance);
+			}
+		});
+	}
+
+	it('participatesIn agrees with participatingInstances across every case above, for every configured instance', () => {
+		for (const { cfg, webspace } of cases) {
+			const set = participatingInstances(cfg, webspace);
+			for (const instance of Object.keys(cfg.sources)) {
+				expect(participatesIn(cfg, webspace, instance)).toBe(set.has(instance));
+			}
+		}
+	});
+
+	it('does not throw for a webspace whose collections all arrive as null', () => {
+		const cfg = threeInstanceConfig({
+			cars: { keywords: null, sources: null, match: null } as unknown as WebspaceConfig
+		});
+		expect(() => participatingInstances(cfg, 'cars')).not.toThrow();
+		expect(() => participatesIn(cfg, 'cars', 'a')).not.toThrow();
 	});
 });

@@ -10,7 +10,7 @@
 // `participatingSet`); this plan (07-11) adds only the null-tolerant
 // readers below and the shell discriminator they build.
 
-import type { WebspaceConfig } from './api';
+import type { KernelConfig, WebspaceConfig } from './api';
 
 /**
  * Null-tolerant readers for a webspace's keywords/sources/match. They
@@ -64,4 +64,61 @@ export function isEmptyWebspaceShell(ws: WebspaceConfig | undefined): boolean {
 		webspaceSources(ws).length === 0 &&
 		Object.keys(webspaceMatch(ws)).length === 0
 	);
+}
+
+/**
+ * The client-side mirror of two kernel functions that must be read
+ * together: `kernel/config/types.go`'s `Webspace.Participates` (the
+ * allowlist gate — an empty allowlist means every configured instance
+ * participates, a non-empty one means exactly the named instances; this is
+ * Phase 5 D-03's default) AND `kernel/correlate/correlate.go`'s
+ * `matchFieldsFor` (07-11's D-20 has-match-input rule — an instance with no
+ * explicit `match` block and an empty `keywords` fallback does not
+ * participate, even if the allowlist gate would otherwise admit it). Both
+ * rules must hold for an instance to appear in the returned set; this
+ * conjunction is deliberately exactly what the kernel would sync, so a
+ * chip on screen always corresponds to a source the kernel would really
+ * place items into.
+ *
+ * Iterates the CONFIGURED instances (`cfg.sources`), never the webspace's
+ * own allowlist — an allowlist naming an instance that is not configured
+ * can therefore never leak a phantom id into the result; the returned set
+ * is always a subset of `Object.keys(cfg.sources)`.
+ *
+ * This replaces `AddSourceModal.svelte`'s inline `participatingSet`, which
+ * implemented the allowlist gate only — correct before D-20, incomplete
+ * after it, since a D-20 empty shell would otherwise report every
+ * configured instance as a participant. A shared implementation is why
+ * that indirection is worth it: `config-edit.ts`, `AddSourceModal.svelte`
+ * and `WebspaceHeader.svelte` read one answer instead of three that can
+ * drift.
+ */
+export function participatingInstances(cfg: KernelConfig, webspace: string): Set<string> {
+	const ws = cfg.webspaces[webspace];
+	const allowlist = webspaceSources(ws);
+	const keywords = webspaceKeywords(ws);
+	const match = webspaceMatch(ws);
+
+	const result = new Set<string>();
+	for (const instance of Object.keys(cfg.sources)) {
+		const allowlistGate = allowlist.length === 0 || allowlist.includes(instance);
+		if (!allowlistGate) continue;
+
+		const hasMatchInput =
+			Object.prototype.hasOwnProperty.call(match, instance) || keywords.length > 0;
+		if (!hasMatchInput) continue;
+
+		result.add(instance);
+	}
+	return result;
+}
+
+/**
+ * The single-instance form of `participatingInstances`, expressed in terms
+ * of that same set so the two functions cannot drift from one another. See
+ * `participatingInstances`'s doc comment for the two kernel rules this
+ * mirrors.
+ */
+export function participatesIn(cfg: KernelConfig, webspace: string, instance: string): boolean {
+	return participatingInstances(cfg, webspace).has(instance);
 }
