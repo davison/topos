@@ -88,9 +88,9 @@ plugins:
 signal:
 	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
-# test runs the test suite across all six workspace modules (sdk,
-# paperless, silverbullet, proton, mock, signal) plus the root kernel
-# module. Go workspaces scope "./..." to the module containing the
+# test runs the test suite across all seven workspace modules (sdk,
+# paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
+# kernel module. Go workspaces scope "./..." to the module containing the
 # working directory, so each module is tested explicitly rather than
 # relying on a single "./..." from the repo root covering all of them.
 test:
@@ -100,6 +100,7 @@ test:
 	cd plugins/silverbullet && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/proton && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
+	cd plugins/mockstrict && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...
 	$(MAKE) test-signal
 
 # test-signal runs the Signal plugin module's own tests under the same
@@ -135,22 +136,28 @@ dev-check:
 	./scripts/dev-guard-smoke.sh
 
 # e2e builds a fresh SPA, embeds it into a freshly built kernel binary,
-# builds ONLY the mock plugin (deliberately NOT the "plugins" target's full
-# real-plugin set — this target does not depend on "plugins" at all,
-# because that target chains to the cgo "signal" target, which needs the
-# system sqlcipher library, and this harness is cgo-free by design, D-07),
-# ensures the requested Playwright browser is installed, then runs the
-# suite against the built artifact. The SPA build MUST precede the Go
-# build: bin/topos go:embeds kernel/webui/build at compile time (see the
-# "build" target's own comment above), so building the kernel first would
-# embed whatever stale SPA happens to be on disk and the whole suite would
-# then test yesterday's UI while reporting green.
+# builds ONLY the mock and mockstrict plugins (deliberately NOT the
+# "plugins" target's full real-plugin set — this target does not depend
+# on "plugins" at all, because that target chains to the cgo "signal"
+# target, which needs the system sqlcipher library, and this harness is
+# cgo-free by design, D-07), ensures the requested Playwright browser is
+# installed, then runs the suite against the built artifact. The SPA
+# build MUST precede the Go build: bin/topos go:embeds kernel/webui/build
+# at compile time (see the "build" target's own comment above), so
+# building the kernel first would embed whatever stale SPA happens to be
+# on disk and the whole suite would then test yesterday's UI while
+# reporting green. topos-plugin-mockstrict is built HERE and nowhere
+# else: it exists only for this browser harness (07.1-02-PLAN.md D-06),
+# and adding it to the "plugins" target would ship a fixture plugin into
+# every real install's plugin directory, where the kernel would discover
+# it and offer it in the operator's own "+ New …" picker.
 e2e:
 	npm --prefix web ci
 	npm --prefix web run build
 	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
+	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 

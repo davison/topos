@@ -19,6 +19,7 @@ import {
 	missingRequiredFields,
 	missingRequiredFieldsMessage,
 	parseMatchValues,
+	pluginTypeLabel,
 	titleCaseField
 } from './plugin-fields';
 
@@ -83,6 +84,17 @@ describe('connectionFieldsFor', () => {
 	it('falls back to a minimal field set for an unknown plugin type', () => {
 		const fields = connectionFieldsFor('topos-plugin-does-not-exist');
 		expect(fields.map((f) => f.key)).toEqual(['display_name', 'sync_interval']);
+	});
+
+	// 07.1-02-PLAN.md Task 2: the browser E2E harness's hermetic
+	// stand-in for Signal's required-field flow (D-05/D-06).
+	it('returns exactly three descriptors in order for topos-plugin-mockstrict: display name, a required path field, sync interval', () => {
+		const fields = connectionFieldsFor('topos-plugin-mockstrict');
+		expect(fields.map((f) => f.key)).toEqual(['display_name', 'path', 'sync_interval']);
+		const pathField = fields.find((f) => f.key === 'path');
+		expect(pathField?.required).toBe(true);
+		expect(pathField?.secret).toBe(false);
+		expect(pathField?.advanced).toBe(false);
 	});
 });
 
@@ -154,6 +166,13 @@ describe('defaultConnectionValues', () => {
 			plugin: 'topos-plugin-proton'
 		});
 	});
+
+	it('returns the plugin binary plus the seeded corpus path, for topos-plugin-mockstrict', () => {
+		expect(defaultConnectionValues('topos-plugin-mockstrict')).toEqual({
+			plugin: 'topos-plugin-mockstrict',
+			path: '/tmp/topos-e2e-corpus'
+		});
+	});
 });
 
 describe('missingRequiredFields', () => {
@@ -209,6 +228,24 @@ describe('missingRequiredFields', () => {
 		});
 		expect(missing).toEqual([]);
 	});
+
+	it('returns one descriptor labelled Corpus Path for topos-plugin-mockstrict when path is blank', () => {
+		const missing = missingRequiredFields('topos-plugin-mockstrict', {
+			plugin: 'topos-plugin-mockstrict',
+			path: '',
+			agent: { read: false, handoff: false }
+		});
+		expect(missing.map((f) => f.label)).toEqual(['Corpus Path']);
+	});
+
+	it('returns an empty list for topos-plugin-mockstrict when path holds any non-whitespace string', () => {
+		const missing = missingRequiredFields('topos-plugin-mockstrict', {
+			plugin: 'topos-plugin-mockstrict',
+			path: '/tmp/topos-e2e-corpus',
+			agent: { read: false, handoff: false }
+		});
+		expect(missing).toEqual([]);
+	});
 });
 
 describe('missingRequiredFieldsMessage', () => {
@@ -222,5 +259,16 @@ describe('missingRequiredFieldsMessage', () => {
 			(f) => f.key === 'base_url' || f.key === 'token'
 		);
 		expect(missingRequiredFieldsMessage(fields)).toBe('Fill in Base URL and API Token before continuing.');
+	});
+
+	it('renders the topos-plugin-mockstrict path field as Corpus Path', () => {
+		const fields = connectionFieldsFor('topos-plugin-mockstrict').filter((f) => f.key === 'path');
+		expect(missingRequiredFieldsMessage(fields)).toBe('Fill in Corpus Path before continuing.');
+	});
+});
+
+describe('pluginTypeLabel', () => {
+	it('falls back to a title-cased prefix strip for topos-plugin-mockstrict — no PLUGIN_TYPE_LABELS entry is added for it', () => {
+		expect(pluginTypeLabel('topos-plugin-mockstrict')).toBe('Mockstrict');
 	});
 });

@@ -141,6 +141,36 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			defaultValue: '~/.config/Signal'
 		},
 		SYNC_INTERVAL_FIELD
+	],
+	// topos-plugin-mockstrict (07.1-02-PLAN.md D-05/D-06): the browser E2E
+	// harness's hermetic, cgo-free stand-in for Signal's required-field
+	// flow. Three things about this row, in the order a reader needs them:
+	//
+	// 1. required: true is derived from plugins/mockstrict/main.go's own
+	//    empty-path fatal guard exactly as the DERIVATION RULE above
+	//    demands — not copied from the Signal row's shape.
+	// 2. defaultValue is seeded (not merely a placeholder) specifically so
+	//    the browser E2E suite can exercise the pre-fill / clear / blocked
+	//    / restore loop UAT item 5 describes — a placeholder cannot
+	//    express that loop because a placeholder is not a submittable
+	//    value (see the ConnectionField.defaultValue doc comment above).
+	// 3. This row is inert in a real installation: the topos-plugin-
+	//    mockstrict binary is built only by `make e2e`, never by
+	//    `make build` or `make plugins`, so GET /api/config/plugin-types
+	//    never returns it outside the harness and this row is never
+	//    reachable in an operator's own picker.
+	'topos-plugin-mockstrict': [
+		DISPLAY_NAME_FIELD,
+		{
+			key: 'path',
+			label: 'Corpus Path',
+			required: true,
+			secret: false,
+			advanced: false,
+			placeholder: '/tmp/topos-e2e-corpus',
+			defaultValue: '/tmp/topos-e2e-corpus'
+		},
+		SYNC_INTERVAL_FIELD
 	]
 };
 
