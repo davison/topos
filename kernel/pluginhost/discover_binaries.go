@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -35,6 +36,17 @@ var ExcludedPluginBinaries = map[string]bool{
 // A missing pluginsDir is a legitimate state — an operator who has not
 // installed any plugin binaries yet — and returns an empty (never nil)
 // slice with a nil error, never a failure.
+//
+// A symlinked plugin binary counts as a regular file: the entry's own
+// os.DirEntry.Type() reflects an Lstat (it never follows the link), which
+// would otherwise silently exclude any plugin binary an operator manages
+// via a symlink (a common packaging/version-management pattern) — and,
+// closer to home, is exactly how the browser E2E harness's own fixture
+// (web/e2e/fixtures/plugin-binaries.ts) populates its temp plugins
+// directory from the real build output (07.1-02-PLAN.md's key_links).
+// os.Stat is used instead, which follows the link; a broken symlink
+// (Stat returns an error) or a symlink to a directory is skipped exactly
+// like any other non-regular entry, never surfaced as a discovery error.
 func DiscoverBinaries(pluginsDir string) ([]string, error) {
 	entries, err := os.ReadDir(pluginsDir)
 	if err != nil {
@@ -46,14 +58,20 @@ func DiscoverBinaries(pluginsDir string) ([]string, error) {
 
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {
-		if !e.Type().IsRegular() {
-			continue
-		}
 		name := e.Name()
 		if !strings.HasPrefix(name, PluginBinaryPrefix) {
 			continue
 		}
 		if ExcludedPluginBinaries[name] {
+			continue
+		}
+		info, statErr := os.Stat(filepath.Join(pluginsDir, name))
+		if statErr != nil {
+			// A broken symlink (or a permission error) — skip rather than
+			// fail the whole discovery over one bad entry.
+			continue
+		}
+		if !info.Mode().IsRegular() {
 			continue
 		}
 		names = append(names, name)
