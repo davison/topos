@@ -303,8 +303,31 @@
 		response ? filterItemsBySource(response.items, selectedSources) : []
 	);
 
-	async function load(gen: number) {
-		loadState = 'loading';
+	// quiet (07-16-PLAN.md Task 3, closing 07-UAT.md G-07-7's residual
+	// case): defaults to false for every existing call site below — the
+	// webspace-keyed effect, Retry, the save paths, the refresh handlers
+	// and the remove handler — none of which change behaviour. Only
+	// ensurePolling's sync-completion refetch passes quiet: true.
+	//
+	// A background sync (the eager resync a config apply dispatches, or a
+	// source's own regular scheduled tick) is exactly where a
+	// de-participated pair's rows get purged when the synchronous purge in
+	// Supervisor.Apply could not reach them (an eager resync that failed at
+	// the time of the save). Until now nothing refetched the stream when
+	// that background sync finished, so a stale view could persist until a
+	// manual refresh; it is also a general freshness win for a sync that
+	// ADDS items. Quiet mode is what makes firing this on every sync
+	// completion safe: it skips the loading assignment below, so a
+	// background refetch can never replace an already-rendered stream with
+	// the loading skeleton (StreamList.svelte renders that skeleton purely
+	// off `state === 'loading'`), and on failure it returns without
+	// touching either response or loadState, so a failed background
+	// refresh leaves whatever is on screen exactly as it was — strictly
+	// better than today's behaviour of never refreshing at all, never
+	// worse.
+	async function load(gen: number, options?: { quiet?: boolean }) {
+		const quiet = options?.quiet ?? false;
+		if (!quiet) loadState = 'loading';
 		try {
 			const res = await getStream(webspace);
 			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
@@ -316,6 +339,7 @@
 			// superseded webspace navigation is still discarded before either
 			// state below is ever set.
 			if (gen !== navGeneration) return;
+			if (quiet) return; // leave whatever is on screen untouched
 			response = null;
 			// A typed webspace_not_found answer from a healthy kernel is
 			// classified apart from every other failure (no envelope, a
@@ -460,14 +484,29 @@
 	// blocked while this runs (T-02-18: an index read plus a lightweight
 	// per-plugin probe, bounded and local, stopping the moment nothing is
 	// syncing).
+	//
+	// 07-16-PLAN.md Task 3: the stop branch — the tick where syncing falls
+	// to false — now ALSO refetches the stream, quietly, once. This is
+	// where a completed background sync (an eager resync a config apply
+	// dispatched, or a source's own regular tick) is what the stream has
+	// been waiting to reflect; the poll already fires regardless of who
+	// started the sync (WR-03, above `loadSources`'s own comment), and this
+	// extends that same "pick it up regardless of origin" property to the
+	// stream, not only the chips. `gen` is captured before the tick's
+	// first await (`loadSources()`), exactly like every other call path in
+	// this file (`writeFilter`, `handleSearch`) — a webspace navigation
+	// mid-tick still discards the stale refetch via load()'s own
+	// generation check.
 	let pollHandle: ReturnType<typeof setInterval> | null = null;
 	function ensurePolling() {
 		if (pollHandle !== null) return;
 		pollHandle = setInterval(async () => {
+			const gen = navGeneration;
 			await loadSources();
 			if (!sources.some((s) => s.syncing) && pollHandle !== null) {
 				clearInterval(pollHandle);
 				pollHandle = null;
+				await load(gen, { quiet: true });
 			}
 		}, 2000);
 	}
