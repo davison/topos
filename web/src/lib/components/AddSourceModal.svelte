@@ -36,6 +36,7 @@
 		missingRequiredFieldsMessage
 	} from '$lib/plugin-fields';
 	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
+	import { participatingInstances } from '$lib/participation';
 	import { resolveNewInstanceId } from '$lib/instance-id';
 	import {
 		describePlugin,
@@ -75,16 +76,17 @@
 	let pickerOpen = $state(false);
 
 	// Instances already participating in this webspace are never offered
-	// again — an empty `sources` allowlist means every configured instance
-	// participates by default (Phase 5 D-03's Webspace.Participates rule,
-	// mirrored here).
-	let participatingSet = $derived.by(() => {
-		const ws = config.webspaces[webspace];
-		const sources = ws?.sources ?? [];
-		return new Set(sources.length > 0 ? sources : Object.keys(config.sources));
-	});
+	// again — `participatingInstances` (web/src/lib/participation.ts) is
+	// the shared client-side mirror of the kernel's effective participation
+	// (the allowlist gate, Phase 5 D-03, AND 07-11's D-20 has-match-input
+	// rule), replacing this component's own former inline participant-set
+	// derivation (07-14-PLAN.md Task 3, closes 07-UAT.md G-07-6's second
+	// half). This predicate is now shared with the header's chip row
+	// (WebspaceHeader.svelte), so the picker's "not yet in this webspace"
+	// list and the chips it adds to can never disagree with each other.
+	let webspaceParticipants = $derived(participatingInstances(config, webspace));
 	let availableInstances = $derived(
-		Object.keys(config.sources).filter((id) => !participatingSet.has(id))
+		Object.keys(config.sources).filter((id) => !webspaceParticipants.has(id))
 	);
 	let pickerEmpty = $derived(availableInstances.length === 0 && pluginTypes.length === 0);
 

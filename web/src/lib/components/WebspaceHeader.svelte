@@ -14,6 +14,7 @@
 		visibleChipCount,
 		type HealthTone
 	} from '$lib/format';
+	import { participatesIn } from '$lib/participation';
 	import type { KernelConfig, SourceStatus } from '$lib/api';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import X from '@lucide/svelte/icons/x';
@@ -122,6 +123,28 @@
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
+
+	// The chip row's CONTENT is scoped to this webspace's actual
+	// participants (07-14-PLAN.md Task 3, closes 07-UAT.md G-07-6's second
+	// half): `sources` (GET /api/sources) is kernel-wide and unfiltered by
+	// design — one entry per configured instance, regardless of which
+	// webspace(s) it belongs to. `participatesIn` (the shared predicate
+	// also used by AddSourceModal's picker, so the two surfaces can never
+	// disagree) narrows it. `config` can still be null on the very first
+	// render — loadConfig and loadSources are independent, unsequenced
+	// fetches in the caller — so every configured source is shown until it
+	// resolves, rather than none, so the row never flashes empty before
+	// narrowing a moment later.
+	//
+	// Deliberately NOT applied to `showSourceRows` above: that gate answers
+	// "does this installation have any configured source instances at
+	// all", a different question from "which of them belong to this
+	// webspace" — see the `{#if showSourceRows}` block below for the full
+	// rationale (it also gates the "+" add-source trigger, which must stay
+	// reachable for a webspace with zero participants).
+	let participatingSources = $derived(
+		config ? sources.filter((source) => participatesIn(config, webspace, source.name)) : sources
+	);
 
 	// "Save as filter" (D-19): shown only when the trimmed search query is
 	// non-empty AND is not already an active filter term — a query
@@ -238,15 +261,20 @@
 		)
 	);
 
-	// Re-measure whenever the source list itself changes shape (a
-	// different instance count, or a renamed display_name that changes a
-	// chip's natural width) — reading `sources` here is what makes this
-	// effect re-run; the actual DOM read is deferred to a microtask so it
+	// Re-measure whenever the FILTERED source list itself changes shape (a
+	// different participant count, a renamed display_name that changes a
+	// chip's natural width, or a webspace switch that changes which
+	// instances participate) — reading `participatingSources` here (not
+	// the raw `sources` prop) is what makes this effect re-run, and is
+	// deliberately the same filtered list the visible slice and the
+	// measurement clones below consume, so a re-measure is never triggered
+	// by (or skipped for) a change to a non-participating instance the row
+	// never rendered. The actual DOM read is deferred to a microtask so it
 	// runs after Svelte has applied the resulting DOM update. `config` is
 	// read too so the add-source trigger's own arrival (it renders only
 	// once config resolves) also triggers a re-measure.
 	$effect(() => {
-		sources;
+		participatingSources;
 		selectedSources;
 		config;
 		queueMicrotask(measure);
@@ -272,8 +300,8 @@
 			CHIP_ROW_GAP_PX
 		)
 	);
-	let visibleSources = $derived(sources.slice(0, visibleCount));
-	let hiddenSources = $derived(sources.slice(visibleCount));
+	let visibleSources = $derived(participatingSources.slice(0, visibleCount));
+	let hiddenSources = $derived(participatingSources.slice(visibleCount));
 	let hasOverflow = $derived(hiddenSources.length > 0);
 	let overflowTone = $derived(worstHealthTone(hiddenSources));
 </script>
@@ -421,7 +449,7 @@
 			aria-hidden="true"
 			bind:this={measureEl}
 		>
-			{#each sources as source (source.name)}
+			{#each participatingSources as source (source.name)}
 				<SourceChip
 					{source}
 					selected={selectedSources.has(source.name)}
@@ -439,7 +467,7 @@
 			bind:this={overflowTriggerMeasureEl}
 		>
 			<Ellipsis class="size-4" />
-			<span class="text-[14px] leading-[1.4]">+{sources.length}</span>
+			<span class="text-[14px] leading-[1.4]">+{participatingSources.length}</span>
 			<span class="size-2 shrink-0 rounded-full"></span>
 		</button>
 	{/if}
