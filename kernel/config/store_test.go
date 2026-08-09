@@ -164,6 +164,126 @@ some_key = "some_value"
 	}
 }
 
+// TestSave_CreateWebspaceThenAddFirstSource_RoundTrips is the proof
+// 07-UAT.md G-07-3.missing[1] names as absent (07-11-PLAN.md Task 3): 07-03's
+// addWebspace() test (web/src/lib/config-edit.test.ts) asserted only the
+// shape of a JavaScript object and never submitted it to a real
+// config.Validate — which is why a defect that made UI webspace creation
+// impossible on every real installation reached UAT undetected.
+// Store.Save is the closest reachable stand-in for the live PUT
+// /api/config: ConfigSaveHandler's own doc comment (kernel/httpapi/config.go)
+// names Save as the single place every rule up to and including the write
+// lives.
+//
+// Seeds a temp config.toml carrying two [sources.*] blocks and one
+// fully-populated webspace — the shape of a real installation, since the
+// defect was invisible on a config with no sources configured at all —
+// then, in sequence, asserting after each step:
+//
+//  1. Adds a webspace whose Keywords/Sources/Match are all present but
+//     empty — the literal document addWebspace() produces — and saves it
+//     with the store's current hash.
+//  2. Re-opens a second Store over the same path and asserts the new
+//     webspace is present in its loaded config and is still an empty
+//     shell. This is the half a pure-shape test cannot do: it proves
+//     WriteCanonical emitted a [webspaces.<name>] table for a webspace
+//     with no keys, that the reload parsed it back, and that LoadRaw's
+//     own Validate call accepted it on the way in. A shell silently
+//     dropped by the canonical rewrite would fail here, not at the save.
+//  3. From the reloaded store, adds the first source to that webspace —
+//     an explicit allowlist naming exactly one configured instance, plus
+//     a match block for that same instance — and saves with the reloaded
+//     store's hash.
+//  4. Re-opens once more and asserts the webspace now carries exactly
+//     that one instance in its allowlist and exactly that one match
+//     block.
+func TestSave_CreateWebspaceThenAddFirstSource_RoundTrips(t *testing.T) {
+	t.Setenv("TEST_RT_URL", "http://x.lan")
+	t.Setenv("TEST_RT_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_RT_URL}"
+token = "${TEST_RT_TOKEN}"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_RT_URL}"
+token = "${TEST_RT_TOKEN}"
+
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	// Step 1: create the empty shell — the literal document
+	// web/src/lib/config-edit.ts's addWebspace() PUTs as the create-
+	// webspace modal's first write.
+	next := *s.Raw()
+	next.Webspaces = map[string]Webspace{
+		"house-move":  next.Webspaces["house-move"],
+		"new-project": {Keywords: []string{}, Sources: []string{}, Match: map[string]MatchBlock{}},
+	}
+	if err := s.Save(&next, s.Hash()); err != nil {
+		t.Fatalf("Save (create empty webspace shell): expected the exact document addWebspace() produces to be accepted — a rejection here means 07-UAT.md G-07-3 (\"declares neither a keywords fallback nor any match block\") has regressed, got: %v", err)
+	}
+
+	// Step 2: reload from disk and confirm the shell survived the
+	// canonical write/reload round trip, not just accepted in memory.
+	reopened, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore (reload after creating shell): %v", err)
+	}
+	shell, ok := reopened.Raw().Webspaces["new-project"]
+	if !ok {
+		t.Fatal("expected the newly created webspace to survive the canonical write/reload round trip, but it was absent")
+	}
+	if !shell.IsEmptyShell() {
+		t.Errorf("expected the reloaded webspace to still be an empty shell, got %+v", shell)
+	}
+
+	// Step 3: add the first source — an explicit allowlist naming exactly
+	// one instance, plus a match block for it.
+	next2 := *reopened.Raw()
+	next2.Webspaces = map[string]Webspace{
+		"house-move": next2.Webspaces["house-move"],
+		"new-project": {
+			Keywords: []string{},
+			Sources:  []string{"home-email"},
+			Match: map[string]MatchBlock{
+				"home-email": {"folders": {"Home"}},
+			},
+		},
+	}
+	if err := reopened.Save(&next2, reopened.Hash()); err != nil {
+		t.Fatalf("Save (add first source to the freshly created webspace): a rejection here means the allowlist was seeded with every configured instance and validateFallbackCoverage found uncovered participants — the follow-on defect Task 2 fixes, asserted here at the document level, got: %v", err)
+	}
+
+	// Step 4: reload once more and confirm exactly that one instance and
+	// match block persisted.
+	final, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore (reload after adding first source): %v", err)
+	}
+	composed, ok := final.Raw().Webspaces["new-project"]
+	if !ok {
+		t.Fatal("expected the composed webspace to survive the final round trip, but it was absent")
+	}
+	if len(composed.Sources) != 1 || composed.Sources[0] != "home-email" {
+		t.Errorf("expected the reloaded webspace's sources allowlist to name exactly [\"home-email\"], got %+v", composed.Sources)
+	}
+	if len(composed.Match) != 1 {
+		t.Errorf("expected exactly one match block, got %+v", composed.Match)
+	}
+	if got := composed.Match["home-email"]["folders"]; len(got) != 1 || got[0] != "Home" {
+		t.Errorf("expected Match[\"home-email\"][\"folders\"] == [\"Home\"], got %+v", got)
+	}
+}
+
 // TestStore_Save_NoUnknownKeysSucceeds is the non-vacuous sibling of the
 // guard above: a config with no unrecognised keys must actually be able
 // to save — proving the guard rejects the specific defect it exists for,

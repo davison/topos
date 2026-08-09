@@ -463,10 +463,25 @@ handoff = false
 #   - an instance named in BOTH this webspace's match table AND excluded
 #     by this webspace's own sources allowlist — dead config, not a
 #     staging feature; remove one or the other
-#   - a webspace declaring neither keywords nor any match block
+#   - a webspace declaring neither keywords nor any match block (UNLESS it
+#     is also a fully empty shell — see the next paragraph)
 #   - a participating instance with no match block, in a webspace whose
 #     keywords list is empty — nothing for that instance to resolve its
 #     match input from
+#
+# An EMPTY webspace shell (D-20, Phase 7 gap closure): a [webspaces.<name>]
+# block declaring NONE of keywords, sources, or match at all is a valid,
+# loadable config state meaning "a webspace that exists and matches
+# nothing yet." It is what the topos UI's "+ New webspace" writes the
+# instant you name a new webspace, before you've added a single source to
+# it — the two-write flow's first save. It correlates nothing (no plugin's
+# Match RPC is ever called for it) until it gains a keywords fallback, at
+# least one match block, or both. The moment a webspace names ANY instance
+# under sources while still declaring neither keywords nor match, it stops
+# being a shell and becomes the fourth load-time failure listed above —
+# that combination reads as "allowlisted a source, then told it nothing to
+# match," an operator typo the kernel keeps rejecting loudly rather than
+# silently accepting.
 #
 # Matching itself stays exact and case-insensitive with no Unicode
 # normalization (D-04) in both shapes above — only WHERE the value list
