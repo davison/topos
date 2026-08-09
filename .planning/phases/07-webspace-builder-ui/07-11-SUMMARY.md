@@ -228,6 +228,10 @@ None - no external service configuration required.
 - 07-12/07-13/07-14 (the other three gap-closure plans in this wave) are unaffected by and independent of this plan's changes — none of their declared files overlap this plan's `files_modified`.
 - Live-kernel human verification (`make dev`: create webspace, add first source, hand-edit a still-invalid shape and confirm rejection) has NOT been run in this execution environment — see `coverage: D5` above. Recommended before closing out the phase's end-of-phase UAT pass.
 
+## Self-Check: PASSED
+
+All key files (kernel/config/types.go, kernel/config/config.go, kernel/correlate/correlate.go, kernel/pluginhost/matchconfig.go, web/src/lib/participation.ts, web/src/lib/config-edit.ts, config.example.toml, 07-CONTEXT.md, kernel/config/store_test.go, this SUMMARY) confirmed present on disk. All four commits (14da797, 855b28f, cba503f, 569adf0) confirmed present in `git log`.
+
 ---
 *Phase: 07-webspace-builder-ui*
 *Completed: 2026-08-09*
