@@ -2,15 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
+current_phase: 07
+current_phase_name: webspace-builder-ui
 status: executing
-last_updated: "2026-08-08T22:47:51.576Z"
-last_activity: 2026-08-08
+stopped_at: "Completed 07-11-PLAN.md — closed 07-UAT.md G-07-3: kernel accepts an empty webspace shell, correlates nothing, and the create-then-add-first-source sequence round-trips through the real save path"
+last_updated: "2026-08-09T12:01:53.475Z"
+last_activity: 2026-08-09
+last_activity_desc: Phase 07 execution started
 progress:
-  total_phases: 9
+  total_phases: 7
   completed_phases: 6
-  total_plans: 49
-  completed_plans: 49
-  percent: 78
+  total_plans: 53
+  completed_plans: 50
 ---
 
 # Project State
@@ -24,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 
 ## Current Position
 
-Phase: 07 (webspace-builder-ui) — AWAITING HUMAN VERIFICATION
-Plan: 10 of 10 executed
-Status: All plans executed; verification status human_needed — run /gsd-verify-work 7 (19 UAT test sessions in 07-UAT.md covering 34 behavior-unverified truths)
-Last activity: 2026-08-08
+Phase: 07 (webspace-builder-ui) — EXECUTING
+Plan: 2 of 14
+Status: Ready to execute
+Last activity: 2026-08-09 — Phase 07 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -100,6 +103,7 @@ Progress: [██████████] 100%
 | Phase 07 P08 | ~20min | 2 tasks | 5 files |
 | Phase 07 P09 | 17min | 2 tasks | 2 files |
 | Phase 07 P10 | ~15min | 2 tasks | 2 files |
+| Phase 07 P11 | 45min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -211,6 +215,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-08]: edit-modal-state.ts's seedConnectionValues/seedMatchBlock return fresh objects/arrays, never aliasing the config document — deliberate divergence from prior inline seeding, load-bearing for the CR-02 regression test and for EditSourceModal's new untracked reset-on-open effect
 - [Phase ?]: [Phase 07-09]: Rolled forward (never rolled back) every post-Reconcile Apply failure branch through a shared commitGeneration site — closes gaps[0]; folded in a previously-unreported ordering defect in the D-07 index-cleanup branches
 - [Phase ?]: [Phase 07-10]: Apply's post-Reconcile region collapsed to one shared commitGeneration call and one errors.Join-based error return; cleanupRemovedInstances extracted and runs unconditionally before the match-vocabulary check, per-instance failures collected rather than returned early
+- [Phase ?]: [Phase 07-11]: D-20 — empty webspace shell (no keywords/sources/match) accepted by config.Validate and correlates nothing; validateFallbackCoverage/Participates unchanged, shell exemption short-circuits before either is reached
+- [Phase ?]: [Phase 07-11]: Two pre-existing config_test.go tests (TestLoad_ZeroKeywordsFails, TestLoad_WebspaceWithNeitherKeywordsNorMatchFails) encoded exactly the pre-D-20 fixture the plan's own must_haves require to load — updated in place (Rule 1), documented as a deviation since it contradicts the plan's blanket 'do not modify' instruction
 
 ### Pending Todos
 
@@ -247,6 +253,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-08T22:47:51.567Z
-Stopped at: Completed 07-10-PLAN.md — closed 07-VERIFICATION.md gaps[0]: D-07 index cleanup now runs unconditionally on every post-Reconcile Apply path, proven against real launched plugin subprocesses
+Last session: 2026-08-09T12:01:53.456Z
+Stopped at: Completed 07-11-PLAN.md — closed 07-UAT.md G-07-3: kernel accepts an empty webspace shell, correlates nothing, and the create-then-add-first-source sequence round-trips through the real save path
 Resume file: None

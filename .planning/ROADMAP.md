@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 14 plans (10 executed)
+**Plans**: 11/14 plans executed
 
 Plans:
 **Wave 1**
@@ -360,7 +360,7 @@ Plans:
 
 **Wave 10** *(UAT gap closure, blocked on Wave 9 completion — both plans run in parallel, zero file overlap)*
 
-- [ ] 07-11-PLAN.md — Gap closure (07-UAT.md G-07-3, blocker): an empty webspace shell is a valid config state (D-20), so "+ New webspace" can actually create one — and a shell correlates nothing rather than everything
+- [x] 07-11-PLAN.md — Gap closure (07-UAT.md G-07-3, blocker): an empty webspace shell is a valid config state (D-20), so "+ New webspace" can actually create one — and a shell correlates nothing rather than everything
 - [ ] 07-13-PLAN.md — Gap closure (07-UAT.md G-07-5): every connection field a plugin fatals without is required and enforced at submit, and a plugin that dies before the go-plugin handshake surfaces its own stderr line instead of four diagnostics that are all false
 
 **Wave 11** *(UAT gap closure, blocked on Wave 10 completion — both plans run in parallel, zero file overlap)*
@@ -409,7 +409,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 10/10 | In Progress|  |
+| 7. Webspace Builder UI | 11/14 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
