@@ -1,0 +1,83 @@
+# The repository's first CI workflow (D-13). Runs the full portable gate —
+# Go tests across every non-Signal workspace module, svelte-check, vitest,
+# the e2e spec tree's own typecheck, and the hermetic Playwright suite —
+# on every push and pull request to main. No repository secret and no
+# live-source credential variable is referenced anywhere in this file
+# (D-07/D-10 make that structurally true, not just a policy): the harness
+# never launches a real source plugin, only the mock-shaped fixtures under
+# plugins/mock and plugins/mockstrict.
+#
+# Every step below invokes an official actions/* action only, pinned to
+# its current major version (re-verified against each action's own GitHub
+# releases at the time this workflow was written — see
+# 07.1-RESEARCH.md Assumptions Log entry A4, which flagged the research
+# skeleton's own version numbers as a low-confidence snapshot that needed
+# re-checking before use).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Playwright browser downloads are cached separately from npm's own
+      # cache (above) — keyed on the lockfile so a dependency bump busts
+      # the cache. `make e2e` (below) performs the browser install itself
+      # and is idempotent, so no separate install step is needed here: a
+      # cache hit simply makes that install step a no-op download-wise.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+
+      - run: npm --prefix web ci
+
+      - run: npm --prefix web run check
+      - run: npm --prefix web run test
+      - run: npm --prefix web run check:e2e
+
+      # The Go half. Deliberately NOT `make test`: that target also runs
+      # the Signal plugin module's own suite, CGO_ENABLED=1 against the
+      # system SQLCipher library — a dependency this runner has no reason
+      # to install for a plugin the hermetic harness never launches.
+      - run: make test-portable
+
+      # E2E_PW_INSTALL_FLAGS is set to Playwright's system-dependency
+      # install flag for THIS step only — the runner needs its OS package
+      # dependencies installed, but a developer's own machine must never
+      # have `make e2e` invoke a privileged installer by default (see the
+      # Makefile's own E2E_PW_INSTALL_FLAGS comment). E2E_PROJECT is left
+      # at its "chromium" default: D-14 makes Chromium the only engine the
+      # automated gate runs; Firefox/WebKit stay manual-only.
+      - name: make e2e
+        run: make e2e
+        env:
+          E2E_PW_INSTALL_FLAGS: --with-deps
+
+      # A failing run carries its own evidence: every Playwright trace and
+      # screenshot from a failed spec lives under web/e2e/.artifacts (D-15).
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/e2e/.artifacts/
+          retention-days: 7
