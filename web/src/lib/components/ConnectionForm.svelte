@@ -59,6 +59,16 @@
 <div class="flex flex-col gap-4">
 	{#each primaryFields as field (field.key)}
 		{#if field.secret}
+			<!-- First line of defence: the DOM required attribute (forwarded
+			     into SecretField below, and directly on the plain Input in the
+			     else branch). The second, load-bearing line is the submit-time
+			     missingRequiredFields() check each of this component's three
+			     consumers (AddSourceModal's Connect step and Save anyway,
+			     EditSourceModal's Edit connection…) runs itself — this
+			     component cannot own that check because each consumer issues
+			     its own request from its own submit handler, so a guard living
+			     only here could never stop any of them. The asterisk alone
+			     (still rendered below) was purely decorative. -->
 			<SecretField
 				label={field.label}
 				required={field.required}
@@ -76,6 +86,7 @@
 					id={`conn-${field.key}`}
 					value={fieldValue(field)}
 					placeholder={field.placeholder}
+					required={field.required}
 					oninput={(e) => setField(field.key, e.currentTarget.value)}
 				/>
 			</div>

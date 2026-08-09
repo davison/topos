@@ -19,6 +19,7 @@
 	import ConnectionForm from './ConnectionForm.svelte';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import { upsertSourceInstance, setMatchBlock } from '$lib/config-edit';
+	import { missingRequiredFields, missingRequiredFieldsMessage } from '$lib/plugin-fields';
 	import { seedConnectionValues, seedMatchBlock } from '$lib/edit-modal-state';
 	import { putConfig, ApiError, CONFIG_CONFLICT_MESSAGE, type KernelConfig, type SourceConfig } from '$lib/api';
 
@@ -100,6 +101,18 @@
 	async function submitConnection(event: SubmitEvent) {
 		event.preventDefault();
 		if (saving) return;
+
+		// Same guard as AddSourceModal's Connect step and Save anyway (07-13-
+		// PLAN.md Task 2, planning choice 4): blanking a required field here
+		// persists an instance the plugin cannot launch, and the next
+		// hot-apply reconcile fails on it. Uses this modal's own error state
+		// and rendering — no new error surface.
+		const missing = missingRequiredFields(connectionValues.plugin, connectionValues);
+		if (missing.length > 0) {
+			error = missingRequiredFieldsMessage(missing);
+			return;
+		}
+
 		saving = true;
 		error = null;
 		try {

@@ -29,7 +29,12 @@
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import ConnectionForm from './ConnectionForm.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { pluginTypeLabel } from '$lib/plugin-fields';
+	import {
+		pluginTypeLabel,
+		defaultConnectionValues,
+		missingRequiredFields,
+		missingRequiredFieldsMessage
+	} from '$lib/plugin-fields';
 	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
 	import { resolveNewInstanceId } from '$lib/instance-id';
 	import {
@@ -161,7 +166,17 @@
 	function selectPluginType(plugin: string) {
 		pickerOpen = false;
 		selectedPluginType = plugin;
-		connectionValues = { plugin, agent: { read: false, handoff: false } };
+		// defaultConnectionValues seeds a REAL, editable value for any field
+		// that declares one (today, only Signal's path) — distinct from a
+		// placeholder, which a user cannot submit and which is the specific
+		// presentation that made leaving Signal's mandatory path untouched
+		// the natural action (07-13-PLAN.md's G-07-5 diagnosis). The agent
+		// grants shape is added on top exactly as it was before; that has
+		// nothing to do with the connection-field table.
+		connectionValues = {
+			...defaultConnectionValues(plugin),
+			agent: { read: false, handoff: false }
+		} as SourceConfig;
 		describeFailed = false;
 		connectError = null;
 		step = 'connect';
@@ -191,6 +206,20 @@
 	async function handleConnectNext(event: SubmitEvent) {
 		event.preventDefault();
 		if (!selectedPluginType || describing) return;
+
+		// A blank required field must never reach describePlugin — that call
+		// launches the plugin subprocess with these exact values, and the
+		// plugin's own pre-goplugin.Serve guard fatals on a blank mandatory
+		// field before the handshake, producing an unexplained-until-07-13
+		// error (07-UAT.md G-07-5). This check runs before the collision
+		// guard below so a missing-field message never gets shadowed by an
+		// id check that would otherwise pass.
+		const missing = missingRequiredFields(selectedPluginType, connectionValues);
+		if (missing.length > 0) {
+			describeFailed = false;
+			connectError = missingRequiredFieldsMessage(missing);
+			return;
+		}
 
 		const displayName = (connectionValues.display_name ?? '').trim();
 		const idResult = resolveNewInstanceId(config, displayName);
@@ -227,6 +256,18 @@
 	// where to add match settings once the source can connect.
 	async function saveAnyway() {
 		if (!selectedPluginType || savingConnectionOnly) return;
+
+		// Save anyway means "persist despite a failed connection test", never
+		// "persist an instance the plugin cannot start" — a connection-only
+		// instance missing a mandatory field would fail every subsequent
+		// hot-apply reconcile. Same guard as handleConnectNext, same message,
+		// before saveAnyway's own collision guard.
+		const missing = missingRequiredFields(selectedPluginType, connectionValues);
+		if (missing.length > 0) {
+			connectError = missingRequiredFieldsMessage(missing);
+			return;
+		}
+
 		const displayName = (connectionValues.display_name ?? '').trim();
 		const idResult = resolveNewInstanceId(config, displayName);
 		if (!idResult.ok) {

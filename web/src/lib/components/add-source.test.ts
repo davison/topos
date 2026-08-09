@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const modalPath = join(here, 'AddSourceModal.svelte');
+const connectionFormPath = join(here, 'ConnectionForm.svelte');
+const editModalPath = join(here, 'EditSourceModal.svelte');
 
 function stripComments(source: string): string {
 	return source
@@ -44,6 +46,8 @@ function extractBetween(source: string, startMarker: string, endMarker: string):
 
 const raw = readFileSync(modalPath, 'utf-8');
 const stripped = stripComments(raw);
+const connectionFormStripped = stripComments(readFileSync(connectionFormPath, 'utf-8'));
+const editModalStripped = stripComments(readFileSync(editModalPath, 'utf-8'));
 
 describe('add-source guard: found non-empty comment-stripped source', () => {
 	it('AddSourceModal.svelte', () => {
@@ -285,5 +289,103 @@ describe('invariant: every new-instance write path routes through the one shared
 			handleConnectNextBody.includes('describeFailed = false'),
 			'a validation rejection at Next is not a connection failure and must not reveal Save anyway'
 		).toBe(true);
+	});
+});
+
+// 07-13-PLAN.md Task 2, closing 07-UAT.md G-07-5: a blank required
+// connection field must never reach a plugin subprocess. These assertions
+// pin the missingRequiredFields( guard ahead of every request-issuing call
+// it exists to stop, and pin the default-value seeding that removes the
+// trap in the first place.
+describe('G-07-5 guard: a blank required field never reaches describePlugin or putConfig', () => {
+	const handleConnectNextBody = extractBetween(
+		stripped,
+		'async function handleConnectNext(event: SubmitEvent) {',
+		'\n\t}'
+	);
+	const saveAnywayBody = extractBetween(stripped, 'async function saveAnyway() {', '\n\t}');
+
+	it('handleConnectNext calls missingRequiredFields( strictly before describePlugin( — a blank mandatory field must never trigger a trial launch', () => {
+		const guardIndex = handleConnectNextBody.indexOf('missingRequiredFields(');
+		const describeIndex = handleConnectNextBody.indexOf('describePlugin(');
+		expect(
+			guardIndex,
+			'expected handleConnectNext to call missingRequiredFields( — otherwise a blank mandatory field reaches describePlugin, which launches the plugin subprocess with it (07-UAT.md G-07-5)'
+		).toBeGreaterThanOrEqual(0);
+		expect(describeIndex, 'expected handleConnectNext to call describePlugin( at all').toBeGreaterThanOrEqual(
+			0
+		);
+		expect(
+			guardIndex,
+			'expected missingRequiredFields( to run strictly before describePlugin( — otherwise the guard cannot stop the request it exists to stop'
+		).toBeLessThan(describeIndex);
+	});
+
+	it('saveAnyway calls missingRequiredFields( strictly before putConfig( — Save anyway must not persist an instance the plugin can never launch', () => {
+		const guardIndex = saveAnywayBody.indexOf('missingRequiredFields(');
+		const putIndex = saveAnywayBody.indexOf('putConfig(');
+		expect(
+			guardIndex,
+			'expected saveAnyway to call missingRequiredFields( — otherwise Save anyway can persist an instance missing a mandatory field, which then fails every subsequent hot-apply reconcile'
+		).toBeGreaterThanOrEqual(0);
+		expect(putIndex, 'expected saveAnyway to call putConfig( at all').toBeGreaterThanOrEqual(0);
+		expect(
+			guardIndex,
+			'expected missingRequiredFields( to run strictly before putConfig( in saveAnyway'
+		).toBeLessThan(putIndex);
+	});
+
+	it('plugin-type selection builds connectionValues from defaultConnectionValues( — a seeded default is a real editable value, not placeholder text', () => {
+		expect(
+			stripped.includes('defaultConnectionValues('),
+			'expected the plugin-type selection to seed connectionValues from defaultConnectionValues( — the specific presentation (placeholder-only) that made leaving Signal\'s mandatory path untouched the natural action (07-13-PLAN.md G-07-5)'
+		).toBe(true);
+	});
+});
+
+describe('G-07-5 guard: ConnectionForm.svelte marks required fields with the DOM required attribute, not only an asterisk', () => {
+	it('found non-empty comment-stripped ConnectionForm.svelte source', () => {
+		expect(connectionFormStripped.length).toBeGreaterThan(0);
+	});
+
+	it('the non-secret Input carries a required attribute bound to the field descriptor', () => {
+		const inputBlock = extractBetween(connectionFormStripped, '<Input', '/>');
+		expect(
+			/required=\{field\.required\}/.test(inputBlock),
+			'expected ConnectionForm\'s plain-field Input to carry required={field.required} — the asterisk alone is decorative and provides no browser-native prevention or correct assistive-technology semantics'
+		).toBe(true);
+	});
+
+	it('forwards required to SecretField for the secret branch', () => {
+		const secretFieldBlock = extractBetween(connectionFormStripped, '<SecretField', '/>');
+		expect(
+			/required=\{field\.required\}/.test(secretFieldBlock),
+			'expected ConnectionForm to forward required={field.required} into SecretField for the secret branch, so both branches mark a required field consistently'
+		).toBe(true);
+	});
+});
+
+describe('G-07-5 guard: EditSourceModal.svelte\'s Edit connection… guards submitConnection the same way', () => {
+	it('found non-empty comment-stripped EditSourceModal.svelte source', () => {
+		expect(editModalStripped.length).toBeGreaterThan(0);
+	});
+
+	it('submitConnection calls missingRequiredFields( strictly before putConfig( — blanking a required field here would persist an instance the plugin can never launch', () => {
+		const fnBody = extractBetween(
+			editModalStripped,
+			'async function submitConnection(event: SubmitEvent) {',
+			'\n\t}'
+		);
+		const guardIndex = fnBody.indexOf('missingRequiredFields(');
+		const putIndex = fnBody.indexOf('putConfig(');
+		expect(
+			guardIndex,
+			'expected submitConnection to call missingRequiredFields( — otherwise Edit connection… can persist an instance the plugin cannot start, failing every subsequent hot-apply reconcile'
+		).toBeGreaterThanOrEqual(0);
+		expect(putIndex, 'expected submitConnection to call putConfig( at all').toBeGreaterThanOrEqual(0);
+		expect(
+			guardIndex,
+			'expected missingRequiredFields( to run strictly before putConfig( in submitConnection'
+		).toBeLessThan(putIndex);
 	});
 });

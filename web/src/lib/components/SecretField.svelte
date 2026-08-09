@@ -57,6 +57,7 @@
 		autocomplete="off"
 		{placeholder}
 		{value}
+		{required}
 		oninput={(e) => oninput(e.currentTarget.value)}
 	/>
 	{#if trimmed !== ''}
