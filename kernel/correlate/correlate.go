@@ -136,48 +136,86 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 	return results, strings.Join(rejected, "; ")
 }
 
-// matchFieldsFor resolves one source instance's Match input for one
-// webspace, implementing the full D-01/D-02/D-03 resolution in order:
+// ParticipatesIn is the single kernel-side definition of whether source
+// instance participates in webspace ws — both the sync path
+// (matchFieldsFor, below) and the config-apply path
+// (kernel/supervisor.Supervisor's purgeDeparticipatedWebspaceRows,
+// 07-16-PLAN.md) ask it, so the two can never disagree about which
+// (webspace, source) pairs are live.
 //
-//  1. Allowlist (D-03): if ws.Sources is non-empty and does not name src,
-//     src does not participate in ws at all — the second return value is
-//     false and the caller must not call Match for this (webspace, source)
-//     pair.
+// The conjunction is exactly what matchFieldsFor already applied inline
+// before this extraction:
+//
+//  1. Phase 5 D-03's allowlist gate (Webspace.Participates): a non-empty
+//     ws.Sources not naming instance excludes it outright, regardless of
+//     keywords or match input.
+//  2. 07-11's D-20 has-match-input rule (see matchFieldsFor's own rule 3
+//     for the safety reasoning): an instance with neither an explicit
+//     ws.Match block nor a non-empty ws.Keywords fallback has no match
+//     input at all and does not participate.
+//
+// ParticipatesIn deliberately does NOT resolve match fields — it reports
+// only whether instance participates, never what it would be matched
+// against — so a caller with no plugin handle to ask MatchVocabulary of
+// (the supervisor, which has instance ids and a config but no launched
+// plugin vocabulary) can still ask it. matchFieldsFor, which DOES have a
+// plugin handle, resolves the actual field map once this predicate has
+// already answered true.
+//
+// web/src/lib/participation.ts's participatingInstances/participatesIn is
+// this function's client-side mirror — any change to the rule here must be
+// reflected there in the same commit.
+func ParticipatesIn(ws config.Webspace, instance string) bool {
+	if !ws.Participates(instance) {
+		return false
+	}
+	if _, ok := ws.Match[instance]; ok {
+		return true
+	}
+	return len(ws.Keywords) > 0
+}
+
+// matchFieldsFor resolves one source instance's Match input for one
+// webspace, implementing the full D-01/D-02/D-03/D-20 resolution in order:
+//
+//  1. Allowlist (D-03) and has-match-input (D-20): if src does not
+//     participate in ws at all — ParticipatesIn's definition, covering
+//     both the allowlist gate and the has-match-input rule (rule 3 below)
+//     — the second return value is false and the caller must not call
+//     Match for this (webspace, source) pair.
 //  2. Explicit block (D-02): if ws.Match names src, that block is returned
 //     verbatim — it replaces the Keywords fallback outright for this
 //     instance; the two are never combined.
-//  3. No match input at all (D-20, 07-11-PLAN.md): if src has no explicit
-//     block AND ws.Keywords is empty, src does not participate in ws —
-//     this is a SAFETY rule, not a tidiness one. Fanning an empty
-//     Keywords slice across src.MatchVocabulary() would hand the plugin a
-//     field map whose every value list is empty; a plugin that reads that
-//     shape as "no constraint" would answer with its entire corpus,
-//     writing the operator's whole mail or chat archive into a webspace
-//     they created and left empty. This state was unreachable before
-//     D-20 — config.Validate's validateFallbackCoverage guaranteed every
-//     participating, block-less instance had a non-empty Keywords
-//     fallback — and is reachable now that Webspace.IsEmptyShell makes an
-//     empty webspace shell a valid config state.
+//  3. No match input at all (D-20, 07-11-PLAN.md): this is ParticipatesIn's
+//     own has-match-input half — a SAFETY rule, not a tidiness one.
+//     Fanning an empty Keywords slice across src.MatchVocabulary() would
+//     hand the plugin a field map whose every value list is empty; a
+//     plugin that reads that shape as "no constraint" would answer with
+//     its entire corpus, writing the operator's whole mail or chat archive
+//     into a webspace they created and left empty. This state was
+//     unreachable before D-20 — config.Validate's validateFallbackCoverage
+//     guaranteed every participating, block-less instance had a non-empty
+//     Keywords fallback — and is reachable now that Webspace.IsEmptyShell
+//     makes an empty webspace shell a valid config state.
 //  4. Fallback (D-01): otherwise, ws.Keywords is fanned into every field of
 //     src's declared vocabulary (src.MatchVocabulary()) — a webspace
 //     declaring only `keywords` therefore reproduces the pre-Phase-5
-//     shared-keyword-list behaviour byte for byte.
+//     shared-keyword-list behaviour byte for byte. Reaching this branch
+//     implies a non-empty Keywords list, because ParticipatesIn already
+//     established that fact as a condition of returning true when no
+//     explicit block exists.
 //
 // Each call returns a map scoped to exactly this one instance's own
 // resolved fields — never the webspace's whole match configuration — so a
 // Match RPC to one plugin process never discloses another instance's match
 // configuration (T-05-07).
 func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates bool) {
-	if !ws.Participates(src.Name()) {
+	if !ParticipatesIn(ws, src.Name()) {
 		return nil, false
 	}
 
 	if block, ok := ws.Match[src.Name()]; ok {
 		return map[string][]string(block), true
-	}
-
-	if len(ws.Keywords) == 0 {
-		return nil, false
 	}
 
 	fields = make(map[string][]string, len(src.MatchVocabulary()))

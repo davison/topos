@@ -466,6 +466,91 @@ func TestMatchFieldsFor_NoBlockAndNoKeywordsDoesNotParticipate(t *testing.T) {
 	}
 }
 
+// TestParticipatesIn_ResolutionShapes is the table 07-16-PLAN.md Task 1
+// requires: every shape named in the plan's <behavior> block, each named by
+// the user-visible consequence it stands for ("which chips a webspace would
+// show and which items would land in it") — plus the agreement assertion
+// below tying ParticipatesIn to matchFieldsFor's own second return value, so
+// the two definitions can never diverge without a test failing.
+func TestParticipatesIn_ResolutionShapes(t *testing.T) {
+	cases := []struct {
+		name     string
+		ws       config.Webspace
+		instance string
+		want     bool
+	}{
+		{
+			name: "a non-empty allowlist naming the instance, with an explicit match block: the chip shows and its items land in the webspace",
+			ws: config.Webspace{
+				Sources: []string{"home-email"},
+				Match:   map[string]config.MatchBlock{"home-email": {"folders": {"Home"}}},
+			},
+			instance: "home-email",
+			want:     true,
+		},
+		{
+			name: "a non-empty allowlist NOT naming the instance: no chip, no items, whatever the keywords or match map say",
+			ws: config.Webspace{
+				Sources:  []string{"work-email"},
+				Keywords: []string{"house"},
+				Match:    map[string]config.MatchBlock{"home-email": {"folders": {"Home"}}},
+			},
+			instance: "home-email",
+			want:     false,
+		},
+		{
+			name:     "an empty allowlist with a non-empty keywords fallback: the chip shows (Phase 5 D-03's default)",
+			ws:       config.Webspace{Keywords: []string{"house"}},
+			instance: "home-email",
+			want:     true,
+		},
+		{
+			name: "an empty allowlist, no keywords, and an explicit match block for this instance: the chip shows",
+			ws: config.Webspace{
+				Match: map[string]config.MatchBlock{"home-email": {"folders": {"Home"}}},
+			},
+			instance: "home-email",
+			want:     true,
+		},
+		{
+			name:     "an empty allowlist, no keywords, and no block for this instance: no chip — 07-11's D-20 rule",
+			ws:       config.Webspace{},
+			instance: "home-email",
+			want:     false,
+		},
+		{
+			name:     "a D-20 empty shell: no instance participates",
+			ws:       config.Webspace{},
+			instance: "any-instance",
+			want:     false,
+		},
+		{
+			name:     "a webspace whose collections are nil rather than empty: no panic, and the no-block-no-keywords answer is unchanged",
+			ws:       config.Webspace{Keywords: nil, Sources: nil, Match: nil},
+			instance: "home-email",
+			want:     false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ParticipatesIn(tc.ws, tc.instance); got != tc.want {
+				t.Errorf("ParticipatesIn(%+v, %q) = %v, want %v", tc.ws, tc.instance, got, tc.want)
+			}
+
+			// Agreement: the predicate's answer must equal matchFieldsFor's own
+			// second return value for the identical (webspace, instance) pair,
+			// against a source whose vocabulary is non-empty — the two
+			// definitions can never diverge without this failing.
+			src := &fakeSource{name: tc.instance, vocabulary: []string{"folders"}}
+			_, participates := matchFieldsFor(tc.ws, src)
+			if participates != tc.want {
+				t.Errorf("matchFieldsFor(%+v, %q) participates = %v, want %v (must agree with ParticipatesIn)", tc.ws, tc.instance, participates, tc.want)
+			}
+		})
+	}
+}
+
 // TestSyncSource_DeallowlistedInstanceRowsCleared proves the ROADMAP
 // success-criterion-3 guarantee end to end: when a webspace's sources
 // allowlist stops including a previously-participating instance, that
