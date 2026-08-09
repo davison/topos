@@ -770,3 +770,411 @@ keywords = ["labels"]
 		t.Fatalf("expected only the survivor \"keep\" to remain launched after Apply (pinning that Reconcile committed and the cleanup was genuinely reached, so this test cannot pass vacuously on an error raised before the cleanup) — got %+v", plugins)
 	}
 }
+
+// The five tests below drive 07-16-PLAN.md Task 2's synchronous purge.
+// Every seed uses testFixtureItem directly against idx.ReplaceWebspaceSourceItems
+// (the same helper/pattern TestApply_RemovedInstance_PluginGoneAndIndexRowsGone
+// above uses) rather than depending on a real plugin Match RPC's timing:
+// NewSupervisor's own boot-time scheduler starts an immediate, genuinely
+// asynchronous refresh for every configured source (syncer/scheduler.go's
+// runSource), and calling Apply immediately afterward — as every test below
+// does, deliberately, with no sleep — cancels that in-flight boot
+// generation's context via stopScheduler before its own Match RPC
+// necessarily has time to complete or persist anything. A test that relied
+// on that racing boot sync to establish its "before" state would be
+// flaky by construction. Seeding directly sidesteps this entirely: it is a
+// pure local index write with no dependency on any goroutine's timing, and
+// it uses source id "1" with plugins/mock's own real fixture id scheme, so
+// if the launched mock plugin's OWN background refresh (boot's or a later
+// generation's) ever does win a race and rewrites the same (webspace,
+// source) pair, it produces the byte-identical item id — never a
+// disagreement the assertions below would need to arbitrate.
+//
+// Assertions check for presence/absence of specific item ids rather than
+// exact row counts, for the same reason: a still-participating pair may
+// legitimately end up with MORE than the one seeded row if a real
+// background sync happens to land during the test (plugins/mock's fixture
+// set has four items, all labelled "demo") — that is harmless noise this
+// test does not care about, whereas the seeded id's presence or absence is
+// exactly what the purge does or does not control.
+
+// TestApply_PurgesDeparticipatedWebspaceRows_NarrowingClearsOnlyTheFlippedPair
+// is the core case (07-16-PLAN.md Task 2): narrowing ONE webspace to
+// exclude ONE still-configured instance clears exactly that pair's rows,
+// synchronously, by the time Apply returns — leaving the still-
+// participating instance's rows in the SAME webspace untouched, the
+// excluded instance's rows in every OTHER webspace it still participates
+// in untouched, and the excluded instance's own items rows (the hybrid
+// data model's own record, never the join) untouched.
+func TestApply_PurgesDeparticipatedWebspaceRows_NarrowingClearsOnlyTheFlippedPair(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.alpha]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.beta]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.ws1]
+keywords = ["demo"]
+
+[webspaces.ws2]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	// Seed both instances' contribution to both webspaces directly — see
+	// this block's own doc comment for why this sidesteps the boot
+	// scheduler's own racing initial refresh entirely.
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "ws1", "alpha", []item.Item{testFixtureItem("alpha", "1")}); err != nil {
+		t.Fatalf("seed ws1/alpha: %v", err)
+	}
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "ws1", "beta", []item.Item{testFixtureItem("beta", "1")}); err != nil {
+		t.Fatalf("seed ws1/beta: %v", err)
+	}
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "ws2", "alpha", []item.Item{testFixtureItem("alpha", "1")}); err != nil {
+		t.Fatalf("seed ws2/alpha: %v", err)
+	}
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "ws2", "beta", []item.Item{testFixtureItem("beta", "1")}); err != nil {
+		t.Fatalf("seed ws2/beta: %v", err)
+	}
+
+	// Narrow ws1 to exclude beta; ws2 is untouched. Both sources' own
+	// connection config is byte-identical to what they were launched with,
+	// so Reconcile relaunches nothing — the only thing that changed is
+	// participation.
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"alpha": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+			"beta":  {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"ws1": {Keywords: []string{"demo"}, Sources: []string{"alpha"}},
+			"ws2": {Keywords: []string{"demo"}},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// The narrowed webspace: alpha's row survives, beta's is gone —
+	// asserted on the statement immediately after Apply returns, no sleep,
+	// no eventually-loop.
+	ws1Items, err := idx.StreamItems(ctx, "ws1", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(ws1): %v", err)
+	}
+	ws1IDs := idsOfSupervisorTest(ws1Items)
+	if !ws1IDs[item.ID("alpha", "1")] {
+		t.Errorf("expected ws1 to still contain alpha's item (still-participating instance keeps every row in the narrowed webspace), got: %v", ws1Items)
+	}
+	if ws1IDs[item.ID("beta", "1")] {
+		t.Errorf("expected ws1 to no longer contain beta's item — beta was excluded by the narrowed allowlist and its rows must be purged by the time Apply returns, got: %v", ws1Items)
+	}
+
+	// The OTHER webspace: both alpha's and beta's rows are untouched — a
+	// webspace narrowed for one instance must never widen into a deletion
+	// for that instance's rows anywhere else.
+	ws2Items, err := idx.StreamItems(ctx, "ws2", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(ws2): %v", err)
+	}
+	ws2IDs := idsOfSupervisorTest(ws2Items)
+	if !ws2IDs[item.ID("alpha", "1")] {
+		t.Errorf("expected ws2 (untouched by the ws1 narrowing) to still contain alpha's item, got: %v", ws2Items)
+	}
+	if !ws2IDs[item.ID("beta", "1")] {
+		t.Errorf("expected ws2 (untouched by the ws1 narrowing) to still contain beta's item, got: %v", ws2Items)
+	}
+
+	// beta's own items row (the hybrid data model's actual record) survives
+	// — only the ws1/beta JOIN row was removed, never the item itself, so
+	// re-adding beta to ws1 restores its items without a refetch from the
+	// source system.
+	if _, ok, err := idx.GetItem(ctx, item.ID("beta", "1")); err != nil {
+		t.Fatalf("GetItem(beta:1): %v", err)
+	} else if !ok {
+		t.Error("expected beta's own item row to survive the purge — only the (ws1, beta) join row should have been removed")
+	}
+}
+
+// TestApply_PurgesDeparticipatedWebspaceRows_LastSourceRemovedLeavesEmptyShellStreamingNothing
+// covers the edge case named in 07-16-PLAN.md's UI-12/empty audit row:
+// narrowing a webspace's LAST participating source turns it into a D-20
+// empty shell, and every remaining pair (here, the only pair) is cleared —
+// the webspace streams nothing, while the instance's own items row
+// survives.
+func TestApply_PurgesDeparticipatedWebspaceRows_LastSourceRemovedLeavesEmptyShellStreamingNothing(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.solo]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.shell-target]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "shell-target", "solo", []item.Item{testFixtureItem("solo", "1")}); err != nil {
+		t.Fatalf("seed shell-target/solo: %v", err)
+	}
+
+	// Narrow shell-target to a D-20 empty shell (07-11-PLAN.md): declares
+	// none of keywords/sources/match, a legitimate loadable config state.
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"solo": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"shell-target": {},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	items, err := idx.StreamItems(ctx, "shell-target", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(shell-target): %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected shell-target to stream nothing once its last participating source was removed, got: %+v", items)
+	}
+
+	if _, ok, err := idx.GetItem(ctx, item.ID("solo", "1")); err != nil {
+		t.Fatalf("GetItem(solo:1): %v", err)
+	} else if !ok {
+		t.Error("expected solo's own item row to survive turning shell-target into an empty shell")
+	}
+}
+
+// TestApply_PurgesDeparticipatedWebspaceRows_NoOpConfigPerformsNoClear proves
+// the UI-12 idempotency edge: an Apply where no pair's participation
+// flipped must not clear anything. The assertion runs immediately after
+// Apply returns — a buggy purge that incorrectly clears an unchanged pair
+// would show as a MISSING row right here, synchronously (the purge itself
+// runs inside Apply; a background resync, if any ever raced in afterward,
+// could only ADD the same deterministic id back, never explain away an
+// incorrect clear that already happened inside this very call).
+func TestApply_PurgesDeparticipatedWebspaceRows_NoOpConfigPerformsNoClear(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.alpha]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.ws1]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "ws1", "alpha", []item.Item{testFixtureItem("alpha", "1")}); err != nil {
+		t.Fatalf("seed ws1/alpha: %v", err)
+	}
+
+	// Save the exact same (expanded) config back — a genuine no-op from
+	// the purge's own diff perspective: no webspace or instance name
+	// changed, and no participation could have flipped.
+	if err := cfgStore.Save(cfgStore.Expanded(), cfgStore.Hash()); err != nil {
+		t.Fatalf("Save (no-op): %v", err)
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	items, err := idx.StreamItems(ctx, "ws1", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(ws1): %v", err)
+	}
+	if !idsOfSupervisorTest(items)[item.ID("alpha", "1")] {
+		t.Errorf("expected ws1 to still contain alpha's item after a no-op apply (no participation flipped, so nothing should have been cleared), got: %v", items)
+	}
+}
+
+// TestApply_PurgesDeparticipatedWebspaceRows_DeletedWebspaceRowsUntouched
+// proves the prohibition guarding against the worse-than-the-defect
+// failure mode: a webspace removed from the config entirely is OUT OF the
+// purge's diff scope (the intersection of both configs' webspace names),
+// so its rows are left exactly as they were — never touched, never
+// resurrected through a clear-then-upsert. Removing "doomed" from newCfg
+// gives ParticipatesIn(newCfg.Webspaces["doomed"], "alpha") the same false
+// answer a real deletion produces (an absent key reads as the Webspace
+// zero value); if the purge's diff were scoped to old webspace names
+// alone rather than the intersection, this would look exactly like a
+// true-to-false flip and wipe "doomed"'s rows — which is the case this
+// test exists to catch.
+func TestApply_PurgesDeparticipatedWebspaceRows_DeletedWebspaceRowsUntouched(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.alpha]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.ws1]
+keywords = ["demo"]
+
+[webspaces.doomed]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if err := idx.ReplaceWebspaceSourceItems(ctx, "doomed", "alpha", []item.Item{testFixtureItem("alpha", "1")}); err != nil {
+		t.Fatalf("seed doomed/alpha: %v", err)
+	}
+
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"alpha": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"ws1": {Keywords: []string{"demo"}},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	items, err := idx.StreamItems(ctx, "doomed", nil)
+	if err != nil {
+		t.Fatalf("StreamItems(doomed): %v", err)
+	}
+	if !idsOfSupervisorTest(items)[item.ID("alpha", "1")] {
+		t.Errorf("expected doomed's rows to survive being deleted from the config entirely (out of the purge's diff scope), got: %v", items)
+	}
+}
+
+// TestApply_PurgesDeparticipatedWebspaceRows_FailureIsJoinedIntoApplyError
+// proves the purge's failure handling mirrors cleanupRemovedInstances
+// exactly: a per-pair clear failure is collected and named (webspace and
+// instance), never returned early, so both of two simultaneously-flipped
+// pairs in the same webspace are reported rather than the loop abandoning
+// the second after the first fails.
+func TestApply_PurgesDeparticipatedWebspaceRows_FailureIsJoinedIntoApplyError(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sources.alpha]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.beta]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	// Turn "everything" into a D-20 empty shell: BOTH alpha and beta flip
+	// from participating to not, in the same webspace, in the same Apply
+	// call.
+	next := &config.Config{
+		Sources: map[string]config.Source{
+			"alpha": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+			"beta":  {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"everything": {},
+		},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// The failure lever: close the index store so every
+	// ReplaceWebspaceSourceItems clear call the purge makes returns an
+	// error — same lever TestApply_MultipleRemovedInstances_... uses for
+	// the cleanup's own batching test.
+	if err := idx.Close(); err != nil {
+		t.Fatalf("idx.Close (failure lever): %v", err)
+	}
+
+	applyErr := sup.Apply(ctx)
+	if applyErr == nil {
+		t.Fatal("expected Apply to return a non-nil error — both clear calls fail against a closed index store")
+	}
+
+	msg := applyErr.Error()
+	if !strings.Contains(msg, "everything") {
+		t.Errorf("expected the error to name the webspace \"everything\", got: %v", applyErr)
+	}
+	if !strings.Contains(msg, "alpha") || !strings.Contains(msg, "beta") {
+		t.Fatalf("expected the error to name BOTH flipped instances — naming only one means the loop returns early on its first failure and abandons the rest of the batch. Got: %v", applyErr)
+	}
+	if !strings.Contains(msg, "clear webspace") {
+		t.Errorf("expected the error to carry the \"clear webspace\" phrasing, confirming the failures came from the purge rather than anywhere else. Got: %v", applyErr)
+	}
+}
+
+// idsOfSupervisorTest mirrors kernel/correlate's own idsOf helper — kept
+// local since these are different packages and idsOf is unexported.
+func idsOfSupervisorTest(items []item.Item) map[string]bool {
+	ids := make(map[string]bool, len(items))
+	for _, it := range items {
+		ids[it.ID] = true
+	}
+	return ids
+}

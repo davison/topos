@@ -306,6 +306,27 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 //     and lead) — so a rejection and a cleanup fault are both reported
 //     rather than one silently masking the other.
 //
+//     Immediately after the cleanup, purgeDeparticipatedWebspaceRows
+//     (07-16-PLAN.md, closes 07-UAT.md G-07-7) runs for the identical
+//     reason and at the identical point in this region: it clears the
+//     webspace_items rows for every (webspace, instance) pair still
+//     configured on both sides whose participation just flipped from true
+//     to false — the finer-grained sibling of the whole-instance D-07
+//     cleanup above it, catching a webspace merely NARROWED to exclude a
+//     still-configured instance rather than an instance removed outright.
+//     It is deliberately synchronous, unlike the eager resync dispatched
+//     near the end of this function: it is a pure local index write with
+//     no plugin RPC, so — unlike a resync, which performs a real Match RPC
+//     per webspace against a plugin subprocess reading a mailbox or an
+//     encrypted database — it can run on the request path without making
+//     one unreachable source's latency felt by every config save
+//     (T-07-62's prohibition). The pre-Reconcile failure branch above
+//     purges nothing, for the same reason it skips the D-07 cleanup: the
+//     old generation is genuinely intact and still running against the
+//     old config, so there is nothing stale to clear yet. Its own error is
+//     joined last, after the cleanup error, leaving the vocabulary error
+//     leading.
+//
 // Whichever branch Apply exits by, s.host, s.coord, s.cfg and the running
 // scheduler generation always reflect ONE AND THE SAME config generation
 // as each other — never a new host paired with a stale coordinator, which
@@ -365,6 +386,23 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// and 07-REVIEW.md's post-07-09 CR-01.
 	cleanupErr := s.cleanupRemovedInstances(ctx, oldCfg, newCfg)
 
+	// The synchronous purge (07-16-PLAN.md, closes 07-UAT.md G-07-7): for
+	// every (webspace, instance) pair still present in both configs whose
+	// participation flipped from true to false, clear that pair's
+	// webspace_items rows now, before this Apply call answers its caller.
+	// This is deliberately synchronous where the eager resync dispatched
+	// near the end of this function is deliberately NOT (T-07-62's
+	// prohibition): the purge is a pure local index write with no plugin
+	// RPC, so it can run on the request path without coupling a config
+	// save's latency to a plugin's reachability, whereas the resync below
+	// performs a real Match RPC per webspace against a plugin subprocess.
+	// Runs here, after cleanupRemovedInstances and before the
+	// vocabulary check, for the identical reason the cleanup does: this
+	// region runs unconditionally on every path through it, and by this
+	// point Reconcile has already committed, so there is no later point
+	// where skipping this would still be safe to retry.
+	purgeErr := s.purgeDeparticipatedWebspaceRows(ctx, oldCfg, newCfg)
+
 	validateErr := pluginhost.ValidateMatchConfig(newCfg, s.host)
 
 	// One shared commit site for the whole post-Reconcile region (07-09's
@@ -380,11 +418,11 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	s.commitGeneration(newCfg)
 
 	// The vocabulary error leads (D-09: the operator-actionable message
-	// must reach the UI verbatim and first), the cleanup error follows —
-	// errors.Join drops nils, so each single-fault case still produces
-	// byte-identical text to before this restructuring, and a genuine
-	// double fault reports both.
-	if err := errors.Join(validateErr, cleanupErr); err != nil {
+	// must reach the UI verbatim and first), the cleanup error follows, and
+	// the purge error follows that — errors.Join drops nils, so each
+	// single-fault case still produces byte-identical text to before this
+	// restructuring, and a genuine multi-fault case reports all of them.
+	if err := errors.Join(validateErr, cleanupErr, purgeErr); err != nil {
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
 
@@ -406,6 +444,90 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// purgeDeparticipatedWebspaceRows clears the webspace_items join rows for
+// every (webspace, instance) pair whose participation flipped from true to
+// false between oldCfg and newCfg — the D-07 answer at a finer identity
+// than cleanupRemovedInstances' whole-instance removal (07-16-PLAN.md,
+// closes 07-UAT.md G-07-7): a webspace narrowed to exclude a
+// still-configured instance has that instance's items purged from ITS
+// stream rows synchronously, before Apply returns, rather than waiting for
+// a later scheduled sync to notice.
+//
+// Scope is deliberately the intersection of both configs, on both axes:
+//
+//   - Webspace names present in BOTH oldCfg.Webspaces and newCfg.Webspaces.
+//     A webspace absent from newCfg is excluded: ReplaceWebspaceSourceItems
+//     upserts the webspaces table row as part of the same transaction, so
+//     clearing a deleted webspace's rows through it would leave the index
+//     asserting that a deleted webspace exists — strictly worse than the
+//     stale rows it removed. Orphaned rows for a deleted webspace are a
+//     pre-existing, deliberately out-of-scope condition (07-16-PLAN.md
+//     planning choice 8).
+//   - Instance ids present in BOTH oldCfg.Sources and newCfg.Sources. An
+//     instance absent from newCfg.Sources is excluded: cleanupRemovedInstances
+//     (called earlier in this same post-Reconcile region — see Apply,
+//     below) already deletes that instance's items rows, and the existing
+//     ON DELETE CASCADE on webspace_items.item_id already clears it from
+//     every webspace it participated in — purging it a second time here
+//     adds a second failure mode for no behavioural gain.
+//
+// Participation is decided by asking correlate.ParticipatesIn against the
+// OLD webspace and the NEW webspace for each pair, in that order — the
+// same predicate the sync path (correlate.matchFieldsFor) applies, so the
+// purge can never clear a pair a sync would keep, or leave one a sync
+// would clear (T-07-65). Only a true-to-false flip clears rows; every
+// other transition (false-to-false, false-to-true, true-to-true) is left
+// alone — a false-to-true flip needs no clear at all (there is nothing
+// stale to remove), and the next sync (this Apply's own eager resync
+// dispatch below, or the instance's regular scheduled tick) populates it
+// going forward.
+//
+// Iteration is over webspace names, then instance ids, both sorted —
+// mirroring removedInstances' own convention — so a multi-fault error
+// report is deterministic run to run. A per-pair clear failure is
+// collected with the webspace and instance named, never returned early, so
+// one failing pair cannot abandon the rest of the batch (mirroring
+// cleanupRemovedInstances exactly); all collected failures are joined into
+// the single error returned once the whole batch has been attempted.
+//
+// Issues no plugin RPC: ReplaceWebspaceSourceItems(ctx, ws, instance, nil)
+// is a pure local index write, which is why this can run synchronously on
+// the request path where an eager resync (a real Match RPC per webspace
+// against a plugin subprocess) deliberately cannot (T-07-62's prohibition).
+func (s *Supervisor) purgeDeparticipatedWebspaceRows(ctx context.Context, oldCfg, newCfg *config.Config) error {
+	var webspaceNames []string
+	for name := range oldCfg.Webspaces {
+		if _, ok := newCfg.Webspaces[name]; ok {
+			webspaceNames = append(webspaceNames, name)
+		}
+	}
+	sort.Strings(webspaceNames)
+
+	var instanceNames []string
+	for name := range oldCfg.Sources {
+		if _, ok := newCfg.Sources[name]; ok {
+			instanceNames = append(instanceNames, name)
+		}
+	}
+	sort.Strings(instanceNames)
+
+	var failures []error
+	for _, wsName := range webspaceNames {
+		oldWS := oldCfg.Webspaces[wsName]
+		newWS := newCfg.Webspaces[wsName]
+		for _, instance := range instanceNames {
+			wasParticipating := correlate.ParticipatesIn(oldWS, instance)
+			nowParticipating := correlate.ParticipatesIn(newWS, instance)
+			if wasParticipating && !nowParticipating {
+				if err := s.idx.ReplaceWebspaceSourceItems(ctx, wsName, instance, nil); err != nil {
+					failures = append(failures, fmt.Errorf("clear webspace %q source %q: %w", wsName, instance, err))
+				}
+			}
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // cleanupRemovedInstances performs the D-07 index cleanup for every
