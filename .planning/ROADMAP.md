@@ -387,7 +387,7 @@ Notes:
 **Goal:** Phase 7's UAT items are permanent, automated regression armor — a Playwright suite drives a real browser against the shipped kernel binary serving its embedded SPA, hermetically (temp config, ephemeral port, mock-shaped plugins, zero credentials), and GitHub Actions runs it on every push and PR to main
 **Requirements**: No REQUIREMENTS.md ID maps to this phase — it is test infrastructure for behaviour Phase 7 already shipped. `07.1-CONTEXT.md`'s locked decisions D-01…D-15 are the authoritative scope source; each plan's `requirements` frontmatter lists the D-IDs it implements.
 **Depends on:** Phase 7
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 **Success Criteria** (what must be TRUE):
 
@@ -400,7 +400,7 @@ Notes:
 Plans:
 **Wave 1**
 
-- [ ] 07.1-01-PLAN.md — Tracer: Playwright harness, hermetic kernel fixture, `make e2e` (wave 1)
+- [x] 07.1-01-PLAN.md — Tracer: Playwright harness, hermetic kernel fixture, `make e2e` (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
