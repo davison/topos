@@ -15,32 +15,55 @@
 	// 'loading' while the redirect decision is being made (renders the
 	// existing Skeleton treatment, unchanged from the retired page, so a
 	// slow kernel never flashes the empty state on its way to a real
-	// target); 'error' when the config request itself fails (existing
-	// kernel-unreachable copy, unchanged); 'empty' when the kernel reports
-	// zero webspaces — the only state this component actually renders
-	// content for, since every other outcome navigates away via goto
-	// before ever reaching here.
+	// target); 'error' means the config REQUEST ITSELF failed — never an
+	// exception raised while processing an already-successful response
+	// (07-12-PLAN.md Task 2, closes 07-UAT.md G-07-4's client-side half:
+	// .planning/debug/root-empty-state-service-error.md confirmed the
+	// kernel answered 200 OK the whole time in that defect, so this phase
+	// must never be reachable by a downstream bug lying about the cause);
+	// 'empty' when the kernel reports zero webspaces — the only state this
+	// component actually renders content for, since every other outcome
+	// navigates away via goto before ever reaching here.
 	let phase: 'loading' | 'error' | 'empty' = $state('loading');
 	let configResponse = $state<ConfigResponse | null>(null);
 	let createOpen = $state(false);
 
 	onMount(async () => {
+		// This is the ONLY catch on this route, and it wraps ONLY the
+		// request itself — nothing else goes inside it (07-12-PLAN.md Task
+		// 2). A downstream bug in the processing below (reading the
+		// response, resolving the redirect target, navigating) must never
+		// fall into this catch and render the service-unreachable copy:
+		// that is exactly the mechanism that turned a one-line null
+		// dereference (Object.keys(null) on a `webspaces: null` response)
+		// into a reported "the service didn't respond" blocker with no way
+		// forward, while the kernel was answering 200 OK the entire time.
+		let res: ConfigResponse;
 		try {
-			const res = await getConfig();
-			configResponse = res;
-			const webspaceNames = Object.keys(res.config.webspaces);
-			const target = resolveRedirectTarget(webspaceNames, readLastWebspace());
-			if (target !== null) {
-				// replaceState so the redirect itself never sits in the back
-				// history — pressing back from the destination webspace must
-				// not bounce through this route again.
-				await goto(`/w/${encodeURIComponent(target)}`, { replaceState: true });
-				return;
-			}
-			phase = 'empty';
+			res = await getConfig();
 		} catch {
 			phase = 'error';
+			return;
 		}
+
+		configResponse = res;
+		// Defensive fallback to {} before reading keys. 07-12-PLAN.md Task 1
+		// makes the kernel's own GET /api/config response non-null for this
+		// field, so this fallback is unreachable against a matching kernel
+		// binary — it stays as defence in depth (the same discipline
+		// participation.ts's readers already follow): a user may run this
+		// SPA build against an older kernel binary, and unreachable is not
+		// the same as impossible.
+		const webspaceNames = Object.keys(res.config.webspaces ?? {});
+		const target = resolveRedirectTarget(webspaceNames, readLastWebspace());
+		if (target !== null) {
+			// replaceState so the redirect itself never sits in the back
+			// history — pressing back from the destination webspace must
+			// not bounce through this route again.
+			await goto(`/w/${encodeURIComponent(target)}`, { replaceState: true });
+			return;
+		}
+		phase = 'empty';
 	});
 
 	async function handleCreated(name: string) {
