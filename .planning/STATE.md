@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: webspace-builder-ui
 status: executing
-stopped_at: "Completed 07-11-PLAN.md — closed 07-UAT.md G-07-3: kernel accepts an empty webspace shell, correlates nothing, and the create-then-add-first-source sequence round-trips through the real save path"
-last_updated: "2026-08-09T12:01:53.475Z"
+last_updated: "2026-08-09T12:22:23.474Z"
 last_activity: 2026-08-09
-last_activity_desc: Phase 07 execution started
 progress:
-  total_phases: 7
+  total_phases: 9
   completed_phases: 6
   total_plans: 53
-  completed_plans: 50
+  completed_plans: 51
+  percent: 67
 ---
 
 # Project State
@@ -28,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 2 of 14
+Plan: 3 of 14
 Status: Ready to execute
-Last activity: 2026-08-09 — Phase 07 execution started
+Last activity: 2026-08-09
 
-Progress: [█████████░] 94%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -104,6 +101,7 @@ Progress: [█████████░] 94%
 | Phase 07 P09 | 17min | 2 tasks | 2 files |
 | Phase 07 P10 | ~15min | 2 tasks | 2 files |
 | Phase 07 P11 | 45min | 3 tasks | 14 files |
+| Phase 07 P13 | ~18min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -217,6 +215,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-10]: Apply's post-Reconcile region collapsed to one shared commitGeneration call and one errors.Join-based error return; cleanupRemovedInstances extracted and runs unconditionally before the match-vocabulary check, per-instance failures collected rather than returned early
 - [Phase ?]: [Phase 07-11]: D-20 — empty webspace shell (no keywords/sources/match) accepted by config.Validate and correlates nothing; validateFallbackCoverage/Participates unchanged, shell exemption short-circuits before either is reached
 - [Phase ?]: [Phase 07-11]: Two pre-existing config_test.go tests (TestLoad_ZeroKeywordsFails, TestLoad_WebspaceWithNeitherKeywordsNorMatchFails) encoded exactly the pre-D-20 fixture the plan's own must_haves require to load — updated in place (Rule 1), documented as a deviation since it contradicts the plan's blanket 'do not modify' instruction
+- [Phase ?]: [Phase 07-13]: Required flags re-derived by reading all four plugins' own pre-Serve guards (not just the two the UAT report named) — Signal's path and Proton's webmail_base_url join the required set; only Signal's path gets a seeded default since Proton's is installation-specific
+- [Phase ?]: [Phase 07-13]: Enforcement lives in three pure helper functions called from each of the three submit handlers' own bodies (AddSourceModal's handleConnectNext/saveAnyway, EditSourceModal's submitConnection) rather than inside the shared ConnectionForm component
+- [Phase ?]: [Phase 07-13]: kernel/pluginhost.launch's stderrTail capture is bounded at 4 KiB, mutex-guarded, front-discard, and read only after client.Kill() returns — covers boot-time/hot-apply launches identically to UI trial launches since all three share launch()
 
 ### Pending Todos
 
@@ -253,6 +254,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T12:01:53.456Z
-Stopped at: Completed 07-11-PLAN.md — closed 07-UAT.md G-07-3: kernel accepts an empty webspace shell, correlates nothing, and the create-then-add-first-source sequence round-trips through the real save path
+Last session: 2026-08-09T12:22:23.464Z
+Stopped at: Completed 07-13-PLAN.md — closed 07-UAT.md G-07-5: blank required connection fields now guarded at every submit path, and pre-handshake plugin fatals surface their own stderr line
 Resume file: None
