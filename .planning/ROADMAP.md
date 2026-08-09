@@ -384,14 +384,33 @@ Notes:
 
 ### Phase 07.1: Browser E2E Harness (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Phase 7's UAT items are permanent, automated regression armor — a Playwright suite drives a real browser against the shipped kernel binary serving its embedded SPA, hermetically (temp config, ephemeral port, mock-shaped plugins, zero credentials), and GitHub Actions runs it on every push and PR to main
+**Requirements**: No REQUIREMENTS.md ID maps to this phase — it is test infrastructure for behaviour Phase 7 already shipped. `07.1-CONTEXT.md`'s locked decisions D-01…D-15 are the authoritative scope source; each plan's `requirements` frontmatter lists the D-IDs it implements.
 **Depends on:** Phase 7
-**Plans:** 0 plans
+**Plans:** 6 plans
+
+**Success Criteria** (what must be TRUE):
+
+  1. `make e2e` runs a real Chromium against the built `topos serve` binary and its embedded SPA, with no credentials, no live source and no C toolchain
+  2. Each spec file gets its own kernel on its own ephemeral port with its own temp `config.toml` and index DB, and can never reach the operator's real config, index or plugin binaries
+  3. 07-UAT.md items 1–7 and 10 exist as specs traceable to their item numbers, plus a core-journey smoke set (stream → detail → search → filter)
+  4. GitHub Actions runs Go tests, svelte-check, vitest and the e2e suite on push and PR to main, Chromium only, zero retries, traces and screenshots on failure
+  5. `scripts/e2e-smoke.sh` and `make smoke` are retired, their portable guards having reappeared hermetically in the suite first
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 07.1 to break down)
+- [ ] 07.1-01-PLAN.md — Tracer: Playwright harness, hermetic kernel fixture, `make e2e` (wave 1)
+- [ ] 07.1-02-PLAN.md — The `mockstrict` e2e-only plugin and its SPA connection-field row (wave 2)
+- [ ] 07.1-03-PLAN.md — Core-journey smoke set; absorbs the retiring smoke script's portable guards (wave 2)
+- [ ] 07.1-04-PLAN.md — UAT items 1–4 as specs (wave 2)
+- [ ] 07.1-05-PLAN.md — UAT items 5, 6, 7 and 10 as specs (wave 3)
+- [ ] 07.1-06-PLAN.md — First CI workflow, retire `make smoke`, record the standing rule (wave 3)
+
+Notes:
+
+- Inserted urgent, before Phase 8: WhatsApp work churns the stream and detail-pane surfaces this suite guards, so the armor has to exist first.
+- UAT items 8–9 (SIGKILL timing windows) stay manual and remain an accepted risk — not browser-automatable, unchanged from Phase 7's verdict.
+- **Standing rule (D-11):** from Phase 8 onward, any phase that touches the UI extends the Playwright suite as part of its definition of done, and any browser-automatable UAT item becomes a spec rather than staying a manual check. Plan 07.1-06 records this in `docs/testing.md` and `.claude/CLAUDE.md`.
 
 ### Phase 8: WhatsApp Conversations (Managed Risk)
 
@@ -413,6 +432,7 @@ Notes:
 - Deliberately last. WhatsApp has no official personal-use API and the linked-device route can be de-linked or banned without warning; sequencing it after every other source means v1 is already useful if this plugin has to be dropped or shipped as best-effort.
 - The official WhatsApp Desktop app is a thin mirror, not a durable store — this plugin is an active linked-device client with its own event-stream persistence, not a file reader.
 - Shifted from Phase 5 to Phase 8 on 2026-08-05; now depends on Phase 4 (chat renderer) and Phase 5 (per-instance matching contract it must implement).
+- Phase 07.1's standing rule (D-11) applies here: any UI work in this phase extends the Playwright e2e suite as part of its definition of done — see `docs/testing.md`.
 - Research: HIGH — do not plan on assumptions. Spike must answer: linking stability and ban-risk patterns, how much history backfills on first link, event-stream persistence architecture, and de-link/re-link recovery.
 
 ## Progress
