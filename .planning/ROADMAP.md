@@ -370,7 +370,7 @@ Plans:
 
 **Wave 12** *(UAT round-2 gap closure, blocked on Wave 11 completion)*
 
-- [ ] 07-15-PLAN.md — Gap closure (07-UAT.md G-07-1): a webspace exists because it is configured, not because it has been synced — one config-aware existence gate for the stream, search and agent surfaces, and a definitive not-found answer that no longer reads as a service outage
+- [x] 07-15-PLAN.md — Gap closure (07-UAT.md G-07-1): a webspace exists because it is configured, not because it has been synced — one config-aware existence gate for the stream, search and agent surfaces, and a definitive not-found answer that no longer reads as a service outage
 
 **Wave 13** *(UAT round-2 gap closure, blocked on Wave 12 completion — shares the webspace route file with 07-15)*
 
@@ -417,7 +417,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 14/14 | In Progress|  |
+| 7. Webspace Builder UI | 15/16 | In Progress|  |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
