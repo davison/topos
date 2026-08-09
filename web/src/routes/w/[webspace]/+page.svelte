@@ -176,12 +176,31 @@
 			try {
 				const source = configResponse.config.sources[name];
 				const resp = await describePlugin({ plugin: source.plugin, source });
+				// Stale-response guard (07.1-05-PLAN.md, closes 07-UAT.md
+				// item 10's "carried advisory" — the chip-edit describePlugin
+				// race). editVocabulary/editInstance/editMode are single
+				// shared $state values: without this check, a SLOWER click's
+				// describePlugin response resolving AFTER a FASTER, later
+				// click has already opened a different chip's edit session
+				// would land here and overwrite that session's already-
+				// showing vocabulary — reverting the visibly-open modal back
+				// to the first chip's fields even though the user is now
+				// looking at the second chip's. Discarding a response whose
+				// own (name, kind) no longer matches the CURRENT edit
+				// session is what makes "the second click's state always
+				// wins" true both immediately and after the slower response
+				// lands, not merely at the moment of the second click.
+				if (editInstance !== name || editMode !== kind) return;
 				editVocabulary = resp.match_vocabulary;
 			} catch {
 				// Match settings can still be viewed/edited against whatever
 				// vocabulary resolved (possibly none) — a describe failure
 				// here is not fatal, it just means the form renders no
-				// fields until the instance can connect again.
+				// fields until the instance can connect again. Same
+				// staleness guard as the success path above — a failure
+				// resolving after the session has moved on must not force
+				// editOpen on the now-current (different) session either.
+				if (editInstance !== name || editMode !== kind) return;
 			}
 		}
 		editOpen = true;
