@@ -152,6 +152,65 @@ async function waitForKernelReady(
 	);
 }
 
+const SYNC_TIMEOUT_MS = 30_000;
+
+export interface WaitForFirstSyncOptions {
+	/** Deadline in ms — defaults to 30s. */
+	timeoutMs?: number;
+	/** A KernelFixture (or any object with a `logs()` method) to include captured kernel output in a timeout error. */
+	logs?: () => string;
+}
+
+/**
+ * waitForFirstSync polls GET /api/sources until every instance named in
+ * `instanceIds` reports `syncing: false` AND a non-empty `last_status`,
+ * bounded by opts.timeoutMs (default 30s). "Kernel is listening"
+ * (waitForKernelReady, above) and "the first sync landed" are two
+ * different events — kernel/syncer/scheduler.go's Scheduler.Run fires
+ * each configured source's first refresh immediately at boot, so the race
+ * between a spec's first assertion and that refresh landing is real, not
+ * theoretical; skipping this gate is what turns into an intermittent
+ * empty-stream flake. Fails loud with the captured kernel logs (when
+ * opts.logs is supplied) and the last response body on exhaustion.
+ */
+export async function waitForFirstSync(
+	baseURL: string,
+	instanceIds: string[],
+	opts: WaitForFirstSyncOptions = {}
+): Promise<void> {
+	const timeoutMs = opts.timeoutMs ?? SYNC_TIMEOUT_MS;
+	const deadline = Date.now() + timeoutMs;
+	let lastBody: unknown = null;
+	let lastError: unknown = null;
+
+	while (Date.now() < deadline) {
+		try {
+			const res = await fetch(`${baseURL}/api/sources`);
+			if (res.ok) {
+				const body = (await res.json()) as {
+					sources?: Array<{ name: string; syncing: boolean; last_status: string }>;
+				};
+				lastBody = body;
+				const byName = new Map((body.sources ?? []).map((s) => [s.name, s]));
+				const allLanded = instanceIds.every((id) => {
+					const s = byName.get(id);
+					return s !== undefined && s.syncing === false && s.last_status !== '';
+				});
+				if (allLanded) return;
+			} else {
+				lastError = new Error(`unexpected status ${res.status}`);
+			}
+		} catch (err) {
+			lastError = err;
+		}
+		await sleep(POLL_INTERVAL_MS);
+	}
+
+	throw new Error(
+		`waitForFirstSync: source(s) [${instanceIds.join(', ')}] did not report a landed first sync within ${timeoutMs}ms.\nlast response body: ${JSON.stringify(lastBody)}\nlast error: ${String(lastError)}\n--- captured kernel output ---\n${opts.logs ? opts.logs() : '(no logs supplied)'}`
+	);
+}
+
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
 	return new Promise((resolve) => {
 		if (child.exitCode !== null || child.signalCode !== null) {
@@ -216,7 +275,7 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	writeConfig(configDir, doc);
 	const configPath = join(configDir, 'config.toml');
 
-	linkPluginBinaries(pluginsDirPath, ['topos-plugin-mock']);
+	linkPluginBinaries(pluginsDirPath, configSpec.pluginBinaries ?? ['topos-plugin-mock']);
 
 	const logBuffer = new BoundedLogBuffer();
 	const child = spawn(KERNEL_BIN, ['serve'], {

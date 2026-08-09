@@ -33,6 +33,12 @@ export interface FixtureConfigSpec {
 	sources?: FixtureSourceSpec[];
 	webspaces?: FixtureWebspaceSpec[];
 	syncInterval?: string;
+	// pluginBinaries: forwarded by the kernel fixture to linkPluginBinaries
+	// (plugin-binaries.ts) — defaults to ['topos-plugin-mock'] so a spec
+	// that only needs the reference mock plugin names nothing extra. A
+	// spec needing the Plan 07.1-02 e2e plugin (or any future plugin type
+	// this harness grows) names it here without editing this fixture file.
+	pluginBinaries?: string[];
 }
 
 export interface BuildConfigOptions {
@@ -145,4 +151,67 @@ function buildWebspaceEntry(ws: FixtureWebspaceSpec): Record<string, unknown> {
 /** writeConfig serialises doc with smol-toml's stringify and writes config.toml inside configDir. */
 export function writeConfig(configDir: string, doc: Record<string, unknown>): void {
 	writeFileSync(join(configDir, 'config.toml'), stringify(doc), 'utf-8');
+}
+
+// --- Downstream-spec builder helpers (07.1-01-PLAN.md Task 3) -----------
+//
+// These cover every fixture shape D-03 names (07.1-CONTEXT.md): N mock
+// instances, N webspaces sharing a keywords fallback, a D-20 empty shell,
+// and a webspace with an explicit sources allowlist + per-instance match
+// blocks. Every one of them returns plain FixtureSourceSpec/
+// FixtureWebspaceSpec values for the caller to spread into its own
+// FixtureConfigSpec — buildConfig stays the ONE place index.path/
+// plugins.dir get written, so a helper can never bypass that guard
+// (T-07.1-01).
+
+/**
+ * mockInstances returns n topos-plugin-mock source specs with
+ * deterministic ids ("mock-01" .. "mock-NN") and display names — the
+ * fixture shape UAT item 7's "15+ instances" scaling spec needs.
+ */
+export function mockInstances(n: number): FixtureSourceSpec[] {
+	const specs: FixtureSourceSpec[] = [];
+	for (let i = 1; i <= n; i++) {
+		const suffix = String(i).padStart(2, '0');
+		specs.push({
+			id: `mock-${suffix}`,
+			plugin: 'topos-plugin-mock',
+			displayName: `Mock ${suffix}`
+		});
+	}
+	return specs;
+}
+
+/**
+ * webspacesWithKeywords returns one FixtureWebspaceSpec per name in
+ * `names`, each sharing the same `keywords` fallback list.
+ */
+export function webspacesWithKeywords(names: string[], keywords: string[]): FixtureWebspaceSpec[] {
+	return names.map((name) => ({ name, keywords }));
+}
+
+/**
+ * emptyShellWebspace returns a webspace declaring none of keywords,
+ * sources or match — D-20's "a webspace that exists and matches nothing
+ * yet" (07-11-PLAN.md, kernel/config.Webspace.IsEmptyShell), the exact
+ * document web/src/lib/config-edit.ts's addWebspace() PUTs as the
+ * create-webspace modal's first write.
+ */
+export function emptyShellWebspace(name: string): FixtureWebspaceSpec {
+	return { name };
+}
+
+/**
+ * attachedWebspace returns a webspace whose `sources` allowlist names
+ * exactly `instanceIds` and whose `match` map carries a per-instance
+ * block — the D-02 explicit-match-block shape, for the uat-03/06/07
+ * fixtures that need a webspace pre-attached to specific instances rather
+ * than relying on the keywords fallback.
+ */
+export function attachedWebspace(
+	name: string,
+	instanceIds: string[],
+	match: Record<string, Record<string, string[]>>
+): FixtureWebspaceSpec {
+	return { name, sources: instanceIds, match };
 }
