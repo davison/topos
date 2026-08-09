@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"moduleResolution": "bundler",
+		"module": "esnext",
+		"target": "es2022",
+		"noEmit": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true
+		// No "types": ["node"] here: no @types/node package is installed in
+		// this project (Task 1's package-legitimacy gate scoped its
+		// approval to exactly @playwright/test, playwright and smol-toml —
+		// see 07.1-01-SUMMARY.md). e2e-builtins.d.ts supplies narrow ambient
+		// declarations for the Node builtins/globals this tree actually
+		// uses instead, picked up automatically via the "include" glob
+		// below.
+	},
+	"include": ["../playwright.config.ts", "**/*.ts"]
+}

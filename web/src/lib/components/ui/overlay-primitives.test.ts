@@ -238,10 +238,20 @@ describe('T-07-SC: web/package.json gained no new dependency for these three pri
 		].sort();
 		const expectedDevDependencies = [
 			'@internationalized/date',
+			// @playwright/test, playwright and smol-toml (07.1-01-PLAN.md
+			// Task 1/2): the Phase 07.1 browser e2e harness's own
+			// devDependencies, cleared through that plan's dedicated
+			// package-legitimacy checkpoint — not a regression of this
+			// test's original "these three overlay primitives added no new
+			// dependency" guarantee, which is about THIS file's own scope
+			// (dialog/dropdown-menu/alert-dialog) and stays true for it.
+			'@playwright/test',
 			'@sveltejs/adapter-static',
 			'@sveltejs/kit',
 			'@sveltejs/vite-plugin-svelte',
 			'@tailwindcss/vite',
+			'playwright',
+			'smol-toml',
 			'svelte',
 			'svelte-check',
 			'tailwindcss',

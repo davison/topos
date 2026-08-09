@@ -1,0 +1,99 @@
+// Minimal ambient type declarations for the Node.js builtins and runtime
+// globals the Playwright fixture/spec tree (web/e2e/) uses. No @types/node
+// package is installed in this project — Task 1's package-legitimacy gate
+// scoped its approval to exactly @playwright/test, playwright and
+// smol-toml (see 07.1-01-SUMMARY.md); adding a fourth, unapproved package
+// mid-task would bypass that gate outright. This mirrors
+// web/src/lib/node-builtins.d.ts's own established "narrow declarations
+// for exactly what's imported, nothing more" discipline (Phase 03-06),
+// scoped to this separate e2e/tsconfig.json root rather than the
+// SvelteKit app's.
+declare namespace NodeJS {
+	// Opaque handle type — callers never read fields off it, only pass it
+	// straight back into clearTimeout/clearInterval.
+	interface Timeout {}
+}
+
+declare var process: {
+	env: Record<string, string | undefined>;
+	platform: string;
+	kill(pid: number, signal?: string | number): boolean;
+};
+
+declare function setTimeout(handler: () => void, timeoutMs?: number): NodeJS.Timeout;
+declare function clearTimeout(handle: NodeJS.Timeout): void;
+declare function setInterval(handler: () => void, timeoutMs?: number): NodeJS.Timeout;
+declare function clearInterval(handle: NodeJS.Timeout): void;
+
+// Node 18+ ships a global fetch — narrowed here to exactly the shape this
+// fixture tree reads off a response (status/ok/json()).
+declare function fetch(input: string, init?: { method?: string }): Promise<{
+	ok: boolean;
+	status: number;
+	json(): Promise<unknown>;
+}>;
+
+declare var console: {
+	log(...args: unknown[]): void;
+	error(...args: unknown[]): void;
+};
+
+declare module 'node:fs' {
+	export function mkdtempSync(prefix: string): string;
+	export function mkdirSync(path: string, options?: { recursive?: boolean }): string | undefined;
+	export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
+	export function existsSync(path: string): boolean;
+	export function symlinkSync(target: string, path: string): void;
+	export function readFileSync(path: string, encoding: string): string;
+	export function writeFileSync(path: string, data: string, encoding?: string): void;
+	export function readdirSync(path: string): string[];
+}
+
+declare module 'node:path' {
+	export function join(...segments: string[]): string;
+	export function resolve(...segments: string[]): string;
+	export function dirname(path: string): string;
+	export function isAbsolute(path: string): boolean;
+}
+
+declare module 'node:os' {
+	export function tmpdir(): string;
+}
+
+declare module 'node:url' {
+	export function fileURLToPath(url: string): string;
+}
+
+declare module 'node:net' {
+	export interface AddressInfo {
+		port: number;
+		address: string;
+		family: string;
+	}
+	export interface Server {
+		listen(port: number, host: string, callback: () => void): Server;
+		address(): AddressInfo | string | null;
+		close(callback?: (err?: Error) => void): Server;
+		on(event: string, listener: (err: Error) => void): Server;
+	}
+	export function createServer(): Server;
+}
+
+declare module 'node:child_process' {
+	export interface ChildProcessOutputStream {
+		on(event: 'data', listener: (chunk: { toString(): string }) => void): void;
+	}
+	export interface ChildProcess {
+		pid?: number;
+		exitCode: number | null;
+		signalCode: string | null;
+		stdout: ChildProcessOutputStream | null;
+		stderr: ChildProcessOutputStream | null;
+		once(event: 'exit', listener: () => void): void;
+	}
+	export interface SpawnOptions {
+		detached?: boolean;
+		env?: Record<string, string | undefined>;
+	}
+	export function spawn(command: string, args: string[], options?: SpawnOptions): ChildProcess;
+}

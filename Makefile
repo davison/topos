@@ -1,4 +1,15 @@
-.PHONY: build test proto smoke dev plugins signal test-signal dev-check
+.PHONY: build test proto smoke dev plugins signal test-signal dev-check e2e
+
+# E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
+# "chromium" (the default, and the only engine CI gates on, D-14) or
+# "firefox"/"webkit" for a manual cross-engine pass
+# (`make e2e E2E_PROJECT=firefox`). E2E_PW_INSTALL_FLAGS is left empty by
+# default so a local run never invokes the sudo-requiring system-dependency
+# installer; CI overrides it to "--with-deps". E2E_ARGS is a passthrough
+# for extra `playwright test` flags (e.g. --grep).
+E2E_PROJECT ?= chromium
+E2E_PW_INSTALL_FLAGS ?=
+E2E_ARGS ?=
 
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
 # `dev` recipe's pre-flight port guard and readiness gate below. The
@@ -122,6 +133,26 @@ smoke: build
 # ever binds ephemeral ports it selects itself.
 dev-check:
 	./scripts/dev-guard-smoke.sh
+
+# e2e builds a fresh SPA, embeds it into a freshly built kernel binary,
+# builds ONLY the mock plugin (deliberately NOT the "plugins" target's full
+# real-plugin set — this target does not depend on "plugins" at all,
+# because that target chains to the cgo "signal" target, which needs the
+# system sqlcipher library, and this harness is cgo-free by design, D-07),
+# ensures the requested Playwright browser is installed, then runs the
+# suite against the built artifact. The SPA build MUST precede the Go
+# build: bin/topos go:embeds kernel/webui/build at compile time (see the
+# "build" target's own comment above), so building the kernel first would
+# embed whatever stale SPA happens to be on disk and the whole suite would
+# then test yesterday's UI while reporting green.
+e2e:
+	npm --prefix web ci
+	npm --prefix web run build
+	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
+	mkdir -p bin/plugins
+	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
+	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
+	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
