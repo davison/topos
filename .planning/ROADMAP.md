@@ -398,11 +398,18 @@ Notes:
   5. `scripts/e2e-smoke.sh` and `make smoke` are retired, their portable guards having reappeared hermetically in the suite first
 
 Plans:
+**Wave 1**
 
 - [ ] 07.1-01-PLAN.md — Tracer: Playwright harness, hermetic kernel fixture, `make e2e` (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 07.1-02-PLAN.md — The `mockstrict` e2e-only plugin and its SPA connection-field row (wave 2)
 - [ ] 07.1-03-PLAN.md — Core-journey smoke set; absorbs the retiring smoke script's portable guards (wave 2)
 - [ ] 07.1-04-PLAN.md — UAT items 1–4 as specs (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 07.1-05-PLAN.md — UAT items 5, 6, 7 and 10 as specs (wave 3)
 - [ ] 07.1-06-PLAN.md — First CI workflow, retire `make smoke`, record the standing rule (wave 3)
 
