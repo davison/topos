@@ -320,6 +320,31 @@ func (cfg *Config) validateWebspaces() error {
 		}
 		ws := cfg.Webspaces[name]
 
+		// D-20 (07-11-PLAN.md, closes 07-UAT.md G-07-3): an empty webspace
+		// shell — no keywords, no match blocks, no sources allowlist — is
+		// a legitimate, loadable config state meaning "a webspace that
+		// exists and matches nothing yet." It is the exact document
+		// web/src/lib/config-edit.ts's addWebspace() PUTs as the
+		// create-webspace modal's first (of two) writes; 07-03/07-04's
+		// D-14 flow populates match input in a LATER, separate save.
+		//
+		// Skipping the whole loop body here — rather than adding a branch
+		// inside validateFallbackCoverage below — is deliberate:
+		// validateFallbackCoverage would otherwise independently reject a
+		// shell on any install carrying at least one [sources.*] block,
+		// because an empty sources allowlist means every configured
+		// instance participates (Phase 5 D-03, Webspace.Participates), so
+		// a shell looks to that check like a webspace full of
+		// participants with no coverage for any of them. Skipping the
+		// loop body is the only placement that spares the shell without
+		// weakening a single rule for any other webspace shape — a
+		// webspace with a non-empty sources allowlist and no match input
+		// is NOT a shell (IsEmptyShell requires all three collections
+		// empty) and still fails below, exactly as it does today.
+		if ws.IsEmptyShell() {
+			continue
+		}
+
 		if len(ws.Keywords) == 0 && len(ws.Match) == 0 {
 			return fmt.Errorf("config: webspace %q declares neither a keywords fallback nor any match block — declare `keywords = [...]`, a `[webspaces.%s.match.<instance>]` block, or both", name, name)
 		}

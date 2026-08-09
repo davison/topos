@@ -444,6 +444,28 @@ func TestMatchFieldsFor_DeallowlistedInstanceDoesNotParticipate(t *testing.T) {
 	}
 }
 
+// TestMatchFieldsFor_NoBlockAndNoKeywordsDoesNotParticipate proves D-20's
+// safety rule (07-11-PLAN.md): an instance with neither an explicit match
+// block nor a non-empty keywords fallback does not participate at all —
+// Match is never called with a field map whose every value list would
+// otherwise be empty. Before D-20 this state was unreachable
+// (validateFallbackCoverage guaranteed it away); against pre-D-20 code
+// matchFieldsFor returns participates == true with fields fanned from an
+// empty Keywords slice (every value list empty) — exactly the shape a
+// plugin could read as "no constraint" and answer with its entire corpus.
+func TestMatchFieldsFor_NoBlockAndNoKeywordsDoesNotParticipate(t *testing.T) {
+	src := &fakeSource{name: "home-email", vocabulary: []string{"folders"}}
+	ws := config.Webspace{}
+
+	fields, participates := matchFieldsFor(ws, src)
+	if participates {
+		t.Fatalf("expected an instance with no block and no keywords fallback to not participate, got fields %+v", fields)
+	}
+	if fields != nil {
+		t.Errorf("expected a nil fields map for a non-participating instance, got %+v", fields)
+	}
+}
+
 // TestSyncSource_DeallowlistedInstanceRowsCleared proves the ROADMAP
 // success-criterion-3 guarantee end to end: when a webspace's sources
 // allowlist stops including a previously-participating instance, that

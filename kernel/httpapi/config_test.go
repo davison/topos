@@ -265,9 +265,15 @@ keywords = ["house-move"]
 
 	invalid := &config.Config{
 		Webspaces: map[string]config.Webspace{
-			// Neither a keywords fallback nor any match block — fails
-			// Validate's first structural check.
-			"broken": {},
+			// A non-empty sources allowlist disqualifies this from D-20's
+			// empty-webspace-shell exemption (07-11-PLAN.md;
+			// Webspace.IsEmptyShell requires ALL of keywords/sources/match
+			// to be empty) — neither a keywords fallback nor any match
+			// block — fails Validate's first structural check. A bare
+			// `{}` (no allowlist either) would now be a legitimate shell
+			// and load cleanly, which is no longer a usable "invalid"
+			// fixture for this test.
+			"broken": {Sources: []string{"placeholder"}},
 		},
 	}
 	wantErr := invalid.Validate(nil)
@@ -581,10 +587,14 @@ keywords = ["house-move"]
 	}
 
 	// Syntactically valid TOML, semantically invalid config: a webspace
-	// declaring neither a keywords fallback nor any match block.
+	// declaring a sources allowlist but neither a keywords fallback nor
+	// any match block. A bare `keywords = []` with no allowlist would now
+	// be a legitimate D-20 empty webspace shell (07-11-PLAN.md) and load
+	// cleanly, so the allowlist is what keeps this fixture invalid.
 	invalid := []byte(`
 [webspaces.house-move]
 keywords = []
+sources = ["placeholder"]
 `)
 	if err := os.WriteFile(cfgStore.Path(), invalid, 0o600); err != nil {
 		t.Fatalf("simulate invalid hand-edit: %v", err)

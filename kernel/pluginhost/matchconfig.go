@@ -111,11 +111,25 @@ func validateMatchBlockVocabulary(wsName string, ws config.Webspace, byInstance 
 // declare at least one field for the fallback to land in.
 func validateFallbackVocabulary(wsName string, ws config.Webspace, cfg *config.Config, byInstance map[string]*Plugin) error {
 	if len(ws.Keywords) == 0 {
-		// config.Validate's validateFallbackCoverage already guarantees
-		// every participating, block-less instance has a non-empty
-		// Keywords fallback to rely on; an empty Keywords list here means
-		// every participating instance has its own explicit block, already
-		// checked above.
+		// An empty Keywords list here is now reachable two ways (D-20,
+		// 07-11-PLAN.md — the second is new as of this decision):
+		//   1. Every participating instance has its own explicit match
+		//      block (already checked by validateMatchBlockVocabulary
+		//      above) — config.Validate's validateFallbackCoverage
+		//      guarantees every OTHER participating, block-less instance
+		//      has a non-empty Keywords fallback to rely on, for any
+		//      webspace validateFallbackCoverage actually inspects.
+		//   2. ws is a D-20 empty webspace shell (Webspace.IsEmptyShell):
+		//      no keywords, no match blocks, no sources allowlist.
+		//      config.Validate's validateWebspaces short-circuits a shell
+		//      BEFORE validateFallbackCoverage runs, so a shell has zero
+		//      match blocks and, under kernel/correlate.matchFieldsFor's
+		//      mirrored D-20 rule, zero participating instances at sync
+		//      time — there is nothing for the fallback to apply to
+		//      either way.
+		// Returning nil remains correct for both: case 1 has nothing left
+		// to check here, and case 2 has no participating instance to
+		// iterate.
 		return nil
 	}
 

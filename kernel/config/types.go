@@ -220,6 +220,31 @@ func (w Webspace) Participates(instance string) bool {
 	return false
 }
 
+// IsEmptyShell reports whether w is D-20's "empty webspace shell"
+// (07-11-PLAN.md, closes 07-UAT.md G-07-3): a webspace declaring none of
+// Keywords, Sources or Match. This is the exact document
+// web/src/lib/config-edit.ts's addWebspace() PUTs as the create-webspace
+// modal's first write — 07-03/07-04's D-14 two-write flow deliberately
+// creates an empty shell now and populates match input (and, per D-14,
+// the sources allowlist) in a LATER, separate save. A shell is a
+// legitimate, loadable config state meaning "a webspace that exists and
+// matches nothing yet."
+//
+// All three conditions are required — a webspace naming instances in
+// Sources while declaring no match input is NOT a shell. That shape is
+// the operator-typo signal "allowlisted a source and then told it
+// nothing to match" that config.Validate's validateWebspaces/
+// validateFallbackCoverage exist to reject loudly; widening this
+// predicate to two conditions would silently accept it instead.
+//
+// Filter is deliberately not considered: a permanent filter narrows a
+// stream at query time (D-16/D-17/D-18) and cannot itself make a
+// webspace match anything, so a webspace carrying only a filter and
+// nothing else is still a shell for matching purposes.
+func (w Webspace) IsEmptyShell() bool {
+	return len(w.Keywords) == 0 && len(w.Sources) == 0 && len(w.Match) == 0
+}
+
 const (
 	DefaultListen       = "127.0.0.1:7777"
 	DefaultIndexPath    = "~/.local/share/topos/index.db"

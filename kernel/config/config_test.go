@@ -85,17 +85,31 @@ listen = "127.0.0.1:7777"
 	}
 }
 
+// TestLoad_ZeroKeywordsFails pre-dates D-20 (07-11-PLAN.md, gap closure for
+// 07-UAT.md G-07-3) and pinned 05-03 D-01's original, unconditional
+// invariant: a webspace declaring an explicitly empty keywords list, with
+// no match block and no sources allowlist, failed load. D-20 deliberately
+// and knowingly supersedes that invariant for exactly this shape — a
+// webspace declaring NONE of keywords/sources/match is now a legitimate
+// "empty webspace shell" (Webspace.IsEmptyShell) that loads successfully,
+// because it is the literal document web/src/lib/config-edit.ts's
+// addWebspace() PUTs as the create-webspace modal's first write. This
+// test's assertion is updated (not deleted, so a future regression that
+// makes an explicit `keywords = []` behave differently from an omitted
+// `keywords` key is still caught here) to assert the new, correct
+// behaviour — see 07-11-SUMMARY.md's Deviations section for why this
+// pre-existing test body needed to change despite the plan's general
+// "don't touch existing test bodies" instruction: the plan's own must_haves
+// require exactly this fixture to load, which this test's pre-D-20
+// assertion directly contradicted.
 func TestLoad_ZeroKeywordsFails(t *testing.T) {
 	path := writeTempConfig(t, `
 [webspaces.house-move]
 keywords = []
 `)
 	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for zero keywords, got nil")
-	}
-	if !strings.Contains(err.Error(), "house-move") {
-		t.Errorf("expected error to name the webspace, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected an explicit empty keywords list with no match block and no sources allowlist to load as a D-20 empty webspace shell, got: %v", err)
 	}
 }
 
@@ -509,22 +523,25 @@ display_name = "Work Email"
 	}
 }
 
-// TestLoad_WebspaceWithNeitherKeywordsNorMatchFails proves D-06: a webspace
-// declaring neither a keywords fallback nor any match block fails config
-// load, naming the webspace and both accepted shapes.
+// TestLoad_WebspaceWithNeitherKeywordsNorMatchFails pre-dates D-20
+// (07-11-PLAN.md, gap closure for 07-UAT.md G-07-3) and pinned 05-03 D-06's
+// original invariant against this exact fixture: a webspace block with no
+// keys at all (no keywords, no match, no sources). D-20 deliberately
+// reclassifies precisely this shape as a legitimate "empty webspace shell"
+// (Webspace.IsEmptyShell) — see TestLoad_ZeroKeywordsFails's doc comment
+// for the full rationale, which applies identically here. This test's
+// assertion is updated to match: the fixture now loads successfully. D-06's
+// actual guard — a PARTICIPATING instance left uncovered — is still
+// enforced and still tested, by TestLoad_ParticipatingInstanceWithNoBlockAndEmptyKeywordsFails
+// and TestValidate_PartiallyCoveredWebspaceIsStillRejected (both configure
+// at least one source instance, which this fixture deliberately does not).
 func TestLoad_WebspaceWithNeitherKeywordsNorMatchFails(t *testing.T) {
 	path := writeTempConfig(t, `
 [webspaces.house-move]
 `)
 	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for a webspace declaring neither keywords nor a match block, got nil")
-	}
-	if !strings.Contains(err.Error(), "house-move") {
-		t.Errorf("expected error to name the webspace, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "keywords") || !strings.Contains(err.Error(), "match") {
-		t.Errorf("expected error to name both accepted shapes (keywords and match), got: %v", err)
+	if err != nil {
+		t.Fatalf("expected a webspace block with no keys at all to load as a D-20 empty webspace shell, got: %v", err)
 	}
 }
 
@@ -679,6 +696,112 @@ folders = ["Home"]
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for a participating instance with no block and no keywords fallback, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "work-email") {
+		t.Errorf("expected error to name the webspace and the uncovered instance, got: %v", err)
+	}
+}
+
+// TestValidate_EmptyWebspaceShellIsAccepted proves D-20 (07-11-PLAN.md,
+// closes 07-UAT.md G-07-3): a webspace declaring none of keywords, match
+// blocks, or a sources allowlist — the exact document
+// web/src/lib/config-edit.ts's addWebspace() PUTs as the create-webspace
+// modal's first write — validates cleanly on an installation that already
+// has configured source instances (every real installation past initial
+// setup). Against pre-D-20 code this fails with the line-323 message.
+func TestValidate_EmptyWebspaceShellIsAccepted(t *testing.T) {
+	t.Setenv("TEST_SHELL_URL", "http://x.lan")
+	t.Setenv("TEST_SHELL_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_SHELL_URL}"
+token = "${TEST_SHELL_TOKEN}"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_SHELL_URL}"
+token = "${TEST_SHELL_TOKEN}"
+
+[webspaces.new-project]
+`)
+	_, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected an empty webspace shell to validate cleanly on an install with configured sources, got: %v", err)
+	}
+}
+
+// TestValidate_EmptyWebspaceShellIsAcceptedWithZeroSourcesConfigured proves
+// D-20's first-run edge (KERN-08): a config with zero [sources.*] blocks at
+// all plus one shell webspace still validates — a first-run install can
+// create its first webspace before configuring any source.
+func TestValidate_EmptyWebspaceShellIsAcceptedWithZeroSourcesConfigured(t *testing.T) {
+	path := writeTempConfig(t, `
+[webspaces.new-project]
+`)
+	_, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected an empty webspace shell to validate cleanly on a first-run install with zero configured sources, got: %v", err)
+	}
+}
+
+// TestValidate_WebspaceWithAllowlistButNoMatchInputIsStillRejected proves
+// D-20's discriminator stays at exactly three conditions: a webspace that
+// names an instance in its sources allowlist but declares neither keywords
+// nor any match block is NOT a shell (a non-empty sources allowlist
+// disqualifies it) and still fails load with the existing message naming
+// both accepted shapes. Must pass BEFORE and AFTER D-20 — if it ever fails
+// after, the discriminator has been widened past its three conditions and
+// the operator-typo shape "allowlisted a source, told it nothing to match"
+// would be silently accepted.
+func TestValidate_WebspaceWithAllowlistButNoMatchInputIsStillRejected(t *testing.T) {
+	t.Setenv("TEST_ALW_URL", "http://x.lan")
+	t.Setenv("TEST_ALW_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_ALW_URL}"
+token = "${TEST_ALW_TOKEN}"
+
+[webspaces.house-move]
+sources = ["home-email"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected a webspace that allowlists a source but declares no keywords/match to still be rejected — this is NOT a shell, it is the operator-typo shape the loud error exists to catch")
+	}
+	if !strings.Contains(err.Error(), "house-move") {
+		t.Errorf("expected error to name the webspace, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "keywords") || !strings.Contains(err.Error(), "match") {
+		t.Errorf("expected error to name both accepted shapes (keywords and match), got: %v", err)
+	}
+}
+
+// TestValidate_PartiallyCoveredWebspaceIsStillRejected proves 05-03 D-06 is
+// preserved untouched by D-20: two configured instances, no keywords, a
+// match block for only one, no allowlist — still fails, naming the
+// uncovered instance. Must pass BEFORE and AFTER D-20.
+func TestValidate_PartiallyCoveredWebspaceIsStillRejected(t *testing.T) {
+	t.Setenv("TEST_PC_URL", "http://x.lan")
+	t.Setenv("TEST_PC_TOKEN", "tok")
+	path := writeTempConfig(t, `
+[sources.home-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_PC_URL}"
+token = "${TEST_PC_TOKEN}"
+
+[sources.work-email]
+plugin = "topos-plugin-proton"
+base_url = "${TEST_PC_URL}"
+token = "${TEST_PC_TOKEN}"
+
+[webspaces.house-move.match.home-email]
+folders = ["Home"]
+`)
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected a webspace covering only one of two configured instances (no allowlist, no keywords fallback) to still be rejected, naming the uncovered instance")
 	}
 	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "work-email") {
 		t.Errorf("expected error to name the webspace and the uncovered instance, got: %v", err)

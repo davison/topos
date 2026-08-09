@@ -146,7 +146,19 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 //  2. Explicit block (D-02): if ws.Match names src, that block is returned
 //     verbatim — it replaces the Keywords fallback outright for this
 //     instance; the two are never combined.
-//  3. Fallback (D-01): otherwise, ws.Keywords is fanned into every field of
+//  3. No match input at all (D-20, 07-11-PLAN.md): if src has no explicit
+//     block AND ws.Keywords is empty, src does not participate in ws —
+//     this is a SAFETY rule, not a tidiness one. Fanning an empty
+//     Keywords slice across src.MatchVocabulary() would hand the plugin a
+//     field map whose every value list is empty; a plugin that reads that
+//     shape as "no constraint" would answer with its entire corpus,
+//     writing the operator's whole mail or chat archive into a webspace
+//     they created and left empty. This state was unreachable before
+//     D-20 — config.Validate's validateFallbackCoverage guaranteed every
+//     participating, block-less instance had a non-empty Keywords
+//     fallback — and is reachable now that Webspace.IsEmptyShell makes an
+//     empty webspace shell a valid config state.
+//  4. Fallback (D-01): otherwise, ws.Keywords is fanned into every field of
 //     src's declared vocabulary (src.MatchVocabulary()) — a webspace
 //     declaring only `keywords` therefore reproduces the pre-Phase-5
 //     shared-keyword-list behaviour byte for byte.
@@ -162,6 +174,10 @@ func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string,
 
 	if block, ok := ws.Match[src.Name()]; ok {
 		return map[string][]string(block), true
+	}
+
+	if len(ws.Keywords) == 0 {
+		return nil, false
 	}
 
 	fields = make(map[string][]string, len(src.MatchVocabulary()))
