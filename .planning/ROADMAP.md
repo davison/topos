@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 11/14 plans executed
+**Plans**: 14/16 plans executed
 
 Plans:
 **Wave 1**
@@ -367,6 +367,14 @@ Plans:
 
 - [x] 07-12-PLAN.md — Gap closure (07-UAT.md G-07-4): the config API never serializes null for a collection the SPA iterates, and the root route reaches its "No webspaces yet" empty state instead of blaming the kernel for its own exception
 - [x] 07-14-PLAN.md — Gap closure (07-UAT.md G-07-6): "Remove from this webspace" writes a document that really narrows participation, and the chip row renders through one shared participation predicate so the chip actually disappears
+
+**Wave 12** *(UAT round-2 gap closure, blocked on Wave 11 completion)*
+
+- [ ] 07-15-PLAN.md — Gap closure (07-UAT.md G-07-1): a webspace exists because it is configured, not because it has been synced — one config-aware existence gate for the stream, search and agent surfaces, and a definitive not-found answer that no longer reads as a service outage
+
+**Wave 13** *(UAT round-2 gap closure, blocked on Wave 12 completion — shares the webspace route file with 07-15)*
+
+- [ ] 07-16-PLAN.md — Gap closure (07-UAT.md G-07-7): a save that narrows a webspace purges the de-participated join rows before it answers, so a removed source's items leave the stream with its chip — plus a sync-completion stream refetch as the fallback
 
 Notes:
 
