@@ -170,8 +170,16 @@ func TestMatch_AtLeastOneItemHasGroupAndOneDoesNot(t *testing.T) {
 }
 
 // TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition proves the
-// full-variant Fetch reports extracted text, no rendition available, and
-// a non-empty reason.
+// full-variant Fetch reports extracted text, no rendition, and
+// available=true — mirroring every other plugin's own convention for "no
+// rendition, but usable text" (plugins/proton, plugins/silverbullet):
+// Available answers "did Fetch return something to show", not "is a byte
+// rendition specifically present". kernel/httpapi/item.go's
+// Content.Available and web/src/lib/format.ts's detailPaneState both key
+// their branch choice directly off this field — a FULL response that
+// carries text but claims Available: false routes the detail pane to its
+// "no longer available" state and never surfaces that text at all, which
+// is what an earlier version of this test (and this plugin) got wrong.
 func TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition(t *testing.T) {
 	p := NewSourcePlugin()
 	resp, err := p.Fetch(context.Background(), &toposv1.FetchRequest{
@@ -183,11 +191,11 @@ func TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition(t *testing.T) {
 	if resp.GetText() == "" {
 		t.Error("expected non-empty extracted text")
 	}
-	if resp.GetAvailable() {
-		t.Error("expected available=false (the mock never has a rendition)")
+	if !resp.GetAvailable() {
+		t.Error("expected available=true (the mock has usable text, even with no rendition)")
 	}
-	if resp.GetUnavailableReason() == "" {
-		t.Error("expected a non-empty unavailable_reason")
+	if resp.GetMimeType() != "" {
+		t.Errorf("expected no rendition mime_type, got %q", resp.GetMimeType())
 	}
 }
 

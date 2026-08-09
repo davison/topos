@@ -136,10 +136,13 @@ var mockFullText = map[string]string{
 }
 
 // noRenditionReason is returned as FetchResponse.unavailable_reason for
-// every variant this plugin serves — the mock never has a byte rendition
-// to offer (no PDF, no image, no rendered HTML), which is itself a
-// normal, documented outcome (see the contract's Fetch section: available
-// = false with a populated reason is expected, not an error).
+// the PREVIEW and THUMBNAIL variants — the mock never has a byte
+// rendition to offer (no PDF, no image, no rendered HTML), which is
+// itself a normal, documented outcome (see the contract's Fetch section:
+// available = false with a populated reason is expected, not an error).
+// Not used by the FULL variant, which reports Available: true (its
+// extracted text is usable content even with no rendition — see Fetch,
+// below).
 const noRenditionReason = "the mock source plugin has no rendition to offer for any item"
 
 // provenanceFor builds the five plugin-populated provenance keys the
@@ -225,11 +228,21 @@ func labelsMatchAnyKeyword(labels, keywords []string) bool {
 // specific item — never from the sync/Match path (contract: "RPC
 // semantics: Fetch"). It is a single unary RPC: the full response is
 // returned in one message, not a stream (decision D-Task1, option-a).
-// This mock never has a byte rendition to offer for any variant, which is
-// itself a normal "available: false" outcome (see noRenditionReason,
-// above) — not an error. A source id that doesn't exist in mockItems maps
-// to a gRPC codes.NotFound error, exactly as the contract requires for a
-// source object that no longer exists.
+// This mock never has a byte RENDITION to offer for any variant — the
+// PREVIEW/THUMBNAIL cases below are a normal "available: false" outcome
+// (see noRenditionReason) — not an error. But the FULL variant DOES
+// return usable content (its extracted text), so it reports
+// Available: true there, mirroring every other plugin's own convention
+// for "no rendition, but text present" (plugins/proton's
+// plain-text-preferred path, plugins/silverbullet's fetchFull): Available
+// answers "did Fetch return something to show", not "is a rendition
+// specifically present" — kernel/httpapi/item.go's Content.Available and
+// web/src/lib/format.ts's detailPaneState both key their branch choice
+// directly off this field, so a FULL response that had text but claimed
+// Available: false would route to the pane's "no longer available" state
+// and never surface that text at all. A source id that doesn't exist in
+// mockItems maps to a gRPC codes.NotFound error, exactly as the contract
+// requires for a source object that no longer exists.
 func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	sourceID := req.GetSourceId()
 	it := findMockItem(sourceID)
@@ -240,10 +253,9 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 	switch req.GetVariant() {
 	case toposv1.ContentVariant_CONTENT_VARIANT_FULL:
 		return &toposv1.FetchResponse{
-			Available:         false,
-			UnavailableReason: noRenditionReason,
-			Text:              mockFullText[sourceID],
-			Provenance:        it.GetProvenance(),
+			Available:  true,
+			Text:       mockFullText[sourceID],
+			Provenance: it.GetProvenance(),
 		}, nil
 	case toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
 		// No text on these variants — matches the contract's "PREVIEW:
