@@ -21,3 +21,10 @@ kernel/webui/build/*
 /plugins/proton/proton
 /plugins/signal/signal
 /paperless
+
+# local TODOs and notes
+TODO.md
+
+# GSD local runtime state and researcher web-fetch cache
+.gsd/
+.planning/research/.cache/
