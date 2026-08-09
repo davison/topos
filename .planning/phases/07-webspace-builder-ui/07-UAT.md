@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 07-webspace-builder-ui
 source: [07-VERIFICATION.md]
 started: 2026-08-09T13:10:01Z
-updated: 2026-08-09T15:23:36Z
+updated: 2026-08-09T15:36:55Z
 ---
 
 ## Current Test
@@ -112,8 +112,23 @@ suites. Live re-confirmation of each fix is this round's tests 1–4.
   reason: "User reported: pass with one caveat. When the space is initially created, an error appears in the newly created space; 'Couldn't load this webspace — The topos service didn't respond — check that it's running, then retry.' upon hitting retry it correctly shows 'nothing here yet'"
   severity: minor
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Two co-causes (AND): (1) GET /api/webspaces/{name}/stream decides existence solely from the index's webspaces table (WebspaceExists = 'has completed at least one sync'; only insert site is sync-time ReplaceWebspaceSourceItems). A just-created webspace is config-known but index-unknown until the eager resync — dispatched by Supervisor.Apply as fire-and-forget goroutines — completes after PUT /api/config already returned 200, so the create flow's immediate stream GET deterministically 404s (webspace_not_found). Retry heals only because the resync's non-participation clear path upserts the row seconds later. (2) The /w/[webspace] load() collapses every getStream failure — including the typed ApiError('webspace_not_found') — into loadState='error', rendering StreamError's fixed 'The topos service didn't respond' copy. Corollary: with zero configured sources no sync ever runs, so on a fresh install the 404 would be permanent — Retry would never heal it."
+  artifacts:
+    - path: "kernel/httpapi/stream.go"
+      issue: "existence gate (lines ~72-80) is sync-history-derived (store.WebspaceExists), not config-derived, despite cfgStore being read in the handler"
+    - path: "kernel/index/store.go"
+      issue: "WebspaceExists semantics ('synced at least once') no longer match D-20's 'configured but never synced' legitimate state"
+    - path: "kernel/supervisor/supervisor.go"
+      issue: "fire-and-forget eager-resync goroutines (Apply ~399-406) open the post-200 window"
+    - path: "web/src/routes/w/[webspace]/+page.svelte"
+      issue: "load() misclassifies every ApiError (including webspace_not_found) as service-unreachable"
+    - path: "web/src/lib/components/StreamError.svelte"
+      issue: "fixed service-unreachable copy shown for all error classes"
+  missing:
+    - "Config-aware existence gate in StreamHandler: webspace present in cfgStore.Expanded().Webspaces → 200 + empty items even before first sync; 404 only when in neither config nor index"
+    - "Client load() branches on ApiError code so webspace_not_found renders a distinct not-found/empty state (mirrors 07-12's G-07-4 fix shape)"
+    - "Audit the same index-only gate in search.go:45 and agent.go:205"
+  debug_session: .planning/debug/new-webspace-transient-service-error.md
 
 - gap_id: G-07-7
   truth: "Removing a source from a webspace also removes that instance's items from the visible stream immediately, without a manual refresh"
@@ -121,8 +136,20 @@ suites. Live re-confirmation of each fix is this round's tests 1–4.
   reason: "User reported: when the source is removed, its items remain visible in the stream until a refresh occurs. This is counter-intuitive, they should be removed as the chip is removed. Otherwise it's a pass"
   severity: minor
   test: 4
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Stream membership is a sync-time artifact and its purge is dispatched fire-and-forget after the PUT response. The stream is served purely from the index's webspace_items join rows — the webspace's source allowlist is never applied at read time. Narrowing a webspace leaves the [sources.<id>] block intact, so Apply's synchronous removedInstances cleanup is (correctly) empty; the ONLY purge of stale (webspace, source) rows is correlate.SyncSource's participates==false branch (ReplaceWebspaceSourceItems(..., nil)), reachable only during a sync, which Supervisor.Apply dispatches as a detached goroutine after returning. The client's handleRemoveSource DOES refetch the stream immediately after the 200 but always beats the async purge, re-reading stale items; the WR-03 sync poll reloads only loadSources(), never load(), so nothing refetches the stream when the resync completes — items persist until manual refresh. Chip vs stream disagree because chips derive from the synchronously-swapped config while the stream derives from the not-yet-purged index."
+  artifacts:
+    - path: "kernel/supervisor/supervisor.go"
+      issue: "Apply (~399-406) defers the de-participation purge into fire-and-forget go coord.Refresh goroutines; PUT answers 200 before any purge completes"
+    - path: "kernel/correlate/correlate.go"
+      issue: "SyncSource (~88-103) is the sole purge site for de-participated (webspace, source) rows — only reachable during a sync; logic correct, timing is the defect"
+    - path: "kernel/httpapi/stream.go"
+      issue: "stream served purely from webspace_items with no read-time participation predicate to fall back on"
+    - path: "web/src/routes/w/[webspace]/+page.svelte"
+      issue: "handleRemoveSource (204-224) refetches once, immediately — always too early; ensurePolling (453-462) reloads sources only, never the stream"
+  missing:
+    - "Synchronous purge in Supervisor.Apply before returning: diff old vs new participation per (webspace, source) with the same predicate matchFieldsFor uses, and call idx.ReplaceWebspaceSourceItems(ctx, ws, src, nil) for each pair flipping true→false (pure local DB write, no plugin RPC)"
+    - "Optionally: WR-03 poll reloads the stream when syncing transitions true→false, covering eager-resync-failure fallback"
+  debug_session: .planning/debug/removed-source-items-linger-in-stream.md
 
 - gap_id: G-07-3
   truth: "One PUT /api/config call; success navigates; failure keeps modal open with kernel's verbatim message"
