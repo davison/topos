@@ -78,6 +78,7 @@ Open one webspace and instantly see and grok all related information across ever
 | Rendition sanitize/wrap/theme moved into the kernel (D-11) | Sanitization must sit inside the trust boundary once plugins can be third-party; one theme edit instead of three plugin copies | Phase 5: shipped — plugins return content + declared ContentShape; UAT confirmed pixel parity |
 | Search-term highlighting injected kernel-side as HTML tree nodes after sanitization | Marking text via `x/net/html` parse/walk/render into text nodes only — never string substitution over sanitized HTML — keeps the sanitizer output as the trust anchor | Phase 6: shipped — attributes/tags proven byte-untouched, multi-byte runes survive |
 | One merged chip per source instance (D-01): health + filter + refresh in a single affordance | Header must stay usable at 10+ instances without duplicated per-source controls | Phase 6: shipped — took three UAT gap-closure rounds (selected-state fill, pill geometry/reveal) to read as one polished control |
+| Hermetic browser e2e suite is the regression gate; UI phases extend it as definition of done (07.1 D-11 standing rule) | Manual UAT doesn't survive codebase churn; a Playwright suite driving the shipped binary hermetically (temp config, ephemeral port, mock plugins, zero credentials) makes Phase 7's behavior permanent armor before Phase 8 churns it | Phase 07.1: shipped — 26 specs green locally and on first-ever CI run (GitHub Actions, Chromium, zero retries); smoke script retired; 4 real pre-existing bugs flushed out and fixed |
 
 ## Evolution
 
@@ -97,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-09 after Phase 7*
+*Last updated: 2026-08-09 after Phase 07.1*
