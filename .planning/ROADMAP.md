@@ -318,7 +318,7 @@ Notes:
   3. Hand-editing the config file remains fully supported — the UI write path and the file agree on one persisted form, and a hand-edited file is never clobbered blindly
   4. The config write path is the first mutating surface in the kernel API — it is scoped to configuration only, and the plugin contract's read-only guarantee over source data is untouched
 
-**Plans**: 10 plans (10 executed)
+**Plans**: 14 plans (10 executed)
 
 Plans:
 **Wave 1**
@@ -357,6 +357,16 @@ Plans:
 **Wave 9** *(gap closure, blocked on Wave 8 completion)*
 
 - [x] 07-10-PLAN.md — Gap closure (07-VERIFICATION.md 2026-08-08 gaps[0], 07-REVIEW.md post-07-09 CR-01): the D-07 removed-instance index cleanup runs to completion on every post-Reconcile path, so a save that removes a source and is then rejected for an unrelated typo can never permanently strand that source's items and sync history
+
+**Wave 10** *(UAT gap closure, blocked on Wave 9 completion — both plans run in parallel, zero file overlap)*
+
+- [ ] 07-11-PLAN.md — Gap closure (07-UAT.md G-07-3, blocker): an empty webspace shell is a valid config state (D-20), so "+ New webspace" can actually create one — and a shell correlates nothing rather than everything
+- [ ] 07-13-PLAN.md — Gap closure (07-UAT.md G-07-5): every connection field a plugin fatals without is required and enforced at submit, and a plugin that dies before the go-plugin handshake surfaces its own stderr line instead of four diagnostics that are all false
+
+**Wave 11** *(UAT gap closure, blocked on Wave 10 completion — both plans run in parallel, zero file overlap)*
+
+- [ ] 07-12-PLAN.md — Gap closure (07-UAT.md G-07-4): the config API never serializes null for a collection the SPA iterates, and the root route reaches its "No webspaces yet" empty state instead of blaming the kernel for its own exception
+- [ ] 07-14-PLAN.md — Gap closure (07-UAT.md G-07-6): "Remove from this webspace" writes a document that really narrows participation, and the chip row renders through one shared participation predicate so the chip actually disappears
 
 Notes:
 
