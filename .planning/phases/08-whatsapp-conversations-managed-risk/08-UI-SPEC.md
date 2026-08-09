@@ -1,7 +1,7 @@
 ---
 phase: 8
 slug: whatsapp-conversations-managed-risk
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1 — no re-init; components.json still records these contract values even though shadcn-svelte's live CLI/registry has since retired this baseColor/style combination — every actual color the app renders comes from web/src/app.css's hand-authored hex tokens, not the CLI)"
 created: 2026-08-10
@@ -181,25 +181,40 @@ Accent reserved for: identical list to Phase 2–7 (CTA, links, focus-visible ri
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Probe run over 5 elements this phase adds or extends: **E1 WhatsApp digest stream-row** (list-collection, extension of `StreamRow` — new source content only, direct reuse of Phase 4's E1 resolution), **E2 WhatsApp chat-thread transcript** (media + list-collection + static-content, direct reuse of Phase 4's E2 resolution plus the multi-sender-in-one-group extension), **E3 "Open in WhatsApp" affordance** (interactive-control, `OpenInSource.svelte` reused byte-for-byte, new `sourceType` value only — direct reuse of Phase 4's E3 resolution), **E4 WhatsApp health chip** (nav, extends Phase 4's E4 resolution to a wider four-cause taxonomy), **E5 Add-Source Step 1 "Connect WhatsApp"** (form, new plugin-type row in the existing Phase 7 two-step modal, with the new "saved but not yet linked" sequencing state). **19 applicable considerations: 15 covered (13 by direct inheritance, 2 newly resolved), 1 backstop, 3 dismissed (with reasons), 0 unresolved.**
+Probe run (ui-consideration-probe engine, Step 9.5, post-checker-approval) over 5 elements this phase adds or extends. Detected element kinds, confirmed against each element's prose per the auto-mode kind-confirmation rule (no missed kinds identified): **E1 WhatsApp digest stream-row** (list-collection, extension of `StreamRow` — new source content only), **E2 WhatsApp chat-thread transcript** (media + list-collection + static-content), **E3 "Open in WhatsApp" affordance** (interactive-control, `OpenInSource.svelte` reused byte-for-byte), **E4 WhatsApp health chip** (status control, wider four-cause taxonomy), **E5 Add-Source Step 1 "Connect WhatsApp"** (form, new plugin-type row in the existing Phase 7 two-step modal). **30 applicable considerations: 29 resolved (explicit), 1 resolved (backstop), 0 unresolved.**
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | E1 digest stream-row | ✅ covered | Identical to Phase 4 E1: WhatsApp contributes zero rows when no group matches the keyword — the generic webspace-level empty state, no digest-specific variant. |
-| loading | E1 digest stream-row | ✅ covered | Inherits the generic `StreamList` skeleton rows verbatim, identical to Phase 4 E1. |
-| error | E1 digest stream-row | ➖ dismissed | Source-level failure (not-linked/de-linked/banned/expired) surfaces through the health chip (E4), not a list-load error — identical reasoning to Phase 4 E1's dismissal, now covering four causes instead of three. |
-| populated | E1 digest stream-row | ✅ covered | Normal digest row per "Matching & Digest Copy" above — identical shape to Phase 4 E1, group-scoped. |
-| partial | E1 digest stream-row | ✅ covered | A day whose tail message(s) were deleted-for-everyone degrades the snippet identically to Phase 4 E1 (whatever tail text remains, or the title-only fallback if all were deleted) — no new fallback rule. |
-| overflow | E1 digest stream-row | ✅ covered | Same universal title-ellipsis + 2-line tail-snippet clamp as every other source, identical to Phase 4 E1. |
-| zero-one-many | E1 digest stream-row | ✅ covered | Singular/plural grammar lives in the composed title string, identical rule to Phase 4 E1 — no layout branching. |
-| long-text | E1 digest stream-row | ✅ covered | Long group names and tail-snippet text follow the same truncation/clamp rules as every other source, identical to Phase 4 E1. |
-| populated | E2 chat-thread transcript — group with 3+ distinct senders | ✅ covered (newly resolved) | Each contiguous run gets its own `sender-name` label per the existing run-boundary rule (sender differs OR gap > 5 min) — this already generalizes past Signal's own group case to any sender count; no new markup, no per-sender color (Chat-Transcript Reuse Contract). |
-| empty/loading/error/partial/overflow/zero-one-many/long-text | E2 chat-thread transcript | ✅ covered | Direct inheritance of Phase 4 E2's full resolution row-for-row (a day digest by construction has ≥1 message; loading/error inherit `DetailPane`'s generic skeleton/Alert+Retry; tombstone/edited handling unchanged; iframe-internal scroll unchanged; long messages wrap, never truncate). |
-| long-text | E3 "Open in WhatsApp" | ➖ dismissed | Identical to Phase 4 E3: stateless reused button, fixed label + fixed fidelity badge copy, no variable-length text renders through it. |
-| error | E4 WhatsApp health chip — 4 named causes | ✅ covered (newly resolved) | Extends Phase 4 E4's pattern from three causes to four (not-linked / de-linked / banned / session-expired), all through the same single destructive dot + verbatim-`last_error` tooltip — see "New Health-State Taxonomy." New requirement this phase adds: the copy must never imply data loss (criterion 4) — recommended templates given, not locked, per the standing "backend-owned wording" rule. |
-| loading/overflow/long-text | E4 WhatsApp health chip | ➖ dismissed | Fully inherited from Phase 2/4's already-resolved rows — WhatsApp is simply a fifth `source_type` flowing through the same generic chip component; no per-source branching exists or is needed. |
-| partial | E5 Add-Source Step 1 "Connect WhatsApp" — saved but not yet linked | 🧪 backstop | **New this phase.** Unlike every prior plugin type, Step 1 + Step 2 can both succeed (trial-launch and `Describe` don't depend on live link state) while the device is still unpaired — the instance is fully configured yet functionally inert until linked. This resolves into the existing not-linked health-dot state (no new modal branching), but needs an explicit test/verification step confirming the Add-Source flow does NOT block or special-case this sequencing (i.e., does not wrongly treat "not linked" as a trial-launch failure requiring "Save anyway") — flagged as backstop rather than a plain covered row because it is a genuinely new state shape this phase introduces to an existing flow. |
-| empty/loading/error/populated/overflow/zero-one-many/long-text | E5 Add-Source Step 1 "Connect WhatsApp" | ✅ covered | Identical field-form behavior to every other plugin type in the existing two-step modal (Phase 7) — two required-vs-optional fields, same validation/hash-conflict/Save-anyway machinery, same truncation/wrap rules — WhatsApp adds only its own field *values* (Display name, Local Path), not new form logic. |
+| Category | Element | Status | Resolution |
+|----------|---------|--------|------------|
+| empty | E1 digest stream-row | ✅ resolved (explicit) | WhatsApp contributes zero rows when no group matches the webspace keyword — the generic webspace-level empty state renders (copy per Copywriting Contract "Empty state" row); no digest-specific variant. Identical to Phase 4 E1. |
+| loading | E1 digest stream-row | ✅ resolved (explicit) | Inherits the generic `StreamList` skeleton rows verbatim, identical to Phase 4 E1. |
+| error | E1 digest stream-row | ✅ resolved (explicit) | Source-level failure (not-linked/de-linked/banned/expired) never renders as a list-load error — it surfaces through the health chip (E4) while the stream simply omits WhatsApp rows. Same rule as Phase 4 E1, now covering four causes. |
+| populated | E1 digest stream-row | ✅ resolved (explicit) | Normal digest row per "Matching & Digest Copy" above: plugin-composed title + 2-line tail-snippet — identical shape to Phase 4 E1, group-scoped. |
+| partial | E1 digest stream-row | ✅ resolved (explicit) | A day whose tail message(s) were deleted-for-everyone degrades the snippet identically to Phase 4 E1 (whatever tail text remains, or the title-only fallback if all were deleted) — no new fallback rule. |
+| overflow | E1 digest stream-row | ✅ resolved (explicit) | Same universal single-line title-ellipsis + 2-line tail-snippet clamp as every other source, identical to Phase 4 E1. |
+| zero-one-many | E1 digest stream-row | ✅ resolved (explicit) | Zero → row absent; one/many → singular/plural grammar lives in the plugin-composed title string (`"{count} message"` / `"{count} messages"`) — no layout branching, identical rule to Phase 4 E1. |
+| long-text | E1 digest stream-row | ✅ resolved (explicit) | Long group names ellipsize; tail-snippet lines clamp — same truncation rules as every other source, identical to Phase 4 E1. |
+| empty | E2 chat-thread transcript | ✅ resolved (explicit) | A day digest exists only when ≥1 message exists that day — the transcript document is never empty by construction (Phase 4 E2 rule, unchanged). |
+| loading | E2 chat-thread transcript | ✅ resolved (explicit) | `DetailPane`'s generic skeleton while the rendition loads — inherited, no transcript-specific spinner. |
+| error | E2 chat-thread transcript | ✅ resolved (explicit) | `DetailPane`'s generic Alert + Retry on rendition fetch failure — inherited verbatim from Phase 4 E2. |
+| populated | E2 chat-thread transcript | ✅ resolved (explicit) | Run/bubble markup per the Chat-Transcript Reuse Contract; each contiguous run from a distinct sender gets its own `sender-name` label (run boundary: sender differs OR gap > 5 min) — already generalizes to any sender count in a group; no per-sender color, ever. |
+| partial | E2 chat-thread transcript | ✅ resolved (explicit) | Deleted messages render the tombstone; edited messages get the `(edited)` suffix (shared constants — see Copywriting Contract); attachment sub-elements render their existing placeholder treatment when media is unavailable. All inherited from Phase 4/5. |
+| overflow | E2 chat-thread transcript | ✅ resolved (explicit) | Transcript scrolls inside the detail pane (iframe-internal scroll); bubble max-width 75% — inherited `renditionChatDelta` rules, zero new CSS. |
+| zero-one-many | E2 chat-thread transcript | ✅ resolved (explicit) | One vs many messages/runs changes only content volume; run grouping handles spacing (16px between runs, 4px within a run) — no layout branching. |
+| long-text | E2 chat-thread transcript | ✅ resolved (explicit) | Long messages wrap, never truncate — Phase 4 E2 rule, unchanged. |
+| loading | E3 "Open in WhatsApp" | ✅ resolved (explicit) | Stateless reused button rendering synchronously with the detail pane — it has no async state of its own. |
+| error | E3 "Open in WhatsApp" | ✅ resolved (explicit) | Click is an OS-level deep-link hand-off; no in-app failure state exists by design — the fixed `conversation-only` fidelity badge (Copywriting Contract) sets the expectation, identical to Phase 4 E3. |
+| overflow | E3 "Open in WhatsApp" | ✅ resolved (explicit) | Fixed label + fixed badge — no variable content renders through the control; it cannot overflow. |
+| long-text | E3 "Open in WhatsApp" | ✅ resolved (explicit) | Fixed `"Open in WhatsApp"` label + fixed fidelity badge copy — no variable-length text, identical to Phase 4 E3. |
+| loading | E4 WhatsApp health chip | ✅ resolved (explicit) | Before the first health report the existing generic `unknown` tone applies — no WhatsApp-specific pre-load state; inherited chip behavior from Phase 2/4. |
+| error | E4 WhatsApp health chip | ✅ resolved (explicit) | All four named causes (not-linked / de-linked / banned / session-expired) map to the single existing `destructive` dot + verbatim-`last_error` tooltip — see "New Health-State Taxonomy." New requirement: the copy must never imply data loss (success criterion 4); recommended templates given, wording stays plugin-owned. |
+| overflow | E4 WhatsApp health chip | ✅ resolved (explicit) | Generic chip truncation and tooltip wrapping are per-component rules inherited from Phase 2/4 — WhatsApp is a fifth `source_type` through the same component, no per-source branching. |
+| long-text | E4 WhatsApp health chip | ✅ resolved (explicit) | Long `last_error` strings wrap inside the existing tooltip; chip display names follow the existing truncation rule — inherited, unchanged. |
+| empty | E5 Add-Source Step 1 | ✅ resolved (explicit) | Unfilled form shows the `Local Path` placeholder (`~/.config/topos/whatsapp`); required-field validation blocks an empty submit — existing Phase 7 machinery, unchanged. |
+| loading | E5 Add-Source Step 1 | ✅ resolved (explicit) | Trial-launch in-progress state inherited from the Phase 7 two-step modal, unchanged. |
+| error | E5 Add-Source Step 1 | ✅ resolved (explicit) | Validation, trial-launch failure, hash-conflict, and Save-anyway machinery inherited from Phase 7 — with the load-bearing caveat that "not linked" is NOT a trial-launch failure (see the partial row below). |
+| partial | E5 Add-Source Step 1 — saved but not yet linked | 🧪 resolved (backstop) | { statement: "A WhatsApp instance can be fully saved (Step 1 trial-launch and Step 2 both succeed, since `Describe` carries only static vocabulary) while the device is still unpaired — fully configured yet functionally inert until linked, resolving into the existing not-linked health-dot state with no modal-level branching", verification: backstop — an explicit test confirming the Add-Source flow does not treat "not linked" as a trial-launch failure or force the Save-anyway path for an unpaired instance. **New state shape this phase introduces**; routes to honest verification at verify time if no evidence is wired. } |
+| overflow | E5 Add-Source Step 1 | ✅ resolved (explicit) | Same field/modal overflow rules as every plugin type in the two-step modal — inherited, no new rules. |
+| long-text | E5 Add-Source Step 1 | ✅ resolved (explicit) | Long paths/display names follow existing text-input behavior (scroll within input, no reflow) — inherited from Phase 7. |
 
 ---
 
@@ -217,11 +232,11 @@ No third-party registries declared for Phase 8. No new shadcn block required —
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 2026-08-10 (6/6 dimensions, no recommendations)
