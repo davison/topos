@@ -47,7 +47,7 @@
 	// parsing (Svelte tries to treat `$state(...)` as a store
 	// subscription to a variable named `state`, causing a "used before
 	// its declaration" compiler error).
-	let loadState: 'loading' | 'error' | 'ready' = $state('loading');
+	let loadState: 'loading' | 'error' | 'not-found' | 'ready' = $state('loading');
 	let selectedId = $state<string | null>(null);
 
 	// Search state (KERN-05 browser half, 03-04): kept in component state
@@ -310,10 +310,21 @@
 			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
 			response = res;
 			loadState = 'ready';
-		} catch {
+		} catch (err) {
+			// The generation check runs first, exactly as it did before this
+			// change (07-15-PLAN.md Task 2) — a stale response from a
+			// superseded webspace navigation is still discarded before either
+			// state below is ever set.
 			if (gen !== navGeneration) return;
 			response = null;
-			loadState = 'error';
+			// A typed webspace_not_found answer from a healthy kernel is
+			// classified apart from every other failure (no envelope, a
+			// different code, a network failure): only the latter renders the
+			// service-unreachable copy. This catch still wraps only the
+			// request above — no processing is added here (07-12's Task 2
+			// lesson: a catch that wraps more than the request itself turns
+			// any downstream bug into a false outage report).
+			loadState = err instanceof ApiError && err.code === 'webspace_not_found' ? 'not-found' : 'error';
 		}
 	}
 
@@ -696,6 +707,7 @@
 					<StreamList
 						state={loadState}
 						{response}
+						{webspace}
 						{selectedId}
 						onselect={(id) => (selectedId = id)}
 						onretry={() => load(navGeneration)}

@@ -256,6 +256,8 @@ Accent reserved for: unchanged list from Phase 2/5/6 (CTA, links, focus rings, s
 | Reload config failure | `{kernel's verbatim error message}. The previous configuration is still running.` |
 | Empty state heading (zero webspaces) | `No webspaces yet` |
 | Empty state body (zero webspaces) | `A webspace pulls related items from your sources into one view. Create one to get started.` |
+| Not-configured stream state (07-15-PLAN.md, G-07-1) heading | `That webspace isn't configured` |
+| Not-configured stream state (07-15-PLAN.md, G-07-1) body | `"{webspace}" isn't in your config — it may have been renamed or removed. Pick one from the switcher above.` — deliberately distinct in *intent* from the Phase 1 stream-load error copy directly above it in this table's ancestry (`The topos service didn't respond — check that it's running, then retry.`, 01-UI-SPEC.md Copywriting Contract): that row reports a genuine kernel outage with a Retry action; this row reports a definitive configuration fact from a kernel that answered promptly and correctly, and carries no Retry |
 | Add-source picker — nothing left to add | `All available sources are already in this webspace.` |
 | Save-as-filter action | `Save as filter` |
 | Filter chip | `"{term}"` (the raw term, quoted, no label prefix) |

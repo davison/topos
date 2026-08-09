@@ -2,13 +2,21 @@
 	import StreamRow from './StreamRow.svelte';
 	import StreamEmpty from './StreamEmpty.svelte';
 	import StreamError from './StreamError.svelte';
+	import StreamMissing from './StreamMissing.svelte';
 	import StreamLoadingSkeleton from './StreamLoadingSkeleton.svelte';
 	import { filterItemsBySource, streamVariant } from '$lib/format';
 	import type { StreamResponse, SourceStatus } from '$lib/api';
 
+	// 'not-found' (07-15-PLAN.md, closes 07-UAT.md G-07-1's client half) is
+	// a state-driven branch, checked alongside 'loading'/'error' ahead of
+	// every response-derived variant below — the response is null in this
+	// state (the kernel answered 404, not 200), so there is nothing to
+	// derive streamVariant from. webspace is the name to render inside
+	// StreamMissing; it plays no role in any other branch.
 	let {
 		state,
 		response,
+		webspace,
 		selectedId,
 		onselect,
 		onretry,
@@ -16,8 +24,9 @@
 		selectedSources,
 		sourcesByInstance
 	}: {
-		state: 'loading' | 'error' | 'ready';
+		state: 'loading' | 'error' | 'not-found' | 'ready';
 		response: StreamResponse | null;
+		webspace: string;
 		selectedId: string | null;
 		onselect: (id: string) => void;
 		onretry: () => void;
@@ -55,6 +64,8 @@
 	<StreamLoadingSkeleton />
 {:else if state === 'error'}
 	<StreamError {onretry} />
+{:else if state === 'not-found'}
+	<StreamMissing {webspace} />
 {:else if variant === 'sync-failed' && response}
 	<StreamError {onretry} syncError={response.sync.error} />
 {:else if variant === 'empty-filtered'}
