@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto smoke dev plugins signal test-signal dev-check e2e
+.PHONY: build test test-portable proto dev plugins signal test-signal dev-check e2e
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -133,9 +133,6 @@ proto:
 			--proto_path=proto \
 			proto/topos/v1/plugin.proto; \
 	fi
-
-smoke: build
-	./scripts/e2e-smoke.sh
 
 # dev-check runs the hermetic behavioural guard for the `dev` recipe
 # above (scripts/dev-guard-smoke.sh): squatter on the dev port, kernel
