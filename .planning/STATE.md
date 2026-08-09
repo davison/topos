@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-09T16:07:58.716Z"
+last_updated: "2026-08-09T16:32:29.003Z"
 last_activity: 2026-08-09
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 55
-  completed_plans: 54
-  percent: 67
+  completed_plans: 55
+  percent: 78
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-08-09
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -105,6 +105,7 @@ Progress: [██████████] 98%
 | Phase 07 P12 | 10min | 2 tasks | 5 files |
 | Phase 07 P14 | 8min | 3 tasks | 7 files |
 | Phase 07 P15 | ~35min | 2 tasks | 13 files |
+| Phase 07 P16 | ~55min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -226,6 +227,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-14: removeSourceFromWebspace seeds the participant set before filtering (mirrors addSourceToWebspace), closing G-07-6's config-write no-op
 - [Phase ?]: 07-14: WebspaceHeader chip content filters through participation.ts's shared predicate; row visibility deliberately stays unfiltered so the + trigger survives zero-participant webspaces
 - [Phase ?]: [Phase 07-15]: webspaceIsKnown (config OR index disjunction, config first) is the single existence gate for stream/search/agent-stream — closes G-07-1's create-flow 404 and its zero-configured-sources permanent-404 corollary; client load() classifies ApiError('webspace_not_found') into a new neutral StreamMissing state (no Retry), leaving StreamError for genuine outages
+- [Phase ?]: [Phase 07-16]: correlate.ParticipatesIn extracted as the one kernel-side participation predicate; Supervisor.purgeDeparticipatedWebspaceRows clears a de-participated (webspace, source) pair's rows synchronously in Apply, scoped to names present in both configs; +page.svelte's load() gained a quiet mode so ensurePolling's sync-completion refetch updates the stream without ever showing a skeleton over an already-rendered view — closes 07-UAT.md G-07-7
 
 ### Pending Todos
 
@@ -262,6 +264,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T16:07:58.707Z
-Stopped at: Completed 07-15-PLAN.md
+Last session: 2026-08-09T16:32:28.994Z
+Stopped at: Completed 07-16-PLAN.md
 Resume file: None
