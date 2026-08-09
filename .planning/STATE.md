@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-09T12:22:23.474Z"
+last_updated: "2026-08-09T12:34:47.194Z"
 last_activity: 2026-08-09
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 53
-  completed_plans: 51
+  completed_plans: 52
   percent: 67
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 3 of 14
+Plan: 4 of 14
 Status: Ready to execute
 Last activity: 2026-08-09
 
-Progress: [██████████] 96%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -102,6 +102,7 @@ Progress: [██████████] 96%
 | Phase 07 P10 | ~15min | 2 tasks | 2 files |
 | Phase 07 P11 | 45min | 3 tasks | 14 files |
 | Phase 07 P13 | ~18min | 3 tasks | 9 files |
+| Phase 07 P12 | 10min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -218,6 +219,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-13]: Required flags re-derived by reading all four plugins' own pre-Serve guards (not just the two the UAT report named) — Signal's path and Proton's webmail_base_url join the required set; only Signal's path gets a seeded default since Proton's is installation-specific
 - [Phase ?]: [Phase 07-13]: Enforcement lives in three pure helper functions called from each of the three submit handlers' own bodies (AddSourceModal's handleConnectNext/saveAnyway, EditSourceModal's submitConnection) rather than inside the shared ConnectionForm component
 - [Phase ?]: [Phase 07-13]: kernel/pluginhost.launch's stderrTail capture is bounded at 4 KiB, mutex-guarded, front-discard, and read only after client.Kill() returns — covers boot-time/hot-apply launches identically to UI trial launches since all three share launch()
+- [Phase ?]: [Phase 07-12]: applyDefaults normalizes Sources/Webspaces top-level maps and per-webspace Keywords/Sources/Match collections to non-nil empty values (Filter deliberately excluded, D-17/D-18) — closes 07-UAT.md G-07-4's kernel-side half, GET /api/config never nulls a collection the SPA iterates
+- [Phase ?]: [Phase 07-12]: root route's onMount isolates the getConfig() fetch in its own catch that returns immediately — all post-fetch processing (redirect resolution, empty-phase assignment) runs outside any catch so a downstream bug can no longer render the kernel-unreachable copy
 
 ### Pending Todos
 
@@ -254,6 +257,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T12:22:23.464Z
-Stopped at: Completed 07-13-PLAN.md — closed 07-UAT.md G-07-5: blank required connection fields now guarded at every submit path, and pre-handshake plugin fatals surface their own stderr line
+Last session: 2026-08-09T12:34:47.181Z
+Stopped at: Completed 07-12-PLAN.md — closed 07-UAT.md G-07-4: zero-webspace config no longer nulls a collection the SPA iterates, and the root route's fetch catch is isolated from downstream processing
 Resume file: None
