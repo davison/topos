@@ -1,22 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 07-webspace-builder-ui
 source: [07-VERIFICATION.md]
 started: 2026-08-09T13:10:01Z
-updated: 2026-08-09T13:10:01Z
+updated: 2026-08-09T15:23:36Z
 ---
 
 ## Current Test
 
-number: 1
-name: Create webspace + add first source, live (G-07-3 fix)
-expected: |
-  `make dev`; click the webspace title drop-down, choose "+ New webspace", type a name, submit.
-  The modal closes, the app navigates to /w/<name> with no restart, config.toml gains a
-  [webspaces.<name>] block, and the stream is EMPTY. Then click the chip-row "+", add one
-  existing instance with match fields, and confirm exactly that one chip appears (not every
-  configured instance).
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -33,7 +25,9 @@ expected: |
   block, stream is EMPTY. Then chip-row "+" → add one existing instance with match fields →
   exactly that one chip appears. (Code-fixed by 07-11 with unit/integration coverage; first
   live run since the fix.)
-result: [pending]
+result: issue
+reported: "pass with one caveat. When the space is initially created, an error appears in the newly created space; 'Couldn't load this webspace — The topos service didn't respond — check that it's running, then retry.' upon hitting retry it correctly shows 'nothing here yet'"
+severity: minor
 
 ### 2. Zero-webspace empty state vs real outage (G-07-4 fix)
 expected: |
@@ -41,7 +35,7 @@ expected: |
   yet" empty state renders with a working Create webspace CTA. Then stop the kernel and
   reload: the service-unreachable copy renders only for the genuine outage. (Code-fixed by
   07-12; first live run since the fix.)
-result: [pending]
+result: pass
 
 ### 3. Required-field guard + Signal/Proton Connect flow (G-07-5 fix)
 expected: |
@@ -49,7 +43,7 @@ expected: |
   Clear it and click Next: the missing-field message appears with ZERO network requests.
   Restore the value and click Next: the Match step loads and the finished instance appears
   as a chip. (Code-fixed by 07-13; first live run since the fix.)
-result: [pending]
+result: pass
 
 ### 4. Remove from webspace + re-add round-trip (G-07-6 fix)
 expected: |
@@ -58,14 +52,16 @@ expected: |
   block stays intact), other webspaces unchanged. Reopen the "+" picker: the removed
   instance is offered again; re-adding restores its chip and items. (Code-fixed by 07-14;
   first live run since the fix.)
-result: [pending]
+result: issue
+reported: "when the source is removed, its items remain visible in the stream until a refresh occurs. This is counter-intuitive, they should be removed as the chip is removed. Otherwise it's a pass"
+severity: minor
 
 ### 5. Scroll behavior at 15+ webspaces/instances (round-1 tests 11/12, now unblocked)
 expected: |
   Configure 15+ webspaces and 15+ source instances (now creatable via the UI since G-07-3
   is closed); open the webspace switcher, the "+" picker, and "Manage sources…". All three
   lists stay height-capped and scroll internally rather than growing past the viewport.
-result: [pending]
+result: pass
 
 ### 6. config.toml.bak rename kill-window backstop (round-1 test 10, carried)
 expected: |
@@ -73,7 +69,8 @@ expected: |
   during a save leaves config.toml byte-identical to its pre-save content — never truncated,
   never half-written. (Genuinely non-deterministic timing window; round 1 recorded it as
   skipped — may be skipped again or accepted on code inspection.)
-result: [pending]
+result: skipped
+reason: Non-deterministic kill-window; user skipped (as in round 1)
 
 ### 7. D-07 cleanup mid-batch kill backstop (round-1 test 18, carried)
 expected: |
@@ -81,7 +78,8 @@ expected: |
   its DeleteSyncRuns starting, during an Apply removing 2+ instances, leaves at most the
   interrupted instance's sync_runs rows behind; every other instance fully cleaned or fully
   untouched. (Non-deterministic; round 1 recorded it as skipped.)
-result: [pending]
+result: skipped
+reason: Non-deterministic kill-window; user skipped (as in round 1)
 
 ### 8. handleChipEdit describePlugin race (WR-01 advisory, carried)
 expected: |
@@ -90,15 +88,16 @@ expected: |
   chip's vocabulary/open state. (Round 1 recorded the user accepting this without a live
   pass; no generation guard exists in code — candidate for /gsd-code-review 7 --fix rather
   than a phase blocker.)
-result: [pending]
+result: skipped
+reason: Carried advisory previously accepted without a live pass; user skipped again — route to /gsd-code-review 7 --fix, not a phase blocker
 
 ## Summary
 
 total: 8
-passed: 0
-issues: 0
-pending: 8
-skipped: 0
+passed: 3
+issues: 2
+pending: 0
+skipped: 3
 blocked: 0
 
 ## Gaps
@@ -106,6 +105,24 @@ blocked: 0
 All four round-1 gaps are code-fixed by gap-closure plans 07-11..07-14 and independently
 re-verified in 07-VERIFICATION.md (2026-08-09) by direct source reads and re-run test
 suites. Live re-confirmation of each fix is this round's tests 1–4.
+
+- gap_id: G-07-1
+  truth: "Immediately after creating a webspace, the newly created /w/<name> shows the empty stream ('nothing here yet') without an intervening error"
+  status: failed
+  reason: "User reported: pass with one caveat. When the space is initially created, an error appears in the newly created space; 'Couldn't load this webspace — The topos service didn't respond — check that it's running, then retry.' upon hitting retry it correctly shows 'nothing here yet'"
+  severity: minor
+  test: 1
+  artifacts: []  # Filled by diagnosis
+  missing: []    # Filled by diagnosis
+
+- gap_id: G-07-7
+  truth: "Removing a source from a webspace also removes that instance's items from the visible stream immediately, without a manual refresh"
+  status: failed
+  reason: "User reported: when the source is removed, its items remain visible in the stream until a refresh occurs. This is counter-intuitive, they should be removed as the chip is removed. Otherwise it's a pass"
+  severity: minor
+  test: 4
+  artifacts: []  # Filled by diagnosis
+  missing: []    # Filled by diagnosis
 
 - gap_id: G-07-3
   truth: "One PUT /api/config call; success navigates; failure keeps modal open with kernel's verbatim message"
