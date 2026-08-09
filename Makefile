@@ -1,4 +1,4 @@
-.PHONY: build test proto smoke dev plugins signal test-signal dev-check e2e
+.PHONY: build test test-portable proto dev plugins signal test-signal dev-check e2e
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -88,12 +88,16 @@ plugins:
 signal:
 	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
-# test runs the test suite across all seven workspace modules (sdk,
-# paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
-# kernel module. Go workspaces scope "./..." to the module containing the
-# working directory, so each module is tested explicitly rather than
-# relying on a single "./..." from the repo root covering all of them.
-test:
+# test-portable runs every workspace module test EXCEPT the cgo Signal
+# plugin (sdk, paperless, silverbullet, proton, mock, mockstrict, plus the
+# root kernel module) — the credential-free, cgo-free half of `test`, and
+# what CI runs (D-13): a runner without system sqlcipher can run everything
+# else. This is the ONLY place that module list is written; `test` below
+# delegates to this target rather than duplicating it, so the two
+# definitions cannot drift apart (the same discipline the "plugins" target's
+# own comment documents for its cgo split). `make test` on a desktop is
+# unchanged — it still runs test-portable followed by test-signal.
+test-portable:
 	CGO_ENABLED=0 go build ./... && go test ./...
 	cd sdk && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/paperless && CGO_ENABLED=0 go build ./... && go test ./...
@@ -101,6 +105,14 @@ test:
 	cd plugins/proton && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mockstrict && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...
+
+# test runs the full test suite across all seven workspace modules (sdk,
+# paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
+# kernel module: test-portable (above) followed by test-signal (below).
+# Go workspaces scope "./..." to the module containing the working
+# directory, so each module is tested explicitly rather than relying on a
+# single "./..." from the repo root covering all of them.
+test: test-portable
 	$(MAKE) test-signal
 
 # test-signal runs the Signal plugin module's own tests under the same
@@ -121,9 +133,6 @@ proto:
 			--proto_path=proto \
 			proto/topos/v1/plugin.proto; \
 	fi
-
-smoke: build
-	./scripts/e2e-smoke.sh
 
 # dev-check runs the hermetic behavioural guard for the `dev` recipe
 # above (scripts/dev-guard-smoke.sh): squatter on the dev port, kernel

@@ -55,8 +55,8 @@ proto/topos/v1/     the published plugin contract (source of truth)
 sdk/                the plugin-author-facing Go module (handshake, interfaces, generated stubs)
 plugins/            source plugins: paperless, silverbullet, proton, signal (cgo), mock (the PLUG-05 reference)
 web/                the SvelteKit SPA
-scripts/            smoke and guard scripts (e2e-smoke, dev-guard, built-stylesheet assertions)
-docs/               published contracts: plugin-contract.md, api.md
+scripts/            guard scripts (dev-guard, signal-readonly-smoke, built-stylesheet assertions)
+docs/               published contracts: plugin-contract.md, api.md, testing.md
 ```
 
 This is a **Go workspace** (`go.work`) with seven modules: the root
@@ -84,9 +84,8 @@ environment, and a config file describing your webspaces.
    export SB_AUTH_TOKEN="<your SilverBullet auth token>"
    ```
 
-   This is the same `.env` file that `./scripts/run-with-env.sh` and
-   `scripts/e2e-smoke.sh` both source — put all four keys in one place and
-   both scripts pick them up.
+   This is the same `.env` file that `./scripts/run-with-env.sh` sources —
+   put all four keys in one place and the wrapper picks them up.
 
 2. Copy the example config and edit it:
 
@@ -177,23 +176,33 @@ change it.
 ## Testing
 
 ```bash
-make test               # go build + go test across all three workspace modules
-make smoke              # make build, then scripts/e2e-smoke.sh
+make test               # go build + go test across all workspace modules
+make e2e                # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check           # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
 ```
 
 `make test` needs no network access or live credentials — every committed
 test (including the PLUG-02/AGENT-02 contract tests in `sdk/`,
 `plugins/paperless/`, and `kernel/httpapi/`) runs against fixtures and a
-temp SQLite file. `make smoke` is different: it's a real end-to-end run
-against your actual configured paperless-ngx instance (it needs
-`PAPERLESS_URL`/`PAPERLESS_TOKEN` set, and a config file with at least one
-webspace already matching real documents), so it needs network access to
-your paperless-ngx instance and a live account. `make dev-check` is
-different again: like `make test`, it needs no network access and no
-live credentials — it proves `make dev`'s port-guard and readiness-gate
-behaviour hermetically, using ephemeral ports it selects itself, so it's
-safe to run even while a real kernel is up on `127.0.0.1:7777`.
+temp SQLite file. `make e2e` is the pre-ship gate: it builds the shipped
+SPA and kernel, then drives a real Chromium against a hermetic kernel
+instance seeded from mock-shaped plugin fixtures — no network access, no
+live source credentials, and no `.env` file are needed. It runs Chromium
+by default; Firefox and WebKit are available on request
+(`make e2e E2E_PROJECT=firefox`) but are never part of the automated
+gate. Live-source verification (against your actual paperless-ngx,
+SilverBullet, or Proton instance) is a manual UAT activity now, not an
+automated one. `make dev-check` is different again: like `make test`, it
+needs no network access and no live credentials — it proves `make dev`'s
+port-guard and readiness-gate behaviour hermetically, using ephemeral
+ports it selects itself, so it's safe to run even while a real kernel is
+up on `127.0.0.1:7777`.
+
+CI runs this same gate — `make test-portable`, svelte-check, vitest, and
+`make e2e` — on every push and pull request to `main`. See
+`docs/testing.md` for the fuller map: every gate, how to run a single
+spec, the harness architecture, and the standing rule that future UI work
+extends this suite.
 
 ## Where to look next
 

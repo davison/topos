@@ -125,7 +125,13 @@ topos is a locally-run service that pulls together related information from disp
 
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+**Any phase that touches the UI extends the Playwright e2e suite as part
+of its definition of done; any UAT item a browser can drive becomes a
+spec (`web/e2e/specs/`) rather than staying a manual check** — a manual
+check that has to be remembered is not a gate. See `docs/testing.md` for
+the full testing map: every gate (`make test`, `make test-portable`,
+`make dev-check`, `make e2e`), the harness architecture, and how to write
+a new spec.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
