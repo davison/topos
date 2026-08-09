@@ -17,7 +17,33 @@ import {
 	upsertSourceInstance,
 	removeSourceInstance
 } from './config-edit';
-import type { KernelConfig } from './api';
+import { isEmptyWebspaceShell } from './participation';
+import type { KernelConfig, WebspaceConfig } from './api';
+
+// Three-instance fixture for removeSourceFromWebspace's seeding cases
+// below (07-14-PLAN.md Task 2, closes 07-UAT.md G-07-6's first half): a
+// two-instance fixture cannot distinguish "the other one remains" from
+// "the allowlist widened to everyone" or "the allowlist stayed empty" — a
+// three-instance config makes each outcome distinguishable. `docs` is a
+// second, untouched webspace present in every case, asserted unchanged.
+function carsConfig(ws: WebspaceConfig): KernelConfig {
+	const instance = (plugin: string) => ({ plugin, agent: { read: true, handoff: false } });
+	return {
+		server: { listen: '127.0.0.1:7777' },
+		index: { path: '/tmp/index.db' },
+		plugins: { dir: '/tmp/plugins' },
+		sync: { interval: '5m' },
+		sources: {
+			a: instance('topos-plugin-a'),
+			b: instance('topos-plugin-b'),
+			c: instance('topos-plugin-c')
+		},
+		webspaces: {
+			cars: ws,
+			docs: { keywords: ['paperwork'], sources: ['a'], match: { a: { tags: ['docs'] } } }
+		}
+	};
+}
 
 function fixtureConfig(): KernelConfig {
 	return {
@@ -288,6 +314,116 @@ describe('removeSourceFromWebspace', () => {
 		const before = JSON.stringify(cfg);
 		removeSourceFromWebspace(cfg, 'house-move', 'paperless');
 		expect(JSON.stringify(cfg)).toBe(before);
+	});
+
+	// --- Seeding before filtering (07-14-PLAN.md Task 2, closes
+	// 07-UAT.md G-07-6's first half). The `house-move` fixture above starts
+	// from an explicit non-empty allowlist and is exactly why the reported
+	// case was never caught — every case below exercises the empty/null
+	// all-participate starting shape instead, using the three-instance
+	// `carsConfig` fixture so "the other two remain" is distinguishable
+	// from both "unchanged" and "widened to everyone". ---
+
+	it('the reported G-07-6 case: an all-participate webspace (no explicit allowlist) loses exactly the removed instance, not nothing — the write returns 200, the removed instance keeps participating via the all-participate default, and the chip never disappears if this seed is missing', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: [],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] }, c: { tags: ['z'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'b');
+		expect([...next.webspaces['cars'].sources].sort()).toEqual(['a', 'c']);
+		expect(next.webspaces['cars'].match).toEqual({ a: { tags: ['x'] }, c: { tags: ['z'] } });
+	});
+
+	it('seeds every configured instance without throwing when the allowlist arrives as null', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: null,
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] } }
+		} as unknown as WebspaceConfig);
+		const next = removeSourceFromWebspace(cfg, 'cars', 'b');
+		expect([...next.webspaces['cars'].sources].sort()).toEqual(['a', 'c']);
+	});
+
+	it('preserves relative order when narrowing an already-explicit allowlist', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: ['c', 'a', 'b'],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] }, c: { tags: ['z'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'a');
+		expect(next.webspaces['cars'].sources).toEqual(['c', 'b']);
+	});
+
+	// Pinned known boundary (07-14-PLAN.md planning choice 5): removing the
+	// LAST named entry from an explicit allowlist leaves an empty
+	// allowlist, which the config format can only encode as "all
+	// participate" — for a webspace that still declares a keywords
+	// fallback, the remaining configured instances rejoin. This is the
+	// existing encoding's only representable outcome (there is no
+	// "explicit allowlist of zero, still narrowed" shape distinct from the
+	// default) — a known boundary, pinned here, not a redesign target for
+	// this gap-closure plan.
+	it('pinned boundary: removing the last named entry from an explicit allowlist reverts to all-participate for a webspace with a keywords fallback (planning choice 5)', () => {
+		const cfg = carsConfig({
+			keywords: ['fallback'],
+			sources: ['a'],
+			match: { a: { tags: ['x'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'a');
+		expect(next.webspaces['cars'].sources).toEqual([]);
+	});
+
+	it('the same boundary without a keywords fallback yields a D-20 empty shell — invisible on the UI-built path, since such a webspace has no participants at all', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: ['a'],
+			match: { a: { tags: ['x'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'a');
+		expect(isEmptyWebspaceShell(next.webspaces['cars'])).toBe(true);
+	});
+
+	it('removing an instance absent from both the allowlist and the match map is a no-op beyond the clone — no accidental widening', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: ['a', 'b'],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'c');
+		expect(next.webspaces['cars'].sources).toEqual(['a', 'b']);
+		expect(next.webspaces['cars'].match).toEqual({ a: { tags: ['x'] }, b: { tags: ['y'] } });
+	});
+
+	it('removing the same instance twice in sequence yields equal results (idempotent)', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: [],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] }, c: { tags: ['z'] } }
+		});
+		const once = removeSourceFromWebspace(cfg, 'cars', 'b');
+		const twice = removeSourceFromWebspace(once, 'cars', 'b');
+		expect(twice).toEqual(once);
+	});
+
+	it("leaves the instance's own [sources.<id>] block present and unchanged", () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: [],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] }, c: { tags: ['z'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'b');
+		expect(next.sources['b']).toEqual(cfg.sources['b']);
+	});
+
+	it('leaves every other webspace in the document unchanged', () => {
+		const cfg = carsConfig({
+			keywords: [],
+			sources: [],
+			match: { a: { tags: ['x'] }, b: { tags: ['y'] }, c: { tags: ['z'] } }
+		});
+		const next = removeSourceFromWebspace(cfg, 'cars', 'b');
+		expect(next.webspaces['docs']).toEqual(cfg.webspaces['docs']);
 	});
 });
 

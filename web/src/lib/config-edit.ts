@@ -173,6 +173,32 @@ export function addSourceToWebspace(
  * untouched; only this webspace's participation changes. A webspace
  * absent from the input, or an instance not present in either place, is a
  * no-op beyond the clone.
+ *
+ * Seeds the current participant set from `cfg` — this function's own,
+ * PRE-mutation input — before filtering: the webspace's existing allowlist
+ * when it is non-empty, and otherwise every configured instance
+ * (`Object.keys(cfg.sources)`), read through `webspaceSources`'s
+ * null-tolerant reader so a hand-written `sources: null` seeds rather than
+ * throws. This mirrors `addSourceToWebspace`'s long-standing seeding,
+ * which the add direction has always performed and the remove direction
+ * never did (07-14-PLAN.md, closes 07-UAT.md `G-07-6`). Filtering the
+ * allowlist array directly, without seeding first, was wrong: for a
+ * webspace with no explicit allowlist (Phase 5 D-03's all-participate
+ * default, `sources: []`), filtering an empty array yields `[]` again —
+ * which `kernel/config/types.go`'s `Webspace.Participates` reads as "every
+ * configured instance still participates." The write round-trips with a
+ * 200 and the removed instance keeps syncing into the webspace; every
+ * chip flashes a sync spinner and nothing changes, with no error anywhere
+ * to explain it (`G-07-6`'s exact reported symptom).
+ *
+ * Pinned boundary (D-14): removing the last named entry from an explicit
+ * allowlist yields an empty allowlist, which — for a webspace still
+ * declaring a `keywords` fallback — means the remaining instances rejoin
+ * under the all-participate default. This is the only outcome the config
+ * format can represent (there is no meaningful "allowlist of zero, and
+ * still narrowed" shape distinct from the all-participate default), and it
+ * is invisible on the UI-built path: a webspace with no keywords either is
+ * then a D-20 empty shell with no participants at all.
  */
 export function removeSourceFromWebspace(
 	cfg: KernelConfig,
@@ -182,12 +208,18 @@ export function removeSourceFromWebspace(
 	const next = cloneConfig(cfg);
 	const existing = next.webspaces[webspace];
 	if (!existing) return next;
+
 	const match = { ...existing.match };
 	delete match[instance];
+
+	const currentAllowlist = webspaceSources(cfg.webspaces[webspace]);
+	const seededAllowlist =
+		currentAllowlist.length > 0 ? currentAllowlist : Object.keys(cfg.sources);
+
 	next.webspaces[webspace] = {
 		...existing,
 		match,
-		sources: existing.sources.filter((s) => s !== instance)
+		sources: seededAllowlist.filter((s) => s !== instance)
 	};
 	return next;
 }
