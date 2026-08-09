@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
@@ -219,6 +220,90 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 	return nil
 }
 
+// stderrTailCap bounds stderrTail's retained byte count. Chosen in the low
+// kilobytes: comfortably larger than a single fatal line or the last few
+// frames of a panic stack trace (the shapes this capture exists to
+// surface — see plugins/signal/main.go's fatal helper for the worked
+// example), while staying irrelevant to kernel memory even if every
+// launched plugin instance held its own tail for its whole lifetime.
+const stderrTailCap = 4096
+
+// stderrTail is a bounded, mutex-guarded tail of a plugin subprocess's
+// stderr output, wired into goplugin.ClientConfig.Stderr in launch below.
+//
+// Why it exists: go-plugin defaults ClientConfig.Stderr to io.Discard, so a
+// plugin that calls fatal (writes one line, exits) before ever reaching
+// goplugin.Serve writes its only explanation into nothing — the kernel log
+// records only "exit status 1", and DescribePluginType's caller sees only
+// go-plugin's own four-item handshake diagnostic list, every item of which
+// was false in the case this type was written to fix (07-13-PLAN.md,
+// closing 07-UAT.md G-07-5: a blank Signal path field). This is a
+// recurrence guard for the whole pre-handshake-fatal class, not a fix
+// scoped to one field — it fires for any plugin, any config field, any
+// future pre-Serve fatal, on both trial launches and boot-time launches,
+// since both go through this same launch function.
+//
+// It is bounded because a plugin looping on stderr before eventually
+// exiting must never grow kernel memory without limit — a memory-safety
+// requirement, not a cosmetic one. It is mutex-guarded because go-plugin's
+// own logStderr goroutine (client.go) writes to this type concurrently
+// with the kernel's own goroutine that will eventually read it; an
+// unsynchronized read/write pair here would be a genuine data race, not a
+// theoretical one. It discards from the FRONT once the cap is exceeded
+// (never truncates the incoming write, never stops accepting bytes)
+// because the explanatory line is the LAST thing a dying plugin writes —
+// stopping at the cap would keep the least useful bytes and discard the
+// one line this whole type exists to preserve.
+type stderrTail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+// Write satisfies io.Writer for goplugin.ClientConfig.Stderr. It always
+// reports the full input length written and a nil error — go-plugin's own
+// stderr-draining loop (logStderr) does nothing special with a short-write
+// report beyond logging it, but this type must never be the reason that
+// loop believes a write failed; the tail's own bounding happens entirely
+// inside this call, invisibly to the caller.
+func (t *stderrTail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > stderrTailCap {
+		t.buf = t.buf[len(t.buf)-stderrTailCap:]
+	}
+	return len(p), nil
+}
+
+// lastLine returns the final non-empty line currently held, with
+// surrounding whitespace (including any trailing newline(s)) trimmed, or
+// an empty string when nothing has been written. Safe to call concurrently
+// with Write, but the caller in launch below only ever calls it AFTER
+// client.Kill() has returned — Kill waits on go-plugin's own client wait
+// group, which the stderr-draining goroutine belongs to, so calling this
+// any earlier would race that goroutine and could miss the very line this
+// type exists to surface.
+func (t *stderrTail) lastLine() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	trimmed := strings.TrimRight(string(t.buf), "\r\n")
+	if trimmed == "" {
+		return ""
+	}
+	if idx := strings.LastIndexByte(trimmed, '\n'); idx >= 0 {
+		trimmed = trimmed[idx+1:]
+	}
+	return strings.TrimSpace(trimmed)
+}
+
+// launch execs pluginsDir/src.Plugin, performs the go-plugin handshake, and
+// calls Describe to learn the launched instance's identity. Every caller —
+// Discover, Reconcile, and DescribePluginType's trial launch — goes
+// through this one function, so the bounded stderr capture wired in below
+// (stderrTail) covers a pre-handshake plugin fatal identically whether the
+// launch is a UI-driven trial or a real boot-time/hot-apply launch: the
+// class of failure this guards against has nothing to do with which caller
+// triggered it.
 func launch(ctx context.Context, pluginsDir, name string, src config.Source, logger hclog.Logger) (*Plugin, error) {
 	binPath := filepath.Join(pluginsDir, src.Plugin)
 	if _, err := os.Stat(binPath); err != nil {
@@ -241,8 +326,16 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		return nil, fmt.Errorf("marshal source config: %w", err)
 	}
 
+	// The exec.Cmd's own Stderr field is deliberately left unset: go-plugin
+	// builds its own stderr pipe from this *exec.Cmd internally, and
+	// os/exec rejects a command whose stderr writer is already set when
+	// the caller (go-plugin, in this case) tries to set it a second time.
+	// The capture goes through ClientConfig.Stderr below instead, which
+	// go-plugin's own logStderr goroutine writes to.
 	cmd := exec.Command(binPath)
 	cmd.Env = append(os.Environ(), "WEBSPACES_SOURCE_CONFIG="+string(sourceConfig))
+
+	tail := &stderrTail{}
 
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  sdk.Handshake,
@@ -259,11 +352,28 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 				grpc.MaxCallSendMsgSize(sdk.MaxMessageSize),
 			),
 		},
+		// Captures a bounded tail of the child's stderr (07-13-PLAN.md
+		// Task 3, closing 07-UAT.md G-07-5's second cause) — without this,
+		// go-plugin defaults to io.Discard and a plugin that fatals before
+		// the handshake explains itself to nobody.
+		Stderr: tail,
 	})
 
 	rpcClient, err := client.Client()
 	if err != nil {
 		client.Kill()
+		// The read must happen strictly after Kill() returns: Kill waits
+		// on go-plugin's client wait group, which the stderr-draining
+		// goroutine (logStderr) belongs to — reading any earlier races
+		// that goroutine and can miss the very line this capture exists
+		// to surface. When nothing was captured (a genuinely silent
+		// pre-handshake exit, or a failure that isn't a pre-handshake
+		// fatal at all), the error text is left byte-identical to before
+		// this capture existed — no empty parenthetical, no dangling
+		// separator.
+		if last := tail.lastLine(); last != "" {
+			return nil, fmt.Errorf("connect to plugin subprocess: %w (plugin stderr: %s)", err, last)
+		}
 		return nil, fmt.Errorf("connect to plugin subprocess: %w", err)
 	}
 
