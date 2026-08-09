@@ -251,9 +251,13 @@ func PluginTypesHandler(pluginsDir string) http.HandlerFunc {
 
 // describePluginRequest is POST /api/config/describe-plugin's request
 // body: the plugin binary name (must be a member of
-// pluginhost.DiscoverBinaries' own result set — see DescribePluginHandler)
-// and the connection fields the operator has typed into step 1 of the
-// "New <plugin type>…" modal, not yet persisted anywhere.
+// pluginhost.DiscoverAllBinaries' own result set — see
+// DescribePluginHandler) and the connection fields the operator has typed
+// into step 1 of the "New <plugin type>…" modal, OR an already-configured
+// instance's own stored connection fields (the "+" picker's one-step
+// existing-instance add flow reuses this same request shape — see
+// AddSourceModal.svelte's own doc comment), not yet persisted anywhere by
+// this call either way.
 type describePluginRequest struct {
 	Plugin string        `json:"plugin"`
 	Source config.Source `json:"source"`
@@ -272,18 +276,27 @@ type describePluginResponse struct {
 }
 
 // DescribePluginHandler serves POST /api/config/describe-plugin (D-11
-// step 1 -> step 2): trial-launches the named plugin binary against the
-// just-submitted, not-yet-persisted connection fields, calls its Describe
-// RPC, and kills the subprocess before this handler returns — writing
-// nothing to disk and registering nothing on the running kernel's plugin
-// host (see pluginhost.DescribePluginType's own doc comment).
+// step 1 -> step 2, and the "+" picker's one-step existing-instance add
+// flow): trial-launches the named plugin binary against the just-submitted
+// (or already-configured) connection fields, calls its Describe RPC, and
+// kills the subprocess before this handler returns — writing nothing to
+// disk and registering nothing on the running kernel's plugin host (see
+// pluginhost.DescribePluginType's own doc comment).
 //
-// The requested plugin MUST be a member of pluginhost.DiscoverBinaries'
+// The requested plugin MUST be a member of pluginhost.DiscoverAllBinaries'
 // own result set, checked BEFORE anything is executed (T-07-09): a
 // request naming an arbitrary binary/path is refused 404
 // plugin_binary_not_found and never reaches exec.Command — directory
 // listing, never a caller-supplied path, is the authority over what may
-// be launched.
+// be launched. Deliberately DiscoverAllBinaries, not DiscoverBinaries: the
+// latter's ExcludedPluginBinaries filtering (kernel/pluginhost/
+// discover_binaries.go) is a UI-policy concern scoped to what the "+ New
+// <plugin type>…" picker OFFERS (PluginTypesHandler, below) — it must not
+// also block describing an instance whose plugin type is ALREADY
+// legitimately configured, which is exactly what the one-step
+// existing-instance flow does for every already-configured instance,
+// including a topos-plugin-mock one (see DiscoverAllBinaries' own doc
+// comment for the regression this fixes).
 func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req describePluginRequest
@@ -292,7 +305,7 @@ func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerF
 			return
 		}
 
-		available, err := pluginhost.DiscoverBinaries(pluginsDir)
+		available, err := pluginhost.DiscoverAllBinaries(pluginsDir)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

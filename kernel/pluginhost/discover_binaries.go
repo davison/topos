@@ -37,17 +37,63 @@ var ExcludedPluginBinaries = map[string]bool{
 // installed any plugin binaries yet — and returns an empty (never nil)
 // slice with a nil error, never a failure.
 //
-// A symlinked plugin binary counts as a regular file: the entry's own
-// os.DirEntry.Type() reflects an Lstat (it never follows the link), which
-// would otherwise silently exclude any plugin binary an operator manages
-// via a symlink (a common packaging/version-management pattern) — and,
-// closer to home, is exactly how the browser E2E harness's own fixture
-// (web/e2e/fixtures/plugin-binaries.ts) populates its temp plugins
-// directory from the real build output (07.1-02-PLAN.md's key_links).
-// os.Stat is used instead, which follows the link; a broken symlink
-// (Stat returns an error) or a symlink to a directory is skipped exactly
-// like any other non-regular entry, never surfaced as a discovery error.
+// This is a UI-POLICY view (what may be OFFERED as a brand-new instance
+// type) built on top of DiscoverAllBinaries' security-relevant raw
+// listing — see that function's doc comment for why
+// kernel/httpapi/config.go's DescribePluginHandler deliberately does NOT
+// call this one. Symlinked plugin binaries (the e2e harness's fixture
+// shape) are handled by DiscoverAllBinaries — see its doc comment.
 func DiscoverBinaries(pluginsDir string) ([]string, error) {
+	all, err := DiscoverAllBinaries(pluginsDir)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(all))
+	for _, name := range all {
+		if ExcludedPluginBinaries[name] {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// DiscoverAllBinaries lists pluginsDir exactly like DiscoverBinaries but
+// WITHOUT applying ExcludedPluginBinaries — the raw, complete set of real
+// on-disk plugin binaries, sorted. kernel/httpapi/config.go's
+// DescribePluginHandler uses THIS function (not DiscoverBinaries) for its
+// T-07-09 security check ("a request naming an arbitrary binary/path is
+// refused... directory listing, never a caller-supplied path, is the
+// authority over what may be launched"): ExcludedPluginBinaries is a
+// UI-POLICY concern (never OFFER "topos-plugin-mock" as a brand-new
+// instance type in the "+" picker) that must not also gate describing an
+// instance that is ALREADY legitimately configured. Before this split,
+// both concerns shared DiscoverBinaries' filtered result, which made
+// POST /api/config/describe-plugin 404 for an already-configured
+// topos-plugin-mock instance — breaking the "+" picker's one-step
+// existing-instance add flow for every mock-typed instance (discovered
+// live: 07.1-04-PLAN.md's re-add-a-removed-source spec, which the 07.1
+// harness's own D-07 decision requires to use mock instances throughout).
+// A missing pluginsDir behaves identically to DiscoverBinaries: a
+// legitimate empty state, not an error.
+//
+// A directory entry is followed through one level of symlink before its
+// regular-file-ness is judged (os.Stat, not os.Lstat/DirEntry.Type()):
+// os.ReadDir's own DirEntry.Type() reports a SYMLINK's mode bits, which
+// fs.FileMode.IsRegular() always reports false for — a plain
+// `if !e.Type().IsRegular() { continue }` (this function's shape before
+// this fix) silently discarded every entry in ANY symlinked plugins
+// directory, discovering nothing at all. This is exactly how the 07.1
+// browser-e2e-harness's own fixture populates a hermetic kernel's plugins
+// dir (web/e2e/fixtures/plugin-binaries.ts's linkPluginBinaries
+// deliberately symlinks rather than copies, per 07.1-01-SUMMARY.md's
+// key-decisions) — so this bug made EVERY plugin type invisible to both
+// PluginTypesHandler and DescribePluginHandler inside the hermetic e2e
+// harness specifically, not only the mock-exclusion regression above.
+// Live production installs (Makefile's `plugins`/`e2e` targets `go build`
+// real files, never symlinks) never hit this path, which is why it went
+// unnoticed until the harness's own symlink-based fixture exercised it.
+func DiscoverAllBinaries(pluginsDir string) ([]string, error) {
 	entries, err := os.ReadDir(pluginsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -62,20 +108,33 @@ func DiscoverBinaries(pluginsDir string) ([]string, error) {
 		if !strings.HasPrefix(name, PluginBinaryPrefix) {
 			continue
 		}
-		if ExcludedPluginBinaries[name] {
-			continue
-		}
-		info, statErr := os.Stat(filepath.Join(pluginsDir, name))
-		if statErr != nil {
-			// A broken symlink (or a permission error) — skip rather than
-			// fail the whole discovery over one bad entry.
-			continue
-		}
-		if !info.Mode().IsRegular() {
+		if !isRegularFileFollowingSymlinks(pluginsDir, e) {
 			continue
 		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// isRegularFileFollowingSymlinks reports whether e — a DirEntry from
+// pluginsDir — is, or resolves through exactly one os.Stat call to, a
+// regular file. os.Stat (unlike os.Lstat/DirEntry.Type()) follows
+// symlinks, so a plugin binary symlinked into pluginsDir (the e2e
+// harness's own fixture shape) is correctly recognised without this
+// function needing to special-case the symlink bit itself.
+func isRegularFileFollowingSymlinks(dir string, e os.DirEntry) bool {
+	if e.Type().IsRegular() {
+		return true
+	}
+	if e.Type()&os.ModeSymlink == 0 {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(dir, e.Name()))
+	if err != nil {
+		// A dangling symlink is not a usable plugin binary — skip it
+		// rather than failing the whole listing.
+		return false
+	}
+	return info.Mode().IsRegular()
 }

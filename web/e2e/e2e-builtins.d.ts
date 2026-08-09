@@ -97,3 +97,31 @@ declare module 'node:child_process' {
 	}
 	export function spawn(command: string, args: string[], options?: SpawnOptions): ChildProcess;
 }
+
+// --- Browser-context Window augmentation ---------------------------------
+// `window`/`document`/`MutationObserver`/`Node`/`Element` are already
+// available from TypeScript's own default-lib set (confirmed empirically:
+// this tsconfig's `target: "es2022"` pulls in the DOM lib by default even
+// though no `"lib"` option is declared here, and no @types/node is
+// installed) — referenced only from inside `page.addInitScript()`/
+// `page.evaluate()` callback bodies (07.1-04-PLAN.md Task 2's
+// no-skeleton-flash MutationObserver), which execute in the BROWSER, not
+// this Node-side fixture/spec process, but whose source text TypeScript
+// still type-checks as part of this same compilation unit. The only gap is
+// the spec<->browser-context bridge fields those callbacks attach to
+// `window` (e.g. `__armSkeletonObserver`) — the real `Window` interface
+// naturally has no knowledge of those, so they are added here via
+// interface merging (the standard, supported way to extend `Window`)
+// rather than by redeclaring `window` itself, which would conflict with
+// lib.dom.d.ts's own declaration.
+// This file has no top-level import/export, so it stays a global SCRIPT
+// (not a module) — a plain top-level `interface Window` here merges
+// directly with lib.dom.d.ts's own global `Window` interface with no
+// `declare global {}` wrapper needed (that wrapper is only required inside
+// a file that TypeScript otherwise treats as a module).
+interface Window {
+	__skeletonArmed?: boolean;
+	__skeletonInsertionCount?: number;
+	__armSkeletonObserver?: () => void;
+	__disarmSkeletonObserver?: () => void;
+}

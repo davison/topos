@@ -916,3 +916,96 @@ func TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary(t *tes
 		t.Errorf("expected match_vocabulary [\"tags\"], got %v", resp.MatchVocabulary)
 	}
 }
+
+// buildMockPluginDir mirrors buildPaperlessPluginDir above, built fresh
+// once per test binary run into a shared temp directory.
+var (
+	mockPluginDirOnce sync.Once
+	mockPluginDir     string
+	mockPluginDirErr  error
+)
+
+func buildMockPluginDir(t *testing.T) string {
+	t.Helper()
+	mockPluginDirOnce.Do(func() {
+		out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/davison/topos").Output()
+		if err != nil {
+			mockPluginDirErr = fmt.Errorf("resolve module root: %w", err)
+			return
+		}
+		root := strings.TrimSpace(string(out))
+
+		dir, err := os.MkdirTemp("", "topos-httpapi-describe-mock-test-*")
+		if err != nil {
+			mockPluginDirErr = err
+			return
+		}
+
+		bin := filepath.Join(dir, "topos-plugin-mock")
+		cmd := exec.Command("go", "build", "-o", bin, "./plugins/mock")
+		cmd.Dir = root
+		if buildOut, err := cmd.CombinedOutput(); err != nil {
+			mockPluginDirErr = fmt.Errorf("build mock plugin: %w\n%s", err, buildOut)
+			return
+		}
+
+		mockPluginDir = dir
+	})
+	if mockPluginDirErr != nil {
+		t.Fatalf("build mock plugin fixture: %v", mockPluginDirErr)
+	}
+	return mockPluginDir
+}
+
+// TestDescribePluginHandler_ExistingMockInstance_ReturnsMatchVocabulary is
+// the regression test for the bug 07.1-04-PLAN.md discovered live: the
+// "+" picker's one-step existing-instance add flow calls this exact route
+// with an ALREADY-CONFIGURED instance's own plugin field — before the
+// DiscoverAllBinaries split, "topos-plugin-mock" 404'd here even though it
+// was genuinely present on disk and already running as a configured
+// instance, because this handler shared DiscoverBinaries' UI-policy
+// exclusion with the "+ New <plugin type>…" picker's OFFERED-types list
+// (PluginTypesHandler). A mock instance must remain excluded from THAT
+// list (TestPluginTypesHandler_ReturnsSortedMockFreeList, above) while
+// still being describable here, since describing it is not "offering it
+// as new" — it is resolving the vocabulary of a source that already
+// legitimately exists in config.
+func TestDescribePluginHandler_ExistingMockInstance_ReturnsMatchVocabulary(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	router := newPluginTypesTestRouter(dir)
+
+	// Confirm the setup precondition this regression depends on: mock is
+	// still excluded from the OFFERED-types list even though it is about
+	// to be described successfully below.
+	typesReq := httptest.NewRequest(http.MethodGet, "/api/config/plugin-types", nil)
+	typesRec := httptest.NewRecorder()
+	router.ServeHTTP(typesRec, typesReq)
+	var typesResp pluginTypesResponse
+	if err := json.Unmarshal(typesRec.Body.Bytes(), &typesResp); err != nil {
+		t.Fatalf("unmarshal plugin-types: %v", err)
+	}
+	for _, name := range typesResp.PluginTypes {
+		if name == "topos-plugin-mock" {
+			t.Fatalf("expected topos-plugin-mock to stay excluded from /api/config/plugin-types, got %v", typesResp.PluginTypes)
+		}
+	}
+
+	body := `{"plugin":"topos-plugin-mock","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (mock must remain describable even though it is excluded from the offered-types list), got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp describePluginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.SourceType != "mock" {
+		t.Errorf("expected source_type %q, got %q", "mock", resp.SourceType)
+	}
+	if len(resp.MatchVocabulary) != 1 || resp.MatchVocabulary[0] != "labels" {
+		t.Errorf("expected match_vocabulary [\"labels\"], got %v", resp.MatchVocabulary)
+	}
+}
