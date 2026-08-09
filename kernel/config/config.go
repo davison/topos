@@ -147,6 +147,13 @@ func expandEnv(raw string) (string, []string) {
 	return expanded, missing
 }
 
+// applyDefaults guarantees two distinct things about cfg, called from
+// LoadRaw on BOTH the expanded and raw forms (once each — the raw form is
+// what Store.Raw() returns and GET/PUT /api/config and WriteCanonical all
+// operate over): scalar defaults for the four settings below, and — since
+// 07-12-PLAN.md Task 1 — non-nil collections for every field the config API
+// exposes, so no consumer of either form ever observes a nil map or slice
+// where the struct declares one.
 func applyDefaults(cfg *Config) {
 	if cfg.Server.Listen == "" {
 		cfg.Server.Listen = DefaultListen
@@ -159,6 +166,68 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Sync.Interval == "" {
 		cfg.Sync.Interval = DefaultSyncInterval
+	}
+
+	// Collection normalization (07-12-PLAN.md Task 1, closes 07-UAT.md
+	// G-07-4's kernel-side half): a nil Go map or slice marshals as JSON
+	// null via encoding/json, and the SPA iterates config.sources,
+	// config.webspaces, and each webspace's keywords/sources/match
+	// directly — Object.keys(null) throws, which is exactly the mechanism
+	// that let a healthy, 200-OK kernel present as "the topos service
+	// didn't respond" (.planning/debug/root-empty-state-service-error.md).
+	// This mirrors kernel/httpapi/config.go's unknownKeysOrEmpty, which
+	// already refuses to put a null collection in this same response body
+	// — this block generalizes that same convention to every other
+	// collection field the API exposes.
+	//
+	// Behaviour-neutral for Validate: every collection check in the
+	// validation path (validateWebspaces, validateMatchBlocks,
+	// validateSourcesAllowlist, validateFallbackCoverage,
+	// validateDisplayNameUniqueness, Webspace.IsEmptyShell) is
+	// len(...)-based, for which nil and empty are indistinguishable —
+	// pinned mechanically (not just argued) by
+	// TestApplyDefaults_NormalizesCollectionsWithoutChangingValidateVerdicts
+	// in config_test.go, which includes 07-11's D-20 empty shell explicitly
+	// since IsEmptyShell tests three collections at once and is the check
+	// most sensitive to a nil-versus-empty distinction being introduced
+	// anywhere.
+	//
+	// Invisible on disk: toml.Marshal already emits [] for a nil slice, so
+	// WriteCanonical's written bytes are unchanged for every config valid
+	// today — pinned by writer_test.go's unmodified byte-level golden and
+	// fixed-point tests.
+	//
+	// The permanent-filter stack (`filter` in TOML/JSON) is deliberately
+	// excluded: it is the one collection field carrying `omitempty`
+	// (D-17/D-18), so a webspace with no permanent filter writes no
+	// `filter` key at all — normalizing it to an empty slice would add a
+	// meaningless key to every webspace block on the next canonical save.
+	if cfg.Sources == nil {
+		cfg.Sources = make(map[string]Source)
+	}
+	if cfg.Webspaces == nil {
+		cfg.Webspaces = make(map[string]Webspace)
+	}
+	for name, ws := range cfg.Webspaces {
+		// Webspace is a value type: mutating the range variable ws alone
+		// would be discarded on loop exit, so any changed field must be
+		// written back into cfg.Webspaces[name] explicitly.
+		changed := false
+		if ws.Keywords == nil {
+			ws.Keywords = []string{}
+			changed = true
+		}
+		if ws.Sources == nil {
+			ws.Sources = []string{}
+			changed = true
+		}
+		if ws.Match == nil {
+			ws.Match = make(map[string]MatchBlock)
+			changed = true
+		}
+		if changed {
+			cfg.Webspaces[name] = ws
+		}
 	}
 }
 

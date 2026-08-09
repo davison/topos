@@ -117,6 +117,122 @@ keywords = ["house-move"]
 	}
 }
 
+// TestConfigHandler_ZeroWebspacesSerializesEmptyObjectsNotNull is the
+// wire-level proof for 07-12-PLAN.md Task 1 / 07-UAT.md G-07-4's KERN-08
+// empty edge: a config with zero [sources.*] and zero [webspaces.*]
+// blocks must answer GET /api/config with EMPTY JSON objects for both
+// collections, never null. Asserts both on the raw body text (a lenient
+// decoder happily turns JSON null into a nil Go map that reads as length
+// zero — an assertion that only checked length would pass against the
+// unfixed defect) and on the decoded shape (a non-nil map of length zero),
+// so neither half of the assertion can be satisfied by accident. Against
+// the pre-Task-1 applyDefaults, this fails: the response body contains
+// "sources":null and "webspaces":null (see 07-12-SUMMARY.md for the
+// recorded RED output), and Object.keys(null) is exactly what threw in the
+// SPA's root route (.planning/debug/root-empty-state-service-error.md).
+func TestConfigHandler_ZeroWebspacesSerializesEmptyObjectsNotNull(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[server]
+listen = "127.0.0.1:7777"
+`)
+	router := newConfigTestRouter(cfgStore)
+
+	rec := doConfigRequest(t, router, http.MethodGet, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"webspaces":null`) {
+		t.Fatalf("response body serializes webspaces as null (07-UAT.md G-07-4) — the SPA's root route iterates this field directly via Object.keys, which throws on null: %s", body)
+	}
+	if strings.Contains(body, `"sources":null`) {
+		t.Fatalf("response body serializes sources as null: %s", body)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	cfgField, ok := decoded["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected the config field to decode as an object, got %T", decoded["config"])
+	}
+	webspaces, ok := cfgField["webspaces"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config.webspaces to decode as a non-nil object (empty map), got %T: %v — a decoder silently turning null into a nil map would mask the defect this test guards against", cfgField["webspaces"], cfgField["webspaces"])
+	}
+	if len(webspaces) != 0 {
+		t.Errorf("expected zero webspaces, got %d: %v", len(webspaces), webspaces)
+	}
+	sources, ok := cfgField["sources"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config.sources to decode as a non-nil object (empty map), got %T", cfgField["sources"])
+	}
+	if len(sources) != 0 {
+		t.Errorf("expected zero sources, got %d: %v", len(sources), sources)
+	}
+}
+
+// TestConfigHandler_WebspaceOmittingCollectionsSerializesEmptyNotNull is
+// 07-12-PLAN.md Task 1's UI-12 null edge: a webspace declaring only
+// `keywords` (omitting `sources` and `match`) must answer with an empty
+// array for `sources` and an empty object for `match`, never null — every
+// client reader of these fields (the chip row, the add-source picker,
+// every config-edit.ts helper) reads them directly. Same raw-body-plus-
+// decoded-shape double assertion as the sibling test above.
+func TestConfigHandler_WebspaceOmittingCollectionsSerializesEmptyNotNull(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	router := newConfigTestRouter(cfgStore)
+
+	rec := doConfigRequest(t, router, http.MethodGet, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"sources":null`) {
+		t.Fatalf("expected the webspace's sources collection to serialize as an empty array, not null: %s", body)
+	}
+	if strings.Contains(body, `"match":null`) {
+		t.Fatalf("expected the webspace's match collection to serialize as an empty object, not null: %s", body)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	cfgField, ok := decoded["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected the config field to decode as an object, got %T", decoded["config"])
+	}
+	webspaces, ok := cfgField["webspaces"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config.webspaces to decode as an object, got %T", cfgField["webspaces"])
+	}
+	ws, ok := webspaces["house-move"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected webspaces.house-move to decode as an object, got %T", webspaces["house-move"])
+	}
+	sources, ok := ws["sources"].([]any)
+	if !ok {
+		t.Fatalf("expected webspaces.house-move.sources to decode as a non-nil array (empty), got %T: %v", ws["sources"], ws["sources"])
+	}
+	if len(sources) != 0 {
+		t.Errorf("expected zero sources for this webspace, got %d: %v", len(sources), sources)
+	}
+	match, ok := ws["match"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected webspaces.house-move.match to decode as a non-nil object (empty), got %T: %v", ws["match"], ws["match"])
+	}
+	if len(match) != 0 {
+		t.Errorf("expected zero match blocks for this webspace, got %d: %v", len(match), match)
+	}
+}
+
 // TestConfigSaveHandler_StaleHashReturns409AndFileUnchanged is the
 // HTTP-layer half of D-03: a PUT carrying a base_hash that no longer
 // matches the on-disk file's current hash is rejected with 409

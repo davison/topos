@@ -855,3 +855,93 @@ path = "~/.local/share/topos/index.db"
 		t.Errorf("expected index path %q, got %q", want, cfg.Index.Path)
 	}
 }
+
+// TestApplyDefaults_NormalizesCollectionsWithoutChangingValidateVerdicts is
+// the mechanical proof — not merely the argument — that 07-12-PLAN.md Task
+// 1's applyDefaults collection-normalization block cannot change any
+// config's Validate verdict. Every collection check in the validation path
+// (validateWebspaces, validateMatchBlocks, validateSourcesAllowlist,
+// validateFallbackCoverage, validateDisplayNameUniqueness, Webspace.
+// IsEmptyShell) is len(...)-based, for which a nil and an empty collection
+// are indistinguishable — this table spans the empty config, a
+// keywords-only webspace, 07-11's D-20 empty shell (IsEmptyShell tests
+// three collections at once and is the check most sensitive to a
+// nil-versus-empty distinction being introduced anywhere), an
+// allowlist-without-match-input webspace (the operator-typo shape
+// TestValidate_WebspaceWithAllowlistButNoMatchInputIsStillRejected pins),
+// and a partially-covered webspace (TestValidate_
+// PartiallyCoveredWebspaceIsStillRejected's shape) — and asserts BOTH a
+// before-normalization and an after-normalization call to Validate(nil)
+// agree on nil-ness AND, when non-nil, the exact error text. Each fixture
+// pre-sets [sync] interval to a valid positive duration so the scalar
+// Sync.Interval default (which DOES legitimately change Validate's verdict
+// when empty, by design) never confounds this test's only concern:
+// collection normalization.
+func TestApplyDefaults_NormalizesCollectionsWithoutChangingValidateVerdicts(t *testing.T) {
+	cases := map[string]func() *Config{
+		"empty config, zero sources zero webspaces": func() *Config {
+			return &Config{Sync: SyncConfig{Interval: "15m"}}
+		},
+		"keywords-only webspace": func() *Config {
+			return &Config{
+				Sync: SyncConfig{Interval: "15m"},
+				Webspaces: map[string]Webspace{
+					"house-move": {Keywords: []string{"house-move"}},
+				},
+			}
+		},
+		"D-20 empty webspace shell": func() *Config {
+			return &Config{
+				Sync: SyncConfig{Interval: "15m"},
+				Webspaces: map[string]Webspace{
+					"new-project": {},
+				},
+			}
+		},
+		"allowlist without match input (operator-typo rejection shape)": func() *Config {
+			return &Config{
+				Sync: SyncConfig{Interval: "15m"},
+				Sources: map[string]Source{
+					"home-email": {Plugin: "topos-plugin-proton", BaseURL: "http://x.lan", Token: "tok"},
+				},
+				Webspaces: map[string]Webspace{
+					"house-move": {Sources: []string{"home-email"}},
+				},
+			}
+		},
+		"partially-covered webspace (two instances, match for only one)": func() *Config {
+			return &Config{
+				Sync: SyncConfig{Interval: "15m"},
+				Sources: map[string]Source{
+					"home-email": {Plugin: "topos-plugin-proton", BaseURL: "http://x.lan", Token: "tok"},
+					"work-email": {Plugin: "topos-plugin-proton", BaseURL: "http://x.lan", Token: "tok"},
+				},
+				Webspaces: map[string]Webspace{
+					"house-move": {
+						Match: map[string]MatchBlock{
+							"home-email": {"folders": {"Home"}},
+						},
+					},
+				},
+			}
+		},
+	}
+
+	for name, build := range cases {
+		t.Run(name, func(t *testing.T) {
+			before := build()
+			beforeErr := before.Validate(nil)
+
+			after := build()
+			applyDefaults(after)
+			afterErr := after.Validate(nil)
+
+			if (beforeErr == nil) != (afterErr == nil) {
+				t.Fatalf("normalization changed the Validate verdict: before=%v after=%v", beforeErr, afterErr)
+			}
+			if beforeErr != nil && beforeErr.Error() != afterErr.Error() {
+				t.Fatalf("normalization changed the Validate error text:\nbefore=%q\nafter=%q", beforeErr.Error(), afterErr.Error())
+			}
+		})
+	}
+}
