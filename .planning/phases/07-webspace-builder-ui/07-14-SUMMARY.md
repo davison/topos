@@ -209,6 +209,10 @@ None - no external service configuration required.
 - The plan's `<verification>` `<human-check>` (live `make dev` confirmation that the chip disappears immediately, `config.toml` narrows correctly, the instance's own `[sources.<id>]` block survives, other webspaces are unchanged, the "+" picker re-offers the removed instance, and the "+" trigger survives removing every source one by one) has **not** been run in this execution environment — no live kernel session was available. This is the same category of gap 07-04-SUMMARY.md flagged for the original (now-fixed) implementation; it should be exercised at the next opportunity to have a running `make dev` session, per the plan's own `<human-check>` block.
 - No further work is scoped for `G-07-6`; the phase's remaining open item is the URL `?sources=`-naming-a-non-participant case, explicitly flagged as deliberately out of scope (planning choice 6) rather than deferred as a gap.
 
+## Self-Check: PASSED
+
+All 7 files_modified paths plus this SUMMARY.md confirmed present on disk; all 4 commits (`68bb5a0`, `66534cf`, `154cc83`, `0cde1fe`) confirmed present in `git log`. No missing items.
+
 ---
 *Phase: 07-webspace-builder-ui*
 *Completed: 2026-08-09*

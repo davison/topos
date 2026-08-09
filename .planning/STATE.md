@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-09T12:34:47.194Z"
+last_updated: "2026-08-09T12:46:39.695Z"
 last_activity: 2026-08-09
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 53
-  completed_plans: 52
-  percent: 67
+  completed_plans: 53
+  percent: 78
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-08-07)
 ## Current Position
 
 Phase: 07 (webspace-builder-ui) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-08-09
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -103,6 +103,7 @@ Progress: [██████████] 98%
 | Phase 07 P11 | 45min | 3 tasks | 14 files |
 | Phase 07 P13 | ~18min | 3 tasks | 9 files |
 | Phase 07 P12 | 10min | 2 tasks | 5 files |
+| Phase 07 P14 | 8min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 07-13]: kernel/pluginhost.launch's stderrTail capture is bounded at 4 KiB, mutex-guarded, front-discard, and read only after client.Kill() returns — covers boot-time/hot-apply launches identically to UI trial launches since all three share launch()
 - [Phase ?]: [Phase 07-12]: applyDefaults normalizes Sources/Webspaces top-level maps and per-webspace Keywords/Sources/Match collections to non-nil empty values (Filter deliberately excluded, D-17/D-18) — closes 07-UAT.md G-07-4's kernel-side half, GET /api/config never nulls a collection the SPA iterates
 - [Phase ?]: [Phase 07-12]: root route's onMount isolates the getConfig() fetch in its own catch that returns immediately — all post-fetch processing (redirect resolution, empty-phase assignment) runs outside any catch so a downstream bug can no longer render the kernel-unreachable copy
+- [Phase ?]: 07-14: removeSourceFromWebspace seeds the participant set before filtering (mirrors addSourceToWebspace), closing G-07-6's config-write no-op
+- [Phase ?]: 07-14: WebspaceHeader chip content filters through participation.ts's shared predicate; row visibility deliberately stays unfiltered so the + trigger survives zero-participant webspaces
 
 ### Pending Todos
 
@@ -257,6 +260,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-09T12:34:47.181Z
-Stopped at: Completed 07-12-PLAN.md — closed 07-UAT.md G-07-4: zero-webspace config no longer nulls a collection the SPA iterates, and the root route's fetch catch is isolated from downstream processing
+Last session: 2026-08-09T12:46:39.686Z
+Stopped at: Completed 07-14-PLAN.md
 Resume file: None

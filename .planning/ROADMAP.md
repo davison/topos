@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Signal Conversations** - Signal Desktop history in the stream, read strictly read-only with keyring and schema-version safety (completed 2026-08-03)
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
-- [ ] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters
+- [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
 - [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
 
 ## Phase Details
@@ -366,7 +366,7 @@ Plans:
 **Wave 11** *(UAT gap closure, blocked on Wave 10 completion — both plans run in parallel, zero file overlap)*
 
 - [x] 07-12-PLAN.md — Gap closure (07-UAT.md G-07-4): the config API never serializes null for a collection the SPA iterates, and the root route reaches its "No webspaces yet" empty state instead of blaming the kernel for its own exception
-- [ ] 07-14-PLAN.md — Gap closure (07-UAT.md G-07-6): "Remove from this webspace" writes a document that really narrows participation, and the chip row renders through one shared participation predicate so the chip actually disappears
+- [x] 07-14-PLAN.md — Gap closure (07-UAT.md G-07-6): "Remove from this webspace" writes a document that really narrows participation, and the chip row renders through one shared participation predicate so the chip actually disappears
 
 Notes:
 
@@ -409,7 +409,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Signal Conversations | 4/4 | Complete    | 2026-08-04 |
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
-| 7. Webspace Builder UI | 13/14 | In Progress|  |
+| 7. Webspace Builder UI | 14/14 | Complete   | 2026-08-09 |
 | 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
 
 ## Requirement Coverage
