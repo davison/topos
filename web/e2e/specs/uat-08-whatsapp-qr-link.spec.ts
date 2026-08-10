@@ -568,4 +568,153 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 		expect(cfg.webspaces.armor.sources).toContain('second-whatsapp');
 		expect(cfg.webspaces.armor.match['second-whatsapp']).toEqual({ groups: ['demo-group'] });
 	});
+
+	test('9. qr then paired via the poll loop, at a realistic first-code expiry (08-UAT.md G-08-1)', async ({
+		page,
+		kernel
+	}) => {
+		await offerWhatsAppPluginType(page);
+		await scriptDescribeWhatsApp(page);
+		// 60 is the entire point of this case, not an arbitrary fixture
+		// value: whatsmeow reports a 60-second validity window for its
+		// FIRST code — the one a user actually scans (qrchan.go: `if
+		// len(codes) == 6 { timeout = 60 * time.Second }`). Under the
+		// pre-fix cadence (G-08-1) the panel's poll interval WAS this
+		// value, so the kernel's already-recorded terminal event sat
+		// undelivered for up to 60 seconds. QRPanel's fixed 2s
+		// POLL_INTERVAL_MS (08-05) means this case still completes in
+		// seconds despite the realistic 60-second code.
+		const qrResponse = {
+			status: 200,
+			body: {
+				schema_version: 1,
+				session: 'sess-1',
+				state: 'qr',
+				png_data_uri: 'data:image/png;base64,AAAA',
+				expires_in_seconds: 60
+			}
+		};
+		const pairingAcceptedResponse = {
+			status: 200,
+			body: { schema_version: 1, session: 'sess-1', state: 'pairing_accepted' }
+		};
+		const pairedResponse = { status: 200, body: { schema_version: 1, session: 'sess-1', state: 'paired' } };
+		await scriptLinkSession(page, {
+			start: qrResponse,
+			polls: [qrResponse, pairingAcceptedResponse, pairedResponse],
+			deleteCalls: 0
+		});
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+		await openWhatsAppConnectStep(page, 'Poll Loop WhatsApp');
+
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByAltText(/pairing QR code/)).toBeVisible();
+
+		// Explicit timeouts well under the scripted 60s expiry — 15s is
+		// generous against a 2s poll cadence and three round trips, and a
+		// cadence regression should make this case fail loudly (a
+		// timeout), not pass slowly.
+		await expect(dialog.getByText('Scan accepted — completing login…')).toBeVisible({
+			timeout: 15_000
+		});
+		await expect(dialog.getByRole('heading', { name: 'Match settings for armor' })).toBeVisible({
+			timeout: 15_000
+		});
+		await expect(dialog.getByAltText(/pairing QR code/)).toHaveCount(0);
+	});
+
+	test('10. no cancel affordance during the post-pair window (08-UAT.md G-08-1)', async ({
+		page,
+		kernel
+	}) => {
+		await offerWhatsAppPluginType(page);
+		await scriptDescribeWhatsApp(page);
+		const qrResponse = {
+			status: 200,
+			body: {
+				schema_version: 1,
+				session: 'sess-1',
+				state: 'qr',
+				png_data_uri: 'data:image/png;base64,AAAA',
+				expires_in_seconds: 60
+			}
+		};
+		const pairingAcceptedResponse = {
+			status: 200,
+			body: { schema_version: 1, session: 'sess-1', state: 'pairing_accepted' }
+		};
+		// No terminal entry — scriptLinkSession's poll helper repeats the
+		// last scripted entry once exhausted, so the panel holds in the
+		// pairing phase for the whole case.
+		const script: LinkScript = {
+			start: qrResponse,
+			polls: [qrResponse, pairingAcceptedResponse],
+			deleteCalls: 0
+		};
+		await scriptLinkSession(page, script);
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+		await openWhatsAppConnectStep(page, 'No Cancel WhatsApp');
+
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByText('Scan accepted — completing login…')).toBeVisible({
+			timeout: 15_000
+		});
+		await expect(dialog.getByAltText(/pairing QR code/)).toHaveCount(0);
+		// Cancelling here SIGKILLs the link subprocess mid-login-handshake
+		// and strands a pairing whatsmeow has already written to disk —
+		// the control is deliberately withheld for these few seconds
+		// (08-UI-SPEC.md Amendment 2's "No Cancel while pairing").
+		await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+		await expect(page.getByRole('dialog')).toHaveCount(1);
+
+		// Close via Escape so the panel's unmount cancel path runs exactly
+		// as case 6 exercises it.
+		await page.keyboard.press('Escape');
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		await expect
+			.poll(() => script.deleteCalls, { timeout: 5_000 })
+			.toBeGreaterThanOrEqual(1);
+	});
+
+	test('11. already-linked recovery: a completed pairing is picked up, not stranded (08-UAT.md G-08-1)', async ({
+		page,
+		kernel
+	}) => {
+		// Stands for: a user who scanned successfully on a previous
+		// attempt and closed the dialog left a real device row in
+		// whatsmeow.db; re-entering the Add-Source flow against the same
+		// path now detects it and carries the flow forward instead of
+		// offering a code for a device that is already paired.
+		await offerWhatsAppPluginType(page);
+		await scriptDescribeWhatsApp(page);
+		const alreadyLinkedResponse = {
+			status: 200,
+			body: { schema_version: 1, session: 'sess-1', state: 'already_linked' }
+		};
+		const pairedResponse = { status: 200, body: { schema_version: 1, session: 'sess-1', state: 'paired' } };
+		await scriptLinkSession(page, {
+			start: alreadyLinkedResponse,
+			polls: [alreadyLinkedResponse, pairedResponse],
+			deleteCalls: 0
+		});
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+		await openWhatsAppConnectStep(page, 'Already Linked WhatsApp');
+
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByText('Already linked — confirming this session…')).toBeVisible({
+			timeout: 15_000
+		});
+		// The absence of any QR image is the whole recovery claim — never
+		// offer a code for a device that is already paired.
+		await expect(dialog.getByAltText(/pairing QR code/)).toHaveCount(0);
+		await expect(dialog.getByRole('heading', { name: 'Match settings for armor' })).toBeVisible({
+			timeout: 15_000
+		});
+	});
 });
