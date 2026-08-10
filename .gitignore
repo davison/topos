@@ -20,6 +20,8 @@ kernel/webui/build/*
 /plugins/mock/mock
 /plugins/proton/proton
 /plugins/signal/signal
+/plugins/mockstrict/mockstrict
+/plugins/whatsapp/whatsapp
 /paperless
 
 # Playwright e2e artifacts (traces, screenshots, html report) — never

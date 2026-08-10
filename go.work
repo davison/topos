@@ -8,5 +8,6 @@ use (
 	./plugins/proton
 	./plugins/signal
 	./plugins/silverbullet
+	./plugins/whatsapp
 	./sdk
 )

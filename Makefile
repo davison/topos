@@ -56,21 +56,25 @@ build:
 	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	$(MAKE) plugins
 
-# plugins builds the full plugin set — the four CGO_ENABLED=0 binaries
-# plus the cgo signal plugin via its own isolated target — and nothing
-# else (no npm, no kernel build), so it is usable from the dev loop
-# without touching kernel/webui/build. It exists so `make dev` can
-# guarantee fresh plugin binaries before the kernel starts without
-# paying for a full `build`. It deliberately includes the cgo signal
-# plugin: a machine without system sqlcipher fails here rather than
-# starting a kernel with an incomplete plugin set. `build` delegates to
-# this target so the plugin set is defined once.
+# plugins builds the full plugin set — the five CGO_ENABLED=0 binaries
+# (now including topos-plugin-whatsapp, pure Go — SRC-03) plus the cgo
+# signal plugin via its own isolated target — and nothing else (no npm,
+# no kernel build), so it is usable from the dev loop without touching
+# kernel/webui/build. It exists so `make dev` can guarantee fresh plugin
+# binaries before the kernel starts without paying for a full `build`.
+# It deliberately includes the cgo signal plugin: a machine without
+# system sqlcipher fails here rather than starting a kernel with an
+# incomplete plugin set. `build` delegates to this target so the plugin
+# set is defined once. topos-plugin-whatsapp is built BEFORE the signal
+# target, not after — it is CGO-free and must not sit behind the one
+# cgo-gated build in this target.
 plugins:
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
 	go build -o bin/plugins/topos-plugin-silverbullet ./plugins/silverbullet
 	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
+	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
 	$(MAKE) signal
 
 # signal builds the Signal plugin binary (SRC-02). Unlike every other
@@ -89,14 +93,15 @@ signal:
 	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
 # test-portable runs every workspace module test EXCEPT the cgo Signal
-# plugin (sdk, paperless, silverbullet, proton, mock, mockstrict, plus the
-# root kernel module) — the credential-free, cgo-free half of `test`, and
-# what CI runs (D-13): a runner without system sqlcipher can run everything
-# else. This is the ONLY place that module list is written; `test` below
-# delegates to this target rather than duplicating it, so the two
-# definitions cannot drift apart (the same discipline the "plugins" target's
-# own comment documents for its cgo split). `make test` on a desktop is
-# unchanged — it still runs test-portable followed by test-signal.
+# plugin (sdk, paperless, silverbullet, proton, mock, mockstrict, whatsapp,
+# plus the root kernel module) — the credential-free, cgo-free half of
+# `test`, and what CI runs (D-13): a runner without system sqlcipher can
+# run everything else. This is the ONLY place that module list is written;
+# `test` below delegates to this target rather than duplicating it, so the
+# two definitions cannot drift apart (the same discipline the "plugins"
+# target's own comment documents for its cgo split). `make test` on a
+# desktop is unchanged — it still runs test-portable followed by
+# test-signal.
 test-portable:
 	CGO_ENABLED=0 go build ./... && go test ./...
 	cd sdk && CGO_ENABLED=0 go build ./... && go test ./...
@@ -105,6 +110,7 @@ test-portable:
 	cd plugins/proton && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mockstrict && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...
+	cd plugins/whatsapp && CGO_ENABLED=0 go build ./... && go test ./...
 
 # test runs the full test suite across all seven workspace modules (sdk,
 # paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
