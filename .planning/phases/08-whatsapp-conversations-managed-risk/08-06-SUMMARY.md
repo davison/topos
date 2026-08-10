@@ -185,3 +185,19 @@ None - no external service configuration required.
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-10*
+
+## Self-Check: PASSED
+
+- FOUND: plugins/whatsapp/link.go
+- FOUND: plugins/whatsapp/link_test.go
+- FOUND: kernel/httpapi/whatsapplink.go
+- FOUND: kernel/httpapi/whatsapplink_exec_test.go
+- FOUND: kernel/httpapi/whatsapplink_test.go
+- FOUND: kernel/httpapi/routes.go
+- FOUND: .planning/phases/08-whatsapp-conversations-managed-risk/08-06-SUMMARY.md
+- FOUND: bcd157c (Task 1 RED commit)
+- FOUND: 1c254a5 (Task 1 GREEN commit)
+- FOUND: 3696d96 (Task 2 RED commit)
+- FOUND: eb0c6e3 (Task 2 GREEN commit)
+- FOUND: fdae11e (Task 3 test-only commit)
+- FOUND: 28c51bf (SUMMARY.md commit)
