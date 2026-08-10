@@ -211,6 +211,12 @@ None — no external service configuration required. This plan is code-only agai
 - **No open blockers.** All three tasks' acceptance criteria pass; `make test-portable` is green.
 - **Known gap, not a defect:** `connect.go`'s boot-time transient-Connect()-failure branch is not one of the plan's five/six named causes by design (see key-decisions) — if a future round wants a dedicated "connecting" state distinct from `healthStateNotLinked`, that is a new taxonomy member, not a bug in this plan's own scope.
 
+## Self-Check: PASSED
+
+- All 6 declared new files (`health.go`, `health_test.go`, `delink_test.go`, `match_test.go`, `readonly_test.go`, `outbound_hosts_test.go`) confirmed present on disk.
+- All 4 commit hashes (`2a4425c`, `51fdbec`, `d81cf84`, plus this SUMMARY's own commit) confirmed present in `git log`.
+- `make test-portable` re-verified passing at commit `d81cf84` before this SUMMARY was written.
+
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-10*
