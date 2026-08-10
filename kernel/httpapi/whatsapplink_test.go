@@ -26,27 +26,34 @@ import (
 )
 
 // fakeSuspender is the Suspender test double: records every SuspendInstance
-// call (name, in order) and every resume call, so tests can assert both
-// that suspension happened before spawning and that resume happened
-// exactly once, after the session reached a terminal state.
+// call (name, in order), the context each call and its resume closure were
+// handed, and every resume call, so tests can assert both that suspension
+// happened before spawning and that resume happened exactly once, after
+// the session reached a terminal state — and (Task 3's Guard 2,
+// 08-09-PLAN.md) that neither call was ever handed the request's own
+// context.
 type fakeSuspender struct {
 	mu           sync.Mutex
 	suspendCalls []string
 	resumeCalls  []string
+	suspendCtxs  []context.Context
+	resumeCtxs   []context.Context
 	suspendErr   error
 	resumeErr    error
 }
 
-func (f *fakeSuspender) SuspendInstance(_ context.Context, name string) (func(context.Context) error, error) {
+func (f *fakeSuspender) SuspendInstance(ctx context.Context, name string) (func(context.Context) error, error) {
 	f.mu.Lock()
 	f.suspendCalls = append(f.suspendCalls, name)
+	f.suspendCtxs = append(f.suspendCtxs, ctx)
 	f.mu.Unlock()
 	if f.suspendErr != nil {
 		return nil, f.suspendErr
 	}
-	return func(context.Context) error {
+	return func(resumeCtx context.Context) error {
 		f.mu.Lock()
 		f.resumeCalls = append(f.resumeCalls, name)
+		f.resumeCtxs = append(f.resumeCtxs, resumeCtx)
 		f.mu.Unlock()
 		return f.resumeErr
 	}, nil
@@ -62,6 +69,28 @@ func (f *fakeSuspender) resumeCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.resumeCalls)
+}
+
+// lastSuspendCtx returns the context handed to the most recent
+// SuspendInstance call, or nil if it was never called.
+func (f *fakeSuspender) lastSuspendCtx() context.Context {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.suspendCtxs) == 0 {
+		return nil
+	}
+	return f.suspendCtxs[len(f.suspendCtxs)-1]
+}
+
+// lastResumeCtx returns the context handed to the most recent resume
+// closure invocation, or nil if resume was never called.
+func (f *fakeSuspender) lastResumeCtx() context.Context {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.resumeCtxs) == 0 {
+		return nil
+	}
+	return f.resumeCtxs[len(f.resumeCtxs)-1]
 }
 
 // fakeLinkProcess is a scripted, in-memory stand-in for a real link
@@ -512,6 +541,121 @@ func TestIsTerminalKind_ProgressKindsAreNonTerminal(t *testing.T) {
 			t.Fatalf("expected isTerminalKind(%q) == true, got false", kind)
 		}
 	}
+}
+
+// doLinkRequestWithCancelledContext is doLinkRequest, but the request is
+// served with a context derived from its own and cancelled BEFORE
+// ServeHTTP runs — simulating a browser that has already disconnected by
+// the time this request reaches the handler.
+func doLinkRequestWithCancelledContext(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if body == "" {
+		req = httptest.NewRequest(method, path, nil)
+	} else {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestWhatsAppLink_SuspendAndResumeRunOnDetachedContexts is Task 3's Guard
+// 2 (08-09-PLAN.md): the start, poll, and cancel handlers must hand the
+// supervisor a context this request cannot cancel — context.Background(),
+// never r.Context() — for every suspend/resume call, because each
+// performs a real subprocess Reconcile and a generation rebuild
+// (08-09-PLAN.md Task 1) that must outlive a browser that disappears
+// mid-request. This is deliberately behavioural rather than a source
+// scan: each sub-test serves a request whose OWN context is already
+// cancelled before ServeHTTP runs, and asserts the context the fake
+// suspender/resume closure actually received carries no error — a
+// handler that forwarded the request's own context would hand over an
+// already-cancelled one and the assertion would fail.
+func TestWhatsAppLink_SuspendAndResumeRunOnDetachedContexts(t *testing.T) {
+	t.Run("start hands the suspender a detached context", func(t *testing.T) {
+		suspender := &fakeSuspender{}
+		spawner := &fakeSpawner{result: newFakeLinkProcess().result()}
+		router, _ := newWhatsAppLinkTestRouter(t, suspender, spawner.spawn)
+
+		startBody := `{"plugin":"topos-plugin-whatsapp","path":"/tmp/whatsapp","instance":"my-whatsapp"}`
+		rec := doLinkRequestWithCancelledContext(t, router, http.MethodPost, "/api/config/whatsapp-link", startBody)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 from start, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		ctx := suspender.lastSuspendCtx()
+		if ctx == nil {
+			t.Fatal("expected SuspendInstance to have been called")
+		}
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("expected the context handed to SuspendInstance to be detached from the request (no error), got: %v — a handler forwarding r.Context() would hand over an already-cancelled context here", err)
+		}
+	})
+
+	t.Run("poll reaching a terminal state hands resume a detached context", func(t *testing.T) {
+		proc := newFakeLinkProcess()
+		spawner := &fakeSpawner{result: proc.result()}
+		suspender := &fakeSuspender{}
+		router, _ := newWhatsAppLinkTestRouter(t, suspender, spawner.spawn)
+
+		startBody := `{"plugin":"topos-plugin-whatsapp","path":"/tmp/whatsapp","instance":"my-whatsapp"}`
+		startRec := doLinkRequest(t, router, http.MethodPost, "/api/config/whatsapp-link", startBody)
+		var startResp whatsappLinkResponse
+		if err := json.Unmarshal(startRec.Body.Bytes(), &startResp); err != nil {
+			t.Fatalf("unmarshal start response: %v", err)
+		}
+
+		proc.emit(`{"kind":"paired"}`)
+
+		waitForCondition(t, func() bool {
+			rec := doLinkRequestWithCancelledContext(t, router, http.MethodGet, "/api/config/whatsapp-link/"+startResp.Session, "")
+			if rec.Code != http.StatusOK {
+				return false
+			}
+			var resp whatsappLinkResponse
+			_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+			return resp.State == "paired"
+		})
+
+		ctx := suspender.lastResumeCtx()
+		if ctx == nil {
+			t.Fatal("expected resume to have been called after the session reached the paired terminal state")
+		}
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("expected the context handed to resume from the poll handler to be detached from the request (no error), got: %v — a handler forwarding r.Context() would hand over an already-cancelled context here", err)
+		}
+	})
+
+	t.Run("cancel hands resume a detached context", func(t *testing.T) {
+		proc := newFakeLinkProcess()
+		spawner := &fakeSpawner{result: proc.result()}
+		suspender := &fakeSuspender{}
+		router, _ := newWhatsAppLinkTestRouter(t, suspender, spawner.spawn)
+
+		startBody := `{"plugin":"topos-plugin-whatsapp","path":"/tmp/whatsapp","instance":"my-whatsapp"}`
+		startRec := doLinkRequest(t, router, http.MethodPost, "/api/config/whatsapp-link", startBody)
+		var startResp whatsappLinkResponse
+		if err := json.Unmarshal(startRec.Body.Bytes(), &startResp); err != nil {
+			t.Fatalf("unmarshal start response: %v", err)
+		}
+
+		cancelRec := doLinkRequestWithCancelledContext(t, router, http.MethodDelete, "/api/config/whatsapp-link/"+startResp.Session, "")
+		if cancelRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 from cancel, got %d: %s", cancelRec.Code, cancelRec.Body.String())
+		}
+
+		ctx := suspender.lastResumeCtx()
+		if ctx == nil {
+			t.Fatal("expected resume to have been called after cancel")
+		}
+		if err := ctx.Err(); err != nil {
+			t.Fatalf("expected the context handed to resume from the cancel handler to be detached from the request (no error), got: %v — a handler forwarding r.Context() would hand over an already-cancelled context here", err)
+		}
+	})
 }
 
 // waitForCondition polls cond until it returns true or a short timeout

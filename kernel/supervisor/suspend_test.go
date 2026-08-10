@@ -2,12 +2,14 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/pluginhost"
+	"github.com/davison/topos/kernel/syncer"
 )
 
 // TestSuspendInstance_AbsentNameIsNoOp proves the D-02 Add-Source case: a
@@ -302,5 +304,100 @@ labels = ["demo"]
 	resumed := sup.Host().Plugins()
 	if len(resumed) != 2 {
 		t.Fatalf("expected both instances launched again after resume, got %+v", namesOf(resumed))
+	}
+}
+
+// TestSuspendInstance_SuspendedWindowRecordsNoErroredRun is Task 3's Guard
+// 1 (08-09-PLAN.md): a refresh issued while an instance is suspended must
+// never write an errored sync_runs row for it — a kernel lifecycle
+// artifact must never be pinned to a source's health surface as a failed
+// sync. Reuses the participating-webspace fixture from
+// TestSuspendInstance_ResumedInstanceStillSyncs, above.
+func TestSuspendInstance_SuspendedWindowRecordsNoErroredRun(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sync]
+interval = "1h"
+
+[sources.suspend-me]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.leave-alone]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.demo]
+sources = ["suspend-me", "leave-alone"]
+
+[webspaces.demo.match.suspend-me]
+labels = ["demo"]
+
+[webspaces.demo.match.leave-alone]
+labels = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	// Establish a real "ok" row as the instance's latest recorded outcome
+	// before suspending it — this is what a row written during the
+	// suspension window would need to overwrite, and what the final
+	// assertion proves it never did.
+	preResult, err := sup.Refresh(ctx, "suspend-me")
+	if err != nil {
+		t.Fatalf("Refresh(suspend-me) before suspend: %v", err)
+	}
+	if preResult.Status != "ok" {
+		t.Fatalf("expected the pre-suspend refresh to succeed, got Status %q (error: %q)", preResult.Status, preResult.Error)
+	}
+
+	resume, err := sup.SuspendInstance(ctx, "suspend-me")
+	if err != nil {
+		t.Fatalf("SuspendInstance: %v", err)
+	}
+
+	// The coordinator has no entry for a suspended instance — Refresh must
+	// answer ErrUnknownSource BEFORE a sync_runs row is ever started
+	// (syncer.Coordinator.Refresh's own doc comment), never attempt (and
+	// fail) a real sync against it.
+	_, refreshErr := sup.Refresh(ctx, "suspend-me")
+	if !errors.Is(refreshErr, syncer.ErrUnknownSource) {
+		t.Fatalf("expected Refresh during the suspension window to return syncer.ErrUnknownSource, got: %v", refreshErr)
+	}
+
+	runs, err := idx.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource (during suspension): %v", err)
+	}
+	run, ok := runs["suspend-me"]
+	if !ok {
+		t.Fatal("expected a latest sync_runs row for \"suspend-me\" to still exist (the pre-suspend one)")
+	}
+	if run.Status != "ok" {
+		t.Errorf("expected \"suspend-me\"'s latest sync_runs row to still report status \"ok\" during the suspension window — a row written here is what pinned the WhatsApp source's chip to a closing-connection error in 08-UAT.md test 3, and it survives restarts because nothing ever overwrites a latest-run row except a later run. Got status %q, error %q", run.Status, run.Error)
+	}
+	if run.Error != "" {
+		t.Errorf("expected \"suspend-me\"'s latest sync_runs row to carry an empty error during the suspension window, got %q", run.Error)
+	}
+
+	if err := resume(ctx); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	postResult, err := sup.Refresh(ctx, "suspend-me")
+	if err != nil {
+		t.Fatalf("Refresh(suspend-me) after resume: %v", err)
+	}
+	if postResult.Status != "ok" {
+		t.Fatalf("expected a further refresh after resume to record \"ok\" again, got Status %q (error: %q)", postResult.Status, postResult.Error)
 	}
 }
