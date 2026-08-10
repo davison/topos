@@ -95,11 +95,10 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 	p.client = client
 
 	if device.ID == nil {
-		p.setUnhealthy("whatsapp: not linked — run this binary's -link flag once to pair a device")
+		p.setHealthState(healthStateNotLinked, "")
 		return nil
 	}
 
-	p.setLinked(true)
 	if err := client.Connect(); err != nil {
 		// Not fatal to process startup — a transient network failure at
 		// boot should not crash-loop the plugin subprocess; Health/Match
@@ -107,7 +106,22 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 		// fires (07-RESEARCH.md assumption A2's precedent: every plugin
 		// in this repo defers live-connectivity failures past process
 		// startup).
-		p.setUnhealthy(fmt.Sprintf("whatsapp: connect failed: %v", err))
+		//
+		// Reported as healthStateNotLinked, DELIBERATELY not one of
+		// Task 1's three new named causes (de-link/ban/expiry are all
+		// events WhatsApp's OWN server explicitly told us about via a
+		// LATER *events.LoggedOut/TemporaryBan/ConnectFailure —
+		// eventhandler.go — this is simply "haven't yet completed a
+		// dial" for a device that IS already paired). whatsmeow's own
+		// Client already schedules a background auto-reconnect for a
+		// retryable error (EnableAutoReconnect defaults true, confirmed
+		// in whatsmeow's client.go) — once that succeeds,
+		// *events.Connected (eventhandler.go) transitions to
+		// healthStateLinked automatically with zero further code here.
+		// The real dial error is carried in the detail so Health's
+		// LastError stays specific rather than merely the fixed
+		// not-linked template verbatim.
+		p.setHealthState(healthStateNotLinked, fmt.Sprintf("initial connect failed, retrying: %v", err))
 		return nil
 	}
 

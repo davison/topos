@@ -24,7 +24,7 @@ const attachmentPlaceholder = "📎 Attachment"
 func (p *SourcePlugin) handleEvent(evt any) {
 	switch e := evt.(type) {
 	case *events.Connected:
-		p.setHealthy()
+		p.setHealthState(healthStateLinked, "")
 		fmt.Fprintf(p.logOut, "%s: connected\n", pluginName)
 		// BLOCKING FIX (2026-08-10 real-device spike): history sync
 		// alone never populates a group's own subject — see
@@ -33,9 +33,27 @@ func (p *SourcePlugin) handleEvent(evt any) {
 		// loop.
 		go p.syncJoinedGroups()
 	case *events.LoggedOut:
-		p.setUnhealthy("whatsapp: session logged out from the phone (WhatsApp > Linked devices > this device > Log out)")
+		// health.go's healthStateFromLogoutReason translates e.Reason
+		// into the correct named cause (de-link / ban / session-expiry —
+		// Task 1's own taxonomy) — never a single generic "logged out"
+		// message the way 08-01's own predecessor code read.
+		p.setHealthState(healthStateFromLogoutReason(e.Reason), "")
+	case *events.TemporaryBan:
+		// A dedicated event type (reason 402), distinct from the
+		// LoggedOut/ConnectFailure family above — whatsmeow's own
+		// TempBanReason.String() already composes a code+description
+		// ("101: you sent too many messages..."), captured here as this
+		// state's dynamic detail per this task's own action text.
+		p.setHealthState(healthStateBanned, e.Code.String())
+	case *events.ConnectFailure:
+		// The truly-unrecognised-reason fallback whatsmeow's own
+		// connectionevents.go dispatches when a connect failure is
+		// neither a recognised logout, a temp ban, nor one of the
+		// auto-retried transient codes — mapped to de-linked, never
+		// silently to healthy (this task's own explicit requirement).
+		p.setHealthState(healthStateDelinked, fmt.Sprintf("connect failure %d: %s", int(e.Reason), e.Message))
 	case *events.StreamReplaced:
-		p.setUnhealthy("whatsapp: stream replaced by another session")
+		p.setHealthState(healthStateStreamReplaced, "")
 	case *events.Message:
 		p.handleMessageEvent(e)
 	case *events.HistorySync:

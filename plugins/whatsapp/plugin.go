@@ -79,10 +79,19 @@ type SourcePlugin struct {
 	// Display-only; never a match candidate.
 	pushNames *pushNameCache
 
-	mu        sync.RWMutex
-	linked    bool
-	healthy   bool
-	lastError string
+	// mu guards state/detail: the background whatsmeow event-handler
+	// goroutine (eventhandler.go) writes them, while every gRPC handler
+	// goroutine (Match/Health, below) reads them — health.go's named
+	// healthState taxonomy replaces this plan's own predecessor's single
+	// non-healthy flag.
+	mu    sync.RWMutex
+	state healthState
+	// detail is optional dynamic context appended to state.Message()'s
+	// own fixed template (currentMessageLocked) — e.g. a TemporaryBan
+	// event's own reported reason code/text, or a raw connect error.
+	// Never a substitute for the template: health_test.go's uniqueness
+	// assertion exercises state.Message() alone, undiluted by detail.
+	detail string
 }
 
 // NewSourcePlugin opens this plugin's own message store, then starts the
@@ -108,34 +117,48 @@ func NewSourcePlugin(ctx context.Context, dir string) (*SourcePlugin, error) {
 	return p, nil
 }
 
-func (p *SourcePlugin) setLinked(linked bool) {
+// setHealthState records state (and optional dynamic detail) as this
+// plugin's current health — the ONLY place that mutates p.state/p.detail.
+// Called from the background whatsmeow event-handler goroutine
+// (eventhandler.go) and from connect.go's own boot-time branches; never
+// from a gRPC handler goroutine (Match/Health only ever READ via
+// healthState()/currentMessage()).
+func (p *SourcePlugin) setHealthState(state healthState, detail string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.linked = linked
+	p.state = state
+	p.detail = detail
+	if !state.Healthy() {
+		fmt.Fprintf(p.logOut, "%s: %s\n", pluginName, p.currentMessageLocked())
+	}
 }
 
-func (p *SourcePlugin) setHealthy() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.healthy = true
-	p.lastError = ""
-}
-
-func (p *SourcePlugin) setUnhealthy(reason string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.healthy = false
-	p.lastError = reason
-	fmt.Fprintf(p.logOut, "%s: %s\n", pluginName, reason)
-}
-
-// healthState returns the single non-healthy-or-not flag this plan uses
-// (Plan 08-02 gives not-linked/de-linked/session-expired their own
-// distinct named taxonomy — see 08-PATTERNS.md's Health pattern note).
-func (p *SourcePlugin) healthState() (healthy bool, reason string) {
+// healthState returns this plugin's current named health state.
+func (p *SourcePlugin) healthState() healthState {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.healthy, p.lastError
+	return p.state
+}
+
+// currentMessage returns the CURRENT state's own fixed template (health.go)
+// with any dynamic detail appended in parentheses — the actual text
+// Match/Health emit. Never a substitute for the template: it always
+// contains state.Message() verbatim as a prefix.
+func (p *SourcePlugin) currentMessage() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.currentMessageLocked()
+}
+
+// currentMessageLocked is currentMessage's body, callable while p.mu is
+// already held (setHealthState's own log line needs this without
+// recursively re-acquiring the lock).
+func (p *SourcePlugin) currentMessageLocked() string {
+	msg := p.state.Message()
+	if p.detail != "" {
+		msg += " (" + p.detail + ")"
+	}
+	return msg
 }
 
 func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
@@ -147,24 +170,29 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 	}, nil
 }
 
-// Match resolves keywords against this plugin's own local chats table
-// (D-05/D-06-equivalent for this plan's groups-only scope, match.go),
-// then groups the matched chats' FULL message history into chat-day
-// digests (digest.go). A zero-length keyword list returns a successful
-// EMPTY response. A NOT-linked-and-healthy plugin returns a gRPC error,
-// NEVER an empty success — kernel/correlate/correlate.go wipes all
-// previously-synced rows on an empty success but preserves them on error
-// (08-PATTERNS.md's single most load-bearing pattern, T-08-05's
-// mitigation).
+// Match reads healthState() FIRST — any state whose Healthy() is false
+// returns a gRPC error, NEVER an empty success, even when the request
+// carries zero keywords (the zero-keywords early return sits BELOW this
+// guard, deliberately — a de-linked plugin asked with no keywords must
+// still surface the error rather than a silent success). Only once the
+// plugin is confirmed healthy does Match resolve keywords against this
+// plugin's own local chats table (D-05/D-06-equivalent for this plan's
+// groups-only scope, match.go), then group the matched chats' FULL
+// message history into chat-day digests (digest.go). A HEALTHY plugin
+// whose store genuinely holds no matching chat still returns a successful
+// EMPTY response — the two outcomes kernel/correlate/correlate.go treats
+// oppositely (wipes previously-synced rows on empty success, preserves
+// them on error — 08-PATTERNS.md's single most load-bearing pattern,
+// T-08-05's mitigation) must stay distinguishable at every call site.
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
+	state := p.healthState()
+	if !state.Healthy() {
+		return nil, status.Errorf(codes.Unavailable, "whatsapp: %s", p.currentMessage())
+	}
+
 	keywords := req.GetMatchFields()["groups"].GetValues()
 	if len(keywords) == 0 {
 		return &toposv1.MatchResponse{}, nil
-	}
-
-	healthy, reason := p.healthState()
-	if !healthy {
-		return nil, status.Errorf(codes.Unavailable, "whatsapp: %s", reason)
 	}
 
 	chats, err := p.store.Chats()
@@ -303,12 +331,14 @@ func (p *SourcePlugin) fetchTranscript(sourceID string) (*toposv1.FetchResponse,
 }
 
 // Health reports reachable when linked and connected, and reachable false
-// with a specific, actionable last_error otherwise. Never includes any
+// with a specific, actionable, per-cause last_error otherwise (health.go's
+// named healthState taxonomy — five distinct non-healthy causes, five
+// distinct messages, never one generic "unavailable"). Never includes any
 // message content or session key material.
 func (p *SourcePlugin) Health(_ context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
-	healthy, reason := p.healthState()
-	if !healthy {
-		return &toposv1.HealthResponse{Reachable: false, LastError: reason}, nil
+	state := p.healthState()
+	if !state.Healthy() {
+		return &toposv1.HealthResponse{Reachable: false, LastError: p.currentMessage()}, nil
 	}
 	return &toposv1.HealthResponse{
 		Reachable:    true,
