@@ -216,15 +216,21 @@ func runLinkCLI(ctx context.Context, dir string) error {
 
 // --- Machine-readable JSON mode (this plan, D-01) ---
 
-// linkEventKind discriminates the four event shapes runLinkJSON ever
-// emits.
+// linkEventKind discriminates the six event shapes runLinkJSON ever
+// emits. Three are terminal — paired, error, timeout — and end the link
+// session (kernel/httpapi/whatsapplink.go's isTerminalKind is a
+// hand-maintained mirror of exactly this fact; the two files must not
+// drift). The other three — qr, pairing_accepted, already_linked — are
+// non-terminal: observing one leaves the session live and pollable.
 type linkEventKind string
 
 const (
-	linkEventKindQR      linkEventKind = "qr"
-	linkEventKindPaired  linkEventKind = "paired"
-	linkEventKindError   linkEventKind = "error"
-	linkEventKindTimeout linkEventKind = "timeout"
+	linkEventKindQR              linkEventKind = "qr"
+	linkEventKindPaired          linkEventKind = "paired"
+	linkEventKindError           linkEventKind = "error"
+	linkEventKindTimeout         linkEventKind = "timeout"
+	linkEventKindPairingAccepted linkEventKind = "pairing_accepted"
+	linkEventKindAlreadyLinked   linkEventKind = "already_linked"
 )
 
 // linkErrorCodeStoreInUse and linkErrorCodeFailed are the two error-event
@@ -257,6 +263,15 @@ type linkEvent struct {
 
 func pairedLinkEvent() linkEvent  { return linkEvent{Kind: linkEventKindPaired} }
 func timeoutLinkEvent() linkEvent { return linkEvent{Kind: linkEventKindTimeout} }
+
+// pairingAcceptedLinkEvent and alreadyLinkedLinkEvent carry nothing but
+// their kind — linkEvent's existing omitempty tags already make that
+// marshal to a bare single-key object. Neither carries a device
+// identifier: a WhatsApp device JID embeds the user's own phone number,
+// these events are relayed verbatim to the browser (kernel/httpapi/
+// whatsapplink.go), and this route has no need for it.
+func pairingAcceptedLinkEvent() linkEvent { return linkEvent{Kind: linkEventKindPairingAccepted} }
+func alreadyLinkedLinkEvent() linkEvent   { return linkEvent{Kind: linkEventKindAlreadyLinked} }
 
 func newErrorLinkEvent(code, message string) linkEvent {
 	return linkEvent{Kind: linkEventKindError, Code: code, Message: message}
@@ -324,11 +339,20 @@ func (e *jsonLinkEmitter) code(code string, timeout time.Duration) {
 	fmt.Fprintf(e.stderr, "topos-plugin-whatsapp[link-json INFO]: QR code rotated (expires in %s)\n", timeout.Round(time.Second))
 }
 
+// alreadyLinked writes the already_linked event to stdout (device-id-free
+// — see alreadyLinkedLinkEvent's own doc comment for why) and keeps the
+// existing stderr diagnostic, which does name the device id, exactly as
+// it was before this event existed.
 func (e *jsonLinkEmitter) alreadyLinked(deviceID string) {
+	e.writeEvent(alreadyLinkedLinkEvent())
 	fmt.Fprintf(e.stderr, "topos-plugin-whatsapp[link-json INFO]: already linked as %s — reconnecting to confirm the session\n", deviceID)
 }
 
+// pairingAccepted writes the pairing_accepted event to stdout in addition
+// to the stderr diagnostic it already wrote — announcing on the wire that
+// the phone accepted the scan and a post-pair login is now under way.
 func (e *jsonLinkEmitter) pairingAccepted() {
+	e.writeEvent(pairingAcceptedLinkEvent())
 	fmt.Fprintln(e.stderr, "topos-plugin-whatsapp[link-json INFO]: pairing accepted — completing login…")
 }
 

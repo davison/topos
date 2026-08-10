@@ -94,11 +94,11 @@ func TestLinkEvent_ProgressEventsCarryOnlyKind(t *testing.T) {
 	}
 }
 
-// TestJSONLinkEmitter_PairingAccepted proves driving
+// TestLinkJSON_PairingAcceptedEmitsProgressEvent proves driving
 // jsonLinkEmitter.pairingAccepted() writes exactly one event line to
 // stdout whose kind is pairing_accepted, and also writes its existing
 // human diagnostic to stderr.
-func TestJSONLinkEmitter_PairingAccepted(t *testing.T) {
+func TestLinkJSON_PairingAcceptedEmitsProgressEvent(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	emitter := newJSONLinkEmitter(&stdout, &stderr)
 	emitter.pairingAccepted()
@@ -119,11 +119,11 @@ func TestJSONLinkEmitter_PairingAccepted(t *testing.T) {
 	}
 }
 
-// TestJSONLinkEmitter_AlreadyLinked proves driving
+// TestLinkJSON_AlreadyLinkedEmitsProgressEventWithoutDeviceID proves driving
 // jsonLinkEmitter.alreadyLinked(deviceID) writes exactly one event line
 // to stdout whose kind is already_linked, that line does not contain the
 // device id anywhere, while the stderr diagnostic still does.
-func TestJSONLinkEmitter_AlreadyLinked(t *testing.T) {
+func TestLinkJSON_AlreadyLinkedEmitsProgressEventWithoutDeviceID(t *testing.T) {
 	const distinctiveDeviceID = "fake-distinctive-device-id-12345"
 
 	var stdout, stderr bytes.Buffer
