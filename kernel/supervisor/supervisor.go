@@ -196,6 +196,78 @@ func (s *Supervisor) RefreshAll(ctx context.Context) []syncer.RunResult {
 	return s.Coordinator().RefreshAll(ctx)
 }
 
+// SuspendInstance satisfies kernel/httpapi.Suspender (08-03-PLAN.md Task 3,
+// D-01's hard requirement): stops exactly one named running instance for
+// the duration the caller holds the returned resume closure, so a
+// link-mode subprocess (kernel/httpapi/whatsapplink.go) and the
+// pluginhost-launched instance it is about to re-pair can never both hold
+// the same WhatsApp session store open at once — the second, independent
+// layer behind the plugin's own store-lock (whatsapp_store_in_use).
+//
+// When name is absent from the currently launched Host — the D-02
+// Add-Source flow's own case, where the instance being linked has not been
+// saved to config yet at all — this is a deliberate no-op: it returns a
+// resume closure that does nothing and a nil error, so the HTTP handler
+// needs no special-casing between "suspend a running instance" and
+// "nothing to suspend" at its own call site.
+//
+// When name IS present, SuspendInstance reconciles the Host against the
+// current source map with exactly that one name removed — reusing
+// Host.Reconcile exactly as Apply does, so the same launch/kill discipline
+// (T-07-11: a partial apply never looks successful) governs this seam too
+// — which stops the named instance's subprocess and releases its store
+// lock, and returns a resume closure that reconciles the instance back in
+// by reading s.cfg.Sources FRESH at resume time (not a value captured at
+// suspend time): if a config.Store.Save/Reload lands while the caller
+// holds the resume closure, resume still reflects whatever the running
+// kernel's config-of-record is by the time it is actually called, rather
+// than resurrecting a since-edited or since-removed instance definition.
+//
+// Deliberately narrow, per this plan's own must_haves: this touches
+// exactly the named instance's subprocess — no scheduler generation is
+// stopped/restarted, no index row is touched, and no other launched
+// plugin is affected. It takes the SAME s.mu Apply takes (and, like Apply,
+// calls Host.Reconcile only while holding it), so a suspension and a
+// config apply can never interleave — one always fully completes (commits
+// its Reconcile call) before the other's own Reconcile call begins.
+func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(context.Context) error, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := false
+	for _, p := range s.host.Plugins() {
+		if p.Name() == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return func(context.Context) error { return nil }, nil
+	}
+
+	withoutName := make(map[string]config.Source, len(s.cfg.Sources))
+	for n, src := range s.cfg.Sources {
+		if n == name {
+			continue
+		}
+		withoutName[n] = src
+	}
+
+	if err := s.host.Reconcile(ctx, withoutName, s.logger); err != nil {
+		return nil, fmt.Errorf("supervisor: suspend instance %q: %w", name, err)
+	}
+
+	resume := func(ctx context.Context) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if err := s.host.Reconcile(ctx, s.cfg.Sources, s.logger); err != nil {
+			return fmt.Errorf("supervisor: resume instance %q: %w", name, err)
+		}
+		return nil
+	}
+	return resume, nil
+}
+
 // Shutdown cancels the current scheduler generation and kills every
 // launched plugin subprocess. Not safe to call Apply after Shutdown.
 func (s *Supervisor) Shutdown() {
