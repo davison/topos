@@ -618,7 +618,14 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 
 		resume := func(context.Context) error { return nil }
 		if req.Instance != "" {
-			r2, err := suspender.SuspendInstance(r.Context(), req.Instance)
+			// context.Background(), not r.Context(): SuspendInstance now
+			// performs a real generation change (08-09-PLAN.md Task 1,
+			// closing 08-UAT.md G-08-3) — a stop-scheduler, a subprocess
+			// Reconcile, and a coordinator rebuild — that must outlive this
+			// request. A browser disconnect mid-call must never abort that
+			// work and leave the instance absent from both the host and the
+			// coordinator until the next config save.
+			r2, err := suspender.SuspendInstance(context.Background(), req.Instance)
 			if err != nil {
 				store.release()
 				WriteError(w, http.StatusInternalServerError, "internal_error", "suspend instance \""+req.Instance+"\": "+err.Error())
@@ -633,12 +640,18 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 		// against DiscoverAllBinaries above (T-08-06).
 		binPath := filepath.Join(pluginsDir, req.Plugin)
 
-		// The subprocess must outlive this HTTP request — context.Background,
-		// never r.Context() (cancelled the moment this handler returns).
+		// Every call in this file that outlives, or can mutate state that
+		// outlives, this request runs detached on context.Background() —
+		// the subprocess spawn below, every suspend, and every resume
+		// (08-09-PLAN.md Task 1, closing 08-UAT.md G-08-3): suspend and
+		// resume each perform a real subprocess reconcile AND a generation
+		// rebuild, so a browser disconnect mid-call would abort the
+		// relaunch and leave the instance absent from both the host and the
+		// coordinator until the next config save.
 		spawnResult, err := spawner(context.Background(), binPath, req.Path)
 		if err != nil {
 			store.release()
-			if resumeErr := resume(r.Context()); resumeErr != nil {
+			if resumeErr := resume(context.Background()); resumeErr != nil {
 				logger.Warn("whatsapp link: resume after failed spawn", "instance", req.Instance, "error", resumeErr.Error())
 			}
 			WriteError(w, http.StatusBadGateway, "link_failed", "failed to start link subprocess: "+err.Error())
@@ -660,7 +673,7 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 		if err != nil {
 			store.release()
 			sess.kill()
-			if resumeErr := resume(r.Context()); resumeErr != nil {
+			if resumeErr := resume(context.Background()); resumeErr != nil {
 				logger.Warn("whatsapp link: resume after registration failure", "instance", req.Instance, "error", resumeErr.Error())
 			}
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
@@ -709,7 +722,12 @@ func WhatsAppLinkPollHandler(store *linkSessionStore, logger hclog.Logger) http.
 			if retired, ok := store.retire(id); ok {
 				retired.kill()
 				if retired.resume != nil {
-					if err := retired.resume(r.Context()); err != nil {
+					// context.Background(), not r.Context(): resume performs
+					// a real subprocess Reconcile and a generation rebuild
+					// (08-09-PLAN.md Task 1, closing 08-UAT.md G-08-3) —
+					// this poll's own client disconnecting must never abort
+					// relaunching the suspended instance.
+					if err := retired.resume(context.Background()); err != nil {
 						logger.Warn("whatsapp link: resume after terminal poll", "session", id, "error", err.Error())
 					}
 				}
@@ -733,7 +751,9 @@ func WhatsAppLinkCancelHandler(store *linkSessionStore, logger hclog.Logger) htt
 
 		sess.kill()
 		if sess.resume != nil {
-			if err := sess.resume(r.Context()); err != nil {
+			// context.Background(), not r.Context() — see the poll handler's
+			// identical comment above.
+			if err := sess.resume(context.Background()); err != nil {
 				logger.Warn("whatsapp link: resume after cancel", "session", id, "error", err.Error())
 			}
 		}

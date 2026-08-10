@@ -235,13 +235,60 @@ func (s *Supervisor) RefreshAll(ctx context.Context) []syncer.RunResult {
 // kernel's config-of-record is by the time it is actually called, rather
 // than resurrecting a since-edited or since-removed instance definition.
 //
-// Deliberately narrow, per this plan's own must_haves: this touches
-// exactly the named instance's subprocess — no scheduler generation is
-// stopped/restarted, no index row is touched, and no other launched
-// plugin is affected. It takes the SAME s.mu Apply takes (and, like Apply,
+// A SUSPEND OR RESUME IS A GENERATION CHANGE (08-UAT.md G-08-3; corrected
+// here from this method's own prior claim that no scheduler generation is
+// ever stopped/restarted): a real-device WhatsApp re-link session
+// (D-03) that suspended-then-resumed the "whatsapp" instance left every
+// sync of that instance — scheduled tick, manual refresh, eager resync —
+// calling Match through the go-plugin client Host.Reconcile had already
+// Kill()ed, because syncer.Coordinator captures its *pluginhost.Plugin
+// handles once at construction (commitGeneration's own doc comment: "a
+// coordinator has no in-place update seam") and neither SuspendInstance
+// nor its resume closure ever rebuilt one. Only a config save
+// (Apply -> commitGeneration) or a kernel restart healed it, and a re-link
+// never saves config, so a *successful* pairing left that source's sync
+// broken indefinitely — pinned as its latest sync_runs row. Both branches
+// below now go through stopScheduler -> Host.Reconcile -> commitGeneration
+// in that order, the identical sequence Apply already uses and
+// commitGeneration's own doc comment already requires: s.host, s.coord,
+// s.cfg and the running scheduler generation must always reflect ONE AND
+// THE SAME generation. Three consequences a future reader needs:
+//
+//   - While the instance is suspended the coordinator has no entry for it,
+//     so Coordinator.Refresh answers ErrUnknownSource before a sync_runs
+//     row is ever started (see coordinator.go's own doc comment). A
+//     scheduled tick during the suspension window therefore logs a
+//     dispatch failure and records nothing — the intended answer: a
+//     lifecycle artifact must never be pinned to a source's health surface
+//     as a failed sync.
+//   - Each suspend and each resume restarts the scheduler generation, and
+//     Scheduler.Run fires every configured source's first refresh
+//     immediately by its own existing design — so a link session costs two
+//     eager full refreshes, the identical consequence any config save
+//     already has, coalesced by the coordinator's single-flight guarantee.
+//     This is accepted, not overlooked.
+//   - stopScheduler blocks until the old generation's Run has fully
+//     returned, and that now happens on the link-start HTTP request path
+//     (kernel/httpapi/whatsapplink.go). It is bounded by how fast a
+//     cancelled context aborts an in-flight Match RPC — never unbounded —
+//     which is why every background sync this package dispatches is also
+//     bound to its own generation's context and wait group (see the
+//     genCtx/genWG fields below and Apply's eager-resync dispatch): the one
+//     class of dispatched sync that used to carry an uncancellable context
+//     is exactly the class that would otherwise make this wait unbounded.
+//
+// Still true, unchanged by this fix: this touches exactly the named
+// instance's launched-set membership — no index row is ever touched by
+// SuspendInstance or its resume closure, and no OTHER launched plugin is
+// affected (Reconcile's own launch/kill discipline, T-07-11, still governs
+// this seam). It still takes the SAME s.mu Apply takes (and, like Apply,
 // calls Host.Reconcile only while holding it), so a suspension and a
-// config apply can never interleave — one always fully completes (commits
-// its Reconcile call) before the other's own Reconcile call begins.
+// config apply can never interleave — one always fully completes before
+// the other's own Reconcile call begins. The WR-02 s.suspended bookkeeping
+// is also unchanged in shape: an instance is recorded as suspended for
+// exactly the window between SuspendInstance returning and its resume
+// closure actually running (see both failure branches below, which leave
+// this window exactly where a Reconcile failure logically puts it).
 func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(context.Context) error, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -265,7 +312,21 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 		withoutName[n] = src
 	}
 
+	// Stop the current generation BEFORE Reconcile tears down the plugin
+	// set it holds handles to — the identical reason Apply stops the
+	// scheduler before its own Reconcile call, and it also closes the
+	// mid-flight-kill window (T-08-adjacency) that a suspension landing
+	// beside an in-flight sync would otherwise open.
+	s.stopScheduler()
+
 	if err := s.host.Reconcile(ctx, withoutName, s.logger); err != nil {
+		// Mirror Apply's own pre-Reconcile failure branch exactly, and for
+		// the identical reason: Reconcile's own T-07-11 guarantee is that a
+		// launch failure leaves the previously running set fully intact, so
+		// the OLD generation is the consistent one here and must be put
+		// back — a suspend that fails must never leave the kernel with no
+		// scheduler running at all.
+		s.startScheduler(s.cfg)
 		return nil, fmt.Errorf("supervisor: suspend instance %q: %w", name, err)
 	}
 
@@ -282,13 +343,32 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 	}
 	s.suspended[name] = found
 
+	// s.cfg, not a new config: config-of-record is deliberately unchanged
+	// by a suspension (the instance is still configured, just not
+	// launched) — what changed is the launched set, which is precisely
+	// what commitGeneration rebuilds the coordinator over.
+	s.commitGeneration(s.cfg)
+
 	resume := func(ctx context.Context) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		// Deleted before Reconcile, exactly as before this fix: a resume
+		// whose Reconcile fails below must leave the instance neither
+		// launched nor suspended, because the link session is genuinely
+		// over and a later Apply must be free to relaunch it.
 		delete(s.suspended, name)
+
+		s.stopScheduler()
+
 		if err := s.host.Reconcile(ctx, s.cfg.Sources, s.logger); err != nil {
+			// Same mirror of Apply's pre-Reconcile branch as the suspend
+			// path above: the old (still-suspended-minus-name) generation
+			// is what Reconcile left intact, so it is what gets restarted.
+			s.startScheduler(s.cfg)
 			return fmt.Errorf("supervisor: resume instance %q: %w", name, err)
 		}
+
+		s.commitGeneration(s.cfg)
 		return nil
 	}
 	return resume, nil

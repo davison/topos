@@ -215,3 +215,92 @@ func namesOf(plugins []*pluginhost.Plugin) []string {
 	}
 	return names
 }
+
+// TestSuspendInstance_ResumedInstanceStillSyncs is the regression test
+// 08-UAT.md G-08-3 proved missing: before this fix, a source instance
+// suspended for a WhatsApp link session and then resumed kept failing every
+// subsequent sync with grpc-go's ErrClientConnClosing ("rpc error: code =
+// Canceled desc = grpc: the client connection is closing") — the
+// syncer.Coordinator captured its *pluginhost.Plugin handles once at
+// construction, and neither SuspendInstance nor its resume closure ever
+// rebuilt one, so every sync path went on calling Match through the
+// go-plugin client Host.Reconcile had already Kill()ed.
+//
+// The fixture's "demo" webspace, carrying an explicit match block naming
+// EACH instance, is the point of the test: correlate.Engine.SyncSource only
+// calls Match for a (webspace, source) pair that participates, so a fixture
+// with no participating webspace would never touch the plugin handle at
+// all — the test would pass against the defective code while proving
+// nothing.
+func TestSuspendInstance_ResumedInstanceStillSyncs(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	cfgStore := newTestConfigStore(t, `
+[sync]
+interval = "1h"
+
+[sources.suspend-me]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.leave-alone]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.demo]
+sources = ["suspend-me", "leave-alone"]
+
+[webspaces.demo.match.suspend-me]
+labels = ["demo"]
+
+[webspaces.demo.match.leave-alone]
+labels = ["demo"]
+`)
+
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	if got := len(sup.Host().Plugins()); got != 2 {
+		t.Fatalf("expected 2 launched plugins at boot, got %d", got)
+	}
+
+	resume, err := sup.SuspendInstance(ctx, "suspend-me")
+	if err != nil {
+		t.Fatalf("SuspendInstance: %v", err)
+	}
+
+	if err := resume(ctx); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	result, err := sup.Refresh(ctx, "suspend-me")
+	if err != nil {
+		t.Fatalf("Refresh(suspend-me) after resume: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected Status \"ok\" for a resumed instance's next refresh, got %q (error: %q) — a non-ok status here means the coordinator is still dispatching against the subprocess SuspendInstance already killed", result.Status, result.Error)
+	}
+	if result.Error != "" {
+		t.Fatalf("expected an empty Error for a resumed instance's next refresh, got %q", result.Error)
+	}
+
+	leaveAloneResult, err := sup.Refresh(ctx, "leave-alone")
+	if err != nil {
+		t.Fatalf("Refresh(leave-alone): %v", err)
+	}
+	if leaveAloneResult.Status != "ok" {
+		t.Fatalf("expected the untouched instance \"leave-alone\" to still sync successfully, got Status %q (error: %q)", leaveAloneResult.Status, leaveAloneResult.Error)
+	}
+
+	resumed := sup.Host().Plugins()
+	if len(resumed) != 2 {
+		t.Fatalf("expected both instances launched again after resume, got %+v", namesOf(resumed))
+	}
+}
