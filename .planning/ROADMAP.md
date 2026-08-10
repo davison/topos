@@ -432,7 +432,13 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Tracer: whatsmeow pin gate, the new pure-Go plugin module, CLI QR link, own message store, and a matching group's day digest in the stream; mandatory hands-on spike
+- [ ] 08-02-PLAN.md — Managed-risk degradation: five named health states, Match-error-never-empty-success, 1:1 matching on saved contact names (D-05/D-06/D-07), read-only + outbound-host AST scans
+- [ ] 08-03-PLAN.md — In-app pairing, kernel half: UI-SPEC amendment + QR encoder legitimacy audit, machine-readable link mode, and the short-poll link-session endpoint with instance suspension
+- [ ] 08-04-PLAN.md — In-app pairing, browser half: QRPanel component, inline Add-Source step, chip Re-link… entry, and hermetic Playwright coverage
 
 Notes:
 
