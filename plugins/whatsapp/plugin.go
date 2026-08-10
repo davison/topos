@@ -71,6 +71,14 @@ type SourcePlugin struct {
 	store     *messageStore
 	lock      *storeLock
 
+	// pushNames is a best-effort JID->push-name cache (pushnames.go),
+	// sourced from whatsmeow's own HistorySync.Pushnames list — a
+	// fallback for message sender_name when a captured message's own
+	// Info.PushName is empty, which the real-device spike (2026-08-10)
+	// found true for nearly every history-sync-replayed message.
+	// Display-only; never a match candidate.
+	pushNames *pushNameCache
+
 	mu        sync.RWMutex
 	linked    bool
 	healthy   bool
@@ -92,7 +100,7 @@ func NewSourcePlugin(ctx context.Context, dir string) (*SourcePlugin, error) {
 		return nil, err
 	}
 
-	p := &SourcePlugin{dir: dir, logOut: os.Stderr, store: store}
+	p := &SourcePlugin{dir: dir, logOut: os.Stderr, store: store, pushNames: newPushNameCache()}
 	if err := p.startBackgroundClient(ctx); err != nil {
 		store.Close()
 		return nil, err
@@ -211,9 +219,12 @@ func (p *SourcePlugin) toItem(d digest) *toposv1.Item {
 		GroupId:       d.ChatJID,
 		GroupLabel:    "", // the title already carries the identifying context
 		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
-		DeepLink:      conversationDeepLink(),
-		Labels:        []string{d.ChatName},
-		HasThumbnail:  false,
+		// isGroup is always true here — eligibleChats (match.go) filters
+		// to groups only in this plan's scope; Plan 08-02 must thread
+		// the real per-chat IsGroup through once 1:1 matching exists.
+		DeepLink:     conversationDeepLink(true, d.ChatJID),
+		Labels:       []string{d.ChatName},
+		HasThumbnail: false,
 		Provenance: map[string]string{
 			"source_type":      sourceType,
 			"source_system":    p.dir,

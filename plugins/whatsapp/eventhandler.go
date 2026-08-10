@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -25,6 +26,12 @@ func (p *SourcePlugin) handleEvent(evt any) {
 	case *events.Connected:
 		p.setHealthy()
 		fmt.Fprintf(p.logOut, "%s: connected\n", pluginName)
+		// BLOCKING FIX (2026-08-10 real-device spike): history sync
+		// alone never populates a group's own subject — see
+		// groupsync.go's own doc comment. Runs in its own goroutine so
+		// this IQ round trip never blocks whatsmeow's own event-dispatch
+		// loop.
+		go p.syncJoinedGroups()
 	case *events.LoggedOut:
 		p.setUnhealthy("whatsapp: session logged out from the phone (WhatsApp > Linked devices > this device > Log out)")
 	case *events.StreamReplaced:
@@ -80,7 +87,16 @@ func (p *SourcePlugin) handleMessageEvent(e *events.Message) {
 		return // no plaintext or known-media content this plugin captures (e.g. a receipt/control payload)
 	}
 
+	// Real-device spike (2026-08-10): a history-sync-replayed message's
+	// own Info.PushName is empty for nearly every message ("the only
+	// non-empty messages.sender_name is 'You'"). Fall back to the
+	// best-effort pushNames cache (populated from HistorySync's own
+	// top-level Pushnames list, handleHistorySync below) before falling
+	// back further to the bare sender JID — never an empty string.
 	senderName := e.Info.PushName
+	if senderName == "" {
+		senderName = p.pushNames.lookup(e.Info.Sender.ToNonAD().String())
+	}
 	if e.Info.IsFromMe {
 		senderName = ownSenderLabel
 	}
@@ -109,6 +125,12 @@ func (p *SourcePlugin) handleHistorySync(e *events.HistorySync) {
 	if e.Data == nil {
 		return
 	}
+
+	// Merge this payload's own top-level Pushnames list BEFORE
+	// processing any message below, so the very first replayed message
+	// from a newly-seen sender can already benefit from it.
+	p.pushNames.merge(pushnamesFromProto(e.Data.GetPushnames()))
+
 	count := 0
 	for _, conv := range e.Data.GetConversations() {
 		chatJID, err := types.ParseJID(conv.GetID())
@@ -142,6 +164,22 @@ func (p *SourcePlugin) handleGroupInfoEvent(e *events.GroupInfo) {
 	if err := p.store.UpsertChatName(chatJID, true, e.Name.Name, e.Timestamp.UnixMilli()); err != nil {
 		fmt.Fprintf(p.logOut, "%s: upsert chat name: %v\n", pluginName, err)
 	}
+}
+
+// pushnamesFromProto converts one HistorySync payload's own top-level
+// Pushnames list (a JID->pushname map WhatsApp delivers once per history
+// sync, distinct from any individual message's own PushName field — see
+// pushNameCache's own doc comment) into a plain map for pushNameCache.merge.
+func pushnamesFromProto(list []*waHistorySync.Pushname) map[string]string {
+	out := make(map[string]string, len(list))
+	for _, pn := range list {
+		id := pn.GetID()
+		if id == "" {
+			continue
+		}
+		out[id] = pn.GetPushname()
+	}
+	return out
 }
 
 // extractMessageText returns msg's plaintext body (plain text or extended
