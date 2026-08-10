@@ -37,8 +37,45 @@ import (
 //     plugin that declared an empty vocabulary — there is no field for the
 //     fallback to fan into (D-01 requires at least one).
 func ValidateMatchConfig(cfg *config.Config, h *Host) error {
-	byInstance := make(map[string]*Plugin, len(h.Plugins()))
-	for _, p := range h.Plugins() {
+	return validateMatchConfig(cfg, h.Plugins())
+}
+
+// ValidateMatchConfigWithSuspended is ValidateMatchConfig's sibling for
+// kernel/supervisor.Supervisor.Apply's WR-02 fix (08-REVIEW.md): validates
+// cfg against BOTH h's currently launched plugins AND suspended — one
+// *Plugin value per instance Supervisor.SuspendInstance has temporarily
+// stopped (an active WhatsApp link/re-link session in flight) but which
+// remains fully configured and will resume shortly with the exact same
+// Describe-learned vocabulary these *Plugin values already cached.
+// SourceType/PluginDisplayName/MatchVocabulary are plain struct fields on
+// *Plugin, safe to read after its subprocess has been killed — no live RPC
+// is ever made against a suspended entry.
+//
+// Without this, an Apply landing while an instance is suspended would call
+// ValidateMatchConfig(newCfg, h) with h.Plugins() genuinely missing that
+// instance (its subprocess is not currently running), which would reject
+// EVERY webspace the suspended instance participates in — either through
+// an explicit match block or the keywords fallback — as "has no launched
+// plugin", even though nothing about that instance's configuration or
+// vocabulary actually changed. A suspended instance is temporarily
+// stopped, never removed; this function is what lets Apply tell the two
+// states apart.
+func ValidateMatchConfigWithSuspended(cfg *config.Config, h *Host, suspended []*Plugin) error {
+	all := make([]*Plugin, 0, len(h.Plugins())+len(suspended))
+	all = append(all, h.Plugins()...)
+	all = append(all, suspended...)
+	return validateMatchConfig(cfg, all)
+}
+
+// validateMatchConfig is ValidateMatchConfig/ValidateMatchConfigWithSuspended's
+// shared body, over an explicit plugin slice rather than a *Host, so the
+// suspended variant can merge in entries a *Host itself has no way to
+// represent (Host's own plugins field is unexported and has no public
+// constructor beyond Discover/Reconcile, both of which perform a real
+// launch).
+func validateMatchConfig(cfg *config.Config, plugins []*Plugin) error {
+	byInstance := make(map[string]*Plugin, len(plugins))
+	for _, p := range plugins {
 		byInstance[p.Name()] = p
 	}
 

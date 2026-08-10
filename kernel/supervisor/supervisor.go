@@ -50,6 +50,18 @@ type Supervisor struct {
 	cfg    *config.Config // the config.Config the currently running host/coord/scheduler set was built from
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the CURRENT scheduler generation's Run has fully returned
+
+	// suspended holds one entry per instance name SuspendInstance has
+	// currently stopped (WR-02, 08-REVIEW.md): the *pluginhost.Plugin
+	// value it was launched as immediately before being killed, kept
+	// around purely for its cached Describe-learned fields
+	// (SourceType/PluginDisplayName/MatchVocabulary — plain struct reads,
+	// no live RPC) so Apply can still validate match config against it
+	// and can skip trying to relaunch it while it remains suspended.
+	// Entries are added by SuspendInstance and removed by the resume
+	// closure it returns; both run under s.mu, so this map is never read
+	// or written concurrently with itself.
+	suspended map[string]*pluginhost.Plugin
 }
 
 // NewSupervisor performs the kernel's boot sequence — discover and launch
@@ -234,14 +246,14 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	found := false
+	var found *pluginhost.Plugin
 	for _, p := range s.host.Plugins() {
 		if p.Name() == name {
-			found = true
+			found = p
 			break
 		}
 	}
-	if !found {
+	if found == nil {
 		return func(context.Context) error { return nil }, nil
 	}
 
@@ -257,9 +269,23 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 		return nil, fmt.Errorf("supervisor: suspend instance %q: %w", name, err)
 	}
 
+	// Record name as suspended (WR-02, 08-REVIEW.md) — found is the
+	// *pluginhost.Plugin the just-committed Reconcile call killed;
+	// keeping it around lets a concurrent Apply still validate this
+	// instance's match config (ValidateMatchConfigWithSuspended) and skip
+	// trying to relaunch it (Apply's own reconcileSources filtering)
+	// while it remains suspended, rather than losing the race for its
+	// store lock against the live link-mode subprocess this suspension
+	// exists to make room for.
+	if s.suspended == nil {
+		s.suspended = make(map[string]*pluginhost.Plugin)
+	}
+	s.suspended[name] = found
+
 	resume := func(ctx context.Context) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		delete(s.suspended, name)
 		if err := s.host.Reconcile(ctx, s.cfg.Sources, s.logger); err != nil {
 			return fmt.Errorf("supervisor: resume instance %q: %w", name, err)
 		}
@@ -313,6 +339,20 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 // mechanism. All of this runs under s.mu, so two overlapping applies (a
 // save landing while a reload from another tab is also mid-flight) never
 // interleave.
+//
+// Suspension-aware (WR-02, 08-REVIEW.md): any instance name currently
+// present in s.suspended (SuspendInstance, above — an active WhatsApp
+// link/re-link session in flight) is excluded from what Reconcile is
+// asked to launch here, and validated via
+// pluginhost.ValidateMatchConfigWithSuspended instead of
+// ValidateMatchConfig, so an unrelated config save landing during that
+// window neither tries to relaunch the suspended instance (which would
+// lose the store-lock race against the live link subprocess and fail
+// this ENTIRE save) nor spuriously rejects a webspace the suspended
+// instance participates in as "has no launched plugin". The suspended
+// instance's own resume closure reconciles it back in once the session
+// ends, reading s.cfg.Sources fresh at that point — including whatever
+// this Apply call itself just committed.
 //
 // In-flight sync handling (07-RESEARCH.md Open Question 2, decided here):
 // the OLD scheduler generation's context is cancelled and its Run call is
@@ -436,7 +476,40 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 
 	s.stopScheduler()
 
-	if err := s.host.Reconcile(ctx, newCfg.Sources, s.logger); err != nil {
+	// WR-02 (08-REVIEW.md): exclude every currently suspended instance
+	// name from what Reconcile is asked to launch. A suspended instance
+	// (SuspendInstance, above) is already absent from s.host — its
+	// subprocess was deliberately killed to make room for an in-flight
+	// WhatsApp link/re-link session's own subprocess, which holds the
+	// same data directory's exclusive store lock for as long as the
+	// session lasts. Without this exclusion, an unrelated Apply landing
+	// during that window would see the suspended instance still present
+	// in newCfg.Sources (SuspendInstance never touches config-of-record,
+	// only the launched set) and Reconcile would try to relaunch it,
+	// losing the store-lock race against the live link subprocess and
+	// failing this call's Reconcile outright — rejecting the ENTIRE
+	// otherwise-valid save with 500 apply_failed for a reason that has
+	// nothing to do with what the save actually changed. A suspended
+	// instance's *pluginhost.Plugin value is kept (s.suspended) purely so
+	// ValidateMatchConfigWithSuspended below can still validate its match
+	// config without it being currently launched; SuspendInstance's own
+	// resume closure is what relaunches it once the session ends, reading
+	// s.cfg.Sources (which by then reflects whatever this Apply just
+	// committed) fresh at that point.
+	var reconcileSources map[string]config.Source
+	if len(s.suspended) == 0 {
+		reconcileSources = newCfg.Sources
+	} else {
+		reconcileSources = make(map[string]config.Source, len(newCfg.Sources))
+		for name, src := range newCfg.Sources {
+			if _, isSuspended := s.suspended[name]; isSuspended {
+				continue
+			}
+			reconcileSources[name] = src
+		}
+	}
+
+	if err := s.host.Reconcile(ctx, reconcileSources, s.logger); err != nil {
 		// Pre-Reconcile failure: Reconcile's own T-07-11 guarantee means the
 		// previously running plugin set is genuinely untouched, so the OLD
 		// generation is the consistent one here — this is the mirror image
@@ -475,7 +548,20 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// where skipping this would still be safe to retry.
 	purgeErr := s.purgeDeparticipatedWebspaceRows(ctx, oldCfg, newCfg)
 
-	validateErr := pluginhost.ValidateMatchConfig(newCfg, s.host)
+	// ValidateMatchConfigWithSuspended (WR-02, 08-REVIEW.md), not
+	// ValidateMatchConfig: a suspended instance is temporarily absent from
+	// s.host by design (see the reconcileSources comment above), but is
+	// still fully configured — validating against s.host alone would
+	// reject every webspace it participates in as "has no launched
+	// plugin" for a reason unrelated to this save. suspendedPlugins
+	// carries each suspended instance's already-cached Describe-learned
+	// vocabulary (no live RPC) so validation still runs against it exactly
+	// as if it were launched.
+	suspendedPlugins := make([]*pluginhost.Plugin, 0, len(s.suspended))
+	for _, p := range s.suspended {
+		suspendedPlugins = append(suspendedPlugins, p)
+	}
+	validateErr := pluginhost.ValidateMatchConfigWithSuspended(newCfg, s.host, suspendedPlugins)
 
 	// One shared commit site for the whole post-Reconcile region (07-09's
 	// invariant, strengthened): Reconcile has already committed its
@@ -509,6 +595,15 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	if !reflect.DeepEqual(oldCfg.Webspaces, newCfg.Webspaces) {
 		coord := s.coord
 		for name, src := range newCfg.Sources {
+			if _, isSuspended := s.suspended[name]; isSuspended {
+				// Still suspended (WR-02): not currently launched, so
+				// coord has no entry for it — dispatching would only
+				// produce a discarded ErrUnknownSource from the
+				// fire-and-forget goroutine below. Its own resume closure
+				// (SuspendInstance) is what relaunches and syncs it once
+				// the in-flight link session ends.
+				continue
+			}
 			if oldSrc, ok := oldCfg.Sources[name]; ok && reflect.DeepEqual(oldSrc, src) {
 				go coord.Refresh(context.Background(), name)
 			}
