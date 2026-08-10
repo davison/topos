@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 6/7 plans executed (gap closure in progress — `08-UAT.md` G-08-1 open)
+**Plans:** 7/7 plans executed (gap closure in progress — `08-UAT.md` G-08-1 open)
 
 Plans:
 **Wave 1**
@@ -458,7 +458,7 @@ Plans:
 
 **Gap closure — Wave 3** *(blocked on 08-05, 08-06)*
 
-- [ ] 08-07-PLAN.md — Recovery affordance + regression armor: declined-link notice, the qr→poll→paired Playwright case at a realistic expiry, real-device human re-test
+- [x] 08-07-PLAN.md — Recovery affordance + regression armor: declined-link notice, the qr→poll→paired Playwright case at a realistic expiry, real-device human re-test
 
 Notes:
 
@@ -482,7 +482,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 6/7 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 7/7 | In Progress|  |
 
 ## Requirement Coverage
 
