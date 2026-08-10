@@ -432,12 +432,12 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Tracer: whatsmeow pin gate, the new pure-Go plugin module, CLI QR link, own message store, and a matching group's day digest in the stream; mandatory hands-on spike
+- [x] 08-01-PLAN.md — Tracer: whatsmeow pin gate, the new pure-Go plugin module, CLI QR link, own message store, and a matching group's day digest in the stream; mandatory hands-on spike
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -470,7 +470,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 0/TBD | Not started | - |
+| 8. WhatsApp Conversations (Managed Risk) | 1/4 | In Progress|  |
 
 ## Requirement Coverage
 
