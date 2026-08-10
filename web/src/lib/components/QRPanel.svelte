@@ -57,15 +57,17 @@
 		oncancelled: () => void;
 	} = $props();
 
-	// The five states 08-UI-SPEC.md's Amendment defines: loading (before
-	// the first qr event), qr (the populated state), error, expired
-	// (timeout) and success (paired).
-	type PanelPhase = 'loading' | 'qr' | 'error' | 'expired' | 'success';
+	// The six states 08-UI-SPEC.md's Amendments define: loading (before
+	// the first qr event), qr (the populated state), pairing (post-scan
+	// progress, Amendment 2/G-08-1), error, expired (timeout) and success
+	// (paired).
+	type PanelPhase = 'loading' | 'qr' | 'pairing' | 'error' | 'expired' | 'success';
 
 	let phase = $state<PanelPhase>('loading');
 	let qrDataUri = $state('');
 	let remainingSeconds = $state(0);
 	let errorMessage = $state('');
+	let pairingMessage = $state('');
 
 	let sessionId: string | null = null;
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,17 +80,28 @@
 	// (beginSession, including a user-initiated Retry/Restart).
 	let retired = false;
 
-	// POLL_FLOOR_MS is the clamp the plan's own action text requires: the
-	// poll cadence is derived from the session's own reported validity,
-	// but never faster than this floor, so a short (or malformed)
-	// expires_in_seconds can never produce a request storm.
-	const POLL_FLOOR_MS = 2000;
+	// 08-UI-SPEC.md Amendment 2 progress copies (G-08-1) — module-level
+	// literals so the markup and the structural guards reference one
+	// literal each.
+	const PAIRING_ACCEPTED_MESSAGE = 'Scan accepted — completing login…';
+	const ALREADY_LINKED_MESSAGE = 'Already linked — confirming this session…';
+
+	// POLL_INTERVAL_MS is the panel's own liveness clock, deliberately
+	// independent of any code's validity window (08-UAT.md's G-08-1):
+	// tying the poll cadence to expires_in_seconds left a terminal event
+	// the kernel had already recorded undelivered to the browser for up
+	// to a full 60-second first-code window.
+	const POLL_INTERVAL_MS = 2000;
 
 	function clearTimers() {
 		if (pollTimer !== null) {
 			clearTimeout(pollTimer);
 			pollTimer = null;
 		}
+		clearCountdown();
+	}
+
+	function clearCountdown() {
 		if (countdownTimer !== null) {
 			clearInterval(countdownTimer);
 			countdownTimer = null;
@@ -96,17 +109,20 @@
 	}
 
 	function startCountdown(seconds: number) {
+		clearCountdown();
 		remainingSeconds = seconds;
-		if (countdownTimer !== null) clearInterval(countdownTimer);
 		countdownTimer = setInterval(() => {
 			remainingSeconds = Math.max(0, remainingSeconds - 1);
 		}, 1000);
 	}
 
-	function schedulePoll(delayMs: number) {
+	// schedulePoll takes no delay argument at all — that signature is the
+	// structural foreclosure of ever re-tying cadence to a code's expiry
+	// again (G-08-1).
+	function schedulePoll() {
 		if (retired) return;
 		if (pollTimer !== null) clearTimeout(pollTimer);
-		pollTimer = setTimeout(() => void poll(), Math.max(delayMs, POLL_FLOOR_MS));
+		pollTimer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
 	}
 
 	function applySession(session: WhatsAppLinkSession) {
@@ -114,20 +130,48 @@
 		switch (session.state) {
 			case 'pending':
 				phase = 'loading';
-				schedulePoll(POLL_FLOOR_MS);
+				schedulePoll();
 				break;
 			case 'qr': {
 				// A new qr event (the code rotating) swaps the image and
 				// resets the countdown in place — no flash back to
 				// 'loading' between rotations (08-UI-SPEC.md's Populated
-				// row).
+				// row). whatsmeow stops emitting codes at PairSuccess, so
+				// the kernel's `latest` freezes on the already-scanned
+				// code once the phone accepts it; restart the countdown
+				// only when the incoming code actually differs from the
+				// one already rendered — an unconditional restart is what
+				// made a frozen (already-scanned) session look like a
+				// live one still refreshing (G-08-1).
 				phase = 'qr';
-				qrDataUri = session.png_data_uri ?? '';
-				const seconds = session.expires_in_seconds ?? 0;
-				startCountdown(seconds);
-				schedulePoll(seconds * 1000);
+				const incomingDataUri = session.png_data_uri ?? '';
+				if (incomingDataUri !== qrDataUri) {
+					startCountdown(session.expires_in_seconds ?? 0);
+				}
+				qrDataUri = incomingDataUri;
+				schedulePoll();
 				break;
 			}
+			case 'pairing_accepted':
+				// Non-terminal (docs/api.md): the phone accepted the scan;
+				// the plugin is completing the post-pair login handshake.
+				// Stop the frozen code's countdown — it must not keep
+				// ticking behind the progress line — and keep polling.
+				phase = 'pairing';
+				pairingMessage = PAIRING_ACCEPTED_MESSAGE;
+				clearCountdown();
+				schedulePoll();
+				break;
+			case 'already_linked':
+				// Non-terminal (docs/api.md): the store already held a
+				// linked device when the session started; the plugin is
+				// reconnecting to confirm that session is genuinely
+				// usable. Keep polling.
+				phase = 'pairing';
+				pairingMessage = ALREADY_LINKED_MESSAGE;
+				clearCountdown();
+				schedulePoll();
+				break;
 			case 'paired':
 				retired = true;
 				clearTimers();
@@ -146,6 +190,11 @@
 				phase = 'expired';
 				break;
 			default:
+				// An unrecognised non-terminal state must never terminate
+				// the liveness poll — that fallthrough (a bare break) is
+				// what would have hung the panel had the producer shipped
+				// first (G-08-1).
+				schedulePoll();
 				break;
 		}
 	}
@@ -172,6 +221,9 @@
 		phase = 'loading';
 		errorMessage = '';
 		qrDataUri = '';
+		// Reset per-session so a Retry after a failed already-linked
+		// confirmation does not flash the previous run's progress line.
+		pairingMessage = '';
 		try {
 			const session = await startWhatsAppLink({ plugin, path, instance });
 			if (retired) return;
@@ -237,6 +289,12 @@
 		const s = clamped % 60;
 		return `${m}:${String(s).padStart(2, '0')}`;
 	}
+
+	// 08-UI-SPEC.md Amendment 2's countdown floor copy (G-08-1): a code
+	// that is not going to refresh must not claim it is about to.
+	const countdownLine = $derived(
+		remainingSeconds > 0 ? `Refreshes in ${formatCountdown(remainingSeconds)}` : 'Waiting for a new code…'
+	);
 </script>
 
 <div class="flex flex-col items-center gap-2">
@@ -250,8 +308,11 @@
 		/>
 		<p class="text-[14px] leading-[1.4] text-foreground">Scan with your phone to link</p>
 		<p class="text-[14px] leading-[1.4] text-muted-foreground">
-			Refreshes in {formatCountdown(remainingSeconds)}
+			{countdownLine}
 		</p>
+	{:else if phase === 'pairing'}
+		<Skeleton class="size-48 rounded-md" />
+		<p class="text-[14px] leading-[1.4] text-foreground">{pairingMessage}</p>
 	{:else if phase === 'error'}
 		<Alert variant="destructive" class="w-full">
 			<AlertDescription>{errorMessage}</AlertDescription>
@@ -269,6 +330,10 @@
 		</div>
 	{/if}
 
+	<!-- The pairing phase's absence here is load-bearing, not incidental
+	     (08-UI-SPEC.md Amendment 2, G-08-1): cancelling inside the
+	     post-pair window SIGKILLs a subprocess mid-login-handshake and
+	     strands a pairing whatsmeow has already persisted to disk. -->
 	{#if phase === 'loading' || phase === 'qr'}
 		<Button type="button" variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
 	{/if}
