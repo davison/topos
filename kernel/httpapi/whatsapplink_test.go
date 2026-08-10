@@ -392,6 +392,128 @@ func TestWhatsAppLinkStart_CapEnforcedBeforeSpawn(t *testing.T) {
 	}
 }
 
+// TestWhatsAppLink_ProgressStatesAreNonTerminal is the kernel-side half
+// of a three-way agreement with plugins/whatsapp/link.go (Task 1, which
+// emits the pairing_accepted/already_linked wire kinds this test drives
+// as raw JSON strings) and docs/api.md (which now documents both as
+// non-terminal). Table-driven over both progress kinds: observing either
+// leaves the session live and pollable (200, not 404), leaves the
+// suspended instance suspended (resume not yet called), and carries no
+// diagnostic fields in the poll response body — proving "subprocess
+// diagnostics never reach a response body" holds for these two kinds too.
+// The session is then driven to the existing `paired` terminal state to
+// prove the exactly-once terminal contract (T-08-10/T-08-07) is still
+// intact behind the two new non-terminal states.
+func TestWhatsAppLink_ProgressStatesAreNonTerminal(t *testing.T) {
+	for _, kind := range []string{"pairing_accepted", "already_linked"} {
+		t.Run(kind, func(t *testing.T) {
+			proc := newFakeLinkProcess()
+			spawner := &fakeSpawner{result: proc.result()}
+			suspender := &fakeSuspender{}
+			router, _ := newWhatsAppLinkTestRouter(t, suspender, spawner.spawn)
+
+			startBody := `{"plugin":"topos-plugin-whatsapp","path":"/tmp/whatsapp","instance":"my-whatsapp"}`
+			startRec := doLinkRequest(t, router, http.MethodPost, "/api/config/whatsapp-link", startBody)
+			var startResp whatsappLinkResponse
+			if err := json.Unmarshal(startRec.Body.Bytes(), &startResp); err != nil {
+				t.Fatalf("unmarshal start response: %v", err)
+			}
+
+			proc.emit(`{"kind":"` + kind + `"}`)
+
+			var rawBody []byte
+			waitForCondition(t, func() bool {
+				rec := doLinkRequest(t, router, http.MethodGet, "/api/config/whatsapp-link/"+startResp.Session, "")
+				if rec.Code != http.StatusOK {
+					return false
+				}
+				var resp whatsappLinkResponse
+				if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+					return false
+				}
+				if resp.State != kind {
+					return false
+				}
+				rawBody = rec.Body.Bytes()
+				return true
+			})
+
+			// Key-set assertion: exactly schema_version, session, state —
+			// no code, no message, no png_data_uri. Decoding into a map
+			// (not the typed whatsappLinkResponse) so a stray field the
+			// typed struct doesn't declare can't hide from this guard.
+			var decoded map[string]any
+			if err := json.Unmarshal(rawBody, &decoded); err != nil {
+				t.Fatalf("unmarshal raw poll response: %v", err)
+			}
+			wantKeys := map[string]bool{"schema_version": true, "session": true, "state": true}
+			for key := range decoded {
+				if !wantKeys[key] {
+					t.Fatalf("poll response for a %q progress state carried an unexpected field %q: %v", kind, key, decoded)
+				}
+			}
+
+			// Observing a progress state must not retire the session: a
+			// second poll for the same id still returns 200, not 404.
+			secondRec := doLinkRequest(t, router, http.MethodGet, "/api/config/whatsapp-link/"+startResp.Session, "")
+			if secondRec.Code != http.StatusOK {
+				t.Fatalf("expected a second poll after a %q progress state to still return 200 (session not retired), got %d: %s", kind, secondRec.Code, secondRec.Body.String())
+			}
+
+			// The suspended instance must not have been resumed while the
+			// link session is still live and holding the store — a
+			// resumed instance racing the still-live link subprocess is
+			// exactly the two-processes-contending-for-one-store
+			// condition SuspendInstance and the plugin's own flock exist
+			// to prevent (T-08-07).
+			if got := suspender.resumeCallCount(); got != 0 {
+				t.Fatalf("expected resume NOT called while a %q progress state is the latest observed event (would mean two processes contending for the same whatsmeow store, T-08-07), got %d calls", kind, got)
+			}
+
+			// Now drive the session to the paired terminal state and
+			// prove the pre-existing exactly-once terminal contract still
+			// holds behind the new non-terminal states.
+			proc.emit(`{"kind":"paired"}`)
+
+			waitForCondition(t, func() bool {
+				rec := doLinkRequest(t, router, http.MethodGet, "/api/config/whatsapp-link/"+startResp.Session, "")
+				var resp whatsappLinkResponse
+				_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+				return resp.State == "paired"
+			})
+
+			if got := suspender.resumeCallCount(); got != 1 {
+				t.Fatalf("expected resume called exactly once after the session ended in paired, got %d", got)
+			}
+
+			notFoundRec := doLinkRequest(t, router, http.MethodGet, "/api/config/whatsapp-link/"+startResp.Session, "")
+			assertErrorEnvelope(t, notFoundRec, http.StatusNotFound, "link_session_not_found")
+		})
+	}
+}
+
+// TestIsTerminalKind_ProgressKindsAreNonTerminal is a guard against a
+// future edit that "completes" linkEventKind's coverage by adding the two
+// progress kinds to isTerminalKind's terminal set — doing so would
+// reproduce this plan's own gap (G-08-1) in a new shape: a progress state
+// retiring the session and resuming a suspended instance while the link
+// subprocess is still live.
+func TestIsTerminalKind_ProgressKindsAreNonTerminal(t *testing.T) {
+	nonTerminal := []string{"pairing_accepted", "already_linked"}
+	for _, kind := range nonTerminal {
+		if isTerminalKind(kind) {
+			t.Fatalf("expected isTerminalKind(%q) == false, got true — a progress state must never be treated as terminal", kind)
+		}
+	}
+
+	terminal := []string{"paired", "error", "timeout"}
+	for _, kind := range terminal {
+		if !isTerminalKind(kind) {
+			t.Fatalf("expected isTerminalKind(%q) == true, got false", kind)
+		}
+	}
+}
+
 // waitForCondition polls cond until it returns true or a short timeout
 // elapses, for tests observing the background consume goroutine's
 // asynchronous effect on session state.
