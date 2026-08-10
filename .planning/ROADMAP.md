@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 1/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 **Wave 1**
@@ -441,8 +441,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-02-PLAN.md — Managed-risk degradation: five named health states, Match-error-never-empty-success, 1:1 matching on saved contact names (D-05/D-06/D-07), read-only + outbound-host AST scans
-- [ ] 08-03-PLAN.md — In-app pairing, kernel half: UI-SPEC amendment + QR encoder legitimacy audit, machine-readable link mode, and the short-poll link-session endpoint with instance suspension
+- [x] 08-02-PLAN.md — Managed-risk degradation: five named health states, Match-error-never-empty-success, 1:1 matching on saved contact names (D-05/D-06/D-07), read-only + outbound-host AST scans
+- [x] 08-03-PLAN.md — In-app pairing, kernel half: UI-SPEC amendment + QR encoder legitimacy audit, machine-readable link mode, and the short-poll link-session endpoint with instance suspension
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -470,7 +470,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 1/4 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 3/4 | In Progress|  |
 
 ## Requirement Coverage
 
