@@ -455,10 +455,20 @@ async function deleteJSON<T>(path: string): Promise<T> {
 // /api/config/whatsapp-link/{session}" section is authoritative for every
 // field name below) ---
 
-// WhatsAppLinkState mirrors docs/api.md's five wire values exactly, plus
-// the DELETE route's own "cancelled" terminal value — never a sixth,
-// locally-invented state.
-export type WhatsAppLinkState = 'pending' | 'qr' | 'paired' | 'error' | 'timeout' | 'cancelled';
+// WhatsAppLinkState mirrors docs/api.md's seven wire values exactly, plus
+// the DELETE route's own "cancelled" terminal value — never an eighth,
+// locally-invented state. 'pairing_accepted' and 'already_linked' are
+// non-terminal (G-08-1): a consumer must keep polling after observing
+// either, exactly like 'pending' and 'qr'.
+export type WhatsAppLinkState =
+	| 'pending'
+	| 'qr'
+	| 'pairing_accepted'
+	| 'already_linked'
+	| 'paired'
+	| 'error'
+	| 'timeout'
+	| 'cancelled';
 
 export interface WhatsAppLinkSession {
 	schema_version: number;

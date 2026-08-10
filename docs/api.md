@@ -729,9 +729,14 @@ route's existence, since nothing here talks to a launched plugin's gRPC
 service at all.
 
 Short-poll, not SSE: the browser calls `POST` once to start a session,
-then polls `GET .../whatsapp-link/{session}` on its own cadence (driven by
-the rotating QR code's own `expires_in_seconds`) until the session reaches
-a terminal state, and may `DELETE` to cancel early.
+then polls `GET .../whatsapp-link/{session}` on a fixed short interval of
+its own (a couple of seconds), independent of any code's validity window,
+until the session reaches a terminal state, and may `DELETE` to cancel
+early. `expires_in_seconds` drives only the countdown the panel displays,
+never the poll cadence itself. `08-UAT.md`'s `G-08-1` is why this
+distinction is called out explicitly: tying the interval to
+`expires_in_seconds` left a terminal event the kernel had already recorded
+undelivered to the browser for up to a full 60-second first-code window.
 
 **`POST /api/config/whatsapp-link` request body:**
 
@@ -783,9 +788,16 @@ three terminal values below:
 |---|---|---|
 | `pending` | Session started; no event has arrived from the subprocess yet. | — |
 | `qr` | A rotating pairing code is ready to display. | `png_data_uri` (a `data:image/png;base64,...` URI — never the raw pairing payload itself, which is a live credential and never leaves the plugin subprocess as text), `expires_in_seconds` (the real whatsmeow-reported validity window for this specific code, driving the browser's own countdown) |
+| `pairing_accepted` | **Non-terminal.** The phone accepted the scan; the plugin is completing the post-pair login handshake. Polling continues. | — |
+| `already_linked` | **Non-terminal.** The store already held a linked device when the session started; the plugin is reconnecting to confirm that session is genuinely usable. Polling continues. | — |
 | `paired` | The device linked successfully. | — |
 | `error` | The link attempt failed. | `code` (`whatsapp_store_in_use` or `link_failed`, see the error-code table below), `message` |
 | `timeout` | The QR channel closed without a scan (the code(s) expired). | — |
+
+Neither `pairing_accepted` nor `already_linked` carries a device
+identifier: the linked device's JID embeds the user's own phone number
+and never crosses this wire (the plugin keeps it in its own stderr
+diagnostic only).
 
 **Terminal states are delivered exactly once.** The moment a poll observes
 `paired`, `error`, or `timeout`, the kernel retires the session (killing
@@ -793,7 +805,13 @@ the subprocess if it hasn't already exited and running the suspended
 instance's resume, if any) as part of answering that same request. A
 second poll for the same `session` id after a terminal state was already
 observed returns `404 link_session_not_found` — the same code an unknown
-or already-cancelled/expired session id returns.
+or already-cancelled/expired session id returns. `pairing_accepted` and
+`already_linked` are explicitly **not** terminal — observing either
+leaves the session live and pollable, and retires nothing.
+
+The link subprocess's own stderr is captured by the kernel and re-emitted
+through the kernel's own logger; it never appears in any HTTP response
+body on this route.
 
 **`DELETE /api/config/whatsapp-link/{session}`** cancels an in-progress
 session early: kills the subprocess, resumes any suspended instance, and

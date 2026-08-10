@@ -257,7 +257,11 @@ One component (`QRPanel`, per `08-PATTERNS.md`), reused from exactly two entry p
 
 **Countdown line.** `"Refreshes in M:SS"` (the exact copy shape the user selected in the mockup — `08-CONTEXT.md`'s `<specifics>` cites `"Refreshes in 0:18"` verbatim), rendered in the existing **Label** role (14px/400/1.4), directly below the instruction line. `M:SS` counts down from the `expires_in_seconds` value Task 2's `qr` event carries — the real whatsmeow-reported validity window, never a hardcoded duration. No new colour, no new spacing value, no new font size or weight anywhere in this component.
 
+*Superseded in part by Amendment 2 (2026-08-10, G-08-1) below: the countdown value drives only the displayed countdown, never the panel's poll cadence, and a countdown that reaches zero without a replacement code reads as "Waiting for a new code…" rather than implying an imminent refresh.*
+
 ### State coverage (this document's own UI-Considerations vocabulary)
+
+*Superseded in part by Amendment 2 (2026-08-10, G-08-1) below: a new Pairing (post-pair progress) state sits between Populated and Success, and the panel's liveness poll no longer derives its cadence from anything in this table.*
 
 | State | Treatment |
 |---|---|
@@ -294,6 +298,20 @@ A user typing a phone number into `Contacts` matches nothing: D-07 declines phon
 This amendment introduces **no new shadcn block** and **no new `bits-ui` primitive** — the `Dialog`, `Alert`, and `Button` primitives it uses (for the QR panel's error/expired states, the Re-link dialog shell, and the Retry/Restart buttons) all already ship, unchanged from the base document's own "Registry Safety" section above.
 
 **Encoder decision (closes the base document's own forward-reference above):** `rsc.io/qr` — audited OK, see `plugins/whatsapp/go.mod`'s dated comment and `08-RESEARCH.md`'s Package Legitimacy Audit table for the full verdict. Not a registry-governed package (no shadcn/bits-ui/npm dependency); a plain Go module dependency confined to `plugins/whatsapp/go.mod`, never the kernel or SPA.
+
+---
+
+## Amendment 2 — Post-Pair Progress State and Poll-Cadence Decoupling (G-08-1)
+
+*Added 2026-08-10, Plan 08-05, authored at plan time directly from `08-UAT.md`'s G-08-1 diagnosis — not re-run through the gsd-ui-checker probe, since it introduces no new registry dependency and no new design token (see the provenance line below).*
+
+- **Cadence.** The panel's liveness poll runs on its own fixed short interval. `expires_in_seconds` drives the displayed countdown and nothing else. This supersedes Amendment 1's implication that the countdown value also governs when the panel next asks the kernel anything.
+- **New state — Pairing (post-scan progress).** Rendered with the same generic loading treatment Amendment 1's Loading row already specifies (the existing `Skeleton`, no new component, no new token) plus one line in the existing Label role (14px/400/1.4). Two copies, chosen by which wire state produced it: `Scan accepted — completing login…` and `Already linked — confirming this session…`.
+- **No Cancel while pairing.** The panel offers its Cancel control in the loading and populated states only. During the pairing state there is no cancel affordance — cancelling inside the post-pair window SIGKILLs a subprocess mid-login-handshake and strands a pairing that whatsmeow has already persisted to disk. Withholding the control for those few seconds is the mitigation.
+- **Countdown floor copy.** When the displayed countdown reaches zero and no replacement code has arrived, the countdown line reads `Waiting for a new code…` rather than `Refreshes in 0:00`. A code that is not going to refresh must not claim it is about to.
+- **Add-Source declined-link notice** (implemented by plan 08-07, its copy locked here so all of this change's copy sits in one dated section). Cancelling out of the panel returns the user to Step 1 with a neutral, non-destructive line in the existing muted Label role — never the destructive `Alert` the connection-failure branch uses, because declining to link is not a failed connection test (the E5 evidence Amendment 1 already establishes). Copy: `Not linked yet — you can save this source now and link later from its menu (Re-link…).`
+- **Registry safety.** No new shadcn block, no new bits-ui primitive, no new colour/spacing/typography token. `Skeleton`, `Alert` and `Button` all already ship.
+- **Provenance line**, in the same shape as Amendment 1's: authored at plan 08-05 time from `08-UAT.md`'s G-08-1 diagnosis, not re-run through the gsd-ui-checker probe, because it introduces no new registry dependency and no new design token.
 
 ---
 
