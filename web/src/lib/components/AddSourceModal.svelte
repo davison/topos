@@ -129,6 +129,15 @@
 	// 2 can both succeed while the device stays unpaired.
 	let linkOffered = $state(false);
 
+	// linkNotice (D-02, 08-07-PLAN.md Task 1, Amendment 2/G-08-1): cancelling
+	// out of the QR panel is a supported, non-failure outcome (Amendment 1's
+	// E5 state), but the flow previously said nothing at all about it — a
+	// user who had actually completed a pairing on their phone and then
+	// closed the dialog was left with no idea that the pairing was real,
+	// recoverable, or re-enterable. This holds the neutral notice copy shown
+	// on the connect step once a link opportunity has been declined.
+	let linkNotice = $state('');
+
 	function resetFlowState() {
 		step = null;
 		selectedInstance = null;
@@ -146,6 +155,7 @@
 		newInstanceId = null;
 		newVocabulary = [];
 		linkOffered = false;
+		linkNotice = '';
 	}
 
 	// selectExisting reads the instance's declared match vocabulary via
@@ -201,6 +211,7 @@
 		} as SourceConfig;
 		describeFailed = false;
 		connectError = null;
+		linkNotice = '';
 		step = 'connect';
 	}
 
@@ -229,9 +240,15 @@
 	// to 'connect' with every typed connection value intact —
 	// connectionValues is untouched here, and the existing "saved but not
 	// yet linked" outcome (Save-anyway from Step 2, or simply moving on)
-	// remains a valid, supported path.
+	// remains a valid, supported path. Sets linkNotice to the neutral copy
+	// locked in 08-UI-SPEC.md's Amendment 2 (08-07-PLAN.md Task 1,
+	// G-08-1) — declining a link opportunity is not a failed connection
+	// test, so neither describeFailed nor connectError is touched here;
+	// the Save-anyway control (gated on describeFailed) must stay hidden.
 	function handleLinkCancelled() {
 		step = 'connect';
+		linkNotice =
+			'Not linked yet — you can save this source now and link later from its menu (Re-link…).';
 	}
 
 	// handleConnectNext trial-launches the plugin against Step 1's
@@ -539,6 +556,19 @@
 						<Alert variant="destructive" class="mt-4">
 							<AlertDescription>{connectError}</AlertDescription>
 						</Alert>
+					{/if}
+
+					{#if linkNotice}
+						<!--
+						  08-UI-SPEC.md Amendment 2 (G-08-1): deliberately NOT an
+						  Alert and NOT the destructive variant — declining to
+						  link is not a failed connection test (Amendment 1's E5
+						  evidence), and e2e case 8's assertion that reaching and
+						  leaving the link step produces no failure alert and no
+						  Save-anyway control depends on this staying a plain
+						  muted paragraph.
+						-->
+						<p class="mt-4 text-[14px] leading-[1.4] text-muted-foreground">{linkNotice}</p>
 					{/if}
 
 					<DialogFooter>
