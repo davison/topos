@@ -135,7 +135,7 @@ func Discover(ctx context.Context, pluginsDir string, sources map[string]config.
 	h := &Host{pluginsDir: pluginsDir}
 
 	for name, src := range sources {
-		p, err := launch(ctx, pluginsDir, name, src, logger)
+		p, err := launch(ctx, pluginsDir, name, src, logger, false)
 		if err != nil {
 			h.Shutdown()
 			return nil, fmt.Errorf("pluginhost: launch source %q: %w", name, err)
@@ -189,7 +189,7 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 
 	launched := make(map[string]*Plugin, len(toLaunch))
 	for _, name := range toLaunch {
-		p, err := launch(ctx, h.pluginsDir, name, sources[name], logger)
+		p, err := launch(ctx, h.pluginsDir, name, sources[name], logger, false)
 		if err != nil {
 			for _, lp := range launched {
 				lp.Kill()
@@ -304,7 +304,20 @@ func (t *stderrTail) lastLine() string {
 // launch is a UI-driven trial or a real boot-time/hot-apply launch: the
 // class of failure this guards against has nothing to do with which caller
 // triggered it.
-func launch(ctx context.Context, pluginsDir, name string, src config.Source, logger hclog.Logger) (*Plugin, error) {
+//
+// describeOnly (CR-01, 08-REVIEW.md), when true, sets the
+// WEBSPACES_DESCRIBE_ONLY=1 environment variable alongside the usual
+// WEBSPACES_SOURCE_CONFIG one — set only by DescribePluginType's trial
+// launch, never by Discover/Reconcile's real boot-time/hot-apply launches.
+// A launched plugin binary that recognises this variable (currently only
+// plugins/whatsapp/main.go) may use it to skip acquiring any exclusive,
+// process-lifetime resource (e.g. WhatsApp's storelock.go flock) it would
+// otherwise hold for as long as this trial-launched subprocess is alive,
+// since Describe's answer never depends on that resource. A plugin binary
+// that does not recognise the variable simply ignores it and launches
+// exactly as before — this is additive, never a behavior change for any
+// plugin type that hasn't opted in.
+func launch(ctx context.Context, pluginsDir, name string, src config.Source, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
 	binPath := filepath.Join(pluginsDir, src.Plugin)
 	if _, err := os.Stat(binPath); err != nil {
 		return nil, fmt.Errorf("plugin binary %s not found: %w", binPath, err)
@@ -333,7 +346,11 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 	// The capture goes through ClientConfig.Stderr below instead, which
 	// go-plugin's own logStderr goroutine writes to.
 	cmd := exec.Command(binPath)
-	cmd.Env = append(os.Environ(), "WEBSPACES_SOURCE_CONFIG="+string(sourceConfig))
+	env := append(os.Environ(), "WEBSPACES_SOURCE_CONFIG="+string(sourceConfig))
+	if describeOnly {
+		env = append(env, "WEBSPACES_DESCRIBE_ONLY=1")
+	}
+	cmd.Env = env
 
 	tail := &stderrTail{}
 
@@ -446,8 +463,23 @@ type DescribeInfo struct {
 // request-supplied input (PLUG-02, T-07-10); see
 // kernel/httpapi/config_test.go's AST guard pinning exactly this over
 // this function's own body.
+//
+// Every trial launch here passes describeOnly=true to launch() (CR-01,
+// 08-REVIEW.md): this call site is ALWAYS a describe-only launch, never a
+// real boot-time/hot-apply one, regardless of whether src names a plugin
+// type with no configured instance yet, or an already-configured,
+// already-running instance's own stored connection fields (the "+"
+// picker's one-step existing-instance add flow, and every source chip's
+// "Edit match settings…" entry, both reuse this same call — see
+// kernel/httpapi/config.go's DescribePluginHandler doc comment). For most
+// plugin types this changes nothing observable (they open-and-close per
+// RPC call and hold no cross-instance exclusive resource); for WhatsApp —
+// the one plugin in this repo that holds a persistent connection and an
+// exclusive store lock for its entire process lifetime — this is what
+// stops the trial-launch from always losing that lock race against a real
+// running instance and failing before Describe is ever reached.
 func DescribePluginType(ctx context.Context, pluginsDir string, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
-	p, err := launch(ctx, pluginsDir, "__trial__", src, logger)
+	p, err := launch(ctx, pluginsDir, "__trial__", src, logger, true)
 	if err != nil {
 		return DescribeInfo{}, fmt.Errorf("pluginhost: trial-launch for describe: %w", err)
 	}

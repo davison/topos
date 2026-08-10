@@ -35,6 +35,23 @@ type sourceConfig struct {
 	Path string `json:"path"`
 }
 
+// describeOnlyEnvVar, when set to "1", tells this subprocess to serve
+// ONLY Describe (describeonly.go's describeOnlyPlugin) and skip
+// NewSourcePlugin entirely — never opening this plugin's local message
+// store, never calling startBackgroundClient, and therefore never
+// acquiring storelock.go's exclusive per-data-directory flock. Set only by
+// kernel/pluginhost.DescribePluginType's trial-launch path (CR-01,
+// 08-REVIEW.md): unlike every other trial-launched plugin in this repo,
+// a WhatsApp source is *always* already running (plugin.go's own doc
+// comment — it holds a persistent connection for its entire process
+// lifetime), so the ordinary non-flagged startup path here would always
+// lose the lock race against that real instance and fail before ever
+// reaching goplugin.Serve. Describe's answer (source_type/display_name/
+// contract_version/match_vocabulary) is a fixed set of package-level
+// constants that depends on none of that state, so this mode simply never
+// touches it.
+const describeOnlyEnvVar = "WEBSPACES_DESCRIBE_ONLY"
+
 func main() {
 	// Cosmetic fix (2026-08-10 real-device spike): whatsmeow's own
 	// package-level DeviceProps.Os defaults to the literal string
@@ -87,27 +104,39 @@ func main() {
 		os.Exit(0)
 	}
 
-	raw := os.Getenv("WEBSPACES_SOURCE_CONFIG")
-	if raw == "" {
-		fatal(fmt.Errorf("WEBSPACES_SOURCE_CONFIG is not set"))
-	}
+	// describeOnlyEnvVar (CR-01, 08-REVIEW.md) short-circuits BEFORE
+	// WEBSPACES_SOURCE_CONFIG is even required: a trial-launch that only
+	// wants Describe's answer needs no path at all, and — the whole point
+	// of this mode — must never reach NewSourcePlugin/acquireStoreLock
+	// below, which is what a real running instance already holds
+	// exclusively for its own data directory.
+	var impl sdk.SourcePlugin
+	if os.Getenv(describeOnlyEnvVar) == "1" {
+		impl = describeOnlyPlugin{}
+	} else {
+		raw := os.Getenv("WEBSPACES_SOURCE_CONFIG")
+		if raw == "" {
+			fatal(fmt.Errorf("WEBSPACES_SOURCE_CONFIG is not set"))
+		}
 
-	var cfg sourceConfig
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		fatal(fmt.Errorf("parse WEBSPACES_SOURCE_CONFIG: %w", err))
-	}
-	if cfg.Path == "" {
-		fatal(fmt.Errorf("WEBSPACES_SOURCE_CONFIG: path is empty"))
-	}
+		var cfg sourceConfig
+		if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+			fatal(fmt.Errorf("parse WEBSPACES_SOURCE_CONFIG: %w", err))
+		}
+		if cfg.Path == "" {
+			fatal(fmt.Errorf("WEBSPACES_SOURCE_CONFIG: path is empty"))
+		}
 
-	dataDir, err := expandHome(cfg.Path)
-	if err != nil {
-		fatal(fmt.Errorf("expand path: %w", err))
-	}
+		dataDir, err := expandHome(cfg.Path)
+		if err != nil {
+			fatal(fmt.Errorf("expand path: %w", err))
+		}
 
-	impl, err := NewSourcePlugin(context.Background(), dataDir)
-	if err != nil {
-		fatal(fmt.Errorf("start whatsapp plugin: %w", err))
+		sp, err := NewSourcePlugin(context.Background(), dataDir)
+		if err != nil {
+			fatal(fmt.Errorf("start whatsapp plugin: %w", err))
+		}
+		impl = sp
 	}
 
 	goplugin.Serve(&goplugin.ServeConfig{
