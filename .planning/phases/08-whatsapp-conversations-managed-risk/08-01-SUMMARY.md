@@ -14,9 +14,9 @@ provides:
 affects: [08-02-whatsapp-1-1-and-health-taxonomy, 08-03-whatsapp-in-app-pairing]
 
 actuals:
-  tokens: 20000
+  tokens: 21100
   tasks: 2
-  commits: 1
+  commits: 3
 
 tech-stack:
   added: ["go.mau.fi/whatsmeow@v0.0.0-20260806224404-e277b766ab33", "modernc.org/sqlite v1.54.0 (plugin-local)", "github.com/mdp/qrterminal/v3 v3.2.1"]
@@ -146,10 +146,18 @@ See `key-decisions` in frontmatter above. Summary: Task 1's pin approved as-is; 
 - **Verification:** `git status --short` clean after `rm -f whatsapp plugins/mockstrict/mockstrict`
 - **Committed in:** `f659c20`
 
+**3. [Rule 1 - Bug] Fixed whatsmeow session-store DSN to actually enable foreign_keys**
+- **Found during:** Checkpoint feedback — the user ran `bin/plugins/topos-plugin-whatsapp -link -path ~/.local/share/topos/whatsapp` on their real machine and it failed before showing a QR: `failed to upgrade database: foreign keys are not enabled`
+- **Issue:** `connect.go`/`link.go` opened whatsmeow's own sqlstore with `file:<path>?_foreign_keys=on` — the DSN shorthand illustrated in whatsmeow's own doc comment, but that's mattn/go-sqlite3's query-param convention. This plugin uses modernc.org/sqlite (the pure-Go driver, per this project's stack constraints), which silently ignores `_foreign_keys=on` as an unrecognised query param — foreign keys stayed off, and `sqlstore.Container.Upgrade` refuses to run its migrations without them, failing before the QR flow ever starts
+- **Fix:** Added `whatsmeowSessionDSN(dbPath)` in `connect.go`, using modernc.org/sqlite's actual DSN pragma syntax: `?_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)` (one `_pragma=<body>` query param per pragma, applied as `PRAGMA <body>` on every new pooled connection). Both `link.go` and `connect.go` now call this one shared helper, so link-mode and serve-mode open whatsmeow's sqlstore identically
+- **Files modified:** plugins/whatsapp/connect.go, plugins/whatsapp/link.go, plugins/whatsapp/connect_test.go (new)
+- **Verification:** New `TestWhatsmeowSessionDSN_MigrationsRunAgainstRealSQLStore` opens `sqlstore.New` against a real temp-file DB via `whatsmeowSessionDSN` and calls `GetFirstDevice` — reverting the fix locally reproduced the user's exact live error message, confirming the test is a real regression guard, not a vacuous pass. `CGO_ENABLED=0 go build ./plugins/whatsapp` and the full `plugins/whatsapp` test suite (13 tests) pass with the fix in place; `make test-portable` passes for the whole workspace
+- **Committed in:** `397e94c`
+
 ---
 
-**Total deviations:** 2 auto-fixed (1 missing critical, 1 blocking)
-**Impact on plan:** Both necessary for correctness/hygiene. No scope creep.
+**Total deviations:** 3 auto-fixed (1 missing critical, 1 blocking, 1 bug found via checkpoint feedback)
+**Impact on plan:** All three necessary for correctness/hygiene. No scope creep.
 
 ## Issues Encountered
 
@@ -182,13 +190,15 @@ None yet in the code sense (no external service credentials) — but Task 2's hu
 
 ### Checkpoint Details
 
-Run these commands yourself (no CLI step here can be automated further):
+Run these commands yourself (no CLI step here can be automated further). **Rebuild the binary first** — the previous attempt failed at `sqlstore.Container.Upgrade` with `foreign keys are not enabled` before ever reaching the QR flow; this is now fixed (see Deviations #3 above, commit `397e94c`) by opening whatsmeow's session store with modernc.org/sqlite's own `_pragma=foreign_keys(1)` DSN syntax instead of the mattn/go-sqlite3-style `_foreign_keys=on` shorthand, which modernc.org/sqlite silently ignored:
 
 ```bash
 mkdir -p ~/.local/share/topos/whatsapp
 CGO_ENABLED=0 go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
 bin/plugins/topos-plugin-whatsapp -link -path ~/.local/share/topos/whatsapp
 ```
+
+If you already ran `-link` before this fix and it failed with the foreign-keys error, no partial state was left behind (the failure happened before any device/session data was written) — the rebuilt binary should proceed straight to rendering the QR code.
 
 1. Scan the rendered ASCII QR code with your phone (WhatsApp > Linked devices > Link a device). Confirm the process exits 0 with "Linked successfully."
 2. Add a `[sources.whatsapp]` block (already present in `config.example.toml` — copy into your real `config.toml`) plus a webspace `match` block naming a real group you're in.
