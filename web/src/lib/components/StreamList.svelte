@@ -3,6 +3,7 @@
 	import StreamEmpty from './StreamEmpty.svelte';
 	import StreamError from './StreamError.svelte';
 	import StreamMissing from './StreamMissing.svelte';
+	import StreamSyncDegraded from './StreamSyncDegraded.svelte';
 	import StreamLoadingSkeleton from './StreamLoadingSkeleton.svelte';
 	import { filterItemsBySource, streamVariant } from '$lib/format';
 	import type { StreamResponse, SourceStatus } from '$lib/api';
@@ -67,7 +68,13 @@
 {:else if state === 'not-found'}
 	<StreamMissing {webspace} />
 {:else if variant === 'sync-failed' && response}
-	<StreamError {onretry} syncError={response.sync.error} />
+	<!-- 08-UAT.md G-08-3: the kernel answered 200 here — a source's own
+	     latest sync failed, not the kernel. StreamSyncDegraded (never
+	     StreamError, whose copy asserts the kernel didn't respond) is
+	     the treatment for this branch; the branch's position ahead of
+	     both empty variants below is unchanged and remains the whole
+	     point of this component (T-02-16, PLAN.md prohibitions). -->
+	<StreamSyncDegraded {onretry} syncError={response.sync.error} />
 {:else if variant === 'empty-filtered'}
 	<StreamEmpty displayName={filteredDisplayName} />
 {:else if variant === 'empty'}

@@ -315,6 +315,37 @@ This amendment introduces **no new shadcn block** and **no new `bits-ui` primiti
 
 ---
 
+## Amendment 3 — Degraded Stream State (G-08-3)
+
+*Added 2026-08-10, Plan 08-10, authored at plan time directly from `08-UAT.md`'s G-08-3 diagnosis — not re-run through the gsd-ui-checker probe, since it introduces no new registry dependency, no new colour/spacing/typography token, and no new shadcn/bits-ui primitive (it reuses the `Alert`/`AlertTitle`/`AlertDescription`/`AlertAction` primitives `StreamError.svelte` already imports, in the default, non-destructive variant).*
+
+### The cause this state renders for
+
+A `200` stream response (`GET /api/webspaces/{webspace}/stream`) whose aggregate `sync.status` is `"error"` and whose `items` array is empty — the kernel answered normally; one of the webspace's participating sources' latest sync failed and returned nothing. This is distinct from, and must never render as, the genuinely kernel-unreachable state `StreamError.svelte` now exclusively owns (see that component's own narrowed doc comment, Task 1 of this plan) — the fixed "The topos service didn't respond — check that it's running, then retry." sentence is confined to that one remaining cause and must never appear for this one.
+
+### Treatment
+
+A shadcn `Alert` in the **default** (non-destructive) variant — this is a degraded state, not an outage. The destructive variant stays reserved for `StreamError.svelte`'s genuine-unreachable case.
+
+### Copy (verbatim, binding)
+
+| Element | Copy |
+|---|---|
+| Title | `A source couldn't sync` |
+| Body | `Nothing to show here yet. Your other sources are unaffected — check the source chips above, then retry.` |
+| Detail | The response's recorded `sync.error` string, rendered beneath the body at the same label role Phase 1 already used for it (14px/400/1.4). |
+| Action | A `Retry` control, wired to the same retry callback `StreamError.svelte` uses. |
+
+### Why the copy points at the chips rather than restating per-source health
+
+The source chip row above already carries each source's own tone, last sync time and `last_error` (UI-05/UI-06) — this state's job is to explain why the stream is empty and hand the user to the surface that already diagnoses it, not to grow a second per-source health surface. Duplicating chip-level detail here would create two places a source's health could read differently.
+
+### Supersession
+
+This amendment supersedes `01-UI-SPEC.md`'s single "Stream-load error (kernel API unreachable)" Copywriting Contract row for one of that row's two previously-shipped causes — see `01-UI-SPEC.md`'s own dated superseding note (Task 3 of this plan) for the pointer back here. Cites `08-UAT.md` G-08-3.
+
+---
+
 ## Checker Sign-Off
 
 - [x] Dimension 1 Copywriting: PASS
