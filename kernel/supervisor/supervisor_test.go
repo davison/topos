@@ -205,10 +205,19 @@ func testFixtureItem(source, sourceID string) item.Item {
 // previously guarded against. Guarding the close is the minimal fix: it
 // changes no assertion and no line inside either of this file's two
 // prior-content-pinned tests.
+//
+// exited (08-09-PLAN.md Task 2) is closed, at most once (guarded by
+// closeExitedOnce), when Match returns — proving a dispatched call
+// genuinely observed its context's cancellation and unblocked, rather than
+// merely never having been reached at all. Only closed when non-nil, so
+// the two prior tests' fixture values (which never set it) keep compiling
+// and behaving identically.
 type blockingSource struct {
 	name             string
 	entered          chan struct{}
 	closeEnteredOnce sync.Once
+	exited           chan struct{}
+	closeExitedOnce  sync.Once
 }
 
 func (b *blockingSource) Name() string              { return b.name }
@@ -217,6 +226,9 @@ func (b *blockingSource) MatchVocabulary() []string { return []string{"keywords"
 func (b *blockingSource) Match(ctx context.Context, _ map[string][]string) (*toposv1.MatchResponse, error) {
 	b.closeEnteredOnce.Do(func() { close(b.entered) })
 	<-ctx.Done()
+	if b.exited != nil {
+		b.closeExitedOnce.Do(func() { close(b.exited) })
+	}
 	return nil, ctx.Err()
 }
 
@@ -283,6 +295,95 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 	}
 	if run.FinishedUnix == 0 {
 		t.Errorf("expected the mid-flight sync run to carry a finished time, got: %+v", run)
+	}
+}
+
+// TestApply_EagerResyncDoesNotOutliveItsGeneration proves the
+// generation-scoping fix behind Apply's eager-resync dispatch
+// (08-09-PLAN.md Task 2, closing 08-UAT.md G-08-3's untracked-goroutine
+// sibling): a background sync dispatched into a scheduler generation is
+// bounded by THAT generation's own cancellable context and tracked by its
+// wait group, so stopScheduler — now reachable from the WhatsApp
+// link-start HTTP request path via SuspendInstance (08-09-PLAN.md Task 1)
+// — can never block forever on a sync it has no way to cancel.
+//
+// The dispatch is driven against s.coord/s.genCtx/s.genWG — the exact
+// triple Apply's own post-commitGeneration dispatch loop reads under s.mu
+// — rather than through a literal Apply(ctx) call reaching that loop for
+// blockingSource specifically: commitGeneration always rebuilds the
+// coordinator from s.host.Plugins() (kernel/pluginhost.Host has no seam
+// for an in-memory fake source), so a genuinely successful Apply can only
+// ever route its own dispatch through a REAL launched plugin subprocess —
+// and this plan's file scope has no seam to make a real subprocess block
+// on demand (inventing one would require changing a plugins/ file, outside
+// files_modified). Driving the same fields with the same s.mu discipline
+// Apply's own dispatch loop uses is the faithful proxy: it proves
+// genCtx/genWG bound a dispatched sync identically to how Apply's own loop
+// would.
+func TestApply_EagerResyncDoesNotOutliveItsGeneration(t *testing.T) {
+	idx := newTestIndex(t)
+	blocker := &blockingSource{name: "slow", entered: make(chan struct{}), exited: make(chan struct{})}
+	// A participating webspace is required: correlate.Engine.SyncSource only
+	// calls Match for a (webspace, source) pair that participates (see
+	// suspend_test.go's identical note) — with no webspace at all, Match is
+	// never called and blocker.entered would never close.
+	engineCfg := &config.Config{Webspaces: map[string]config.Webspace{"demo": {Keywords: []string{"keywords"}}}}
+	engine := &correlate.Engine{Store: idx, Config: engineCfg}
+
+	// No configured sources at all: Scheduler.Run's own goroutine set is
+	// empty, so it cannot race the dispatch under test for blocker — the
+	// ONLY caller of blocker.Match in this test is the manually-dispatched
+	// goroutine below.
+	cfg := &config.Config{}
+	s := &Supervisor{
+		idx:      idx,
+		cfgStore: config.NewStoreForTesting(cfg),
+		logger:   hclog.NewNullLogger(),
+		baseCtx:  context.Background(),
+		host:     &pluginhost.Host{},
+		cfg:      cfg,
+	}
+	s.coord = syncer.NewCoordinator(idx, engine, []correlate.Source{blocker})
+	s.startScheduler(cfg)
+
+	// Mirror Apply's own eager-resync dispatch exactly
+	// (kernel/supervisor/supervisor.go): read coord/genCtx/genWG under
+	// s.mu, register the goroutine on genWG BEFORE it starts, and call
+	// coord.Refresh with genCtx — never a detached context.Background().
+	s.mu.Lock()
+	coord := s.coord
+	genCtx := s.genCtx
+	genWG := s.genWG
+	s.mu.Unlock()
+
+	genWG.Add(1)
+	go func() {
+		defer genWG.Done()
+		coord.Refresh(genCtx, "slow")
+	}()
+
+	select {
+	case <-blocker.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the dispatched resync's Match was never called")
+	}
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		s.Shutdown()
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown did not return within its deadline — an eager-resync goroutine dispatched with an uncancellable context blocks stopScheduler forever, which would now hang the WhatsApp link-start HTTP request path (stopScheduler is reachable from SuspendInstance)")
+	}
+
+	select {
+	case <-blocker.exited:
+	default:
+		t.Error("expected the dispatched resync's Match call to have returned (its context cancelled) by the time Shutdown completed")
 	}
 }
 

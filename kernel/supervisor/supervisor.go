@@ -51,6 +51,22 @@ type Supervisor struct {
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the CURRENT scheduler generation's Run has fully returned
 
+	// genCtx and genWG are generation-scoped (08-09-PLAN.md Task 2, closing
+	// 08-UAT.md G-08-3's untracked-eager-resync sibling): replaced wholesale
+	// by startScheduler, drained by stopScheduler — the SAME "caller must
+	// hold s.mu" convention cancel/done already state. Every background sync
+	// this package dispatches OUTSIDE Scheduler.Run's own goroutine set
+	// (Apply's eager resync, below) must derive its context from genCtx and
+	// register on genWG before its own goroutine starts, so stopScheduler's
+	// wait bounds ALL work belonging to the generation it is tearing down —
+	// not only the scheduler's own tick goroutines (which Scheduler.Run's
+	// internal sync.WaitGroup and the done channel above already cover) —
+	// so a suspend or resume (SuspendInstance, above — now itself a
+	// generation change and on the WhatsApp link-start HTTP request path)
+	// can never block on a dispatched sync it has no way to cancel.
+	genCtx context.Context
+	genWG  *sync.WaitGroup
+
 	// suspended holds one entry per instance name SuspendInstance has
 	// currently stopped (WR-02, 08-REVIEW.md): the *pluginhost.Plugin
 	// value it was launched as immediately before being killed, kept
@@ -128,6 +144,8 @@ func (s *Supervisor) startScheduler(cfg *config.Config) {
 	done := make(chan struct{})
 	s.cancel = cancel
 	s.done = done
+	s.genCtx = ctx
+	s.genWG = &sync.WaitGroup{}
 
 	sched := &syncer.Scheduler{Coordinator: s.coord, Config: cfg, Logger: s.logger}
 	go func() {
@@ -147,6 +165,16 @@ func (s *Supervisor) stopScheduler() {
 	}
 	if s.done != nil {
 		<-s.done
+	}
+	// s.cancel has already fired by this point (above), so every tracked
+	// goroutine's context is already done — this wait is bounded by how
+	// fast an in-flight Match RPC aborts on cancellation, never unbounded
+	// (08-09-PLAN.md Task 2, closing 08-UAT.md G-08-3's eager-resync
+	// sibling: before this fix, Apply's eager-resync goroutines were
+	// dispatched on a detached context.Background() and untracked here,
+	// so this wait could not bound them at all).
+	if s.genWG != nil {
+		s.genWG.Wait()
 	}
 }
 
@@ -673,7 +701,19 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// about to refresh the same instance — Coordinator.Refresh's
 	// single-flight guarantee coalesces the two into one sync, never two.
 	if !reflect.DeepEqual(oldCfg.Webspaces, newCfg.Webspaces) {
+		// Read coord/genCtx/genWG together, right here, next to each other:
+		// commitGeneration has already run by this point and installed a
+		// NEW generation, so all three must be re-read now rather than
+		// captured before the call — they are exactly the generation these
+		// dispatched goroutines belong to (08-09-PLAN.md Task 2, closing
+		// 08-UAT.md G-08-3's eager-resync sibling: before this fix these
+		// goroutines ran on a detached context.Background(), untracked by
+		// any generation, so a later stopScheduler — now reachable from the
+		// WhatsApp link-start HTTP request path via SuspendInstance — could
+		// never bound how long it waited on one).
 		coord := s.coord
+		genCtx := s.genCtx
+		genWG := s.genWG
 		for name, src := range newCfg.Sources {
 			if _, isSuspended := s.suspended[name]; isSuspended {
 				// Still suspended (WR-02): not currently launched, so
@@ -685,7 +725,16 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 				continue
 			}
 			if oldSrc, ok := oldCfg.Sources[name]; ok && reflect.DeepEqual(oldSrc, src) {
-				go coord.Refresh(context.Background(), name)
+				// A resync cancelled by the NEXT generation change is not
+				// work lost: every fresh generation's Scheduler.Run fires
+				// each configured source's first refresh immediately
+				// anyway, so the cancellation costs at most a duplicate
+				// that single-flight would have coalesced.
+				genWG.Add(1)
+				go func(name string) {
+					defer genWG.Done()
+					coord.Refresh(genCtx, name)
+				}(name)
 			}
 		}
 	}
