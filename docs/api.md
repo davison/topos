@@ -715,6 +715,113 @@ plugin_describe_failed` when the trial launch or the `Describe` call
 itself fails (e.g. a malformed `base_url` scheme) — carrying the kernel's
 own error text so the modal can show it beside its "Save anyway" fallback.
 
+### `POST /api/config/whatsapp-link`, `GET /api/config/whatsapp-link/{session}`, `DELETE /api/config/whatsapp-link/{session}`
+
+The in-app WhatsApp QR-pairing surface (`D-01`, `08-03-PLAN.md`): starts,
+polls, and cancels a **link session** — a raw subprocess running the
+WhatsApp plugin binary in its machine-readable link mode
+(`topos-plugin-whatsapp -link-json -path <dir>`, `plugins/whatsapp/
+link.go`'s `runLinkJSON`), spawned entirely **outside the `go-plugin` gRPC
+handshake**. This is deliberately **not** a `SourcePlugin` RPC —
+`docs/plugin-contract.md`'s locked four-RPC allowlist (`Describe`, `Match`,
+`Fetch`, `Health`, "no fifth RPC may ever be added") is unaffected by this
+route's existence, since nothing here talks to a launched plugin's gRPC
+service at all.
+
+Short-poll, not SSE: the browser calls `POST` once to start a session,
+then polls `GET .../whatsapp-link/{session}` on its own cadence (driven by
+the rotating QR code's own `expires_in_seconds`) until the session reaches
+a terminal state, and may `DELETE` to cancel early.
+
+**`POST /api/config/whatsapp-link` request body:**
+
+```json
+{
+  "plugin": "topos-plugin-whatsapp",
+  "path": "~/.local/share/topos/whatsapp",
+  "instance": "my-whatsapp"
+}
+```
+
+`plugin` MUST be a member of `GET /api/config/plugin-types`'s own
+discovered-binary set (`pluginhost.DiscoverAllBinaries`) — refused `404
+plugin_binary_not_found` **before anything is executed**, identical
+authority rule to `POST /api/config/describe-plugin` (`T-08-06`). `path`
+is the WhatsApp instance's data directory (the same value as
+`[sources.whatsapp].path`) and must be non-empty. `instance` is
+**optional**: present for the "Re-link…" chip-menu flow (an
+already-configured instance name to suspend for the session's duration —
+see below), absent for the Add-Source flow (nothing configured yet to
+suspend).
+
+When `instance` is non-empty, the kernel calls `Supervisor.SuspendInstance`
+**before** spawning the link subprocess: it stops that instance's own
+running plugin process for the session's duration, so the link subprocess
+and the regular pluginhost-launched instance never hold WhatsApp's
+`sqlstore` session file open at the same time. The suspended instance is
+automatically **resumed** the moment the session reaches any terminal
+state (whether that is `paired`, `error`, `timeout`, cancellation, or
+deadline expiry) — never left suspended past the session's own lifetime.
+Naming an instance not currently running is a deliberate no-op (e.g. the
+Add-Source flow's own not-yet-saved instance needs no special-casing).
+
+**On success:** `200` with a session id and its current state:
+
+```json
+{ "schema_version": 1, "session": "5f1e...c2", "state": "pending" }
+```
+
+**`GET /api/config/whatsapp-link/{session}`** returns the **latest**
+event the link subprocess has emitted, polled until `state` is one of the
+three terminal values below:
+
+```json
+{ "schema_version": 1, "session": "5f1e...c2", "state": "qr", "png_data_uri": "data:image/png;base64,...", "expires_in_seconds": 18 }
+```
+
+| `state` | Meaning | Extra fields |
+|---|---|---|
+| `pending` | Session started; no event has arrived from the subprocess yet. | — |
+| `qr` | A rotating pairing code is ready to display. | `png_data_uri` (a `data:image/png;base64,...` URI — never the raw pairing payload itself, which is a live credential and never leaves the plugin subprocess as text), `expires_in_seconds` (the real whatsmeow-reported validity window for this specific code, driving the browser's own countdown) |
+| `paired` | The device linked successfully. | — |
+| `error` | The link attempt failed. | `code` (`whatsapp_store_in_use` or `link_failed`, see the error-code table below), `message` |
+| `timeout` | The QR channel closed without a scan (the code(s) expired). | — |
+
+**Terminal states are delivered exactly once.** The moment a poll observes
+`paired`, `error`, or `timeout`, the kernel retires the session (killing
+the subprocess if it hasn't already exited and running the suspended
+instance's resume, if any) as part of answering that same request. A
+second poll for the same `session` id after a terminal state was already
+observed returns `404 link_session_not_found` — the same code an unknown
+or already-cancelled/expired session id returns.
+
+**`DELETE /api/config/whatsapp-link/{session}`** cancels an in-progress
+session early: kills the subprocess, resumes any suspended instance, and
+retires the session.
+
+```json
+{ "schema_version": 1, "session": "5f1e...c2", "state": "cancelled" }
+```
+
+**Session limits:** a kernel process holds at most a small, fixed number
+of concurrent link sessions (`link_failed`, `429`, if exceeded — a stuck
+or abandoned browser tab cannot accumulate unbounded subprocesses). A
+session left unpolled past its own deadline is terminated by a background
+reaper — the same `link_session_not_found` a manual cancel produces. Every
+live session's subprocess is also terminated on kernel shutdown, so a
+Ctrl-C never orphans a linking process holding WhatsApp's session-store
+lock.
+
+**Failure modes:** `400 invalid_request` (malformed body or empty `path`),
+`404 plugin_binary_not_found` (above), `404 link_session_not_found` (an
+unknown, already-retired, reaped, or already-cancelled session id), `429
+link_failed` (the concurrent-session cap), or `502 link_failed` if the
+subprocess itself fails to start. A `whatsapp_store_in_use`/`link_failed`
+**poll-time** error (the plugin subprocess itself failed, e.g. because its
+own store lock was already held) is reported as a `200` response with
+`"state": "error"`, not an HTTP-level failure — the poll succeeded; the
+underlying link attempt is what failed.
+
 ## The `/agent/v1` namespace (`AGENT-01`)
 
 `/agent/v1/*` mirrors the `/api/*` routes above under **default-deny,
@@ -878,8 +985,11 @@ namespace", above).
 | `config_has_unknown_keys` | 409 | `PUT /api/config` | `config.toml` carries a TOML key or table the `Config` struct doesn't model. The kernel refuses to write a canonical rewrite that would silently drop it — the message names the offending key(s); fix them by hand before any UI save can succeed. |
 | `config_invalid` | 422 | `PUT /api/config`, `POST /api/config/reload` | The submitted (or reloaded) config fails the same `(*config.Config).Validate` a hand-edited file must pass at load time. The message is the validator's own error string, verbatim. On a failed reload, the previously running configuration is left completely untouched. |
 | `apply_failed` | 500 | `PUT /api/config`, `POST /api/config/reload` | The file was written/reloaded and is now the kernel's config-of-record, but the running kernel (plugin host, coordinator, scheduler) could not fully reconcile against it — never a silent `200`. Retry `POST /api/config/reload`. |
-| `plugin_binary_not_found` | 404 | `POST /api/config/describe-plugin` | The named `plugin` is not a member of `GET /api/config/plugin-types`'s own result set — refused before anything is executed. |
+| `plugin_binary_not_found` | 404 | `POST /api/config/describe-plugin`, `POST /api/config/whatsapp-link` | The named `plugin` is not a member of `GET /api/config/plugin-types`'s own result set (or, for the link route, `pluginhost.DiscoverAllBinaries`'s result set) — refused before anything is executed. |
 | `plugin_describe_failed` | 502 | `POST /api/config/describe-plugin` | The trial launch or its `Describe` call failed (e.g. a malformed `base_url` scheme) — the kernel's own error text, so the modal can show it beside its "Save anyway" fallback. |
+| `link_session_not_found` | 404 | `GET /api/config/whatsapp-link/{session}`, `DELETE /api/config/whatsapp-link/{session}` | `{session}` is unknown, was already retired after a terminal poll, was reaped past its deadline, or was already cancelled. |
+| `whatsapp_store_in_use` | — (200, `state: "error"`) | `GET /api/config/whatsapp-link/{session}` | The link subprocess's own store lock was already held by another `topos-plugin-whatsapp` process — the independent second layer behind `SuspendInstance` (`T-08-07`). Not an HTTP-level failure; see the whatsapp-link route's own "Failure modes" note above. |
+| `link_failed` | 429 (session cap) / 502 (subprocess start failure) / — (200, `state: "error"`, any other link-subprocess failure) | `POST`, `GET /api/config/whatsapp-link*` | A generic link failure — the concurrent-session cap, a subprocess that failed to start, or any plugin-reported error other than a store-lock conflict. |
 | `internal_error` | 500 | any route | An unexpected kernel-side failure (e.g. the local index file itself is unreadable) — not a source or plugin problem. |
 
 ## What is not here yet

@@ -471,11 +471,14 @@ type allowedNonGetRoute struct{ method, path string }
 
 // TestRoutesGuard_NonGetRoutesScopedToConfig is the AST half of success
 // criterion 4 (T-07-05): parses kernel/httpapi/routes.go's source and
-// asserts the ONLY non-GET routes Router registers are PUT /api/config
-// plus the two pre-existing refresh routes. A future PR adding any other
-// mutating route fails this test outright, forcing that addition to be a
-// deliberate, reviewed decision rather than a silent expansion of the
-// kernel's one mutating surface.
+// asserts the ONLY non-GET routes Router registers are PUT /api/config,
+// the two pre-existing refresh routes, and (08-03-PLAN.md Task 3) the two
+// mutating whatsapp-link routes — a raw-subprocess surface outside the
+// go-plugin gRPC handshake, not a SourcePlugin RPC, and still scoped to
+// configuration/linking exactly like every other route on this allowlist.
+// A future PR adding any other mutating route fails this test outright,
+// forcing that addition to be a deliberate, reviewed decision rather than
+// a silent expansion of the kernel's mutating surface.
 func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "routes.go", nil, 0)
@@ -484,11 +487,13 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 	}
 
 	want := map[allowedNonGetRoute]bool{
-		{"Put", "/api/config"}:                  true,
-		{"Post", "/api/config/reload"}:          true,
-		{"Post", "/api/config/describe-plugin"}: true,
-		{"Post", "/api/sources/{name}/refresh"}: true,
-		{"Post", "/api/sync"}:                   true,
+		{"Put", "/api/config"}:                            true,
+		{"Post", "/api/config/reload"}:                    true,
+		{"Post", "/api/config/describe-plugin"}:           true,
+		{"Post", "/api/sources/{name}/refresh"}:           true,
+		{"Post", "/api/sync"}:                             true,
+		{"Post", "/api/config/whatsapp-link"}:             true,
+		{"Delete", "/api/config/whatsapp-link/{session}"}: true,
 	}
 
 	var found []allowedNonGetRoute

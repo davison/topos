@@ -61,7 +61,7 @@ func agentLiveConfigRouter(t *testing.T, contents string, prober HealthProber, f
 		t.Fatalf("config.NewStore: %v", err)
 	}
 	store := newTestStoreForHTTP(t)
-	router := Router(store, cfgStore, fetcher, prober, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, cfgStore, fetcher, prober, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 	return router, cfgStore, store
 }
 

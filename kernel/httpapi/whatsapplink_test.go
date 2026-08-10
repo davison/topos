@@ -68,9 +68,9 @@ func (f *fakeSuspender) resumeCallCount() int {
 // subprocess: the test pushes raw JSON lines onto lines directly (never a
 // real exec.Cmd), and records whether kill was ever called.
 type fakeLinkProcess struct {
-	lines chan []byte
-	done  chan error
-	mu    sync.Mutex
+	lines  chan []byte
+	done   chan error
+	mu     sync.Mutex
 	killed bool
 }
 
@@ -79,8 +79,6 @@ func newFakeLinkProcess() *fakeLinkProcess {
 }
 
 func (f *fakeLinkProcess) emit(line string) { f.lines <- []byte(line) }
-
-func (f *fakeLinkProcess) closeLines() { close(f.lines) }
 
 func (f *fakeLinkProcess) result() linkSpawnResult {
 	return linkSpawnResult{
@@ -104,10 +102,10 @@ func (f *fakeLinkProcess) wasKilled() bool {
 // dataPath) invocation (proving whether or how many times it was ever
 // called) and returns a scripted result (or error) the test controls.
 type fakeSpawner struct {
-	mu       sync.Mutex
-	calls    []struct{ binPath, dataPath string }
-	result   linkSpawnResult
-	err      error
+	mu     sync.Mutex
+	calls  []struct{ binPath, dataPath string }
+	result linkSpawnResult
+	err    error
 }
 
 func (f *fakeSpawner) spawn(_ context.Context, binPath, dataPath string) (linkSpawnResult, error) {

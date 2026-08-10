@@ -111,7 +111,7 @@ func TestContract_StreamEnvelope_IDsLinkAndProvenance(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -165,7 +165,7 @@ func TestContract_EmptyWebspaceReturns200EmptyArrayNotNull(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/empty-space/stream", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -194,7 +194,7 @@ func TestContract_EmptyWebspaceReturns200EmptyArrayNotNull(t *testing.T) {
 
 func TestContract_UnknownWebspace404(t *testing.T) {
 	store := newTestStoreForHTTP(t)
-	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/does-not-exist/stream", nil)
 	rec := httptest.NewRecorder()
@@ -205,7 +205,7 @@ func TestContract_UnknownWebspace404(t *testing.T) {
 
 func TestContract_UnknownItem404(t *testing.T) {
 	store := newTestStoreForHTTP(t)
-	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:does-not-exist", nil)
 	rec := httptest.NewRecorder()
@@ -218,9 +218,9 @@ func TestContract_FetchFailureReturns502SourceUnavailable(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	seedTestItem(t, store, testItem())
 
-	router := Router(store, testConfig(), &fakeFetcher{
+	router, _ := Router(store, testConfig(), &fakeFetcher{
 		err: fmt.Errorf("%w: connection refused", pluginhost.ErrSourceUnavailable),
-	}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42", nil)
 	rec := httptest.NewRecorder()
@@ -285,7 +285,7 @@ func TestContract_StreamCalledTwiceIsByteIdentical(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	router := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, testConfig(), &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
 
 	req1 := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
 	rec1 := httptest.NewRecorder()
@@ -378,6 +378,14 @@ func TestContract_MutatingRoutesAreConfigScoped(t *testing.T) {
 		{method: "Post", path: "/api/config/describe-plugin"}: true,
 		{method: "Post", path: "/api/sources/{name}/refresh"}: true,
 		{method: "Post", path: "/api/sync"}:                   true,
+		// 08-03-PLAN.md Task 3 (D-01): the whatsapp-link session surface —
+		// a raw-subprocess spawn outside the go-plugin gRPC handshake, not
+		// a SourcePlugin RPC, still scoped to configuration/linking like
+		// every other route on this allowlist. GET /api/config/whatsapp-
+		// link/{session} (poll) is excluded here by construction: this
+		// scan only ever records non-GET methods.
+		{method: "Post", path: "/api/config/whatsapp-link"}:             true,
+		{method: "Delete", path: "/api/config/whatsapp-link/{session}"}: true,
 	}
 
 	found := nonGetRoutesInFile(t, "routes.go", "r")

@@ -59,7 +59,18 @@ const schemaVersion = 1
 // and DescribePluginHandler — the kernel-side half of the "+" chip
 // picker's plugin-type discovery and trial-launch-then-Describe
 // sequencing (D-11 step 1 -> step 2).
-func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, pluginsDir string, logger hclog.Logger) chi.Router {
+//
+// suspender (08-03-PLAN.md Task 3, D-01) feeds the new
+// POST/GET/DELETE /api/config/whatsapp-link routes
+// (kernel/httpapi/whatsapplink.go): a raw-subprocess link-session surface
+// that spawns a discovered plugin binary in machine-readable link mode
+// OUTSIDE the go-plugin gRPC handshake — not a SourcePlugin RPC, so the
+// locked four-RPC contract (docs/plugin-contract.md) is unaffected by its
+// existence. Router's second return value is the constructed
+// *linkSessionStore backing those routes — callers (cmd/topos/main.go)
+// must call its Shutdown() on kernel shutdown so a live link subprocess
+// is never orphaned holding a source's store lock.
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, suspender Suspender, pluginsDir string, logger hclog.Logger) (chi.Router, *linkSessionStore) {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
@@ -85,6 +96,16 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// sequencing — see kernel/httpapi/config.go.
 	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
 	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, logger))
+	// POST/GET/DELETE /api/config/whatsapp-link (D-01, 08-03-PLAN.md
+	// Task 3): start, poll, and cancel an in-app QR pairing session — see
+	// kernel/httpapi/whatsapplink.go. A mutating, human-only surface (the
+	// browser drives it directly from the Add-Source/Re-link UI); like
+	// every other /api/config/* route it is registered on /api/ only —
+	// MountAgentRoutes below registers zero non-GET routes on /agent/v1.
+	linkStore := newLinkSessionStore()
+	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(pluginsDir, suspender, execLinkSpawner, linkStore, logger))
+	r.Get("/api/config/whatsapp-link/{session}", WhatsAppLinkPollHandler(linkStore, logger))
+	r.Delete("/api/config/whatsapp-link/{session}", WhatsAppLinkCancelHandler(linkStore, logger))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
 	// same store/cfgStore/fetcher/prober. Every /api/* route above is
@@ -97,7 +118,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// (/, /w/house-move, a browser reload on a deep link, ...) is served
 	// by the embedded SPA and its 200.html fallback.
 	r.NotFound(spaHandler(webui.FS()))
-	return r
+	return r, linkStore
 }
 
 // spaHandler serves the embedded SvelteKit build, rewriting any path with

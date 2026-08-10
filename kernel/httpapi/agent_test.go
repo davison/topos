@@ -20,11 +20,14 @@ import (
 )
 
 func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher, prober HealthProber) http.Handler {
-	// Rule 3 (07-01-PLAN.md Task 1, extended 07-02/07-03-PLAN.md Task 1):
-	// Router now takes a *config.Store, an Applier, a pluginsDir and a
-	// logger — every call site in this file still builds a *config.Config
-	// by hand, so wrap it here rather than touching each one.
-	return Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	// Rule 3 (07-01-PLAN.md Task 1, extended 07-02/07-03/08-03-PLAN.md
+	// Task 1/3): Router now takes a *config.Store, an Applier, a
+	// Suspender, a pluginsDir and a logger, and returns the link-session
+	// store alongside the router — every call site in this file still
+	// builds a *config.Config by hand, so wrap it here rather than
+	// touching each one.
+	router, _ := Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	return router
 }
 
 // agentTestItem builds a test item whose Source (instance id) and
