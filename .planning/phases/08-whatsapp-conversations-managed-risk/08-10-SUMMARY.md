@@ -242,6 +242,14 @@ None — no external service configuration required.
 - `git diff --stat b969465 HEAD` touches exactly the 15 files declared in this plan's `files_modified` frontmatter — no lockfile, no supervisor file, no plugin file.
 - Full verification suite green: `npm --prefix web run test -- --run` (673/673), `npm --prefix web run check` (0 errors, 9 pre-existing warnings), `npm --prefix web run check:e2e` (0 errors), `make e2e` (42/42, +3 over the pre-plan baseline, every pre-existing spec including `uat-04-zero-webspace-vs-outage.spec.ts` unaffected), `make test-portable` (all modules ok).
 
+## Self-Check: PASSED
+
+- `web/src/lib/components/StreamSyncDegraded.svelte` — FOUND
+- `web/src/lib/components/stream-degraded.test.ts` — FOUND
+- `web/e2e/specs/g-08-3-degraded-source-not-outage.spec.ts` — FOUND
+- `.planning/phases/08-whatsapp-conversations-managed-risk/08-10-SUMMARY.md` — FOUND
+- Commits `1f429ef`, `803e52a`, `d28dad8` — all present in `git log`
+
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-10*
