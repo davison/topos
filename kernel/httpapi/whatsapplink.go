@@ -227,6 +227,15 @@ func (s *linkSession) consume(lines <-chan []byte, done <-chan error) {
 type linkSessionStore struct {
 	mu       sync.Mutex
 	sessions map[string]*linkSession
+	// reserved counts slots claimed by reserve (WR-01, 08-REVIEW.md) that
+	// have not yet been converted into a live sessions entry by register,
+	// or given back by release. len(sessions)+reserved is the true
+	// in-flight count reserve/register enforce maxConcurrentLinkSessions
+	// against — reserved exists so the cap is checked BEFORE a subprocess
+	// is spawned, not only after, since sess (and therefore a map key for
+	// it) cannot exist until the spawn that produces its kill func has
+	// already succeeded.
+	reserved int
 	stop     chan struct{}
 	stopOnce sync.Once
 }
@@ -281,21 +290,63 @@ func (s *linkSessionStore) reapExpired() {
 
 var errTooManyLinkSessions = fmt.Errorf("whatsapp link: too many concurrent link sessions (limit %d)", maxConcurrentLinkSessions)
 
-// register assigns a fresh unguessable id to sess and stores it, refusing
-// beyond maxConcurrentLinkSessions.
+// reserve claims one of maxConcurrentLinkSessions slots, refusing beyond
+// the cap (WR-01, 08-REVIEW.md). Callers MUST call this — and get a nil
+// error back — BEFORE spawning a link subprocess, not after: spawning
+// execs a process, opens two sqlite files, and takes an exclusive
+// storelock.go flock, all real costs that N simultaneous start requests
+// would otherwise all pay before only the first maxConcurrentLinkSessions
+// survived a capacity check made after the fact. Every path that claims a
+// slot via reserve and does NOT go on to call register must call release
+// to give it back (WhatsAppLinkStartHandler's own failure branches).
+func (s *linkSessionStore) reserve() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.sessions)+s.reserved >= maxConcurrentLinkSessions {
+		return errTooManyLinkSessions
+	}
+	s.reserved++
+	return nil
+}
+
+// release gives back a slot claimed by reserve that was never converted
+// into a live session via register — e.g. because SuspendInstance or the
+// subprocess spawn itself failed after the slot was already claimed.
+// Safe to call at most once per successful reserve() that was not
+// followed by register(); a spurious extra call is a no-op rather than an
+// underflow, since s.reserved never drops below zero.
+func (s *linkSessionStore) release() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reserved > 0 {
+		s.reserved--
+	}
+}
+
+// register assigns a fresh unguessable id to sess and stores it, converting
+// a slot previously claimed by reserve into a live session entry.
+// register itself no longer checks or claims capacity (WR-01,
+// 08-REVIEW.md moved that to reserve, called BEFORE the subprocess this
+// sess wraps was ever spawned) — every caller is required to have already
+// called reserve() successfully first. A call with no outstanding
+// reservation (s.reserved == 0) still succeeds and simply does not
+// decrement below zero — register's own contract has always been "add
+// sess to the store," never "enforce the cap," and existing tests that
+// construct a *linkSession by hand and register it directly (bypassing
+// WhatsAppLinkStartHandler's reserve call entirely) must keep working
+// unchanged.
 func (s *linkSessionStore) register(sess *linkSession) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(s.sessions) >= maxConcurrentLinkSessions {
-		return "", errTooManyLinkSessions
-	}
 
 	id, err := newLinkSessionID()
 	if err != nil {
 		return "", fmt.Errorf("whatsapp link: generate session id: %w", err)
 	}
 	s.sessions[id] = sess
+	if s.reserved > 0 {
+		s.reserved--
+	}
 	return id, nil
 }
 
@@ -451,10 +502,27 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 			return
 		}
 
+		// WR-01 (08-REVIEW.md): claim a session slot BEFORE suspending an
+		// instance or spawning the link subprocess, both of which have a
+		// real cost — SuspendInstance reconciles the host down for the
+		// named instance; spawning execs a process, opens two sqlite
+		// files, and takes an exclusive flock. Enforcing the cap here,
+		// rather than only after a successful spawn, means N simultaneous
+		// start requests beyond the cap are refused before any of that
+		// cost is paid, matching this handler's own existing ordering
+		// discipline for the plugin-binary allowlist check above
+		// ("directory listing … is the authority over what may be
+		// launched … BEFORE anything is executed").
+		if err := store.reserve(); err != nil {
+			WriteError(w, http.StatusTooManyRequests, "link_failed", err.Error())
+			return
+		}
+
 		resume := func(context.Context) error { return nil }
 		if req.Instance != "" {
 			r2, err := suspender.SuspendInstance(r.Context(), req.Instance)
 			if err != nil {
+				store.release()
 				WriteError(w, http.StatusInternalServerError, "internal_error", "suspend instance \""+req.Instance+"\": "+err.Error())
 				return
 			}
@@ -471,6 +539,7 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 		// never r.Context() (cancelled the moment this handler returns).
 		spawnResult, err := spawner(context.Background(), binPath, req.Path)
 		if err != nil {
+			store.release()
 			if resumeErr := resume(r.Context()); resumeErr != nil {
 				logger.Warn("whatsapp link: resume after failed spawn", "instance", req.Instance, "error", resumeErr.Error())
 			}
@@ -485,13 +554,18 @@ func WhatsAppLinkStartHandler(pluginsDir string, suspender Suspender, spawner li
 		}
 		go sess.consume(spawnResult.lines, spawnResult.done)
 
+		// register converts the slot reserve() already claimed above into
+		// this live session entry — it can now fail only on session-id
+		// generation (crypto/rand), never on capacity, since that was
+		// already enforced before the subprocess was ever spawned.
 		id, err := store.register(sess)
 		if err != nil {
+			store.release()
 			sess.kill()
 			if resumeErr := resume(r.Context()); resumeErr != nil {
-				logger.Warn("whatsapp link: resume after session-cap rejection", "instance", req.Instance, "error", resumeErr.Error())
+				logger.Warn("whatsapp link: resume after registration failure", "instance", req.Instance, "error", resumeErr.Error())
 			}
-			WriteError(w, http.StatusTooManyRequests, "link_failed", err.Error())
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
 

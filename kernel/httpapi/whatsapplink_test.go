@@ -356,6 +356,42 @@ func TestWhatsAppLinkStart_SuspendsBeforeSpawnAndResumesOnTerminalState(t *testi
 	}
 }
 
+// TestWhatsAppLinkStart_CapEnforcedBeforeSpawn is WR-01's (08-REVIEW.md)
+// regression test: with the session cap already reached, a further start
+// request must be refused 429 WITHOUT ever invoking the spawner — before
+// this fix, WhatsAppLinkStartHandler called the spawner first and only
+// rejected afterward via linkSessionStore.register's own (now-removed)
+// after-the-fact capacity check, so a request beyond the cap still paid
+// the full cost of a process spawn (exec, two sqlite opens, an exclusive
+// flock acquire/release) before being refused.
+func TestWhatsAppLinkStart_CapEnforcedBeforeSpawn(t *testing.T) {
+	spawner := &fakeSpawner{result: newFakeLinkProcess().result()}
+	router, store := newWhatsAppLinkTestRouter(t, &fakeSuspender{}, spawner.spawn)
+
+	// Fill every session slot directly via register — never through the
+	// HTTP route, so the spawner fake's call count below reflects ONLY
+	// the one request this test actually issues.
+	for i := 0; i < maxConcurrentLinkSessions; i++ {
+		sess := &linkSession{
+			kill:     func() {},
+			resume:   func(context.Context) error { return nil },
+			deadline: time.Now().Add(time.Hour),
+		}
+		if _, err := store.register(sess); err != nil {
+			t.Fatalf("register slot %d: %v", i, err)
+		}
+	}
+
+	body := `{"plugin":"topos-plugin-whatsapp","path":"/tmp/whatsapp"}`
+	rec := doLinkRequest(t, router, http.MethodPost, "/api/config/whatsapp-link", body)
+
+	assertErrorEnvelope(t, rec, http.StatusTooManyRequests, "link_failed")
+
+	if got := spawner.callCount(); got != 0 {
+		t.Fatalf("expected zero spawner invocations once the session cap is already reached, got %d — the cap must be enforced BEFORE spawning, not after", got)
+	}
+}
+
 // waitForCondition polls cond until it returns true or a short timeout
 // elapses, for tests observing the background consume goroutine's
 // asynchronous effect on session state.
