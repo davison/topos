@@ -142,6 +142,19 @@ None - no external service configuration required.
 - Full verification run in this session: `npm --prefix web run test -- --run` (667/667 unit tests), `npm --prefix web run check` (0 errors), `npm --prefix web run check:e2e` (0 errors), `make e2e` full suite (39/39, up from 37 — exactly +2 for cases 12/13), `CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...` (all green, no Go files touched).
 - `git diff --stat` across this plan's three commits touches only the five files declared in `files_modified` — no lockfile, no kernel file, no plugin file.
 
+## Self-Check: PASSED
+
+- FOUND: web/src/lib/components/QRPanel.svelte
+- FOUND: web/src/lib/components/qr-panel.test.ts
+- FOUND: web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts
+- FOUND: web/src/lib/components/AddSourceModal.svelte
+- FOUND: web/src/lib/components/add-source.test.ts
+- FOUND: .planning/phases/08-whatsapp-conversations-managed-risk/08-08-SUMMARY.md
+- FOUND commit: aa2fba1 (Task 1)
+- FOUND commit: 89063c6 (Task 2)
+- FOUND commit: a02a7a2 (Task 3)
+- FOUND commit: 244026a (SUMMARY)
+
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-10*
