@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 08-whatsapp-conversations-managed-risk
 source: [08-01-SUMMARY.md, 08-02-SUMMARY.md, 08-03-SUMMARY.md, 08-04-SUMMARY.md]
 started: 2026-08-10T00:00:00Z
@@ -144,5 +144,25 @@ skipped: 0
   reason: "User reported: After linking using the QR code, phone shows successful link. WhatsApp modal in topos remains on screen with the refresh counter dwindling. No connection from the topos side after cancelling the dialog"
   severity: major
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "AND-gate of three defects: (1) QRPanel.svelte:128 ties the liveness poll interval to the QR code's expires_in_seconds (60s for the first code — the one actually scanned), so the kernel's terminal 'paired' event sits undelivered for up to a minute; (2) no intermediate wire state exists between 'qr' and 'paired' — the plugin's pairingAccepted() hook writes only to stderr, which execLinkSpawner discards (cmd.Stderr never set), and the plugin withholds 'paired' for postPairLoginTimeout + a 5s grace window; (3) after PairSuccess whatsmeow stops emitting QR codes, so the panel's countdown freezes/resets on a stale code and looks alive. User cancels inside the blind window; cancel SIGKILLs the subprocess and Add-Source persists no instance — while the completed pairing is already saved in whatsmeow.db (Store.Save runs before PairSuccess dispatch), stranding a real linked session with nothing connecting to it. Kernel event plumbing itself verified sound (0/200 losses in stress test); the qr→paired-via-poll path with realistic expiry has zero e2e coverage (test 3 scripts 'paired' into the START response)."
+  artifacts:
+    - path: "web/src/lib/components/QRPanel.svelte"
+      issue: "line 128 poll cadence tied to QR validity; startCountdown resets on unchanged events; no progress phase between qr and success"
+    - path: "plugins/whatsapp/link.go"
+      issue: "linkEventKind lacks a progress kind; pairingAccepted()/loggedIn() emit nothing to the wire; postPairLoginTimeout + postPairGraceWindow create a 5-65s silent window"
+    - path: "kernel/httpapi/whatsapplink.go"
+      issue: "execLinkSpawner never sets cmd.Stderr (plugin diagnostics discarded); cmd.Env = nil comment claims minimal env but nil inherits"
+    - path: "web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts"
+      issue: "tests 2 and 3 structurally cannot catch this — 'paired' scripted into START response, only poll-loop test uses expires_in_seconds: 1"
+    - path: "docs/api.md"
+      issue: "whatsapp-link section prescribes the defective expires-driven poll cadence"
+    - path: "web/src/lib/components/AddSourceModal.svelte"
+      issue: "handleLinkCancelled/resetFlowState discard a successful pairing with no recovery affordance"
+  missing:
+    - "Poll on a fixed short cadence (POLL_FLOOR_MS exists); use expires_in_seconds only for the displayed countdown"
+    - "Add a pairing_accepted wire state fed by the plugin's pairingAccepted() hook so the panel shows 'Scan accepted — completing login…' during the post-pair window"
+    - "Set cmd.Stderr in execLinkSpawner routed to kernel logging so plugin diagnostics are observable"
+    - "Amend docs/api.md's poll-cadence guidance"
+    - "Detect an existing linked device in the Add-Source path so a completed pairing isn't silently discarded on cancel"
+    - "e2e case walking qr → (poll) → paired with realistic expires_in_seconds; coverage for execLinkSpawner"
+  debug_session: .planning/debug/whatsapp-qr-link-no-success.md
