@@ -28,12 +28,14 @@
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import ConnectionForm from './ConnectionForm.svelte';
+	import QRPanel from './QRPanel.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import {
 		pluginTypeLabel,
 		defaultConnectionValues,
 		missingRequiredFields,
-		missingRequiredFieldsMessage
+		missingRequiredFieldsMessage,
+		WHATSAPP_PLUGIN_BINARY
 	} from '$lib/plugin-fields';
 	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
 	import { participatingInstances } from '$lib/participation';
@@ -91,7 +93,12 @@
 	let pickerEmpty = $derived(availableInstances.length === 0 && pluginTypes.length === 0);
 
 	// --- Shared save-in-flight state (D-09/D-03's shared error contract) ---
-	let step = $state<'existing' | 'connect' | 'match' | 'connect-saved' | null>(null);
+	// 'link' (08-04-PLAN.md Task 1, D-01/D-02) is the WhatsApp-only branch
+	// between 'connect' and 'match': entered instead of 'match' when the
+	// selected plugin type is WhatsApp and Step 1's trial launch succeeds
+	// — QRPanel renders inline below the already-entered connection
+	// fields, in this SAME Step 1 dialog, never a new one.
+	let step = $state<'existing' | 'connect' | 'link' | 'match' | 'connect-saved' | null>(null);
 	let selectedInstance = $state<string | null>(null);
 	let existingVocabulary = $state<string[]>([]);
 	let matchBlock = $state<Record<string, string[]>>({});
@@ -197,6 +204,23 @@
 		error = null;
 	}
 
+	// handleLinkPaired (D-02's Add-Source success transition): the QR
+	// panel's own paired callback advances straight to the existing
+	// 'match' step, reusing the vocabulary handleConnectNext's Describe
+	// call already returned — no second describe round-trip.
+	function handleLinkPaired() {
+		step = 'match';
+	}
+
+	// handleLinkCancelled (D-02): cancelling out of the link step returns
+	// to 'connect' with every typed connection value intact —
+	// connectionValues is untouched here, and the existing "saved but not
+	// yet linked" outcome (Save-anyway from Step 2, or simply moving on)
+	// remains a valid, supported path.
+	function handleLinkCancelled() {
+		step = 'connect';
+	}
+
 	// handleConnectNext trial-launches the plugin against Step 1's
 	// just-typed, not-yet-persisted connection fields (describePlugin,
 	// 07-02) — writing nothing. On success it advances to Step 2 with the
@@ -239,7 +263,17 @@
 			newInstanceId = idResult.id;
 			newVocabulary = resp.match_vocabulary;
 			matchBlock = {};
-			step = 'match';
+			// D-01/D-02: Describe carries only static match vocabulary and
+			// succeeds identically whether or not a WhatsApp device is
+			// paired — there is no field on this response that reports
+			// linked status, so this trial-launch success is itself the
+			// only signal Step 1 has. For WhatsApp, that success routes to
+			// the 'link' step (the QR opportunity) rather than straight to
+			// 'match'; the load-bearing property is what this branch does
+			// NOT do — describeFailed stays false and the Save-anyway
+			// control (gated on it) stays hidden, so an unpaired instance
+			// is never treated as a trial-launch failure.
+			step = selectedPluginType === WHATSAPP_PLUGIN_BINARY ? 'link' : 'match';
 		} catch (err) {
 			describeFailed = true;
 			const detail =
@@ -445,7 +479,7 @@
   step this flow can be in, including the post-"Save anyway" confirmation.
 -->
 <Dialog
-	open={step === 'connect' || step === 'match' || step === 'connect-saved'}
+	open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}
 	onOpenChange={handleConnectOpenChange}
 >
 	<DialogContent class="max-w-lg">
@@ -501,6 +535,37 @@
 						<Button type="submit" disabled={describing}>Next</Button>
 					</DialogFooter>
 				</form>
+			{:else if step === 'link'}
+				<!--
+				  D-01/D-02: the QR panel renders inline, INSIDE this same
+				  Step 1 dialog, below the already-entered connection
+				  fields — never a new Dialog (08-UI-SPEC.md's Amendment:
+				  "the panel renders inline below the connection fields ...
+				  inside the existing two-step modal's DialogContent — no
+				  width change to that dialog"). ConnectionForm stays
+				  visible (and editable) above it so the user can see what
+				  they entered while scanning; QRPanel owns its own Cancel
+				  control, so no separate dialog footer is rendered here.
+				-->
+				<DialogHeader>
+					<DialogTitle
+						>Connect {selectedPluginType ? pluginTypeLabel(selectedPluginType) : ''}</DialogTitle
+					>
+				</DialogHeader>
+				<div class="flex flex-col gap-4">
+					<ConnectionForm
+						pluginBinary={selectedPluginType ?? ''}
+						values={connectionValues}
+						{envVars}
+						onchange={(next) => (connectionValues = next)}
+					/>
+					<QRPanel
+						plugin={selectedPluginType ?? ''}
+						path={connectionValues.path ?? ''}
+						onpaired={handleLinkPaired}
+						oncancelled={handleLinkCancelled}
+					/>
+				</div>
 			{:else if step === 'match'}
 				<DialogHeader>
 					<DialogTitle>Match settings for {webspace}</DialogTitle>

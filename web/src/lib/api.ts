@@ -426,6 +426,82 @@ export function listPluginTypes(): Promise<PluginTypesResponse> {
 	return getJSON<PluginTypesResponse>('/api/config/plugin-types');
 }
 
+/**
+ * deleteJSON mirrors getJSON/postJSON/putJSON's error-envelope handling
+ * exactly, for the kernel's one DELETE route
+ * (DELETE /api/config/whatsapp-link/{session}, 08-03-PLAN.md Task 3).
+ */
+async function deleteJSON<T>(path: string): Promise<T> {
+	const res = await fetch(path, { method: 'DELETE' });
+	if (!res.ok) {
+		let envelope: ApiErrorEnvelope | undefined;
+		try {
+			envelope = (await res.json()) as ApiErrorEnvelope;
+		} catch {
+			// response body wasn't the error envelope (e.g. the kernel is
+			// entirely unreachable) — fall through to a generic error below.
+		}
+		if (envelope?.error) {
+			throw new ApiError(envelope.error.code, envelope.error.message);
+		}
+		throw new ApiError('http_error', `Request to ${path} failed with status ${res.status}`);
+	}
+	return (await res.json()) as T;
+}
+
+// --- WhatsApp in-app QR link session (08-03's kernel/httpapi/whatsapplink.go,
+// D-01 — docs/api.md's "POST /api/config/whatsapp-link, GET
+// /api/config/whatsapp-link/{session}, DELETE
+// /api/config/whatsapp-link/{session}" section is authoritative for every
+// field name below) ---
+
+// WhatsAppLinkState mirrors docs/api.md's five wire values exactly, plus
+// the DELETE route's own "cancelled" terminal value — never a sixth,
+// locally-invented state.
+export type WhatsAppLinkState = 'pending' | 'qr' | 'paired' | 'error' | 'timeout' | 'cancelled';
+
+export interface WhatsAppLinkSession {
+	schema_version: number;
+	session: string;
+	state: WhatsAppLinkState;
+	// Present only when state === 'qr'.
+	png_data_uri?: string;
+	expires_in_seconds?: number;
+	// Present only when state === 'error'.
+	code?: string;
+	message?: string;
+}
+
+export interface StartWhatsAppLinkRequest {
+	// plugin MUST be a member of a prior listPluginTypes() result — the
+	// kernel re-checks this itself (T-08-06) and never trusts this value
+	// blindly, identical discipline to describePlugin's own plugin field.
+	plugin: string;
+	// path is the WhatsApp instance's own data directory (the same value
+	// as [sources.whatsapp].path).
+	path: string;
+	// instance is present for the Re-link… flow — an already-configured
+	// instance name the kernel suspends for the session's duration — and
+	// absent for the Add-Source flow, where nothing is configured yet to
+	// suspend.
+	instance?: string;
+}
+
+/** POST /api/config/whatsapp-link */
+export function startWhatsAppLink(req: StartWhatsAppLinkRequest): Promise<WhatsAppLinkSession> {
+	return postJSON<WhatsAppLinkSession>('/api/config/whatsapp-link', req);
+}
+
+/** GET /api/config/whatsapp-link/{session} */
+export function pollWhatsAppLink(session: string): Promise<WhatsAppLinkSession> {
+	return getJSON<WhatsAppLinkSession>(`/api/config/whatsapp-link/${encodeURIComponent(session)}`);
+}
+
+/** DELETE /api/config/whatsapp-link/{session} */
+export function cancelWhatsAppLink(session: string): Promise<WhatsAppLinkSession> {
+	return deleteJSON<WhatsAppLinkSession>(`/api/config/whatsapp-link/${encodeURIComponent(session)}`);
+}
+
 export interface DescribePluginRequest {
 	// plugin is the binary name — must be a member of a prior
 	// listPluginTypes() result; the kernel re-checks this itself

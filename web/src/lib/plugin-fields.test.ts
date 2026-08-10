@@ -81,6 +81,17 @@ describe('connectionFieldsFor', () => {
 		expect(fields.find((f) => f.key === 'path')?.placeholder).toBe('~/.config/Signal');
 	});
 
+	// 08-04-PLAN.md Task 1: the WhatsApp row, same shape as Signal's own
+	// local-path-only row.
+	it('gives WhatsApp a required, pre-seeded local path and no base_url/token fields', () => {
+		const fields = connectionFieldsFor('topos-plugin-whatsapp');
+		expect(fields.map((f) => f.key)).toEqual(['display_name', 'path', 'sync_interval']);
+		const pathField = fields.find((f) => f.key === 'path');
+		expect(pathField?.required).toBe(true);
+		expect(pathField?.placeholder).toBe('~/.local/share/topos/whatsapp');
+		expect(pathField?.defaultValue).toBe('~/.local/share/topos/whatsapp');
+	});
+
 	it('falls back to a minimal field set for an unknown plugin type', () => {
 		const fields = connectionFieldsFor('topos-plugin-does-not-exist');
 		expect(fields.map((f) => f.key)).toEqual(['display_name', 'sync_interval']);
@@ -131,22 +142,34 @@ describe('table truth: required flags match each plugin binary\'s own pre-Serve 
 	it('signal requires exactly path (plugins/signal/main.go fatals on cfg.Path == "")', () => {
 		expect(requiredKeys('topos-plugin-signal')).toEqual(['path']);
 	});
+
+	// 08-04-PLAN.md Task 1: mirrors plugins/whatsapp/main.go's
+	// `cfg.Path == ""` fatal guard, read directly from that file (see
+	// plugin-fields.ts's own DERIVATION RULE comment on the whatsapp row).
+	it('whatsapp requires exactly path (plugins/whatsapp/main.go fatals on cfg.Path == "")', () => {
+		expect(requiredKeys('topos-plugin-whatsapp')).toEqual(['path']);
+	});
 });
 
-describe('exactly one field in the whole table declares a default value', () => {
+describe('exactly two fields in the whole table declare a default value (Signal and WhatsApp)', () => {
 	it('walks every plugin binary rather than checking Signal alone, so a later default added without a recorded rationale fails this suite', () => {
 		const allPluginBinaries = [
 			'topos-plugin-paperless',
 			'topos-plugin-silverbullet',
 			'topos-plugin-proton',
-			'topos-plugin-signal'
+			'topos-plugin-signal',
+			'topos-plugin-whatsapp'
 		];
 		const fieldsWithDefaults = allPluginBinaries.flatMap((binary) =>
 			connectionFieldsFor(binary).filter((f) => f.defaultValue !== undefined)
 		);
-		expect(fieldsWithDefaults.length).toBe(1);
-		expect(fieldsWithDefaults[0].key).toBe('path');
-		expect(fieldsWithDefaults[0].defaultValue).toBe('~/.config/Signal');
+		expect(fieldsWithDefaults.length).toBe(2);
+		for (const field of fieldsWithDefaults) {
+			expect(field.key).toBe('path');
+		}
+		expect(fieldsWithDefaults.map((f) => f.defaultValue).sort()).toEqual(
+			['~/.config/Signal', '~/.local/share/topos/whatsapp'].sort()
+		);
 	});
 });
 
@@ -171,6 +194,13 @@ describe('defaultConnectionValues', () => {
 		expect(defaultConnectionValues('topos-plugin-mockstrict')).toEqual({
 			plugin: 'topos-plugin-mockstrict',
 			path: '/tmp/topos-e2e-corpus'
+		});
+	});
+
+	it('returns the plugin binary plus the seeded local path, for topos-plugin-whatsapp', () => {
+		expect(defaultConnectionValues('topos-plugin-whatsapp')).toEqual({
+			plugin: 'topos-plugin-whatsapp',
+			path: '~/.local/share/topos/whatsapp'
 		});
 	});
 });
@@ -270,5 +300,9 @@ describe('missingRequiredFieldsMessage', () => {
 describe('pluginTypeLabel', () => {
 	it('falls back to a title-cased prefix strip for topos-plugin-mockstrict — no PLUGIN_TYPE_LABELS entry is added for it', () => {
 		expect(pluginTypeLabel('topos-plugin-mockstrict')).toBe('Mockstrict');
+	});
+
+	it('resolves topos-plugin-whatsapp to "WhatsApp"', () => {
+		expect(pluginTypeLabel('topos-plugin-whatsapp')).toBe('WhatsApp');
 	});
 });

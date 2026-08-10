@@ -124,7 +124,7 @@ describe('one-step modal: MatchFieldsForm alone, no connection fields', () => {
 describe('two-step modal: step indicator reads both "1. Connect" and "2. Match"', () => {
 	const connectDialogBlock = extractBetween(
 		stripped,
-		"open={step === 'connect' || step === 'match' || step === 'connect-saved'}",
+		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
 		'</Dialog>'
 	);
 
@@ -134,6 +134,66 @@ describe('two-step modal: step indicator reads both "1. Connect" and "2. Match"'
 
 	it('renders "2. Match"', () => {
 		expect(connectDialogBlock.includes('2. Match')).toBe(true);
+	});
+});
+
+// 08-04-PLAN.md Task 1 (D-01/D-02): the WhatsApp not-linked branch — a
+// trial-launch success for the WhatsApp plugin type routes to the 'link'
+// step (the QR opportunity), never treated as a describe failure and never
+// revealing Save anyway. QRPanel renders INSIDE this same Step 1 dialog,
+// never a newly added one.
+describe('WhatsApp not-linked branch (D-01/D-02): link step, never a trial-launch failure', () => {
+	const connectDialogBlock = extractBetween(
+		stripped,
+		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
+		'</Dialog>'
+	);
+	const handleConnectNextBody = extractBetween(
+		stripped,
+		'async function handleConnectNext(event: SubmitEvent) {',
+		'\n\t}'
+	);
+
+	it("handleConnectNext's success path routes the WhatsApp plugin type to the 'link' step", () => {
+		expect(
+			handleConnectNextBody.includes("selectedPluginType === WHATSAPP_PLUGIN_BINARY ? 'link' : 'match'"),
+			'expected the trial-launch success branch to route WhatsApp to the link step and every other plugin type to match'
+		).toBe(true);
+	});
+
+	it('the success path (before the catch block) never sets describeFailed = true — only the catch block does', () => {
+		const catchIndex = handleConnectNextBody.indexOf('} catch');
+		expect(catchIndex, 'expected handleConnectNext to have a catch block').toBeGreaterThan(0);
+		const successBlock = handleConnectNextBody.slice(0, catchIndex);
+		expect(
+			successBlock.includes('describeFailed = true'),
+			'expected the WhatsApp not-linked branch to never set describeFailed — that flag is what reveals Save anyway, and an unpaired WhatsApp instance is not a trial-launch failure'
+		).toBe(false);
+	});
+
+	it("the 'link' step renders QRPanel inside this same Step 1 dialog block (never a new Dialog)", () => {
+		const linkBranch = extractBetween(connectDialogBlock, "{:else if step === 'link'}", '{:else if step === \'match\'}');
+		expect(linkBranch.includes('<QRPanel'), 'expected the link step to render QRPanel').toBe(true);
+	});
+
+	it('exactly two <Dialog usages exist in this file — the existing-instance modal and the two-step modal — no third Dialog was added for the link step', () => {
+		const dialogOpens = stripped.match(/<Dialog\b/g) ?? [];
+		expect(
+			dialogOpens.length,
+			'expected exactly two <Dialog usages (one-step existing-instance modal, two-step new-instance modal) — the link step must render inside the two-step modal, not a new one'
+		).toBe(2);
+	});
+
+	it("QRPanel's onpaired callback advances to the match step, and oncancelled returns to connect with typed values intact", () => {
+		const handleLinkPairedBody = extractBetween(stripped, 'function handleLinkPaired() {', '\n\t}');
+		expect(handleLinkPairedBody.includes("step = 'match'")).toBe(true);
+
+		const handleLinkCancelledBody = extractBetween(stripped, 'function handleLinkCancelled() {', '\n\t}');
+		expect(handleLinkCancelledBody.includes("step = 'connect'")).toBe(true);
+		expect(
+			handleLinkCancelledBody.includes('connectionValues ='),
+			'expected handleLinkCancelled to leave connectionValues untouched — cancelling the link must preserve every typed connection value'
+		).toBe(false);
 	});
 });
 

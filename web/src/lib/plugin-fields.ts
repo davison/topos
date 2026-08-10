@@ -142,6 +142,30 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 		},
 		SYNC_INTERVAL_FIELD
 	],
+	'topos-plugin-whatsapp': [
+		DISPLAY_NAME_FIELD,
+		{
+			// required: true mirrors plugins/whatsapp/main.go's
+			// `cfg.Path == ""` fatal guard — the same shape as Signal's own
+			// path field (WEBSPACES_SOURCE_CONFIG's decoded path is fatal
+			// when empty). defaultValue is seeded (not just a placeholder)
+			// for the same reason Signal's is: config.example.toml's
+			// [sources.whatsapp] path default
+			// (~/.local/share/topos/whatsapp) is genuinely correct on a
+			// standard install, and 08-UI-SPEC.md's Amendment section
+			// names this exact value as the Add-Source Step 1 field's
+			// default (superseding this document's own earlier
+			// ~/.config/topos/whatsapp placeholder).
+			key: 'path',
+			label: 'Local Path',
+			required: true,
+			secret: false,
+			advanced: false,
+			placeholder: '~/.local/share/topos/whatsapp',
+			defaultValue: '~/.local/share/topos/whatsapp'
+		},
+		SYNC_INTERVAL_FIELD
+	],
 	// topos-plugin-mockstrict (07.1-02-PLAN.md D-05/D-06): the browser E2E
 	// harness's hermetic, cgo-free stand-in for Signal's required-field
 	// flow. Three things about this row, in the order a reader needs them:
@@ -264,8 +288,24 @@ const PLUGIN_TYPE_LABELS: Record<string, string> = {
 	'topos-plugin-paperless': 'paperless-ngx',
 	'topos-plugin-silverbullet': 'SilverBullet',
 	'topos-plugin-proton': 'Proton',
-	'topos-plugin-signal': 'Signal'
+	'topos-plugin-signal': 'Signal',
+	'topos-plugin-whatsapp': 'WhatsApp'
 };
+
+// WHATSAPP_PLUGIN_BINARY is the one canonical spelling of the WhatsApp
+// plugin's binary name — used wherever a component needs to branch on
+// "is the selected/described plugin type WhatsApp" (AddSourceModal.svelte's
+// link-step branch, RelinkModal.svelte's default plugin prop) rather than
+// re-typing the literal string per call site.
+export const WHATSAPP_PLUGIN_BINARY = 'topos-plugin-whatsapp';
+
+// WHATSAPP_SOURCE_TYPE mirrors plugins/whatsapp/plugin.go's sourceType
+// constant ("whatsapp") — the Describe-reported plugin KIND
+// SourceStatus.source_type carries (docs/api.md's GET /api/sources).
+// SourceChip.svelte's "Re-link…" menu entry (D-03) is gated on this value,
+// never on WHATSAPP_PLUGIN_BINARY — source_type is the field GET
+// /api/sources actually exposes.
+export const WHATSAPP_SOURCE_TYPE = 'whatsapp';
 
 /** Human display label for a plugin binary name, falling back to a title-cased strip of the topos-plugin- prefix for an unrecognised binary. */
 export function pluginTypeLabel(pluginBinary: string): string {
