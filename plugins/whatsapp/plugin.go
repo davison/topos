@@ -29,10 +29,15 @@ const (
 )
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
-// reads from MatchRequest.match_fields — only "groups" in this plan
-// (D-05's widening to a second "contacts" field for 1:1 chats is Plan
-// 08-02's work, deliberately absent here).
-var matchVocabulary = []string{"groups"}
+// reads from MatchRequest.match_fields — exactly two fields per D-05,
+// widening SRC-03's literal "matches on group names" wording to also
+// cover 1:1 chats: "groups" (a group's own subject) and "contacts" (a
+// 1:1's saved address-book name, D-06/D-07). The existing Phase 7
+// Match-Fields Form renders both automatically as two labeled inputs
+// (title-cased "Groups"/"Contacts") with no new frontend form code — this
+// declared vocabulary IS the contract kernel/pluginhost.ValidateMatchConfig
+// checks a webspace's match block against.
+var matchVocabulary = []string{"groups", "contacts"}
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL
 // content variant — a WhatsApp digest has no image rendition, ever.
@@ -172,26 +177,28 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 
 // Match reads healthState() FIRST — any state whose Healthy() is false
 // returns a gRPC error, NEVER an empty success, even when the request
-// carries zero keywords (the zero-keywords early return sits BELOW this
-// guard, deliberately — a de-linked plugin asked with no keywords must
-// still surface the error rather than a silent success). Only once the
-// plugin is confirmed healthy does Match resolve keywords against this
-// plugin's own local chats table (D-05/D-06-equivalent for this plan's
-// groups-only scope, match.go), then group the matched chats' FULL
-// message history into chat-day digests (digest.go). A HEALTHY plugin
-// whose store genuinely holds no matching chat still returns a successful
-// EMPTY response — the two outcomes kernel/correlate/correlate.go treats
-// oppositely (wipes previously-synced rows on empty success, preserves
-// them on error — 08-PATTERNS.md's single most load-bearing pattern,
-// T-08-05's mitigation) must stay distinguishable at every call site.
+// carries zero keywords in BOTH fields (the zero-keywords early return
+// sits BELOW this guard, deliberately — a de-linked plugin asked with no
+// keywords must still surface the error rather than a silent success).
+// Only once the plugin is confirmed healthy does Match resolve the two
+// D-05 vocabulary fields — "groups" against group chats, "contacts"
+// against 1:1 chats' saved contact names ONLY (D-06/D-07, match.go) —
+// then group the matched chats' FULL message history into chat-day
+// digests (digest.go). A HEALTHY plugin whose store genuinely holds no
+// matching chat still returns a successful EMPTY response — the two
+// outcomes kernel/correlate/correlate.go treats oppositely (wipes
+// previously-synced rows on empty success, preserves them on error —
+// 08-PATTERNS.md's single most load-bearing pattern, T-08-05's
+// mitigation) must stay distinguishable at every call site.
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	state := p.healthState()
 	if !state.Healthy() {
 		return nil, status.Errorf(codes.Unavailable, "whatsapp: %s", p.currentMessage())
 	}
 
-	keywords := req.GetMatchFields()["groups"].GetValues()
-	if len(keywords) == 0 {
+	groupKeywords := req.GetMatchFields()["groups"].GetValues()
+	contactKeywords := req.GetMatchFields()["contacts"].GetValues()
+	if len(groupKeywords) == 0 && len(contactKeywords) == 0 {
 		return &toposv1.MatchResponse{}, nil
 	}
 
@@ -200,16 +207,22 @@ func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*top
 		return nil, status.Errorf(codes.Unavailable, "whatsapp: %v", err)
 	}
 
-	matched := eligibleChats(chats, keywords)
+	matched := eligibleChats(chats, groupKeywords, contactKeywords)
 	if len(matched) == 0 {
 		return &toposv1.MatchResponse{}, nil
 	}
 
 	chatJIDs := make([]string, 0, len(matched))
 	names := make(map[string]string, len(matched))
+	isGroups := make(map[string]bool, len(matched))
 	for _, c := range matched {
 		chatJIDs = append(chatJIDs, c.ChatJID)
-		names[c.ChatJID] = c.Name
+		if c.IsGroup {
+			names[c.ChatJID] = c.Name
+		} else {
+			names[c.ChatJID] = c.ContactName
+		}
+		isGroups[c.ChatJID] = c.IsGroup
 	}
 
 	msgs, err := p.store.MessagesForChats(chatJIDs)
@@ -221,7 +234,7 @@ func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*top
 
 	items := make([]*toposv1.Item, 0, len(digests))
 	for _, d := range digests {
-		items = append(items, p.toItem(d))
+		items = append(items, p.toItem(d, isGroups[d.ChatJID]))
 	}
 
 	// Count-only: never a chat name, sender name or message body. This
@@ -236,7 +249,11 @@ func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*top
 // nothing never becomes an Item (this plugin's own store necessarily
 // captures every inbound message the linked device receives, but capture
 // must never become exposure — this plan's threat_model prohibition).
-func (p *SourcePlugin) toItem(d digest) *toposv1.Item {
+// isGroup is the matched chat's own real kind (Match's own isGroups map,
+// above) — previously always hardcoded true (08-01's groups-only scope);
+// now threaded through so a 1:1 digest's deep link builds correctly
+// (conversationDeepLink, deeplink.go).
+func (p *SourcePlugin) toItem(d digest, isGroup bool) *toposv1.Item {
 	sourceID := sourceIDForDigest(d.ChatJID, d.Day)
 	return &toposv1.Item{
 		SourceId:      sourceID,
@@ -247,12 +264,9 @@ func (p *SourcePlugin) toItem(d digest) *toposv1.Item {
 		GroupId:       d.ChatJID,
 		GroupLabel:    "", // the title already carries the identifying context
 		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_CONVERSATION_ONLY,
-		// isGroup is always true here — eligibleChats (match.go) filters
-		// to groups only in this plan's scope; Plan 08-02 must thread
-		// the real per-chat IsGroup through once 1:1 matching exists.
-		DeepLink:     conversationDeepLink(true, d.ChatJID),
-		Labels:       []string{d.ChatName},
-		HasThumbnail: false,
+		DeepLink:      conversationDeepLink(isGroup, d.ChatJID),
+		Labels:        []string{d.ChatName},
+		HasThumbnail:  false,
 		Provenance: map[string]string{
 			"source_type":      sourceType,
 			"source_system":    p.dir,

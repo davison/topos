@@ -9,13 +9,28 @@ import (
 )
 
 // chatRecord is this plugin's own normalized view of one row from its
-// chats table — a group's own cached subject (Name), or (Plan 08-02) a
-// 1:1's contact name. is_group is derived once, at capture time, from the
-// JID's own server component (types.GroupServer), never inferred later.
+// chats table — a group's own cached subject (Name), or a 1:1's saved
+// address-book contact name (ContactName, D-05/D-06). is_group is derived
+// once, at capture time, from the message event's own IsGroup flag, never
+// inferred later. Exactly one of Name/ContactName is ever meaningful for a
+// given row (Name for is_group=true, ContactName for is_group=false) —
+// match.go's candidateNames picks the right one, never both.
 type chatRecord struct {
 	ChatJID string
 	IsGroup bool
 	Name    string
+
+	// ContactName is D-06's ONLY 1:1 match-candidate source: the
+	// user's own address-book/system contact name for this chat's JID,
+	// as synced to the linked device via whatsmeow's own local contact
+	// store (eventhandler.go's resolveContactName) — NEVER the contact's
+	// self-chosen push or profile name. Empty for an unsaved contact
+	// (D-07: that chat is then unmatchable, with no phone-number
+	// fallback) — deliberately never backfilled from any remote-supplied
+	// name. There is no separate push-name/profile-name column on this
+	// table at all: an absent column cannot accidentally become a
+	// candidate name later.
+	ContactName string
 }
 
 // messageRecord is this plugin's own normalized view of one row from its
@@ -73,6 +88,10 @@ func openMessageStore(dir string) (*messageStore, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrateAddContactNameColumn(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 
 	return &messageStore{db: db}, nil
 }
@@ -83,6 +102,7 @@ CREATE TABLE IF NOT EXISTS chats (
 	chat_jid TEXT PRIMARY KEY,
 	is_group INTEGER NOT NULL DEFAULT 0,
 	name TEXT NOT NULL DEFAULT '',
+	contact_name TEXT NOT NULL DEFAULT '',
 	updated_at_unix_ms INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
@@ -102,6 +122,54 @@ CREATE INDEX IF NOT EXISTS idx_messages_chat_day ON messages(chat_jid, sent_at_u
 		return fmt.Errorf("whatsapp: apply message store schema: %w", err)
 	}
 	return nil
+}
+
+// migrateAddContactNameColumn is the idempotent additive migration D-05/
+// D-06 requires: a store created by Plan 08-01 (before contact_name
+// existed) must open and preserve its existing rows unchanged, not fail
+// or silently drop data. applyMessageStoreSchema's own CREATE TABLE IF
+// NOT EXISTS already includes contact_name for a brand-new store, so this
+// is a genuine no-op there — columnExists guards the ALTER TABLE so it
+// only ever runs once, against a pre-08-02 store that predates the
+// column.
+func migrateAddContactNameColumn(db *sql.DB) error {
+	exists, err := columnExists(db, "chats", "contact_name")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.Exec(`ALTER TABLE chats ADD COLUMN contact_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("whatsapp: add contact_name column: %w", err)
+	}
+	return nil
+}
+
+// columnExists reports whether table already has a column named column,
+// via SQLite's own PRAGMA table_info introspection (table is always a
+// fixed, code-controlled constant at every call site in this file, never
+// user input — safe to interpolate into the PRAGMA statement, which does
+// not accept bind parameters for its own table-name argument).
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return false, fmt.Errorf("whatsapp: pragma table_info(%s): %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, fmt.Errorf("whatsapp: scan table_info(%s) row: %w", table, err)
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (s *messageStore) Close() error { return s.db.Close() }
@@ -140,9 +208,30 @@ func (s *messageStore) UpsertChatName(chatJID string, isGroup bool, name string,
 	return nil
 }
 
+// UpsertContactName sets chatJID's cached ADDRESS-BOOK contact name — the
+// ONLY path that ever writes contact_name (D-06's mitigation, mirroring
+// UpsertChatName's identical shape for a group's own subject). Called from
+// a 1:1 message event and from whatsmeow's own contact-update events
+// (eventhandler.go's resolveContactName is the ONLY source this ever
+// reads from — never a message's own PushName field). contactName=""
+// (an unsaved contact) is a legitimate, expected value to write — D-07
+// relies on it staying empty rather than being backfilled from anything
+// remote-supplied.
+func (s *messageStore) UpsertContactName(chatJID, contactName string, updatedAtUnixMs int64) error {
+	_, err := s.db.Exec(
+		`INSERT INTO chats (chat_jid, is_group, name, contact_name, updated_at_unix_ms) VALUES (?, 0, '', ?, ?)
+		 ON CONFLICT(chat_jid) DO UPDATE SET contact_name = excluded.contact_name, updated_at_unix_ms = excluded.updated_at_unix_ms`,
+		chatJID, contactName, updatedAtUnixMs,
+	)
+	if err != nil {
+		return fmt.Errorf("whatsapp: upsert contact name %q: %w", chatJID, err)
+	}
+	return nil
+}
+
 // Chats returns every known chat row, in no particular order.
 func (s *messageStore) Chats() ([]chatRecord, error) {
-	rows, err := s.db.Query(`SELECT chat_jid, is_group, name FROM chats`)
+	rows, err := s.db.Query(`SELECT chat_jid, is_group, name, contact_name FROM chats`)
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: query chats: %w", err)
 	}
@@ -152,7 +241,7 @@ func (s *messageStore) Chats() ([]chatRecord, error) {
 	for rows.Next() {
 		var c chatRecord
 		var isGroup int
-		if err := rows.Scan(&c.ChatJID, &isGroup, &c.Name); err != nil {
+		if err := rows.Scan(&c.ChatJID, &isGroup, &c.Name, &c.ContactName); err != nil {
 			return nil, fmt.Errorf("whatsapp: scan chat row: %w", err)
 		}
 		c.IsGroup = isGroup != 0

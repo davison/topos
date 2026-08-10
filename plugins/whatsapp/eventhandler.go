@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -60,6 +61,8 @@ func (p *SourcePlugin) handleEvent(evt any) {
 		p.handleHistorySync(e)
 	case *events.GroupInfo:
 		p.handleGroupInfoEvent(e)
+	case *events.Contact:
+		p.handleContactEvent(e)
 	}
 }
 
@@ -81,6 +84,20 @@ func (p *SourcePlugin) handleMessageEvent(e *events.Message) {
 	if err := p.store.EnsureChat(chatJID, isGroup); err != nil {
 		fmt.Fprintf(p.logOut, "%s: ensure chat: %v\n", pluginName, err)
 		return
+	}
+
+	// D-05/D-06: for a 1:1 chat, this chat's JID IS the contact's own
+	// JID (there is no separate "chat" entity distinct from the contact
+	// in a 1:1) — resolve and cache its saved address-book name on every
+	// message so match.go's candidateNames has something to read without
+	// a live lookup on the hot Match path. A group chat has no
+	// resolveContactName equivalent here; its name comes exclusively
+	// from handleGroupInfoEvent/syncJoinedGroups.
+	if !isGroup {
+		name := p.resolveContactName(e.Info.Chat)
+		if err := p.store.UpsertContactName(chatJID, name, e.Info.Timestamp.UnixMilli()); err != nil {
+			fmt.Fprintf(p.logOut, "%s: upsert contact name: %v\n", pluginName, err)
+		}
 	}
 
 	if pm := e.Message.GetProtocolMessage(); pm != nil {
@@ -182,6 +199,53 @@ func (p *SourcePlugin) handleGroupInfoEvent(e *events.GroupInfo) {
 	if err := p.store.UpsertChatName(chatJID, true, e.Name.Name, e.Timestamp.UnixMilli()); err != nil {
 		fmt.Fprintf(p.logOut, "%s: upsert chat name: %v\n", pluginName, err)
 	}
+}
+
+// handleContactEvent refreshes a 1:1 chat's cached address-book contact
+// name when the user's contact list changes from ANOTHER linked device
+// (e.g. they save/rename the contact on their phone with this plugin
+// already running) — the live-update counterpart to handleMessageEvent's
+// own per-message resolveContactName call, mirroring
+// handleGroupInfoEvent's identical "refresh on the dedicated event, not
+// just at message-capture time" shape for groups.
+func (p *SourcePlugin) handleContactEvent(e *events.Contact) {
+	chatJID := e.JID.String()
+	name := p.resolveContactName(e.JID)
+	if err := p.store.UpsertContactName(chatJID, name, e.Timestamp.UnixMilli()); err != nil {
+		fmt.Fprintf(p.logOut, "%s: upsert contact name (contact event): %v\n", pluginName, err)
+	}
+}
+
+// resolveContactName returns the ADDRESS-BOOK/system name whatsmeow's own
+// local contact store carries for jid — the ONLY 1:1 match-candidate name
+// source this plugin ever writes to messagestore.go's contact_name column
+// (D-06's mitigation). types.ContactInfo also carries PushName and
+// BusinessName fields — the contact's OWN self-chosen names — deliberately
+// NEVER read here: a contact must not be able to pull themselves into a
+// webspace by renaming their own profile. Prefers FullName, falls back to
+// FirstName (WhatsApp's own address-book sync sometimes carries only a
+// first name), and returns "" when the contact store has no saved name at
+// all for jid — the exact empty value D-07 relies on to make an unsaved
+// contact's chat unmatchable, with no phone-number fallback of any kind.
+// This is a LOCAL read against whatsmeow's own sqlstore-backed contact
+// store (populated automatically as WhatsApp delivers app-state contact
+// sync — no network round trip happens here), so context.Background() is
+// sufficient; never called before p.client is set (connect.go constructs
+// the client, including its Store.Contacts, before AddEventHandler ever
+// fires).
+func (p *SourcePlugin) resolveContactName(jid types.JID) string {
+	if p.client == nil || p.client.Store == nil || p.client.Store.Contacts == nil {
+		return ""
+	}
+	info, err := p.client.Store.Contacts.GetContact(context.Background(), jid)
+	if err != nil {
+		fmt.Fprintf(p.logOut, "%s: resolve contact name: %v\n", pluginName, err)
+		return ""
+	}
+	if info.FullName != "" {
+		return info.FullName
+	}
+	return info.FirstName
 }
 
 // pushnamesFromProto converts one HistorySync payload's own top-level
