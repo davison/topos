@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 8/10 plans executed (G-08-1 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-3 open)
+**Plans:** 10/10 plans executed (G-08-1 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-3 open)
 
 Plans:
 **Wave 1**
@@ -466,8 +466,8 @@ Plans:
 
 **Gap closure — Wave 5** *(08-UAT.md G-08-3: after a successful pairing, opening a webspace failed entirely with a service-unreachable error — an AND-gate of two independent defects, planned as two parallel plans)*
 
-- [ ] 08-09-PLAN.md — Kernel lifecycle half: suspend/resume becomes a generation change so a re-linked source still syncs, background syncs become cancellable, link-session contexts detached
-- [ ] 08-10-PLAN.md — Presentation half: a per-source sync failure degrades its webspace instead of faking an outage, and a webspace's sync status is scoped to the sources that feed it
+- [x] 08-09-PLAN.md — Kernel lifecycle half: suspend/resume becomes a generation change so a re-linked source still syncs, background syncs become cancellable, link-session contexts detached
+- [x] 08-10-PLAN.md — Presentation half: a per-source sync failure degrades its webspace instead of faking an outage, and a webspace's sync status is scoped to the sources that feed it
 
 Notes:
 
@@ -491,7 +491,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 8/10 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 10/10 | In Progress|  |
 
 ## Requirement Coverage
 
