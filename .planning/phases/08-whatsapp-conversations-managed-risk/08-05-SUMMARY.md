@@ -165,3 +165,11 @@ None - no external service configuration required.
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-10*
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/08-whatsapp-conversations-managed-risk/08-05-SUMMARY.md
+- FOUND: 74bf532 (Task 1 commit)
+- FOUND: b58caf8 (Task 2 RED commit)
+- FOUND: bea4c2b (Task 2 GREEN commit)
+- FOUND: c4a963f (SUMMARY.md commit)
