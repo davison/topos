@@ -72,6 +72,8 @@ created: 2026-08-10
 
 ## Matching & Digest Copy (reuses Signal's Phase 4 shape, scoped to groups)
 
+*Superseded 2026-08-10 (D-05, Plan 08-03): the single-`groups`-row table below is superseded by the two-field "Groups" + "Contacts" table in "Amendment — In-App QR Panel (D-01/D-02/D-03) and the Widened Match-Field Table (D-05)" further down this document — the user widened SRC-03's matching scope to include 1:1 chats after this document was approved.*
+
 | Element | Copy / behavior |
 |---|---|
 | Match vocabulary field | Single field, `groups` (per SRC-03: matches on group names only, no 1:1 chats) — the existing Phase 7 **Match-Fields Form** renders this automatically as one labeled input, title-cased to `Groups`, same helper text as every other plugin (`"Comma-separated. Matches if any value is present."`) — zero new form code. |
@@ -95,6 +97,8 @@ This mirrors Signal's own Step 1 field set exactly (`Display name` + `Local Path
 ---
 
 ## Open Design Decision — QR-Linking UX (NOT resolved by this document)
+
+*Superseded 2026-08-10 (D-01, Plan 08-03): the user selected Option B (in-app QR flow) at the `08-CONTEXT.md` decision point. See "Amendment — In-App QR Panel (D-01/D-02/D-03) and the Widened Match-Field Table (D-05)" further down this document for the now-designed component contract this section originally deferred.*
 
 `08-RESEARCH.md`'s Open Question 1 leaves the pairing mechanism itself explicitly unresolved, to be settled at a Task 1 spike checkpoint (the same pattern Phase 4 used for its own SQLCipher driver decision) rather than guessed here. This section exists so planning does not silently default either way:
 
@@ -230,6 +234,69 @@ No third-party registries declared for Phase 8. No new shadcn block required —
 
 ---
 
+---
+
+## Amendment — In-App QR Panel (D-01/D-02/D-03) and the Widened Match-Field Table (D-05)
+
+*Added 2026-08-10, Plan 08-03 (Task 1), authored at plan time directly from `08-CONTEXT.md`'s locked decisions — not re-run through the gsd-ui-checker probe (see the Checker Sign-Off provenance line below). This section is this document's own supersession mechanism (the same dated-pointer convention `06-UI-SPEC.md`'s G-06-6 amendment used): the two sections it supersedes above carry a dated pointer here rather than being rewritten in place.*
+
+### Resolution of the open decision
+
+Option B (in-app QR flow) is selected per D-01. Option A's standalone CLI mode (`topos-plugin-whatsapp -link -path ...`, ASCII QR via `qrterminal`) ships too, per D-04, as the recovery path — not as a fallback the UI ever presents as equivalent. The in-app flow is the primary UX; the CLI path is documented only in the not-linked/de-linked health-tooltip copy as a manual recovery option, never surfaced as a button or affordance inside the QR panel itself.
+
+### Component contract for the QR panel
+
+One component (`QRPanel`, per `08-PATTERNS.md`), reused from exactly two entry points:
+
+- **D-02 — inline in the Add-Source Step 1 dialog.** When Step 1's trial-launch (`POST /api/config/describe-plugin`) reports the WhatsApp instance is not yet linked, the panel renders inline below the connection fields (`Display name` / `Local Path`), inside the existing two-step modal's `max-w-lg` (512px) `DialogContent` — no width change to that dialog.
+- **D-03 — a small dialog opened from the source chip's "Re-link…" menu entry** (extends the Phase 7 D-12 edit popover). Same `QRPanel` component, mounted inside a new, narrower `Dialog`/`DialogContent` sized to the panel's own content (no `max-w-lg` — the Re-link dialog carries nothing but the panel and its own header/footer).
+
+**QR image.** A square, unthemed raster (`png_data_uri`, Task 2's `link.go` output) rendered at **192px × 192px** — chosen because it is the largest square that comfortably fits the Step 1 dialog's existing `max-w-lg` (512px) width alongside the dialog's own `lg` (24px) inner padding on both sides, with no dialog-width change and no new spacing-scale token. The image itself carries no border, no background fill, no rounded corners, and no accent-colour treatment — "a plain raster the panel renders, not a themed surface," per the plan's own instruction. Centered horizontally within the panel.
+
+**Instruction line.** `"Scan with your phone to link"`, rendered in the existing **Label** role (14px/400/1.4), directly below the QR image.
+
+**Countdown line.** `"Refreshes in M:SS"` (the exact copy shape the user selected in the mockup — `08-CONTEXT.md`'s `<specifics>` cites `"Refreshes in 0:18"` verbatim), rendered in the existing **Label** role (14px/400/1.4), directly below the instruction line. `M:SS` counts down from the `expires_in_seconds` value Task 2's `qr` event carries — the real whatsmeow-reported validity window, never a hardcoded duration. No new colour, no new spacing value, no new font size or weight anywhere in this component.
+
+### State coverage (this document's own UI-Considerations vocabulary)
+
+| State | Treatment |
+|---|---|
+| **Loading** (before the first QR arrives) | The panel renders the existing generic loading treatment (matches `DetailPane`'s skeleton convention) in place of the QR image; the instruction/countdown lines are withheld until the first `qr` event arrives. |
+| **Populated** (QR plus countdown) | QR image + instruction line + countdown line, as specified above. A new `qr` event (the code rotating) swaps the image and resets the countdown in place — no flash-to-loading between rotations. |
+| **Error** | The panel renders the kernel's error message (`whatsapp_store_in_use` or `link_failed`, verbatim) through the existing destructive `Alert` component, in place of the QR image, with a "Retry" button that restarts the link session (`POST /api/config/whatsapp-link` again). |
+| **Expired/timeout** | The panel states the session expired (e.g. `"This code expired — start again to get a new one."`) through the same `Alert` treatment as Error, with a "Restart" button — without closing the surrounding modal/dialog. |
+| **Success** | The panel transitions to a linked confirmation state (a checkmark/confirmation line, no new icon set — reuse `@lucide/svelte`'s existing check icon already used elsewhere in this codebase) and the surrounding flow continues: in Add-Source, this means advancing to Step 2 (Match settings) automatically; in the Re-link dialog, this means the dialog closes with a brief confirmation line shown in the chip's own area (existing toast/confirmation pattern, unchanged). |
+
+### Entry-point behaviour
+
+- **Add-Source Step 1.** The panel is *offered*, not forced, when the trial-launch reports the instance is not linked — the user may cancel out of the panel (or the whole modal) without linking. Cancelling preserves the existing "saved but not yet linked" partial state (E5 in the UI-Considerations table above), which remains a valid, supported state: Step 1 and Step 2 can both succeed while the device stays unpaired, resolving into the existing not-linked health-dot state.
+- **Chip menu.** "Re-link…" sits alongside the existing "Edit connection…" / "Edit match settings…" entries in the chip's edit popover (Phase 7 D-12), and is offered **only** for a WhatsApp-type instance (`source_type === "whatsapp"`) — no other plugin type gains this menu entry.
+
+### Match-field table supersession (D-05)
+
+The match vocabulary widens from the single `groups` field to **two** fields, rendering through the unchanged Phase 7 **Match-Fields Form** (zero new form code — the form is already generic over whatever vocabulary `Describe` returns):
+
+| Field | Label | Helper text | Matches against |
+|---|---|---|---|
+| `groups` | `Groups` | `"Comma-separated. Matches if any value is present."` (unchanged, same helper text every plugin gets) | A group chat's cached subject/name (live `GetJoinedGroups` query, per `08-01-SUMMARY.md`). |
+| `contacts` | `Contacts` | `"Comma-separated. Matches if any value is present."` (identical helper text — no per-field copy variation) | A 1:1 chat's own saved contact name **only** (D-06) — never the contact's self-chosen push/profile name. |
+
+A user typing a phone number into `Contacts` matches nothing: D-07 declines phone-number matching outright, so a chat with an unsaved contact is not matchable at all regardless of what is typed. This is not surfaced as a validation error — the field accepts any text, per the existing Match-Fields Form's generic behaviour; it simply matches zero chats for an unsaved contact.
+
+### Add-Source Step 1 field table row
+
+| Plugin type | Fields (all optional unless marked required) |
+|---|---|
+| WhatsApp | Display name, Local Path *(required — placeholder `~/.local/share/topos/whatsapp`, matching `config.example.toml`'s own default; corrects this document's earlier placeholder text of `~/.config/topos/whatsapp`)* |
+
+### Registry safety
+
+This amendment introduces **no new shadcn block** and **no new `bits-ui` primitive** — the `Dialog`, `Alert`, and `Button` primitives it uses (for the QR panel's error/expired states, the Re-link dialog shell, and the Retry/Restart buttons) all already ship, unchanged from the base document's own "Registry Safety" section above.
+
+**Encoder decision (closes the base document's own forward-reference above):** `rsc.io/qr` — audited OK, see `plugins/whatsapp/go.mod`'s dated comment and `08-RESEARCH.md`'s Package Legitimacy Audit table for the full verdict. Not a registry-governed package (no shadcn/bits-ui/npm dependency); a plain Go module dependency confined to `plugins/whatsapp/go.mod`, never the kernel or SPA.
+
+---
+
 ## Checker Sign-Off
 
 - [x] Dimension 1 Copywriting: PASS
@@ -240,3 +307,5 @@ No third-party registries declared for Phase 8. No new shadcn block required —
 - [x] Dimension 6 Registry Safety: PASS
 
 **Approval:** APPROVED — gsd-ui-checker, 2026-08-10 (6/6 dimensions, no recommendations)
+
+**Amendment provenance (2026-08-10):** the "Amendment — In-App QR Panel (D-01/D-02/D-03) and the Widened Match-Field Table (D-05)" section above was authored at Plan 08-03 Task 1 time, directly from `08-CONTEXT.md`'s already-locked D-01/D-02/D-03/D-05/D-06/D-07 decisions and the user's own selected mockup (`<specifics>`) — it was not re-run through the gsd-ui-checker probe, since it introduces no new registry dependency, no new colour/spacing/typography token, and no new shadcn/bits-ui primitive for that probe to evaluate.
