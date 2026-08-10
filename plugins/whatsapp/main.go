@@ -47,8 +47,13 @@ func main() {
 	wastore.SetOSInfo("topos", [3]uint32{0, 1, 0})
 
 	linkMode := flag.Bool("link", false, "run the one-shot terminal QR link flow against -path, then exit")
+	linkJSONMode := flag.Bool("link-json", false, "run the one-shot machine-readable QR link flow against -path (newline-delimited JSON events on stdout), then exit")
 	linkPath := flag.String("path", "", "the plugin's own data directory (same value as [sources.whatsapp].path in config.toml)")
 	flag.Parse()
+
+	if err := validateLinkFlags(*linkMode, *linkJSONMode); err != nil {
+		fatal(err)
+	}
 
 	if *linkMode {
 		dir, err := expandHome(*linkPath)
@@ -59,6 +64,24 @@ func main() {
 			fatal(fmt.Errorf("-link requires -path"))
 		}
 		if err := runLinkCLI(context.Background(), dir); err != nil {
+			fatal(err)
+		}
+		os.Exit(0)
+	}
+
+	// -link-json (D-01): the machine-readable sibling of -link, driven by
+	// kernel/httpapi/whatsapplink.go (Task 3) as a raw subprocess outside
+	// the go-plugin gRPC handshake — like -link, this branch always exits
+	// before goplugin.Serve is ever reached below.
+	if *linkJSONMode {
+		dir, err := expandHome(*linkPath)
+		if err != nil {
+			fatal(fmt.Errorf("expand -path: %w", err))
+		}
+		if dir == "" {
+			fatal(fmt.Errorf("-link-json requires -path"))
+		}
+		if err := runLinkJSON(context.Background(), dir, os.Stdout, os.Stderr); err != nil {
 			fatal(err)
 		}
 		os.Exit(0)
@@ -117,4 +140,15 @@ func expandHome(path string) (string, error) {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "topos-plugin-whatsapp:", err)
 	os.Exit(1)
+}
+
+// validateLinkFlags rejects the -link/-link-json combination before either
+// flow starts — a usage error, not a runtime one, so it is checked
+// immediately after flag.Parse() and reported through the same fatal path
+// every other pre-flow validation in main() uses.
+func validateLinkFlags(linkMode, linkJSONMode bool) error {
+	if linkMode && linkJSONMode {
+		return fmt.Errorf("-link and -link-json are mutually exclusive")
+	}
+	return nil
 }
