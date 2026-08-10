@@ -1,219 +1,252 @@
 ---
 phase: 08-whatsapp-conversations-managed-risk
-reviewed: 2026-08-10T14:40:46Z
+reviewed: 2026-08-10T00:00:00Z
 depth: standard
-files_reviewed: 44
+files_reviewed: 13
 files_reviewed_list:
-  - .gitignore
-  - Makefile
-  - cmd/topos/main.go
-  - config.example.toml
   - docs/api.md
-  - docs/testing.md
-  - go.work
-  - internal/audit/outbound_hosts_test.go
-  - kernel/httpapi/agent_live_config_test.go
-  - kernel/httpapi/agent_test.go
-  - kernel/httpapi/config_test.go
-  - kernel/httpapi/contract_test.go
-  - kernel/httpapi/live_config_test.go
   - kernel/httpapi/routes.go
+  - kernel/httpapi/whatsapplink_exec_test.go
   - kernel/httpapi/whatsapplink.go
   - kernel/httpapi/whatsapplink_test.go
-  - kernel/supervisor/supervisor.go
-  - kernel/supervisor/suspend_test.go
-  - plugins/whatsapp/connect.go
-  - plugins/whatsapp/connect_test.go
-  - plugins/whatsapp/deeplink.go
-  - plugins/whatsapp/deeplink_test.go
-  - plugins/whatsapp/delink_test.go
-  - plugins/whatsapp/digest.go
-  - plugins/whatsapp/digest_test.go
-  - plugins/whatsapp/eventhandler.go
-  - plugins/whatsapp/go.mod
-  - plugins/whatsapp/groupsync.go
-  - plugins/whatsapp/groupsync_test.go
-  - plugins/whatsapp/health.go
-  - plugins/whatsapp/health_test.go
   - plugins/whatsapp/link.go
   - plugins/whatsapp/link_test.go
-  - plugins/whatsapp/main.go
-  - plugins/whatsapp/match.go
-  - plugins/whatsapp/match_test.go
-  - plugins/whatsapp/messagestore.go
-  - plugins/whatsapp/messagestore_test.go
-  - plugins/whatsapp/outbound_hosts_test.go
-  - plugins/whatsapp/pairwait.go
-  - plugins/whatsapp/pairwait_test.go
-  - plugins/whatsapp/plugin.go
-  - plugins/whatsapp/pushnames.go
-  - plugins/whatsapp/pushnames_test.go
-  - plugins/whatsapp/readonly_test.go
-  - plugins/whatsapp/render.go
-  - plugins/whatsapp/storelock.go
-  - plugins/whatsapp/storelock_test.go
   - web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts
   - web/src/lib/api.ts
   - web/src/lib/components/AddSourceModal.svelte
-  - web/src/lib/components/QRPanel.svelte
-  - web/src/lib/components/RelinkModal.svelte
-  - web/src/lib/components/SourceChip.svelte
-  - web/src/lib/components/WebspaceHeader.svelte
   - web/src/lib/components/add-source.test.ts
-  - web/src/lib/components/chip-edit-menu.test.ts
+  - web/src/lib/components/QRPanel.svelte
   - web/src/lib/components/qr-panel.test.ts
-  - web/src/lib/components/relink.test.ts
-  - web/src/lib/plugin-fields.test.ts
-  - web/src/lib/plugin-fields.ts
-  - web/src/routes/w/[webspace]/+page.svelte
 findings:
   critical: 1
-  warning: 2
+  warning: 1
   info: 1
-  total: 4
+  total: 3
 status: issues_found
 ---
 
 # Phase 08: Code Review Report
 
-**Reviewed:** 2026-08-10T14:40:46Z
+**Reviewed:** 2026-08-10T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 44 (source and test files under the phase's declared scope; `plugins/whatsapp/link_test.go` was listed in `<required_reading>` but the file present on disk is `pairwait_test.go` — both were read)
+**Files Reviewed:** 13
 **Status:** issues_found
 
 ## Summary
 
-This phase adds a WhatsApp source plugin (whatsmeow-backed), a kernel
-`whatsapp-link` HTTP session surface for in-app QR pairing, and the
-frontend flows that drive it. The read-only/no-send guarantees are well
-enforced by AST-scanned tests (`readonly_test.go`, `outbound_hosts_test.go`),
-the health-state taxonomy is carefully designed to never imply data loss,
-and the store-lock/session-lifecycle code in
-`kernel/httpapi/whatsapplink.go` is generally careful about ordering,
-cleanup, and idempotency.
+**Scope note:** this review REPLACES the prior `08-REVIEW.md`, which covered
+the whole phase (44 files). This pass is scoped strictly to the 13 files
+touched by gap-closure plans `08-05`/`08-06`/`08-07` for gap `G-08-1` (fixed
+QR poll cadence, non-terminal `pairing_accepted`/`already_linked` link states
+threaded through plugin→kernel→web, kernel capture of link-subprocess
+stderr, the declined-link notice, and the new e2e regression specs). The
+prior review's CR-01/WR-01/WR-02/IN-01 findings live in files outside this
+diff's scope (`storelock.go`, `supervisor.go`, `+page.svelte`,
+`RelinkModal.svelte`, etc.) and were not re-audited here except where this
+diff directly touches the same mechanism (WR-01 there — the reserve-before-spawn
+cap fix — is confirmed still correctly applied in the current
+`kernel/httpapi/whatsapplink.go`, see below).
 
-However, tracing the `describePlugin` call path used by two existing,
-pre-Phase-8 UI flows (add an already-configured instance to a second
-webspace; "Edit match settings…" on a chip) against WhatsApp's
-plugin-architecture-specific exclusive store lock (`storelock.go`)
-surfaces a genuine functional break: those flows always trial-launch a
-**second** `topos-plugin-whatsapp` subprocess against the same data
-directory the real, already-running instance holds an exclusive,
-non-blocking `flock` on — the second launch always loses the race and
-`Describe` always fails for a running WhatsApp instance. This is
-unreachable from the e2e suite (which never builds a real WhatsApp
-binary and intercepts these routes), so it would only surface against a
-real deployment. Two further concurrency/robustness gaps are worth
-tightening. See findings below.
+The kernel-side session lifecycle (`kernel/httpapi/whatsapplink.go`) was
+re-audited in full given how much of `G-08-1` lived there — the
+reserve/register/release slot bookkeeping, the background reaper, the
+exactly-once terminal-retirement contract, and the new `stderrLineLogger`
+are all correct and well covered by `whatsapplink_test.go` /
+`whatsapplink_exec_test.go`. The plugin-side shared link core
+(`plugins/whatsapp/link.go`) correctly emits the two new non-terminal
+progress kinds without ever leaking the raw QR payload or a device
+identifier onto stdout, matching `docs/api.md`'s own contract, and is well
+covered by `link_test.go`.
+
+The one real defect found is client-side: `QRPanel.svelte`'s unmount-time
+session cancellation has a race that can silently orphan a live link session
+(and, for the Re-link flow, leave a real source instance suspended) for up
+to five minutes when the panel is torn down while its initial `POST
+/api/config/whatsapp-link` call is still in flight — directly contradicting
+this same file's own "must never leave a subprocess alive holding the
+WhatsApp store lock" invariant. A second, lower-severity issue is a stale UI
+notice that can co-render with a later connection-failure alert. A third is
+a stale comment in the new e2e spec referencing a poll-cadence mechanism
+that no longer exists in the shipped code.
 
 ## Critical Issues
 
-### CR-01: `describePlugin`'s trial-launch always collides with a running WhatsApp instance's exclusive store lock, breaking "Edit match settings…" and "add existing instance to a second webspace" for WhatsApp
+### CR-01: QRPanel unmount during the in-flight start request never cancels the created link session
 
-**File:** `web/src/routes/w/[webspace]/+page.svelte:192-221` (chip-menu "Edit match settings…"), `web/src/lib/components/AddSourceModal.svelte:163-182` (`selectExisting`, the "+ picker → existing instance" one-step flow)
-**Also implicated:** `plugins/whatsapp/storelock.go:33-53` (`acquireStoreLock`, non-blocking exclusive `flock`), `plugins/whatsapp/connect.go:74-79` (`startBackgroundClient` acquires the lock unconditionally before doing anything else), `plugins/whatsapp/main.go:90-113` (the non-`-link`/`-link-json` path — the one `POST /api/config/describe-plugin` trial-launch uses — always reaches `NewSourcePlugin` → `startBackgroundClient` → `acquireStoreLock`)
-
+**File:** `web/src/lib/components/QRPanel.svelte:219-262`
 **Issue:**
 
-`POST /api/config/describe-plugin` (docs/api.md) works by spawning a
-**brand-new** `topos-plugin-whatsapp` subprocess against the submitted
-connection fields (`{plugin, source}`) and calling its `Describe` RPC,
-then killing it. Two pre-existing UI flows (both untouched by this
-phase, both reused for WhatsApp per `AddSourceModal.svelte`'s own
-comment: *"an already-configured instance's stored Source trial-launches
-identically to a not-yet-configured one"*) call this route against an
-**already-configured, already-running** instance's stored `Source` in
-order to learn its match vocabulary before rendering the match-fields
-form:
+`retireSession()` (called from both `onDestroy` and the explicit Cancel
+button) only issues `cancelWhatsAppLink` when `sessionId` is already set:
 
-- `AddSourceModal.svelte`'s `selectExisting()` — used when a WhatsApp
-  instance already participates in webspace A and the operator opens
-  the "+" picker in webspace B and picks that same instance to add it
-  there too.
-- `+page.svelte`'s `handleChipEdit(name, 'match')` — used by every
-  source chip's "Edit match settings…" menu entry, including WhatsApp's
-  (`SourceChip.svelte` renders this entry unconditionally for every
-  source type, per `chip-edit-menu.test.ts`'s own "exactly four items"
-  assertion — there is no WhatsApp exclusion).
+```js
+function retireSession() {
+	retired = true;
+	clearTimers();
+	if (sessionId) {
+		const id = sessionId;
+		sessionId = null;
+		void cancelWhatsAppLink(id).catch(() => {});
+	}
+}
+```
 
-Both call `describePlugin({ plugin: source.plugin, source })` where
-`source` is `config.sources[instance]` — the **same** `path` the
-already-running, pluginhost-launched instance for that name is using
-right now (WhatsApp is unique among this repo's plugins in holding a
-persistent connection for its entire process lifetime — `plugin.go`'s
-own doc comment — so this instance is *always* running whenever the
-kernel is up and the source is configured).
+`sessionId` is only assigned after `startWhatsAppLink` resolves, inside
+`beginSession`:
 
-The kernel's trial-launch path spawns the plugin binary the same way a
-real launch does (`WEBSPACES_SOURCE_CONFIG` env var, no special "trial"
-flag exists anywhere in `plugins/whatsapp/main.go`), so the new
-subprocess reaches `NewSourcePlugin(ctx, dataDir)` →
-`startBackgroundClient` → `acquireStoreLock(p.dir)` unconditionally,
-**before** it can ever answer a `Describe` RPC. `acquireStoreLock` takes
-a non-blocking exclusive `flock` (`LOCK_EX|LOCK_NB`) and returns
-`ErrStoreInUse` immediately if the lock is already held — which it
-always is, held by the real running instance. `NewSourcePlugin` then
-returns that error, `main.go`'s `fatal()` exits the process before
-`goplugin.Serve` is ever reached, and the go-plugin handshake never
-completes — so `POST /api/config/describe-plugin` **always** fails with
-`502 plugin_describe_failed` for an already-configured, running
-WhatsApp instance.
+```js
+async function beginSession() {
+	retired = false;
+	...
+	try {
+		const session = await startWhatsAppLink({ plugin, path, instance });
+		if (retired) return;              // <-- discards the session with no cancel
+		sessionId = session.session;
+		applySession(session);
+	} catch (err) { ... }
+}
+```
 
-Net effect: for any WhatsApp source that is currently linked and
-running (the normal, intended state once Phase 8's own QR-pairing flow
-succeeds), an operator can never use "Edit match settings…" on that
-chip — the modal opens but silently renders an empty match-fields form
-(the `catch` branch in `handleChipEdit` swallows the failure and leaves
-`editVocabulary = []`, with no error surfaced to the user, so it reads
-as "there are no fields," not as a failure) — and can never add that
-same instance to a second webspace via the "+" picker's one-step
-existing-instance flow (which *does* surface the `plugin_describe_failed`
-error, but offers no recovery). This is core, expected functionality
-for a phase whose whole purpose is WhatsApp group/contact matching, and
-it is unreachable from `make e2e` (the harness never builds a real
-`topos-plugin-whatsapp` binary and intercepts every `describe-plugin`
-call in `uat-08-whatsapp-qr-link.spec.ts`), so it will only be
-discovered against a real deployment.
+If the component unmounts (dialog closed via Escape, backdrop click, or the
+surrounding modal being torn down for any other reason) while the initial
+`POST /api/config/whatsapp-link` is still in flight, `onDestroy` fires
+`retireSession()` while `sessionId` is still `null` — so no cancel request is
+ever sent. When the `startWhatsAppLink` promise then resolves, `if (retired)
+return;` discards the response without ever recording `sessionId`, so the
+now-unreachable session can never be cancelled by this component either.
 
-**Fix:** Either (a) have `DescribePluginHandler`/the plugin host special-case
-an instance that is already launched and running — read the vocabulary
-the already-completed `Describe` call at launch time already returned
-(pluginhost presumably calls `Describe` once per launched instance for
-`source_type` resolution already) rather than trial-launching a second
-process, or (b) have the WhatsApp plugin's trial-launch path skip
-`acquireStoreLock`/`startBackgroundClient` entirely when only `Describe`
-is being requested (a "describe-only" mode analogous to `-link`/
-`-link-json`, since `Describe` needs no live connection or store access
-at all — it returns static constants). Whichever fix is chosen, extend
-`uat-08-whatsapp-qr-link.spec.ts` (or a Go-level test against a real
-built `topos-plugin-whatsapp` binary) to cover "Edit match settings…"
-against an already-linked instance, since this is exactly the gap that
-let the defect ship unnoticed.
+The kernel has already spawned a real subprocess for that session by the
+time it answers `200` (and, for the Re-link entry point, has already called
+`SuspendInstance` on the real source instance —
+`kernel/httpapi/whatsapplink.go`'s `WhatsAppLinkStartHandler` suspends and
+spawns before it ever returns a session id). That subprocess — and the
+suspended instance behind it — is now orphaned client-side. It is only
+recovered by the kernel's own background reaper after
+`linkSessionDeadline` (5 minutes, `kernel/httpapi/whatsapplink.go:216-223`),
+or sooner if a fifth concurrent start request hits
+`maxConcurrentLinkSessions` (4) and is rejected with `429`.
+
+This is squarely the failure mode `onDestroy`'s own comment says must never
+happen:
+
+> "T-08-10's mitigation, second half: cancel on unmount too... navigating
+> away... must never leave a subprocess alive holding the WhatsApp store
+> lock." (`QRPanel.svelte:278-284`)
+
+The race window is not theoretical: `POST /api/config/whatsapp-link` does
+real work before responding (directory-listing check, `SuspendInstance`,
+`exec.Start`, two SQLite opens, an exclusive flock) — plenty of time for a
+user to press Escape or click away immediately after opening the Add-Source
+/ Re-link dialog, which is a completely ordinary interaction, not an
+adversarial one. Repeating that a few times in quick succession (e.g.
+opening and immediately closing the dialog while deciding whether to link)
+can also exhaust `maxConcurrentLinkSessions`, making the link feature return
+`429` for up to 5 minutes for an unrelated, well-behaved future attempt —
+undermining the very cap this phase's kernel-side `reserve()` mechanism
+(WR-01 from the prior `08-REVIEW.md`, confirmed still correctly applied at
+`kernel/httpapi/whatsapplink.go:614-617`) exists to protect.
+
+**Fix:** cancel the session the moment it is known, even if the component
+has already been marked `retired` by the time the start response arrives:
+
+```js
+try {
+	const session = await startWhatsAppLink({ plugin, path, instance });
+	if (retired) {
+		// The component was torn down while the start request was still
+		// in flight — the kernel has already spawned a subprocess (and,
+		// for Re-link, already suspended the real instance) for this
+		// session id. Cancel it now rather than leaving it to the
+		// kernel's 5-minute reaper.
+		void cancelWhatsAppLink(session.session).catch(() => {});
+		return;
+	}
+	sessionId = session.session;
+	applySession(session);
+} catch (err) { ... }
+```
 
 ## Warnings
 
-### WR-01: WhatsApp link-session concurrency cap is enforced after the subprocess is already spawned
+### WR-01: Stale declined-link notice can co-render with a later connection-failure alert
 
-**File:** `kernel/httpapi/whatsapplink.go:472-496`
-**Issue:** `WhatsAppLinkStartHandler` calls `spawner(context.Background(), binPath, req.Path)` (line 472) — which, in production, execs the plugin binary, opens its two databases and takes the exclusive store lock — **before** calling `store.register(sess)` (line 488), which is the only place `maxConcurrentLinkSessions` (4) is enforced. So the cap only ever limits how many sessions can be *held open*, not how many subprocesses can be *started concurrently*: N simultaneous `POST /api/config/whatsapp-link` requests (e.g. a client issuing repeated rapid retries, or several browser tabs) will spawn N subprocesses regardless of N, with only the first 4 surviving `register()` — the rest are killed immediately after paying the full cost of a process spawn, a SQLite open, and a `flock` acquire/release. This weakens (without fully defeating) the "a stuck or abandoned browser tab cannot accumulate unbounded subprocesses" guarantee the comment above `maxConcurrentLinkSessions` describes, and — because two of these could legitimately be racing for the *same* data directory's `flock` — makes the transient `whatsapp_store_in_use` error reachable even from this kernel's own over-eager spawning, not only from a genuinely conflicting external process.
-**Fix:** Reserve a slot (e.g. an atomic counter or buffered-channel semaphore sized `maxConcurrentLinkSessions`) before calling `spawner`, and release it in the same paths that currently call `store.register`'s failure branch / session retirement — so the cap is enforced before any subprocess is started, matching the ordering discipline `WhatsAppLinkStartHandler`'s own doc comment already applies to the plugin-binary allowlist check ("directory listing, never a caller-supplied name, is the authority over what may be launched … BEFORE anything is executed").
+**File:** `web/src/lib/components/AddSourceModal.svelte:248-325,555-572`
+**Issue:** `handleLinkCancelled` sets `linkNotice` to the neutral "Not linked
+yet…" copy when the user cancels out of the QR panel, and by design never
+touches `describeFailed`/`connectError` (correctly — declining to link is not
+a connection failure). However, `linkNotice` is also never cleared by
+`handleConnectNext`. If the user, after declining the link opportunity once,
+edits the connect-step fields and clicks "Next" again and this second
+`describePlugin` trial launch genuinely fails (network hiccup, transient
+plugin error, etc.), `handleConnectNext`'s catch branch sets `describeFailed =
+true` and `connectError = "Couldn't verify this connection. …"` but leaves
+the earlier `linkNotice` untouched. Both are rendered unconditionally
+whenever set:
 
-### WR-02: A concurrent, unrelated config save can fail while a WhatsApp re-link session is suspending an instance
+```svelte
+{#if connectError}
+	<Alert variant="destructive" class="mt-4">
+		<AlertDescription>{connectError}</AlertDescription>
+	</Alert>
+{/if}
 
-**File:** `kernel/supervisor/supervisor.go:233-269` (`SuspendInstance`), `kernel/supervisor/supervisor.go:430-519` (`Apply`)
-**Issue:** `SuspendInstance` reconciles the host down to every source *except* the named one, but never removes that source from `s.cfg.Sources` — it only mutates the launched process set, not the config-of-record. If a config save/reload lands on **any other route** (e.g. an unrelated webspace filter edit, or a totally unrelated source's connection edit) while a WhatsApp re-link session is in flight (up to 5 minutes, `linkSessionDeadline`), `Apply`'s `s.host.Reconcile(ctx, newCfg.Sources, s.logger)` call will see the suspended instance still present in `newCfg.Sources` (nothing about the suspension is visible to `Apply`) and attempt to relaunch it — racing the live `-link-json` subprocess for the same `whatsapp.lock`. That relaunch attempt fails (`ErrStoreInUse`, surfaced as a generic launch failure through `pluginhost.Host.Reconcile`), which makes `Apply`'s pre-Reconcile-commit failure branch fire: the *entire, otherwise-valid* unrelated config save is rejected as `500 apply_failed`, and the running kernel's `s.cfg` is left pointing at the old generation while `config.toml` on disk already reflects the new one (a state divergence this code path already documents as a known, if rare, condition for other causes — this phase adds a new, easily-triggered way to reach it: simply having a WhatsApp Re-link… dialog open in one browser tab while saving anything else in another).
-**Fix:** Have `Apply` (or `Host.Reconcile`) skip relaunching a source that is currently suspended (e.g. by having `Supervisor` track a small "suspended instance names" set that `Apply` subtracts from `newCfg.Sources` before calling `Reconcile`, restoring it once the caller's own resume closure runs), or have `SuspendInstance` hold `s.mu` for its entire duration rather than just across the initial `Reconcile` call (trading the current "an Apply can interleave with a suspension" behavior for "an Apply blocks until the link session ends," which is bounded by `linkSessionDeadline` and arguably the more surprising alternative to a user, but at least fails safe rather than surprisingly).
+{#if linkNotice}
+	<p class="mt-4 text-[14px] leading-[1.4] text-muted-foreground">{linkNotice}</p>
+{/if}
+```
+
+The user would see a destructive "Couldn't verify this connection…" alert and
+the muted "Not linked yet — you can save this source now and link later…"
+notice at the same time — the second message implies a working, saveable
+connection while the first says the connection just failed, which is
+confusing and self-contradictory.
+
+**Fix:** clear `linkNotice` at the top of `handleConnectNext` (mirroring how
+`selectPluginType` already resets it), so a fresh trial-launch attempt starts
+without a stale prior-outcome message:
+
+```js
+async function handleConnectNext(event: SubmitEvent) {
+	event.preventDefault();
+	if (!selectedPluginType || describing) return;
+	linkNotice = '';
+	...
+```
 
 ## Info
 
-### IN-01: `storeLock.Release` silently drops the file-close error when unlock also fails
+### IN-01: Stale comment references a `POLL_FLOOR_MS` mechanism that no longer exists
 
-**File:** `plugins/whatsapp/storelock.go:60-67`
-**Issue:** When `syscall.Flock(..., LOCK_UN)` fails, `Release` returns that error and never reports `l.f.Close()`'s own return value (only `closeErr` is returned on the *unlock-succeeded* path). In practice an `flock(LOCK_UN)` failure is rare and the fd is closed either way (best-effort), so this is not a correctness bug — the OS will drop the lock at process exit regardless (as the function's own doc comment notes) — but a caller diagnosing an unusual `Release` failure loses the close error entirely.
-**Fix:** `return errors.Join(unlockErr, closeErr)` instead of the early return, so a genuine double-fault is reported instead of discarding one half.
+**File:** `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts:298-302`
+**Issue:** Case 2's setup comment reads:
+
+```ts
+// start answers the FIRST qr response directly (floored
+// expires_in_seconds so the panel's own poll cadence — clamped to
+// POLL_FLOOR_MS — fires promptly); the one scripted poll answers
+// the SECOND, different qr response.
+```
+
+`POLL_FLOOR_MS` does not exist anywhere in the shipped source
+(`QRPanel.svelte` only defines a fixed `POLL_INTERVAL_MS = 2000`, with no
+clamp/floor logic tied to `expires_in_seconds` — that per-response-tied
+cadence is exactly what `G-08-1`'s fix removed). This comment appears to be
+left over from an earlier design iteration and now describes a mechanism
+that was deliberately deleted by this same gap-closure. It doesn't affect
+test correctness, but it will actively mislead a future reader trying to
+understand the panel's poll cadence from this spec.
+
+**Fix:** update the comment to reference `POLL_INTERVAL_MS` (as the header
+comment and case 9's comment already correctly do), e.g.:
+
+```ts
+// start answers the FIRST qr response directly; the one scripted poll
+// answers the SECOND, different qr response, delivered on QRPanel's own
+// fixed POLL_INTERVAL_MS cadence (not tied to expires_in_seconds — G-08-1).
+```
 
 ---
 
-_Reviewed: 2026-08-10T14:40:46Z_
+_Reviewed: 2026-08-10T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
