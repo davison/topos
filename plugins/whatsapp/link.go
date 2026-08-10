@@ -55,25 +55,43 @@ func runLinkCLI(ctx context.Context, dir string) error {
 		return fmt.Errorf("whatsapp: read linked device: %w", err)
 	}
 
-	if device.ID != nil {
-		fmt.Println("Already linked — device", device.ID.String(), "is paired. Re-run without -link to serve.")
-		return nil
-	}
-
 	client := whatsmeow.NewClient(device, newPluginLogger("whatsmeow/link"))
 
-	// Registered BEFORE GetQRChannel/Connect, alongside the QR channel's
-	// own internal event handler — both observe the same client's event
-	// stream. GetQRChannel's own "success" fires on *events.PairSuccess,
-	// which its own doc comment says is "generally followed by a
-	// websocket reconnection" — pairLoginWaiter is what lets this
-	// function wait for the SUBSEQUENT *events.Connected (or a
-	// definitive failure) rather than disconnecting the instant
-	// PairSuccess arrives, which strands the phone mid post-pair login
-	// handshake (live-reported 2026-08-10: phone stuck on
-	// "Logging in…" with an EOF on the plugin's own socket).
+	// Registered BEFORE GetQRChannel/Connect (or, in the already-linked
+	// branch below, before Connect alone), alongside the QR channel's own
+	// internal event handler — both observe the same client's event
+	// stream. See pairLoginWaiter's own doc comment: whatsmeow persists
+	// Store.ID (device.ID becomes non-nil) at PairSuccess time, BEFORE
+	// the post-pair websocket reconnection and login handshake completes
+	// — so a device row already existing here does NOT by itself prove a
+	// prior run ever finished linking (this is exactly the live bug this
+	// fix addresses: a run that disconnected right after "success"
+	// leaves a device row saved but the phone stuck on "Logging in…").
 	loginWaiter := newPairLoginWaiter()
 	client.AddEventHandler(loginWaiter.handleEvent)
+
+	if device.ID != nil {
+		// A saved device row alone doesn't confirm the session is
+		// actually usable — reconnect and wait for a real Connected (or
+		// a definitive failure) before reporting anything. This is safe
+		// and correct whether the prior link fully completed (an
+		// ordinary reconnect, identical to what serve mode does on every
+		// kernel restart) or was left half-finished by this exact bug
+		// (this completes it).
+		fmt.Println("Already linked as", device.ID.String(), "— reconnecting to confirm the session is fully established…")
+		if err := client.Connect(); err != nil {
+			return fmt.Errorf("whatsapp: reconnect failed: %w", err)
+		}
+		defer client.Disconnect()
+
+		if err := loginWaiter.wait(postPairLoginTimeout); err != nil {
+			return err
+		}
+		time.Sleep(postPairGraceWindow)
+
+		fmt.Println("Session confirmed. Re-run without -link to serve.")
+		return nil
+	}
 
 	qrChan, err := client.GetQRChannel(ctx)
 	if err != nil {
