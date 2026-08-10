@@ -435,9 +435,17 @@ Notes:
 **Plans:** 4 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 08-01-PLAN.md — Tracer: whatsmeow pin gate, the new pure-Go plugin module, CLI QR link, own message store, and a matching group's day digest in the stream; mandatory hands-on spike
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 08-02-PLAN.md — Managed-risk degradation: five named health states, Match-error-never-empty-success, 1:1 matching on saved contact names (D-05/D-06/D-07), read-only + outbound-host AST scans
 - [ ] 08-03-PLAN.md — In-app pairing, kernel half: UI-SPEC amendment + QR encoder legitimacy audit, machine-readable link mode, and the short-poll link-session endpoint with instance suspension
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 08-04-PLAN.md — In-app pairing, browser half: QRPanel component, inline Add-Source step, chip Re-link… entry, and hermetic Playwright coverage
 
 Notes:
