@@ -103,7 +103,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// every other /api/config/* route it is registered on /api/ only —
 	// MountAgentRoutes below registers zero non-GET routes on /agent/v1.
 	linkStore := newLinkSessionStore()
-	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(pluginsDir, suspender, execLinkSpawner, linkStore, logger))
+	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(pluginsDir, suspender, newExecLinkSpawner(logger), linkStore, logger))
 	r.Get("/api/config/whatsapp-link/{session}", WhatsAppLinkPollHandler(linkStore, logger))
 	r.Delete("/api/config/whatsapp-link/{session}", WhatsAppLinkCancelHandler(linkStore, logger))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a

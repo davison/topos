@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -49,62 +50,159 @@ type linkSpawnResult struct {
 // a fake that never touches the filesystem or a real process.
 type linkSpawner func(ctx context.Context, binPath, dataPath string) (linkSpawnResult, error)
 
-// execLinkSpawner is the production linkSpawner: runs the discovered
-// plugin binary in machine-readable link mode
-// (plugins/whatsapp/link.go's runLinkJSON, Task 2) as a raw subprocess,
-// entirely outside the go-plugin gRPC handshake — this is deliberately
-// exec.CommandContext against the resolved DISCOVERED path, never a path
-// built from request-supplied input (T-08-06; the caller here always
-// passes a path already validated by pluginhost.DiscoverAllBinaries).
-func execLinkSpawner(ctx context.Context, binPath, dataPath string) (linkSpawnResult, error) {
-	spawnCtx, cancel := context.WithCancel(ctx)
+// stderrLineLoggerMaxBuffer bounds how much unterminated stderr text
+// stderrLineLogger retains between newlines (T-08-17): a subprocess
+// emitting one endless line without a newline flushes and resets at this
+// cap instead of growing kernel memory without limit.
+const stderrLineLoggerMaxBuffer = 64 * 1024
 
-	cmd := exec.CommandContext(spawnCtx, binPath, "-link-json", "-path", dataPath)
-	// An explicit, minimal environment: this subprocess needs no
-	// WEBSPACES_SOURCE_CONFIG (it never reaches goplugin.Serve) and no
-	// inherited kernel environment beyond what -link-json itself reads
-	// via its own -path flag.
-	cmd.Env = nil
+// stderrLineLogger is a line-oriented io.Writer assigned to a spawned
+// link subprocess's cmd.Stderr: it buffers whatever is written, emits
+// each complete line through logger as it arrives, and retains any
+// trailing partial line for the next Write. flush (called once, after
+// cmd.Wait() returns) emits any still-retained partial line so a
+// diagnostic written without a trailing newline is never silently
+// dropped.
+//
+// It is deliberately NOT an *os.File: assigning a non-*os.File Writer to
+// cmd.Stderr makes os/exec create the pipe itself and run its own copy
+// goroutine, and cmd.Wait() waits for that copy to finish before
+// returning — the documented-correct shape. The alternative
+// (cmd.StderrPipe() read concurrently with Wait) is the same
+// incorrect-usage pattern already flagged on the stdout side; there is no
+// reason to add a second instance of it here.
+type stderrLineLogger struct {
+	mu     sync.Mutex
+	logger hclog.Logger
+	buf    []byte
+}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return linkSpawnResult{}, fmt.Errorf("whatsapp link: stdout pipe: %w", err)
-	}
+func newStderrLineLogger(logger hclog.Logger) *stderrLineLogger {
+	return &stderrLineLogger{logger: logger.Named("link-subprocess")}
+}
 
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return linkSpawnResult{}, fmt.Errorf("whatsapp link: start subprocess: %w", err)
-	}
+func (w *stderrLineLogger) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	lines := make(chan []byte)
-	done := make(chan error, 1)
-
-	go func() {
-		defer close(lines)
-		scanner := bufio.NewScanner(stdout)
-		// A rendered PNG data URI can comfortably exceed bufio.Scanner's
-		// 64 KiB default token limit — raise it well past any QR image
-		// this phase's fixed error-correction level and module count
-		// could plausibly produce.
-		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			line := append([]byte(nil), scanner.Bytes()...)
-			select {
-			case lines <- line:
-			case <-spawnCtx.Done():
-				return
-			}
+	w.buf = append(w.buf, p...)
+	for {
+		idx := bytes.IndexByte(w.buf, '\n')
+		if idx < 0 {
+			break
 		}
-	}()
+		w.emitLocked(w.buf[:idx])
+		w.buf = w.buf[idx+1:]
+	}
+	if len(w.buf) > stderrLineLoggerMaxBuffer {
+		w.emitLocked(w.buf)
+		w.buf = nil
+	}
+	return len(p), nil
+}
 
-	go func() {
-		waitErr := cmd.Wait()
-		done <- waitErr
-		close(done)
-	}()
+// flush emits any still-retained partial line. Call once, after
+// cmd.Wait() has returned (so no concurrent Write can race it).
+func (w *stderrLineLogger) flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.buf) > 0 {
+		w.emitLocked(w.buf)
+		w.buf = nil
+	}
+}
 
-	return linkSpawnResult{lines: lines, done: done, kill: cancel}, nil
+// emitLocked logs line through a single Info call carrying the line as a
+// field, under the named "link-subprocess" sublogger so plugin
+// diagnostics interleave legibly with kernel logs rather than arriving as
+// a separate, untagged stream. Whitespace-only lines are skipped. Must be
+// called with w.mu held.
+func (w *stderrLineLogger) emitLocked(line []byte) {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		return
+	}
+	w.logger.Info("whatsapp link subprocess diagnostic", "line", string(trimmed))
+}
+
+// newExecLinkSpawner returns the production linkSpawner: runs the
+// discovered plugin binary in machine-readable link mode
+// (plugins/whatsapp/link.go's runLinkJSON, Task 2 of this plan) as a raw
+// subprocess, entirely outside the go-plugin gRPC handshake — this is
+// deliberately exec.CommandContext against the resolved DISCOVERED path,
+// never a path built from request-supplied input (T-08-06; the caller
+// here always passes a path already validated by
+// pluginhost.DiscoverAllBinaries). logger is the kernel's own hclog
+// logger, already available at routes.go's call site — every line the
+// subprocess writes to stderr is captured through it rather than
+// discarded (08-UAT.md's G-08-1: previously cmd.Stderr was never
+// assigned, so os/exec routed the subprocess's stderr to /dev/null and
+// every plugin diagnostic and whatsmeow WARN/ERROR from a failing run was
+// destroyed).
+func newExecLinkSpawner(logger hclog.Logger) linkSpawner {
+	return func(ctx context.Context, binPath, dataPath string) (linkSpawnResult, error) {
+		spawnCtx, cancel := context.WithCancel(ctx)
+
+		cmd := exec.CommandContext(spawnCtx, binPath, "-link-json", "-path", dataPath)
+		// A nil Env means the child inherits this process's own
+		// environment — os/exec's documented behavior, and the correct
+		// one here, not an oversight (a prior version of this comment
+		// stated the opposite; see 08-UAT.md's G-08-1, where that false
+		// claim was found). The plugin expands a leading ~ in its -path
+		// value through os/user, which reads HOME, and a host that
+		// relocates its TLS trust store through the standard certificate
+		// environment variables (e.g. SSL_CERT_FILE, SSL_CERT_DIR) would
+		// otherwise break the linked-device websocket if this process's
+		// environment were not inherited.
+		cmd.Env = nil
+
+		stderrLogger := newStderrLineLogger(logger)
+		cmd.Stderr = stderrLogger
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			cancel()
+			return linkSpawnResult{}, fmt.Errorf("whatsapp link: stdout pipe: %w", err)
+		}
+
+		if err := cmd.Start(); err != nil {
+			cancel()
+			return linkSpawnResult{}, fmt.Errorf("whatsapp link: start subprocess: %w", err)
+		}
+
+		lines := make(chan []byte)
+		done := make(chan error, 1)
+
+		go func() {
+			defer close(lines)
+			scanner := bufio.NewScanner(stdout)
+			// A rendered PNG data URI can comfortably exceed bufio.Scanner's
+			// 64 KiB default token limit — raise it well past any QR image
+			// this phase's fixed error-correction level and module count
+			// could plausibly produce.
+			scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+			for scanner.Scan() {
+				line := append([]byte(nil), scanner.Bytes()...)
+				select {
+				case lines <- line:
+				case <-spawnCtx.Done():
+					return
+				}
+			}
+		}()
+
+		go func() {
+			waitErr := cmd.Wait()
+			// cmd.Wait() has returned, so the stderr copy goroutine
+			// os/exec started for this non-*os.File cmd.Stderr has
+			// already finished — flush is race-free here.
+			stderrLogger.flush()
+			done <- waitErr
+			close(done)
+		}()
+
+		return linkSpawnResult{lines: lines, done: done, kill: cancel}, nil
+	}
 }
 
 // --- session state ---
