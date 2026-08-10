@@ -2,26 +2,18 @@
 phase: 08-whatsapp-conversations-managed-risk
 reviewed: 2026-08-10T00:00:00Z
 depth: standard
-files_reviewed: 13
+files_reviewed: 5
 files_reviewed_list:
-  - docs/api.md
-  - kernel/httpapi/routes.go
-  - kernel/httpapi/whatsapplink_exec_test.go
-  - kernel/httpapi/whatsapplink.go
-  - kernel/httpapi/whatsapplink_test.go
-  - plugins/whatsapp/link.go
-  - plugins/whatsapp/link_test.go
-  - web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts
-  - web/src/lib/api.ts
-  - web/src/lib/components/AddSourceModal.svelte
-  - web/src/lib/components/add-source.test.ts
   - web/src/lib/components/QRPanel.svelte
   - web/src/lib/components/qr-panel.test.ts
+  - web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts
+  - web/src/lib/components/AddSourceModal.svelte
+  - web/src/lib/components/add-source.test.ts
 findings:
-  critical: 1
+  critical: 0
   warning: 1
   info: 1
-  total: 3
+  total: 2
 status: issues_found
 ---
 
@@ -29,220 +21,186 @@ status: issues_found
 
 **Reviewed:** 2026-08-10T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 13
+**Files Reviewed:** 5
 **Status:** issues_found
 
 ## Summary
 
-**Scope note:** this review REPLACES the prior `08-REVIEW.md`, which covered
-the whole phase (44 files). This pass is scoped strictly to the 13 files
-touched by gap-closure plans `08-05`/`08-06`/`08-07` for gap `G-08-1` (fixed
-QR poll cadence, non-terminal `pairing_accepted`/`already_linked` link states
-threaded through plugin→kernel→web, kernel capture of link-subprocess
-stderr, the declined-link notice, and the new e2e regression specs). The
-prior review's CR-01/WR-01/WR-02/IN-01 findings live in files outside this
-diff's scope (`storelock.go`, `supervisor.go`, `+page.svelte`,
-`RelinkModal.svelte`, etc.) and were not re-audited here except where this
-diff directly touches the same mechanism (WR-01 there — the reserve-before-spawn
-cap fix — is confirmed still correctly applied in the current
-`kernel/httpapi/whatsapplink.go`, see below).
+**Scope note:** this review targets the plan `08-08` gap-closure diff
+(commits `aa2fba1..d71b408`, base `6e86968`), which closed three findings
+from the prior review of this phase: CR-01 (unmount-during-in-flight-start
+race in `QRPanel.svelte`), WR-01 (stale declined-link notice in
+`AddSourceModal.svelte`), and IN-01 (stale e2e comment referencing a
+deleted `POLL_FLOOR_MS` mechanism).
 
-The kernel-side session lifecycle (`kernel/httpapi/whatsapplink.go`) was
-re-audited in full given how much of `G-08-1` lived there — the
-reserve/register/release slot bookkeeping, the background reaper, the
-exactly-once terminal-retirement contract, and the new `stderrLineLogger`
-are all correct and well covered by `whatsapplink_test.go` /
-`whatsapplink_exec_test.go`. The plugin-side shared link core
-(`plugins/whatsapp/link.go`) correctly emits the two new non-terminal
-progress kinds without ever leaking the raw QR payload or a device
-identifier onto stdout, matching `docs/api.md`'s own contract, and is well
-covered by `link_test.go`.
+All three closures were traced line-by-line against their new regression
+coverage:
 
-The one real defect found is client-side: `QRPanel.svelte`'s unmount-time
-session cancellation has a race that can silently orphan a live link session
-(and, for the Re-link flow, leave a real source instance suspended) for up
-to five minutes when the panel is torn down while its initial `POST
-/api/config/whatsapp-link` call is still in flight — directly contradicting
-this same file's own "must never leave a subprocess alive holding the
-WhatsApp store lock" invariant. A second, lower-severity issue is a stale UI
-notice that can co-render with a later connection-failure alert. A third is
-a stale comment in the new e2e spec referencing a poll-cadence mechanism
-that no longer exists in the shipped code.
+- **CR-01** — `beginSession`'s post-`await` `if (retired)` branch now
+  issues a best-effort `cancelWhatsAppLink(session.session)` using the
+  server-returned id (never the still-null module-level `sessionId`),
+  leaves `sessionId` unassigned so a later `retireSession()` cannot
+  double-cancel and `poll()`'s own `!sessionId` guard stays in force, and
+  swallows rejection via `.catch()`. Traced every interleaving (unmount
+  before start resolves, explicit Cancel-click before start resolves, the
+  normal non-retired path) — each produces exactly one `DELETE` call for
+  the abandoned session and zero polls, matching e2e case 12's
+  assertions (`deleteCalls === 1`, `deletedSessionIds === ['sess-inflight']`,
+  `pollCalls === 0`). This closure is correct.
+- **WR-01** — `handleConnectNext` now clears `linkNotice` unconditionally
+  as its first statement after the `!selectedPluginType || describing`
+  guard, strictly before `missingRequiredFields(`, so a stale
+  declined-link notice can never survive into a fresh trial-launch
+  attempt's failure branch (or its missing-field branch). Verified against
+  e2e case 13 and the new structural guard in `add-source.test.ts`. This
+  closure is correct.
+- **IN-01** — the case 2 setup comment no longer mentions
+  `POLL_FLOOR_MS`, and the deleted-mechanism string does not appear
+  anywhere in the shipped `.svelte`/`.ts` sources. However, see IN-02
+  below: a second, wording-only echo of the same deleted mechanism
+  survives in a comment the gap-closure plan's automated check (a literal
+  `grep -c 'POLL_FLOOR_MS'`) could not detect because it uses a synonym
+  rather than the literal identifier.
 
-## Critical Issues
-
-### CR-01: QRPanel unmount during the in-flight start request never cancels the created link session
-
-**File:** `web/src/lib/components/QRPanel.svelte:219-262`
-**Issue:**
-
-`retireSession()` (called from both `onDestroy` and the explicit Cancel
-button) only issues `cancelWhatsAppLink` when `sessionId` is already set:
-
-```js
-function retireSession() {
-	retired = true;
-	clearTimers();
-	if (sessionId) {
-		const id = sessionId;
-		sessionId = null;
-		void cancelWhatsAppLink(id).catch(() => {});
-	}
-}
-```
-
-`sessionId` is only assigned after `startWhatsAppLink` resolves, inside
-`beginSession`:
-
-```js
-async function beginSession() {
-	retired = false;
-	...
-	try {
-		const session = await startWhatsAppLink({ plugin, path, instance });
-		if (retired) return;              // <-- discards the session with no cancel
-		sessionId = session.session;
-		applySession(session);
-	} catch (err) { ... }
-}
-```
-
-If the component unmounts (dialog closed via Escape, backdrop click, or the
-surrounding modal being torn down for any other reason) while the initial
-`POST /api/config/whatsapp-link` is still in flight, `onDestroy` fires
-`retireSession()` while `sessionId` is still `null` — so no cancel request is
-ever sent. When the `startWhatsAppLink` promise then resolves, `if (retired)
-return;` discards the response without ever recording `sessionId`, so the
-now-unreachable session can never be cancelled by this component either.
-
-The kernel has already spawned a real subprocess for that session by the
-time it answers `200` (and, for the Re-link entry point, has already called
-`SuspendInstance` on the real source instance —
-`kernel/httpapi/whatsapplink.go`'s `WhatsAppLinkStartHandler` suspends and
-spawns before it ever returns a session id). That subprocess — and the
-suspended instance behind it — is now orphaned client-side. It is only
-recovered by the kernel's own background reaper after
-`linkSessionDeadline` (5 minutes, `kernel/httpapi/whatsapplink.go:216-223`),
-or sooner if a fifth concurrent start request hits
-`maxConcurrentLinkSessions` (4) and is rejected with `429`.
-
-This is squarely the failure mode `onDestroy`'s own comment says must never
-happen:
-
-> "T-08-10's mitigation, second half: cancel on unmount too... navigating
-> away... must never leave a subprocess alive holding the WhatsApp store
-> lock." (`QRPanel.svelte:278-284`)
-
-The race window is not theoretical: `POST /api/config/whatsapp-link` does
-real work before responding (directory-listing check, `SuspendInstance`,
-`exec.Start`, two SQLite opens, an exclusive flock) — plenty of time for a
-user to press Escape or click away immediately after opening the Add-Source
-/ Re-link dialog, which is a completely ordinary interaction, not an
-adversarial one. Repeating that a few times in quick succession (e.g.
-opening and immediately closing the dialog while deciding whether to link)
-can also exhaust `maxConcurrentLinkSessions`, making the link feature return
-`429` for up to 5 minutes for an unrelated, well-behaved future attempt —
-undermining the very cap this phase's kernel-side `reserve()` mechanism
-(WR-01 from the prior `08-REVIEW.md`, confirmed still correctly applied at
-`kernel/httpapi/whatsapplink.go:614-617`) exists to protect.
-
-**Fix:** cancel the session the moment it is known, even if the component
-has already been marked `retired` by the time the start response arrives:
-
-```js
-try {
-	const session = await startWhatsAppLink({ plugin, path, instance });
-	if (retired) {
-		// The component was torn down while the start request was still
-		// in flight — the kernel has already spawned a subprocess (and,
-		// for Re-link, already suspended the real instance) for this
-		// session id. Cancel it now rather than leaving it to the
-		// kernel's 5-minute reaper.
-		void cancelWhatsAppLink(session.session).catch(() => {});
-		return;
-	}
-	sessionId = session.session;
-	applySession(session);
-} catch (err) { ... }
-```
+One residual issue was found while specifically tracing the
+"exactly-one-cancel" invariant the CR-01 fix's own doc comments assert:
+that invariant is not actually held end-to-end, because the adjacent
+(unmodified) terminal-state branches of `applySession` never clear
+`sessionId`. See WR-02 below.
 
 ## Warnings
 
-### WR-01: Stale declined-link notice can co-render with a later connection-failure alert
+### WR-02: `sessionId` survives every terminal-state transition, so a later unmount, Retry, or Restart re-issues a redundant cancel — contradicting the invariant the CR-01 fix's own comments assert
 
-**File:** `web/src/lib/components/AddSourceModal.svelte:248-325,555-572`
-**Issue:** `handleLinkCancelled` sets `linkNotice` to the neutral "Not linked
-yet…" copy when the user cancels out of the QR panel, and by design never
-touches `describeFailed`/`connectError` (correctly — declining to link is not
-a connection failure). However, `linkNotice` is also never cleared by
-`handleConnectNext`. If the user, after declining the link opportunity once,
-edits the connect-step fields and clicks "Next" again and this second
-`describePlugin` trial launch genuinely fails (network hiccup, transient
-plugin error, etc.), `handleConnectNext`'s catch branch sets `describeFailed =
-true` and `connectError = "Couldn't verify this connection. …"` but leaves
-the earlier `linkNotice` untouched. Both are rendered unconditionally
-whenever set:
+**File:** `web/src/lib/components/QRPanel.svelte:175-191` (the `paired`/`error`/`timeout` cases of `applySession`) and `web/src/lib/components/QRPanel.svelte:271-282` (`retireSession`)
 
-```svelte
-{#if connectError}
-	<Alert variant="destructive" class="mt-4">
-		<AlertDescription>{connectError}</AlertDescription>
-	</Alert>
-{/if}
+**Issue:** The CR-01 fix's own doc comment on `retireSession` states the
+invariant this file is meant to hold: "a plain terminal-state transition
+(paired/error/timeout) never calls this at all, since the kernel has
+already retired that session itself" (lines 267-270), and the new
+in-flight-branch comment explicitly frames "leaving it null keeps a later
+`retireSession` from issuing a second cancel for this id" (lines 239-243)
+as a deliberate design goal — i.e., the codebase's stated intent is
+*exactly one* cancel per session, ever.
 
-{#if linkNotice}
-	<p class="mt-4 text-[14px] leading-[1.4] text-muted-foreground">{linkNotice}</p>
-{/if}
-```
-
-The user would see a destructive "Couldn't verify this connection…" alert and
-the muted "Not linked yet — you can save this source now and link later…"
-notice at the same time — the second message implies a working, saveable
-connection while the first says the connection just failed, which is
-confusing and self-contradictory.
-
-**Fix:** clear `linkNotice` at the top of `handleConnectNext` (mirroring how
-`selectPluginType` already resets it), so a fresh trial-launch attempt starts
-without a stale prior-outcome message:
+That invariant does not actually hold. None of the three terminal cases
+in `applySession` (`paired` at 175-180, `error` at 181-186, `timeout` at
+187-191) clears `sessionId` back to `null` — only `retired` is set and
+timers are cleared. `onDestroy` unconditionally calls `retireSession()`
+on unmount regardless of what phase the panel is in:
 
 ```js
-async function handleConnectNext(event: SubmitEvent) {
-	event.preventDefault();
-	if (!selectedPluginType || describing) return;
-	linkNotice = '';
-	...
+onDestroy(() => {
+    retireSession();
+});
 ```
+
+Concretely:
+
+- A successful pairing (`paired`) transitions `AddSourceModal`'s `step`
+  from `'link'` to `'match'` (`handleLinkPaired`), which unmounts
+  `QRPanel`. `onDestroy` → `retireSession()` finds `sessionId` still set
+  from the last `qr` event and issues a second `DELETE` for a session the
+  kernel already retired (server-side) at the moment the terminal `paired`
+  poll response was built (`kernel/httpapi/whatsapplink.go`'s
+  `WhatsAppLinkPollHandler` calls `store.retire(id)` before writing the
+  terminal response). That second `DELETE` 404s
+  (`link_session_not_found`) — currently harmless, but it is a real,
+  observable violation of the "exactly one cancel" property the new code's
+  own comments claim, and it happens on the *success* path, the one this
+  phase cares most about getting right.
+- Clicking **Retry** from the `error` phase, or **Restart** from the
+  `expired` phase, calls `handleRetry` → `retireSession()` → finds the
+  old (already-terminal) `sessionId` still set → fires a redundant cancel
+  for it before starting the new session.
+
+No existing test (unit or e2e) catches this: e2e case 3 (`paired`
+success) never asserts `deleteCalls` stays at 0, and the qr-panel
+structural guard only checks that the three terminal cases set
+`retired = true` and call `clearTimers()` — it does not check `sessionId`.
+
+This is not currently a data-loss or security risk (the kernel's
+`WhatsAppLinkCancelHandler` finds no session and 404s harmlessly, and the
+already-completed pairing is unaffected), so it is not a BLOCKER. It is a
+genuine contract-consistency defect, though: it produces unnecessary
+network calls and server-side "session not found" log noise on every
+successful link, every Retry, and every Restart, and it means the
+invariant this same diff introduces comments asserting is not actually
+enforced by the code adjacent to it.
+
+**Fix:** Clear `sessionId` in all three terminal branches of
+`applySession`, matching what `retireSession` already does when it
+cancels a session itself:
+
+```js
+case 'paired':
+    retired = true;
+    clearTimers();
+    sessionId = null;
+    phase = 'success';
+    onpaired();
+    break;
+case 'error':
+    retired = true;
+    clearTimers();
+    sessionId = null;
+    phase = 'error';
+    errorMessage = session.message || 'The link attempt failed.';
+    break;
+case 'timeout':
+    retired = true;
+    clearTimers();
+    sessionId = null;
+    phase = 'expired';
+    break;
+```
+
+Consider also extending the qr-panel structural guard's "terminal cases"
+loop to assert `sessionId = null` alongside the existing `retired = true`
+/ `clearTimers()` checks, and adding an e2e assertion (e.g. to case 3)
+that `deleteCalls` stays `0` after reaching the `paired` terminal state
+and unmounting — otherwise this exact regression can reappear silently.
 
 ## Info
 
-### IN-01: Stale comment references a `POLL_FLOOR_MS` mechanism that no longer exists
+### IN-02: A second, non-literal echo of the deleted `POLL_FLOOR_MS` mechanism survives in the case 1 setup comment, undetected by the gap-closure's own automated check
 
-**File:** `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts:298-302`
-**Issue:** Case 2's setup comment reads:
+**File:** `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts:319-324`
 
-```ts
-// start answers the FIRST qr response directly (floored
-// expires_in_seconds so the panel's own poll cadence — clamped to
-// POLL_FLOOR_MS — fires promptly); the one scripted poll answers
-// the SECOND, different qr response.
+**Issue:** IN-01's fix corrected the case 2 setup comment (which
+literally named `POLL_FLOOR_MS`) and the gap-closure plan's self-check
+gated on `grep -c 'POLL_FLOOR_MS' ... = 0`. That check passes — the
+literal identifier is gone from the file. But the case 1 setup comment,
+a few lines earlier, still describes the same now-deleted
+clamped-to-a-floor mechanism using different words, which the literal
+grep cannot catch:
+
+```js
+// start answers 'qr' directly — the panel's own 'pending' ->
+// first-poll round trip (a real, floored delay) is exercised by
+// case 2 below, deliberately; every other case starts already in
+// its target state so its assertions are not incidentally timing-
+// dependent on that floor.
 ```
 
-`POLL_FLOOR_MS` does not exist anywhere in the shipped source
-(`QRPanel.svelte` only defines a fixed `POLL_INTERVAL_MS = 2000`, with no
-clamp/floor logic tied to `expires_in_seconds` — that per-response-tied
-cadence is exactly what `G-08-1`'s fix removed). This comment appears to be
-left over from an earlier design iteration and now describes a mechanism
-that was deliberately deleted by this same gap-closure. It doesn't affect
-test correctness, but it will actively mislead a future reader trying to
-understand the panel's poll cadence from this spec.
+"a real, floored delay" and "that floor" both describe the old
+`POLL_FLOOR_MS`-clamped-cadence design that G-08-1 replaced with the
+fixed, unconditional `POLL_INTERVAL_MS`. As currently worded this
+comment misleads a future reader into thinking a clamping/floor
+computation still exists and that case 1's lack of assertions on it is
+deliberate — case 1 doesn't poll at all (it answers `'qr'` directly from
+`start`), so the "that floor" reference is doubly confusing since it
+also isn't case 1's own concern.
 
-**Fix:** update the comment to reference `POLL_INTERVAL_MS` (as the header
-comment and case 9's comment already correctly do), e.g.:
+**Fix:** Reword to match the corrected case 2 comment's terminology
+(fixed cadence, not a floor):
 
-```ts
-// start answers the FIRST qr response directly; the one scripted poll
-// answers the SECOND, different qr response, delivered on QRPanel's own
-// fixed POLL_INTERVAL_MS cadence (not tied to expires_in_seconds — G-08-1).
+```js
+// start answers 'qr' directly — the panel's own 'pending' -> first-
+// poll round trip (a real delay, on QRPanel's fixed POLL_INTERVAL_MS
+// cadence) is exercised by case 2 below, deliberately; every other
+// case starts already in its target state so its assertions are not
+// incidentally timing-dependent on that cadence.
 ```
 
 ---
