@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 5/7 plans executed (gap closure in progress — `08-UAT.md` G-08-1 open)
+**Plans:** 6/7 plans executed (gap closure in progress — `08-UAT.md` G-08-1 open)
 
 Plans:
 **Wave 1**
@@ -454,7 +454,7 @@ Plans:
 
 **Gap closure — Wave 2** *(blocked on 08-05)*
 
-- [ ] 08-06-PLAN.md — Plugin + kernel half: `pairing_accepted`/`already_linked` wire events, link-subprocess stderr routed into the kernel log, first automated coverage of `execLinkSpawner`
+- [x] 08-06-PLAN.md — Plugin + kernel half: `pairing_accepted`/`already_linked` wire events, link-subprocess stderr routed into the kernel log, first automated coverage of `execLinkSpawner`
 
 **Gap closure — Wave 3** *(blocked on 08-05, 08-06)*
 
@@ -482,7 +482,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 5/7 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 6/7 | In Progress|  |
 
 ## Requirement Coverage
 
