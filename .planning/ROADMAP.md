@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
 - [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
-- [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban
+- [x] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (completed 2026-08-10)
 
 ## Phase Details
 
@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 4/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -470,7 +470,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 4/4 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 4/4 | Complete    | 2026-08-10 |
 
 ## Requirement Coverage
 
