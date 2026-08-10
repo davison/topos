@@ -226,7 +226,27 @@
 		pairingMessage = '';
 		try {
 			const session = await startWhatsAppLink({ plugin, path, instance });
-			if (retired) return;
+			if (retired) {
+				// The component was torn down while this start request was
+				// still in flight (08-REVIEW.md CR-01) — the kernel has
+				// already spawned a link subprocess, and on the Re-link
+				// entry point already suspended the real source instance,
+				// by the time it answers 200. A session id learned after
+				// teardown is still a live resource this component owns,
+				// per this file's own onDestroy invariant below. The
+				// alternative is the kernel's five-minute reaper, and a few
+				// repeated open/close cycles exhaust the four-slot
+				// concurrency cap long before that. Do NOT assign
+				// sessionId here: leaving it null keeps a later
+				// retireSession from issuing a second cancel for this id,
+				// and keeps poll()'s own early return in force so no poll
+				// is ever issued for a session this panel has abandoned.
+				void cancelWhatsAppLink(session.session).catch(() => {
+					// best-effort — the session may already be retired
+					// server-side.
+				});
+				return;
+			}
 			sessionId = session.session;
 			applySession(session);
 		} catch (err) {

@@ -112,6 +112,22 @@ interface LinkScript {
 	// repeats once exhausted (a session's terminal state stays terminal).
 	polls: LinkResponse[];
 	deleteCalls: number;
+	// startDelayMs delays the POST route's fulfillment by this many
+	// milliseconds before responding — used only by case 12 to create a
+	// genuine in-flight window between the request firing and the
+	// response resolving. Optional so every other case (1-11) fulfills
+	// immediately, unchanged.
+	startDelayMs?: number;
+	// deletedSessionIds records the session id embedded in each DELETE
+	// request's URL, percent-decoded exactly as the client sent it — so a
+	// case can assert the id actually cancelled was the one the kernel
+	// returned, never a hardcoded default. Optional so cases that only
+	// care about the delete count (deleteCalls) need not populate it.
+	deletedSessionIds?: string[];
+	// pollCalls counts GET poll requests — used by case 12 to assert no
+	// poll is ever issued for a session the panel has already abandoned.
+	// Optional so cases that don't care leave it unset.
+	pollCalls?: number;
 }
 
 /**
@@ -123,6 +139,12 @@ interface LinkScript {
  */
 async function scriptLinkSession(page: Page, script: LinkScript): Promise<void> {
 	await page.route('**/api/config/whatsapp-link', async (route) => {
+		if (script.startDelayMs) {
+			// The point of the delay (case 12 only): keeps the request
+			// genuinely in flight long enough for the test to tear the
+			// panel down before this route handler fulfills.
+			await new Promise((resolve) => setTimeout(resolve, script.startDelayMs));
+		}
 		const resp =
 			script.start ?? { status: 200, body: { schema_version: 1, session: 'sess-1', state: 'pending' } };
 		await route.fulfill({ status: resp.status, contentType: 'application/json', body: JSON.stringify(resp.body) });
@@ -132,6 +154,14 @@ async function scriptLinkSession(page: Page, script: LinkScript): Promise<void> 
 	await page.route('**/api/config/whatsapp-link/*', async (route) => {
 		if (route.request().method() === 'DELETE') {
 			script.deleteCalls++;
+			if (script.deletedSessionIds) {
+				// The client percent-encodes the id into the DELETE path
+				// (web/src/lib/api.ts's cancelWhatsAppLink) — decode the
+				// last path segment to recover the exact id it sent.
+				const url = route.request().url();
+				const rawId = url.slice(url.lastIndexOf('/') + 1);
+				script.deletedSessionIds.push(decodeURIComponent(rawId));
+			}
 			await route.fulfill({
 				status: 200,
 				contentType: 'application/json',
@@ -139,6 +169,7 @@ async function scriptLinkSession(page: Page, script: LinkScript): Promise<void> 
 			});
 			return;
 		}
+		if (script.pollCalls !== undefined) script.pollCalls++;
 		const entry = script.polls[Math.min(pollIndex, script.polls.length - 1)];
 		pollIndex++;
 		await route.fulfill({
@@ -294,11 +325,11 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 	}) => {
 		await offerWhatsAppPluginType(page);
 		await scriptDescribeWhatsApp(page);
-		// start answers the FIRST qr response directly (floored
-		// expires_in_seconds so the panel's own poll cadence — clamped to
-		// POLL_FLOOR_MS — fires promptly); the one scripted poll answers
-		// the SECOND, different qr response. This is the one case that
-		// deliberately exercises the real poll-floor delay (a couple of
+		// start answers the FIRST qr response directly; the one scripted
+		// poll answers the SECOND, different qr response, delivered on
+		// QRPanel's own fixed POLL_INTERVAL_MS cadence (not tied to
+		// expires_in_seconds — G-08-1). This is the one case that
+		// deliberately exercises that real cadence delay (a couple of
 		// real seconds), since rotation IS the poll mechanism.
 		await scriptLinkSession(page, {
 			start: {
@@ -716,5 +747,68 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 		await expect(dialog.getByRole('heading', { name: 'Match settings for armor' })).toBeVisible({
 			timeout: 15_000
 		});
+	});
+
+	test('12. teardown during the in-flight start still releases the session (08-REVIEW.md CR-01)', async ({
+		page,
+		kernel
+	}) => {
+		await offerWhatsAppPluginType(page);
+		await scriptDescribeWhatsApp(page);
+		// sess-inflight is deliberately not the helper's default sess-1 —
+		// asserting on the default would pass against a hardcoded cancel.
+		const qrResponse = {
+			status: 200,
+			body: {
+				schema_version: 1,
+				session: 'sess-inflight',
+				state: 'qr',
+				png_data_uri: 'data:image/png;base64,INFLIGHT',
+				expires_in_seconds: 30
+			}
+		};
+		const script: LinkScript = {
+			start: qrResponse,
+			// The point of this case: with no delay the request completes
+			// before Escape can land and the case proves nothing.
+			startDelayMs: 1500,
+			polls: [qrResponse],
+			deleteCalls: 0,
+			deletedSessionIds: [],
+			pollCalls: 0
+		};
+		await scriptLinkSession(page, script);
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+
+		// Registered before opening the flow — registering it afterwards
+		// races the request that has probably already fired, and would
+		// hang.
+		const startRequest = page.waitForRequest(
+			(req) => req.url().includes('/api/config/whatsapp-link') && req.method() === 'POST'
+		);
+		await openWhatsAppConnectStep(page, 'In Flight WhatsApp');
+
+		// Observed while the route handler is still sleeping — genuinely
+		// in flight, the same window this case's diagnosis (CR-01)
+		// describes: the panel is torn down while the start request is
+		// still outstanding, so its unmount-time path finds no session id
+		// to cancel; the response then arrives for a component that no
+		// longer cares, and the subprocess the kernel already spawned
+		// (plus, on Re-link, the instance it already suspended) is only
+		// released if the panel cancels the id at that moment.
+		await startRequest;
+		await page.keyboard.press('Escape');
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+
+		await expect
+			.poll(() => script.deletedSessionIds!.length, { timeout: 5_000 })
+			.toBeGreaterThan(0);
+		expect(script.deletedSessionIds).toEqual(['sess-inflight']);
+		// Exactly one, not "at least one" — at-least-one cannot
+		// distinguish the fix from a double-cancel.
+		expect(script.deleteCalls).toBe(1);
+		expect(script.pollCalls).toBe(0);
 	});
 });
