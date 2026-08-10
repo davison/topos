@@ -111,6 +111,46 @@ describe('all six states render a distinct branch', () => {
 	});
 });
 
+describe('beginSession cancels a session it created if torn down before learning its id (08-REVIEW.md CR-01)', () => {
+	const startMarker = 'const session = await startWhatsAppLink(';
+	const endMarker = 'sessionId = session.session;';
+	const postResolutionSlice = extractBetween(stripped, startMarker, endMarker);
+	// The retired-branch region is everything up to (not including) the
+	// final sessionId assignment that ends the extracted slice above —
+	// that assignment itself is what this guard's last assertion checks
+	// is ABSENT from the retired branch, so it must be excluded here or
+	// every slice would trivially contain it.
+	const retiredBranch = postResolutionSlice.slice(0, postResolutionSlice.length - endMarker.length);
+
+	it('the retired branch contains a cancelWhatsAppLink( call', () => {
+		expect(
+			retiredBranch.includes('cancelWhatsAppLink('),
+			'expected the panel to release a session it created even when it was torn down before learning the id'
+		).toBe(true);
+	});
+
+	it("the cancel call's argument is the resolved response's own session field, not a string literal and not the module-level sessionId", () => {
+		expect(
+			/cancelWhatsAppLink\(\s*session\.session\s*\)/.test(retiredBranch),
+			'expected the id the kernel returned to be forwarded verbatim — never a hardcoded default and never the (still-null at this point) module-level sessionId'
+		).toBe(true);
+	});
+
+	it('a .catch( follows the cancel call in the same branch', () => {
+		expect(
+			retiredBranch.includes('.catch('),
+			'expected the teardown-time cancel to be best-effort — a rejection must never surface as an unhandled promise rejection'
+		).toBe(true);
+	});
+
+	it('the retired branch contains no assignment to sessionId', () => {
+		expect(
+			/sessionId\s*=/.test(retiredBranch),
+			"expected the retired branch to leave sessionId unassigned — that is what keeps a later teardown from issuing a second cancel for the same id, and keeps poll()'s own early return in force"
+		).toBe(false);
+	});
+});
+
 describe('cancel and unmount both invoke cancelWhatsAppLink (T-08-10)', () => {
 	const retireSessionBody = extractBetween(stripped, 'function retireSession() {', '\n\t}');
 
