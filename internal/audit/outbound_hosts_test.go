@@ -35,6 +35,40 @@ var sanctionedEgressFiles = map[string]bool{
 	"plugins/silverbullet/client.go": true,
 }
 
+// sanctionedDeepLinkLiteralFiles is a narrower, DIFFERENT-IN-KIND
+// allowlist from sanctionedEgressFiles above: files permitted to contain
+// a foreign https(s)/ws(s) URL LITERAL because it is deep-link METADATA
+// this Go process itself never dials — the literal is handed back
+// through Item.DeepLink to the frontend, which the USER (not this
+// process) may click to open in their own browser/app. This is a
+// materially different privacy shape than sanctionedEgressFiles' REST/
+// HTTP client files (which the plugin process itself uses to make
+// outbound calls on ITS OWN initiative, no user click required):
+// widening THIS list does NOT grant a file permission to construct an
+// http.Client or issue an outbound request — the outbound-HTTP-
+// construction check in scanFileForForeignEgress below still applies to
+// these files unconditionally (that check is gated on sanctionedEgressFiles
+// alone, checked separately from this list).
+//
+// plugins/whatsapp/deeplink.go (08-01-PLAN.md Task 3's real-device spike,
+// 2026-08-10): WhatsApp's only documented, reliable click-to-chat web API
+// is "https://wa.me/<phone>" (1:1), with "https://web.whatsapp.com/" as
+// the honest best-effort group fallback (WhatsApp has no per-group web
+// URL) — a non-functional bare "whatsapp://" scheme (this file's PRIOR
+// literal) does nothing at all on a desktop with no WhatsApp Linux
+// client installed, confirmed live against the real spike machine. This
+// project's own privacy constraint ("no personal content leaves the
+// user's machines") is about data this plugin's OWN background process
+// transmits without the user's direct action — an Item's own deep_link
+// field is inert until the user themselves clicks "Open in WhatsApp",
+// the identical shape plugins/signal/deeplink.go's own
+// "sgnl://signal.me/#p/<e164>" scheme URI already uses (that one simply
+// isn't an http(s)/ws(s) scheme, so it never tripped this scanner in the
+// first place).
+var sanctionedDeepLinkLiteralFiles = map[string]bool{
+	"plugins/whatsapp/deeplink.go": true,
+}
+
 // skipDirs are directories (relative to repoRoot, slash-separated) whose
 // entire subtree is skipped: vendored/generated/build output that is
 // never shipped as source, plus .git. "testdata" is skipped anywhere it
@@ -118,7 +152,7 @@ func TestNoForeignEgressOutsideSanctionedClient(t *testing.T) {
 			return nil
 		}
 
-		offenses = append(offenses, scanFileForForeignEgress(t, path, sanctionedEgressFiles[rel])...)
+		offenses = append(offenses, scanFileForForeignEgress(t, path, sanctionedEgressFiles[rel], sanctionedDeepLinkLiteralFiles[rel])...)
 		return nil
 	})
 	if err != nil {
@@ -144,7 +178,7 @@ func TestNoForeignEgressOutsideSanctionedClient(t *testing.T) {
 // instance of each offense kind, and failing unless both are reported.
 func TestScanner_FixtureReportsBothOffenseKinds(t *testing.T) {
 	fixture := filepath.Join("testdata", "foreign_host_violation.go.txt")
-	offenses := scanFileForForeignEgress(t, fixture, false)
+	offenses := scanFileForForeignEgress(t, fixture, false, false)
 	if len(offenses) < 2 {
 		t.Fatalf("expected at least 2 offenses from the negative-control fixture, got %d: %v", len(offenses), offenses)
 	}
@@ -163,9 +197,13 @@ func shouldSkipDir(rel string) bool {
 // scanFileForForeignEgress parses path and walks its AST, returning one
 // human-readable offense string per finding. sanctioned is true only for
 // sanctionedEgressFiles, in which case outbound-HTTP-construction offenses
-// are not flagged (foreign URL literals still are, though none exist
-// there today).
-func scanFileForForeignEgress(t *testing.T, path string, sanctioned bool) []string {
+// are not flagged (foreign URL literals still are). deepLinkSanctioned is
+// true only for sanctionedDeepLinkLiteralFiles, in which case foreign URL
+// LITERALS are not flagged — but outbound-HTTP-construction offenses
+// remain flagged regardless (gated on sanctioned alone), since a
+// deep-link file being allowed to contain a URL string is not the same
+// permission as being allowed to dial one.
+func scanFileForForeignEgress(t *testing.T, path string, sanctioned, deepLinkSanctioned bool) []string {
 	t.Helper()
 
 	fset := token.NewFileSet()
@@ -178,6 +216,9 @@ func scanFileForForeignEgress(t *testing.T, path string, sanctioned bool) []stri
 	ast.Inspect(file, func(n ast.Node) bool {
 		switch expr := n.(type) {
 		case *ast.BasicLit:
+			if deepLinkSanctioned {
+				return true
+			}
 			if expr.Kind != token.STRING {
 				return true
 			}
