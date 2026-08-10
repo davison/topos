@@ -16,8 +16,10 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import QrCode from '@lucide/svelte/icons/qr-code';
 	import { cn } from '$lib/utils.js';
 	import { healthTone, formatRelativeTime, type HealthTone } from '$lib/format';
+	import { WHATSAPP_SOURCE_TYPE } from '$lib/plugin-fields';
 	import type { SourceStatus } from '$lib/api';
 
 	// The single merged per-instance affordance (D-01): health dot,
@@ -34,6 +36,11 @@
 	// settings…/Remove from this webspace via `onedit`. A measurement
 	// clone (WebspaceHeader.svelte's invisible `measureEl` row) passes a
 	// no-op `onedit` — see this file's own guard, chip-edit-menu.test.ts.
+	//
+	// D-03 (08-04-PLAN.md Task 2) widens the menu with a fourth entry,
+	// "Re-link…", offered only when `source.source_type` is WhatsApp's own
+	// Describe-reported kind — every other plugin type has nothing to
+	// re-link, and an inert menu entry is worse than an absent one.
 	let {
 		source,
 		selected,
@@ -46,7 +53,7 @@
 		selected: boolean;
 		onfilter: (name: string) => void;
 		onrefresh: (name: string) => void;
-		onedit: (name: string, kind: 'connection' | 'match' | 'remove') => void;
+		onedit: (name: string, kind: 'connection' | 'match' | 'relink' | 'remove') => void;
 		// busy (07-05-PLAN.md Task 2, the shared save/reload state pattern's
 		// in-flight rule — E6 "the initiating control disables in flight")
 		// disables ONLY the "Remove from this webspace" item below: it is
@@ -60,6 +67,12 @@
 	} = $props();
 
 	let tone = $derived(healthTone(source));
+
+	// isWhatsApp gates the Re-link… menu entry (D-03) — keyed on
+	// source_type, the Describe-reported plugin KIND GET /api/sources
+	// actually exposes, never on a plugin binary name this component has
+	// no other reason to know.
+	let isWhatsApp = $derived(source.source_type === WHATSAPP_SOURCE_TYPE);
 
 	const DOT_TONE_CLASS: Record<HealthTone, string> = {
 		success: 'bg-success',
@@ -194,6 +207,12 @@
 				<Pencil aria-hidden="true" />
 				Edit match settings…
 			</DropdownMenuItem>
+			{#if isWhatsApp}
+				<DropdownMenuItem onSelect={() => onedit(source.name, 'relink')}>
+					<QrCode aria-hidden="true" />
+					Re-link…
+				</DropdownMenuItem>
+			{/if}
 			<DropdownMenuSeparator />
 			<DropdownMenuItem
 				class="text-foreground hover:text-destructive focus:text-destructive data-highlighted:text-destructive"

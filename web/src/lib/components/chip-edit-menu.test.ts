@@ -2,11 +2,18 @@
 // edit-menu control (D-12): the aria-label prefix and size-8 sizing, the
 // stopPropagation-before-callback click handler (the D-12 vs Phase 6 D-01
 // collision — a click must never also toggle the chip's filter) with the
-// filter button's own handler left untouched, the exact three-item-plus-
+// filter button's own handler left untouched, the exact four-item-plus-
 // separator menu contents (no instance-deletion item — D-12/D-13's "exactly
 // one place in the app deletes an instance" rule), the remove item's
 // destructive tint, and WebspaceHeader.svelte's measurement clones still
 // wiring a no-op onedit.
+//
+// 08-04-PLAN.md Task 2 (D-03) extends this file: the menu's fourth entry,
+// "Re-link…", is guarded on the WhatsApp source_type — this is a static
+// source-scan guard (the DropdownMenuItem markup always exists in the
+// component's source regardless of the runtime {#if} branch it's wrapped
+// in), so the guard assertion below checks the {#if isWhatsApp} wrapper
+// itself, not a rendered absence.
 //
 // House pattern (matches source-chip-pill.test.ts / source-chip-selected.test.ts):
 // comment-stripped source scanning, `extractBetween` scoping, a
@@ -117,7 +124,7 @@ describe('click handling: stopPropagation before the callback, filter button unt
 	});
 });
 
-describe('menu contents: exactly three action items plus one separator, no delete-instance item', () => {
+describe('menu contents: exactly four action items plus one separator, no delete-instance item', () => {
 	it('contains exactly one DropdownMenuSeparator', () => {
 		const separators = editMenuBlock.match(/<DropdownMenuSeparator/g) ?? [];
 		expect(separators.length).toBe(1);
@@ -155,8 +162,35 @@ describe('menu contents: exactly three action items plus one separator, no delet
 		});
 		expect(
 			labels,
-			'expected the menu item label set to equal exactly [Edit connection…, Edit match settings…, Remove from this webspace] — proven by set equality, not by grepping for the absent word "Delete"'
-		).toEqual(['Edit connection…', 'Edit match settings…', 'Remove from this webspace']);
+			'expected the menu item label set to equal exactly [Edit connection…, Edit match settings…, Re-link…, Remove from this webspace] — proven by set equality, not by grepping for the absent word "Delete"'
+		).toEqual(['Edit connection…', 'Edit match settings…', 'Re-link…', 'Remove from this webspace']);
+	});
+});
+
+// 08-04-PLAN.md Task 2 (D-03): the Re-link… entry's render is guarded on
+// the WhatsApp source type — no other plugin type has anything to
+// re-link, and an inert menu entry is worse than an absent one.
+describe('Re-link… entry: guarded on the WhatsApp source type', () => {
+	it('the Re-link… DropdownMenuItem is wrapped in an {#if isWhatsApp} block', () => {
+		const relinkIndex = editMenuBlock.indexOf('Re-link…');
+		expect(relinkIndex, 'expected to find a "Re-link…" menu item').toBeGreaterThanOrEqual(0);
+		const guardIndex = editMenuBlock.lastIndexOf('{#if isWhatsApp}', relinkIndex);
+		const guardCloseIndex = editMenuBlock.indexOf('{/if}', relinkIndex);
+		expect(
+			guardIndex,
+			'expected the Re-link… item to be preceded by an {#if isWhatsApp} guard'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			guardCloseIndex,
+			'expected the {#if isWhatsApp} guard around Re-link… to close with {/if}'
+		).toBeGreaterThan(relinkIndex);
+	});
+
+	it('isWhatsApp is derived from source.source_type, not the plugin binary name', () => {
+		expect(
+			strippedChip.includes("source.source_type === WHATSAPP_SOURCE_TYPE"),
+			'expected isWhatsApp to key off source.source_type — the field GET /api/sources actually exposes, not a plugin binary name this component has no other reason to know'
+		).toBe(true);
 	});
 });
 

@@ -119,7 +119,7 @@
 		// behaves identically to one in the row — but explicitly NOT to the
 		// invisible measurement clones, which keep a no-op handler so a
 		// measurement clone can never dispatch an edit.
-		onedit: (name: string, kind: 'connection' | 'match' | 'remove') => void;
+		onedit: (name: string, kind: 'connection' | 'match' | 'relink' | 'remove') => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));

@@ -33,6 +33,7 @@
 	import DetailPane from '$lib/components/DetailPane.svelte';
 	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
 	import EditSourceModal from '$lib/components/EditSourceModal.svelte';
+	import RelinkModal from '$lib/components/RelinkModal.svelte';
 	import ManageSourcesModal from '$lib/components/ManageSourcesModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
@@ -149,6 +150,15 @@
 	let editInstance = $state<string | null>(null);
 	let editVocabulary = $state<string[]>([]);
 
+	// relinkInstance (D-03, 08-04-PLAN.md Task 2) is tracked in its OWN
+	// state value, deliberately never overloading editInstance/editMode —
+	// a Re-link session opens a structurally different modal (RelinkModal,
+	// no describePlugin call, no stale-response guard) and must never
+	// collide with an in-progress Edit connection…/Edit match settings…
+	// session over the same shared state, the exact class of bug the
+	// stale-response guard above exists to prevent for the describe race.
+	let relinkInstance = $state<string | null>(null);
+
 	// The single edit-session reset site (mirrors AddSourceModal.svelte's
 	// own single resetFlowState) — handleEditClose and handleEditSaved both
 	// call this and do no clearing of their own. Clearing editInstance
@@ -163,9 +173,16 @@
 		editVocabulary = [];
 	}
 
-	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'remove') {
+	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'relink' | 'remove') {
 		if (kind === 'remove') {
 			await handleRemoveSource(name);
+			return;
+		}
+		if (kind === 'relink') {
+			// Branches before the describe path below on purpose — Re-link
+			// opens a different modal and needs no describePlugin call,
+			// and therefore no stale-response guard.
+			relinkInstance = name;
 			return;
 		}
 		if (!configResponse) return;
@@ -212,6 +229,22 @@
 
 	async function handleEditSaved() {
 		resetEditSession();
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
+
+	// handleRelinkClose/handleRelinked (D-03): relinkInstance is the ONE
+	// place a Re-link session is cleared — RelinkModal's own onclose fires
+	// on every close path (Escape, outside click, paired, and an explicit
+	// cancel from inside QRPanel), and onrelinked fires additionally once
+	// paired, so the caller refreshes the same source-health state a
+	// config change already refreshes elsewhere in this file (D-07's
+	// eager reconcile) — the chip's own health dot updates in place, no
+	// page reload.
+	function handleRelinkClose() {
+		relinkInstance = null;
+	}
+
+	async function handleRelinked() {
 		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
 	}
 
@@ -690,6 +723,18 @@
 				vocabulary={editVocabulary}
 				onclose={handleEditClose}
 				onsaved={handleEditSaved}
+			/>
+		{/key}
+	{/if}
+
+	{#if configResponse && relinkInstance}
+		{#key relinkInstance}
+			<RelinkModal
+				open={true}
+				instance={relinkInstance}
+				config={configResponse.config}
+				onclose={handleRelinkClose}
+				onrelinked={handleRelinked}
 			/>
 		{/key}
 	{/if}
