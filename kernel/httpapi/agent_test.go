@@ -316,6 +316,66 @@ func TestAgentStreamHandler_OrderingMatchesHumanStreamWithUngrantedRemoved(t *te
 	}
 }
 
+// TestAgentStreamHandler_SyncStatusComposesGrantAndParticipation proves
+// agentStreamHandler's sync object composes filterRunsByGrant with
+// filterRunsByParticipation (08-10-PLAN.md Task 2, 08-UAT.md G-08-3):
+// a source that is GRANTED but does not PARTICIPATE in the webspace is
+// excluded, and a source that PARTICIPATES but is NOT GRANTED is excluded
+// too — both must be true independently for the aggregate to end up
+// empty; either alone erroneously surviving would flip sync.status to
+// "error" (both seeded runs are errored), so the zero-value assertion
+// below only holds if both exclusions are enforced.
+func TestAgentStreamHandler_SyncStatusComposesGrantAndParticipation(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	id1, err := store.StartSyncRun(ctx, "granted-not-participating")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if err := store.FinishSyncRun(ctx, id1, "error", "granted-not-participating failure", 0); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+	id2, err := store.StartSyncRun(ctx, "participating-not-granted")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if err := store.FinishSyncRun(ctx, id2, "error", "participating-not-granted failure", 0); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			// Granted, but the webspace's own Sources allowlist below never
+			// names it — ParticipatesIn is false for this instance.
+			"granted-not-participating": {Plugin: "x", BaseURL: "http://x", Token: "t", Agent: config.AgentGrant{Read: true}},
+			// Participates (named in the allowlist, kept in by the
+			// Keywords fallback since it has no explicit Match block), but
+			// carries no [agent] grant at all.
+			"participating-not-granted": {Plugin: "x", BaseURL: "http://x", Token: "t"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"ws": {Keywords: []string{"x"}, Sources: []string{"participating-not-granted"}},
+		},
+	}
+	router := newAgentTestRouter(store, cfg, &fakeFetcher{}, &fakeProber{})
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/v1/webspaces/ws/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Sync.Status != "" || resp.Sync.Error != "" {
+		t.Errorf("expected the zero-value sync object (both sources excluded by the composed grant+participation filter), got: %+v", resp.Sync)
+	}
+}
+
 // TestAgentAPIRoutesUnaffected proves every /api/* route's response is
 // unchanged when grants are toggled — grants gate the agent surface only.
 func TestAgentAPIRoutesUnaffected(t *testing.T) {

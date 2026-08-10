@@ -93,7 +93,7 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 		}
 
 		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
-			resp.Sync = aggregateSyncStatus(runs)
+			resp.Sync = aggregateSyncStatus(filterRunsByParticipation(runs, cfg, name))
 		}
 
 		for i, it := range items {

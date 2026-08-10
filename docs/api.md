@@ -159,24 +159,46 @@ sync history alone, which meant a webspace just created through the UI
 transiently, and — on an install with zero configured sources at all,
 where no sync ever runs — permanently; that gap is closed.
 
-**The `sync` object is an aggregate across every configured source**
-(`KERN-04`), not a single most-recent-run — this is a behavior change
-from Phase 1, where it mirrored the single most recently recorded run
-across the whole kernel. `status` is `"error"` if *any* configured
-source's latest run errored, else `"running"` if any source is still
-mid-sync, else `"ok"` if at least one run has ever completed, else the
-zero value (`""`) if nothing has ever synced. `finished_unix` is the
-newest `finished_unix` across every source's latest run. `error` joins
-each failing source's message, prefixed with its source INSTANCE id (never
-the plugin kind — two instances of one plugin type report independently),
-in sorted source order (so it's deterministic) — e.g. `"work-email: dial
-tcp: connection refused"`. This is what stops a two-source webspace whose only
-failing source returned nothing from rendering as merely empty: before
-this aggregate, a webspace with one healthy source and one silently
-broken one could report `sync.status: "ok"` just because the *other*
-source's run happened to be the most recent one recorded anywhere in the
-kernel. `GET /api/webspaces`'s `last_sync` field uses the identical
-aggregate.
+**The `sync` object is an aggregate across the webspace's PARTICIPATING
+sources** (`KERN-04`, narrowed by `08-UAT.md` G-08-3), not a single
+most-recent-run and not every configured source — a behavior change from
+Phase 1 (single most-recently-recorded run kernel-wide) and again from
+the aggregate's original Phase 2 shape (every configured source,
+regardless of whether it feeds this webspace). "Participating" is decided
+by the identical allowlist-and-match-input rule the sync path itself
+applies (`correlate.ParticipatesIn`): a source instance counts only when
+it is still configured AND either named in the webspace's `sources`
+allowlist implicitly (an empty allowlist admits every configured
+instance) or explicitly, AND has actual match input for this webspace (an
+explicit `match` block naming it, or a non-empty `keywords` fallback). A
+source excluded by the webspace's own `sources` allowlist, or one that
+was removed from `[sources.*]` entirely while its sync history survives,
+never contributes to this webspace's `sync` object — even if that same
+source's failure is real and currently affecting a DIFFERENT webspace it
+does feed.
+
+`status` is `"error"` if *any* participating source's latest run errored,
+else `"running"` if any participating source is still mid-sync, else
+`"ok"` if at least one participating source's run has ever completed,
+else the zero value (`""`) if no participating source has ever synced —
+including the case where the webspace has no participating sources at
+all (e.g. a webspace known only from surviving index rows, with no
+`[webspaces.*]` block left in config). `finished_unix` is the newest
+`finished_unix` across every participating source's latest run. `error`
+joins each failing participating source's message, prefixed with its
+source INSTANCE id (never the plugin kind — two instances of one plugin
+type report independently), in sorted source order (so it's
+deterministic) — e.g. `"work-email: dial tcp: connection refused"`. This
+is what stops a two-source webspace whose only failing PARTICIPATING
+source returned nothing from rendering as merely empty: before the
+participation scope, a webspace with one healthy source and one silently
+broken one — even a source that didn't feed this webspace at all — could
+have that unrelated failure reported here just because it was the most
+recently recorded run anywhere in the kernel. `GET /api/webspaces`'s
+`last_sync` field is now computed PER WEBSPACE by this identical rule
+(each webspace's own participating sources, not one shared kernel-wide
+value), and the `/agent/v1` mirrors below compose this same participation
+scoping with grant filtering.
 
 ### `GET /api/webspaces/{webspace}/search`
 
@@ -871,8 +893,8 @@ instance's `agent.read` is set explicitly.
 | Route | Mirrors | Restriction |
 |---|---|---|
 | `GET /agent/v1/sources` | `GET /api/sources` | Ungranted sources are omitted entirely; each entry gains a `capabilities: {read, handoff}` object. |
-| `GET /agent/v1/webspaces` | `GET /api/webspaces` | `item_count` and `last_sync` are computed over granted sources only. |
-| `GET /agent/v1/webspaces/{webspace}/stream` | `GET /api/webspaces/{webspace}/stream` | `items` and `sync` are restricted to granted sources; ordering is otherwise identical to the `/api` stream with ungranted rows removed, never reordered. |
+| `GET /agent/v1/webspaces` | `GET /api/webspaces` | `item_count` and `last_sync` are computed over granted sources only; `last_sync` additionally composes the same per-webspace participation scoping the `/api` route now applies (see "The `sync` object is an aggregate..." above) — grant filtering never widens what participation alone would report. |
+| `GET /agent/v1/webspaces/{webspace}/stream` | `GET /api/webspaces/{webspace}/stream` | `items` and `sync` are restricted to granted sources; ordering is otherwise identical to the `/api` stream with ungranted rows removed, never reordered. `sync` composes grant filtering with the identical participation scoping the `/api` route applies. |
 | `GET /agent/v1/items/{id}` | `GET /api/items/{id}` | An ungranted source's item responds identically to a nonexistent id (see below). |
 | `GET /agent/v1/items/{id}/content` | `GET /api/items/{id}/content` | Same restriction as above; no rendition bytes are written for an ungranted item. |
 | `GET /agent/v1/items/{id}/thumbnail` | `GET /api/items/{id}/thumbnail` | Same restriction as above. |

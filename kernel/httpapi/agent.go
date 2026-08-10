@@ -144,6 +144,13 @@ func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName
 // (structural filtering, not a cosmetic count adjustment — a webspace
 // whose only items belong to an ungranted source reports item_count 0,
 // exactly as if that source had never synced anything).
+//
+// last_sync is computed PER WEBSPACE (08-UAT.md G-08-3, mirroring
+// WebspacesHandler's own move), composing filterRunsByParticipation with
+// the existing filterRunsByGrant rather than replacing it — grant
+// filtering stays outermost in meaning: an ungranted source must remain
+// invisible through this namespace regardless of whether it participates
+// in the webspace being asked about.
 func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := cfgStore.Expanded()
@@ -155,7 +162,6 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		lastSync := aggregateSyncStatus(filterRunsByGrant(runs, granted))
 
 		names := make([]string, 0, len(cfg.Webspaces))
 		for name := range cfg.Webspaces {
@@ -174,7 +180,7 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 				Name:      name,
 				Keywords:  keywordsOrEmpty(cfg.Webspaces[name].Keywords),
 				ItemCount: count,
-				LastSync:  lastSync,
+				LastSync:  aggregateSyncStatus(filterRunsByGrant(filterRunsByParticipation(runs, cfg, name), granted)),
 			})
 		}
 
@@ -187,7 +193,9 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 // with items filtered to the granted source set AND to the webspace's
 // saved permanent filter (D-16: the filtered view IS the webspace for
 // every consumer, human and agent alike), and sync status aggregated over
-// the granted set. An unknown webspace still returns 404
+// the webspace's participating sources (08-UAT.md G-08-3), further
+// restricted to the granted set — the same composition
+// agentWebspacesHandler applies. An unknown webspace still returns 404
 // webspace_not_found (the webspace's existence is not a grant question);
 // existence itself is now answered by webspaceIsKnown (07-15-PLAN.md) — a
 // name in the running config OR with surviving index rows — so a
@@ -236,7 +244,7 @@ func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober Healt
 		}
 
 		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
-			resp.Sync = aggregateSyncStatus(filterRunsByGrant(runs, granted))
+			resp.Sync = aggregateSyncStatus(filterRunsByGrant(filterRunsByParticipation(runs, cfg, name), granted))
 		}
 
 		WriteJSON(w, http.StatusOK, resp)

@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/pluginhost"
 	"github.com/davison/topos/kernel/syncer"
@@ -167,11 +168,18 @@ func SourceRefreshHandler(cfgStore *config.Store, refresher Refresher) http.Hand
 
 		result, err := refresher.Refresh(r.Context(), name)
 		if err != nil {
-			// The only error Refresher.Refresh returns is
-			// syncer.ErrUnknownSource, which cannot happen here since name
-			// was just validated against cfg.Sources — but if a caller's
-			// Refresher implementation somehow disagrees with cfg, treat
-			// it the same way rather than leaking a 500.
+			// syncer.ErrUnknownSource is now reachable here despite the
+			// validation above (08-09-PLAN.md, landing in this same wave):
+			// a source instance suspended for an in-flight WhatsApp link
+			// session stays present in cfg.Sources but is deliberately
+			// absent from the Coordinator, so a refresh request racing that
+			// suspension window hits this branch legitimately, not only a
+			// caller whose Refresher implementation disagrees with cfg. The
+			// existing 404 source_not_found envelope is deliberately reused
+			// for it — no new error code, no contract change — since from
+			// this route's caller the two cases ("never existed" and
+			// "temporarily unavailable") both mean "not refreshable right
+			// now."
 			WriteError(w, http.StatusNotFound, "source_not_found", "source \""+name+"\" was not found")
 			return
 		}
@@ -255,4 +263,47 @@ func aggregateSyncStatus(runs map[string]index.SyncRun) syncStatus {
 	}
 
 	return syncStatus{Status: status, FinishedUnix: newestFinished, Error: strings.Join(errParts, "; ")}
+}
+
+// filterRunsByParticipation restricts a LatestSyncRunPerSource-shaped map
+// (keyed by source INSTANCE id) to the subset that actually feeds
+// webspace, mirroring agent.go's filterRunsByGrant shape but scoping by
+// participation rather than by agent grant. A run's source qualifies only
+// when BOTH:
+//
+//  1. It is still a key of cfg.Sources — a run row can outlive its
+//     instance's removal from config, and a removed instance obviously
+//     cannot participate in anything.
+//  2. correlate.ParticipatesIn(cfg.Webspaces[webspace], source) is true —
+//     the exact predicate the sync path itself applies via
+//     correlate.matchFieldsFor, covering both the allowlist gate (D-03)
+//     and the has-match-input rule (D-20). Scoping with anything else
+//     would let this aggregate report a status for a (webspace, source)
+//     pair no sync would ever run for, or drop one it would.
+//
+// A webspace known only from surviving index rows (07-15-PLAN.md), with
+// no `[webspaces.*]` block left in config, resolves cfg.Webspaces[webspace]
+// to the zero value — ParticipatesIn is false for every source against
+// it, so this correctly returns an empty map (and therefore the zero-value
+// sync object): an unconfigured webspace cannot sync at all, so reporting
+// no participants is honest, not a bug.
+//
+// This exists because a webspace's reported sync status must describe the
+// sources that actually feed it (08-UAT.md G-08-3): the client treats a
+// failing status with zero items as a statement about THIS webspace, and
+// before this scoping any configured source's failure — participating or
+// not — leaked into every webspace's aggregate.
+func filterRunsByParticipation(runs map[string]index.SyncRun, cfg *config.Config, webspace string) map[string]index.SyncRun {
+	ws := cfg.Webspaces[webspace]
+	out := make(map[string]index.SyncRun, len(runs))
+	for source, run := range runs {
+		if _, ok := cfg.Sources[source]; !ok {
+			continue
+		}
+		if !correlate.ParticipatesIn(ws, source) {
+			continue
+		}
+		out[source] = run
+	}
+	return out
 }

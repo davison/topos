@@ -305,6 +305,64 @@ func TestAggregateSyncStatus_ErrorTakesPrecedenceOverOK(t *testing.T) {
 	}
 }
 
+// TestFilterRunsByParticipation_FourBranches is the direct unit test of
+// filterRunsByParticipation (08-10-PLAN.md Task 2, 08-UAT.md G-08-3):
+// four source instances against one webspace, each exercising a distinct
+// branch of the (config-membership AND correlate.ParticipatesIn) rule.
+func TestFilterRunsByParticipation_FourBranches(t *testing.T) {
+	runs := map[string]index.SyncRun{
+		// removed-from-config: still has a run row, but no longer a key of
+		// cfg.Sources — must be dropped regardless of the webspace's own
+		// participation rules.
+		"removed-instance": {Source: "removed-instance", Status: "error"},
+		// excluded-by-allowlist: still configured, but the webspace's
+		// explicit Sources allowlist does not name it — must be dropped.
+		"excluded-instance": {Source: "excluded-instance", Status: "error"},
+		// keywords-fallback: configured, no explicit Match block, kept in
+		// by the webspace's non-empty Keywords fallback — must be kept.
+		"keywords-instance": {Source: "keywords-instance", Status: "ok"},
+		// explicit-match-block: configured, and named directly in the
+		// webspace's Match map — must be kept regardless of Keywords.
+		"explicit-match-instance": {Source: "explicit-match-instance", Status: "ok"},
+	}
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"excluded-instance":       {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			"keywords-instance":       {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			"explicit-match-instance": {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			// "removed-instance" is deliberately absent from cfg.Sources.
+		},
+		Webspaces: map[string]config.Webspace{
+			"ws": {
+				Keywords: []string{"demo"},
+				Sources:  []string{"keywords-instance", "explicit-match-instance"},
+				Match: map[string]config.MatchBlock{
+					"explicit-match-instance": {"field": []string{"value"}},
+				},
+			},
+		},
+	}
+
+	got := filterRunsByParticipation(runs, cfg, "ws")
+
+	if _, ok := got["removed-instance"]; ok {
+		t.Error("expected removed-instance (dropped from cfg.Sources) to be excluded")
+	}
+	if _, ok := got["excluded-instance"]; ok {
+		t.Error("expected excluded-instance (not in the webspace's Sources allowlist) to be excluded")
+	}
+	if _, ok := got["keywords-instance"]; !ok {
+		t.Error("expected keywords-instance (kept in via the Keywords fallback) to be included")
+	}
+	if _, ok := got["explicit-match-instance"]; !ok {
+		t.Error("expected explicit-match-instance (named in an explicit Match block) to be included")
+	}
+	if len(got) != 2 {
+		t.Errorf("expected exactly 2 participating sources, got %d: %+v", len(got), got)
+	}
+}
+
 func TestAggregateSyncStatus_RunningTakesPrecedenceOverOK(t *testing.T) {
 	runs := map[string]index.SyncRun{
 		"paperless":    {Source: "paperless", Status: "ok", FinishedUnix: 200},
@@ -327,6 +385,17 @@ func TestAggregateSyncStatus_EmptyMapReturnsZeroValue(t *testing.T) {
 // stream envelope itself (not just aggregateSyncStatus in isolation)
 // reports sync.status "error" when one of two sources' latest run
 // errored and the other's succeeded later.
+//
+// Rebuilt on newTestRouterWithConfig with a real config (08-10-PLAN.md
+// Task 2, G-08-3): this test originally seeded its webspace into the
+// index only and built its router with an EMPTY config (newTestRouter),
+// which under participation scoping resolves cfg.Webspaces["house-move"]
+// to the zero value — no participants, the zero-value sync object, and
+// this test failing for the WRONG reason (an unconfigured webspace, not
+// the two-source precedence rule it was written to guard). Both
+// instances are now explicitly configured and the webspace declares a
+// Keywords fallback so both participate (correlate.ParticipatesIn) —
+// the assertion below now holds for the reason it always meant to.
 func TestStreamHandler_SyncStatusErrorWhenOneOfTwoSourcesFailed(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	ctx := context.Background()
@@ -339,7 +408,16 @@ func TestStreamHandler_SyncStatusErrorWhenOneOfTwoSourcesFailed(t *testing.T) {
 	id2, _ := store.StartSyncRun(ctx, "paperless")
 	store.FinishSyncRun(ctx, id2, "ok", "", 5)
 
-	router := newTestRouter(store)
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"paperless":    {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			"silverbullet": {Plugin: "y", BaseURL: "http://y", Token: "t"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"house-move": {Keywords: []string{"x"}},
+		},
+	}
+	router := newTestRouterWithConfig(store, cfg)
 	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -349,6 +427,6 @@ func TestStreamHandler_SyncStatusErrorWhenOneOfTwoSourcesFailed(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if resp.Sync.Status != "error" {
-		t.Errorf("expected stream sync.status 'error' when one of two sources failed, got %q", resp.Sync.Status)
+		t.Errorf("expected stream sync.status 'error' when one of two participating sources failed, got %q", resp.Sync.Status)
 	}
 }

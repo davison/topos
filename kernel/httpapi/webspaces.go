@@ -28,6 +28,12 @@ type webspacesResponse struct {
 // so a webspace added or edited through PUT /api/config or
 // POST /api/config/reload is visible on the very next request with no
 // kernel restart.
+//
+// last_sync is computed PER WEBSPACE (08-UAT.md G-08-3), scoped to each
+// entry's own participating sources via filterRunsByParticipation — the
+// runs map itself is still read once, before the loop, exactly as before;
+// only the aggregation moved inside it, so each webspace's own status
+// never leaks a non-participating source's failure or success.
 func WebspacesHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := cfgStore.Expanded()
@@ -39,9 +45,9 @@ func WebspacesHandler(store *index.Store, cfgStore *config.Store) http.HandlerFu
 			return
 		}
 
-		var lastSync syncStatus
-		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
-			lastSync = aggregateSyncStatus(runs)
+		runs, err := store.LatestSyncRunPerSource(ctx)
+		if err != nil {
+			runs = nil
 		}
 
 		names := make([]string, 0, len(cfg.Webspaces))
@@ -56,7 +62,7 @@ func WebspacesHandler(store *index.Store, cfgStore *config.Store) http.HandlerFu
 				Name:      name,
 				Keywords:  keywordsOrEmpty(cfg.Webspaces[name].Keywords),
 				ItemCount: counts[name],
-				LastSync:  lastSync,
+				LastSync:  aggregateSyncStatus(filterRunsByParticipation(runs, cfg, name)),
 			})
 		}
 

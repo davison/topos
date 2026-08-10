@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -262,5 +263,129 @@ func TestStreamHandler_TwoInstancesOfOnePluginTypeReportDistinctSourceAndDisplay
 	}
 	if workItem.Source != "work-email" || workItem.SourceDisplayName != "Work Email" {
 		t.Errorf("expected source=work-email display_name='Work Email', got source=%q display_name=%q", workItem.Source, workItem.SourceDisplayName)
+	}
+}
+
+// TestStreamHandler_NonParticipatingSourceFailureDoesNotEscalate proves a
+// webspace whose Sources allowlist excludes a failing instance reports
+// sync.status "ok" — that instance's failure must never leak into a
+// webspace it does not feed (08-UAT.md G-08-3, kernel/httpapi/sources.go's
+// filterRunsByParticipation).
+func TestStreamHandler_NonParticipatingSourceFailureDoesNotEscalate(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	id1, _ := store.StartSyncRun(ctx, "silverbullet")
+	store.FinishSyncRun(ctx, id1, "error", "connection refused", 0)
+	id2, _ := store.StartSyncRun(ctx, "paperless")
+	store.FinishSyncRun(ctx, id2, "ok", "", 5)
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"paperless":    {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			"silverbullet": {Plugin: "y", BaseURL: "http://y", Token: "t"},
+		},
+		Webspaces: map[string]config.Webspace{
+			// Explicit allowlist excludes silverbullet — its failure must
+			// never surface for this webspace.
+			"house-move": {Keywords: []string{"x"}, Sources: []string{"paperless"}},
+		},
+	}
+	router := newTestRouterWithConfig(store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Sync.Status != "ok" {
+		t.Errorf("expected sync.status 'ok' when the only failing source is excluded by the webspace's allowlist, got %q (error: %q)", resp.Sync.Status, resp.Sync.Error)
+	}
+}
+
+// TestStreamHandler_ParticipatingSourceFailureStillEscalates proves the
+// guarantee this scoping change must not break: a source that DOES
+// participate in the webspace still escalates sync.status to "error",
+// naming the failing instance id in sync.error.
+func TestStreamHandler_ParticipatingSourceFailureStillEscalates(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "paperless", nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	id1, _ := store.StartSyncRun(ctx, "silverbullet")
+	store.FinishSyncRun(ctx, id1, "error", "connection refused", 0)
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"paperless":    {Plugin: "x", BaseURL: "http://x", Token: "t"},
+			"silverbullet": {Plugin: "y", BaseURL: "http://y", Token: "t"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"house-move": {Keywords: []string{"x"}},
+		},
+	}
+	router := newTestRouterWithConfig(store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Sync.Status != "error" {
+		t.Errorf("expected sync.status 'error' for a participating source's failure, got %q", resp.Sync.Status)
+	}
+	if !strings.Contains(resp.Sync.Error, "silverbullet") {
+		t.Errorf("expected sync.error to name the failing instance 'silverbullet', got %q", resp.Sync.Error)
+	}
+}
+
+// TestStreamHandler_IndexOnlyWebspaceReportsZeroValueSyncDespiteOtherFailure
+// proves a webspace known only from surviving index rows (absent from
+// config) reports the zero-value sync object even while another source's
+// latest run has failed — it has no [webspaces.*] block, therefore no
+// participants (correlate.ParticipatesIn is false for every source
+// against the zero-value config.Webspace), therefore nothing to
+// aggregate over.
+func TestStreamHandler_IndexOnlyWebspaceReportsZeroValueSyncDespiteOtherFailure(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	if err := store.ReplaceWebspaceSourceItems(ctx, "orphaned-webspace", "paperless", nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	id1, _ := store.StartSyncRun(ctx, "paperless")
+	store.FinishSyncRun(ctx, id1, "error", "connection refused", 0)
+
+	// paperless is still configured (a run row can outlive a webspace's
+	// removal from config, per filterRunsByParticipation's own doc
+	// comment) but "orphaned-webspace" itself has no [webspaces.*] block.
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"paperless": {Plugin: "x", BaseURL: "http://x", Token: "t"},
+		},
+	}
+	router := newTestRouterWithConfig(store, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/orphaned-webspace/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for an index-only webspace, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Sync.Status != "" || resp.Sync.FinishedUnix != 0 || resp.Sync.Error != "" {
+		t.Errorf("expected the zero-value sync object for an index-only, config-unknown webspace, got: %+v", resp.Sync)
 	}
 }
