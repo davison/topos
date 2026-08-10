@@ -80,12 +80,31 @@ async function offerWhatsAppPluginType(page: Page): Promise<void> {
 	});
 }
 
-/** Scripts a successful describe-plugin response for the WhatsApp trial launch only — every other plugin's request continues unmocked. */
-async function scriptDescribeWhatsApp(page: Page): Promise<void> {
+/**
+ * Scripts a successful describe-plugin response for the WhatsApp trial
+ * launch only — every other plugin's request continues unmocked. `opts`
+ * is optional so every existing caller (cases 1-12) keeps its original,
+ * always-succeeds behaviour unchanged; only case 13 (WR-01) passes
+ * `failFromCall` to make the Nth and later WhatsApp describe calls fail.
+ */
+async function scriptDescribeWhatsApp(page: Page, opts?: { failFromCall: number }): Promise<void> {
+	let callCount = 0;
 	await page.route('**/api/config/describe-plugin', async (route) => {
 		const body = route.request().postDataJSON() as { plugin: string };
 		if (body.plugin !== WHATSAPP_PLUGIN) {
 			await route.continue();
+			return;
+		}
+		callCount++;
+		if (opts && callCount >= opts.failFromCall) {
+			await route.fulfill({
+				status: 500,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					schema_version: 1,
+					error: { code: 'internal_error', message: 'e2e-injected trial-launch failure' }
+				})
+			});
 			return;
 		}
 		await route.fulfill({
@@ -810,5 +829,60 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 		// distinguish the fix from a double-cancel.
 		expect(script.deleteCalls).toBe(1);
 		expect(script.pollCalls).toBe(0);
+	});
+
+	test('13. a fresh trial-launch failure renders no stale declined-link notice (08-REVIEW.md WR-01)', async ({
+		page,
+		kernel
+	}) => {
+		await offerWhatsAppPluginType(page);
+		// The first describe call succeeds (so the panel appears and can
+		// be declined); the second — the fresh trial launch after
+		// declining — fails, simulating a genuine connection failure.
+		await scriptDescribeWhatsApp(page, { failFromCall: 2 });
+		const qrResponse = {
+			status: 200,
+			body: {
+				schema_version: 1,
+				session: 'sess-1',
+				state: 'qr',
+				png_data_uri: 'data:image/png;base64,AAAA',
+				expires_in_seconds: 30
+			}
+		};
+		await scriptLinkSession(page, { start: qrResponse, polls: [qrResponse], deleteCalls: 0 });
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+		await openWhatsAppConnectStep(page, 'Notice Then Fail WhatsApp');
+
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByAltText(/pairing QR code/)).toBeVisible();
+
+		// Decline the link opportunity — the neutral declined-link notice
+		// appears on the connect step.
+		await dialog.getByRole('button', { name: 'Cancel' }).click();
+		await expect(dialog.getByRole('heading', { name: 'Connect WhatsApp' })).toBeVisible();
+		await expect(
+			dialog.getByText(
+				'Not linked yet — you can save this source now and link later from its menu (Re-link…).'
+			)
+		).toBeVisible();
+
+		// Click Next again — this second trial launch genuinely fails.
+		await dialog.getByRole('button', { name: 'Next' }).click();
+
+		// Both halves of the guarantee, at the same moment: the
+		// destructive connection-failure alert is visible, and the
+		// declined-link notice is gone — never both on screen at once. One
+		// message saying the source can be saved and linked later while
+		// another says the connection could not be verified is exactly the
+		// user-visible contradiction this case forecloses.
+		await expect(dialog.getByText("Couldn't verify this connection.")).toBeVisible();
+		await expect(
+			dialog.getByText(
+				'Not linked yet — you can save this source now and link later from its menu (Re-link…).'
+			)
+		).toHaveCount(0);
 	});
 });

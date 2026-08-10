@@ -309,6 +309,34 @@ describe('declined-link notice (Amendment 2, G-08-1): neutral, not a failure', (
 			'expected the exact frozen notice copy from 08-UI-SPEC.md Amendment 2'
 		).toBe(true);
 	});
+
+	// 08-08-PLAN.md Task 3 (08-REVIEW.md WR-01): a fresh trial-launch
+	// attempt must clear a prior decline's notice, and must do so BEFORE
+	// the missing-required-fields early return — a clear placed after
+	// that return would leave the stale notice standing in exactly the
+	// branch most likely to render it beside a fresh failure alert.
+	it("handleConnectNext clears linkNotice, strictly before its own missingRequiredFields( call, so a stale notice cannot survive the missing-field early return", () => {
+		const handleConnectNextBody = extractBetween(
+			stripped,
+			'async function handleConnectNext(event: SubmitEvent) {',
+			'\n\t}'
+		);
+		const clearMatch = /linkNotice\s*=\s*('{2}|"{2})/.exec(handleConnectNextBody);
+		expect(
+			clearMatch,
+			'expected handleConnectNext to assign linkNotice the empty string'
+		).not.toBeNull();
+		const clearIndex = clearMatch ? clearMatch.index : -1;
+		const guardIndex = handleConnectNextBody.indexOf('missingRequiredFields(');
+		expect(
+			guardIndex,
+			'expected handleConnectNext to call missingRequiredFields('
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			clearIndex,
+			"expected the linkNotice clear to appear before the missingRequiredFields( call in handleConnectNext's body — comparing positions explicitly, since a presence-only check would pass against a clear placed too late"
+		).toBeLessThan(guardIndex);
+	});
 });
 
 describe('Step 1 failure branch: exact copy plus a Save anyway action', () => {

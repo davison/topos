@@ -262,6 +262,14 @@
 	async function handleConnectNext(event: SubmitEvent) {
 		event.preventDefault();
 		if (!selectedPluginType || describing) return;
+		// A fresh trial-launch attempt must not inherit a prior outcome's
+		// message (08-REVIEW.md WR-01) — mirrors how selectPluginType
+		// already resets this on a fresh plugin-type selection. Cleared
+		// here, before the missing-required-fields early return below: a
+		// clear placed after that early return would leave the stale
+		// notice standing in exactly the branch most likely to render a
+		// second, contradictory message.
+		linkNotice = '';
 
 		// A blank required field must never reach describePlugin — that call
 		// launches the plugin subprocess with these exact values, and the
