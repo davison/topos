@@ -205,6 +205,112 @@ describe('WhatsApp not-linked branch (D-01/D-02): link step, never a trial-launc
 	});
 });
 
+// 08-07-PLAN.md Task 1 (Amendment 2, G-08-1): cancelling out of the link
+// step is a supported, non-failure outcome — declining a QR opportunity is
+// not a failed connection test. These guards pin the neutral notice's
+// state wiring (set on cancel, cleared on every fresh-selection path,
+// never treated as a failure) and its exact copy, locked in
+// 08-UI-SPEC.md's Amendment 2.
+describe('declined-link notice (Amendment 2, G-08-1): neutral, not a failure', () => {
+	const handleLinkCancelledBody = extractBetween(
+		stripped,
+		'function handleLinkCancelled() {',
+		'\n\t}'
+	);
+	const resetFlowStateBody = extractBetween(stripped, 'function resetFlowState() {', '\n\t}');
+	const selectPluginTypeBody = extractBetween(
+		stripped,
+		'function selectPluginType(plugin: string) {',
+		'\n\t}'
+	);
+	const connectDialogBlock = extractBetween(
+		stripped,
+		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
+		'</Dialog>'
+	);
+	const connectBranch = extractBetween(
+		connectDialogBlock,
+		"{#if step === 'connect'}",
+		"{:else if step === 'link'}"
+	);
+
+	it('handleLinkCancelled still returns to the connect step and still leaves connectionValues untouched (both already asserted elsewhere — must keep passing)', () => {
+		expect(handleLinkCancelledBody.includes("step = 'connect'")).toBe(true);
+		expect(
+			handleLinkCancelledBody.includes('connectionValues ='),
+			'expected handleLinkCancelled to still leave connectionValues untouched — cancelling the link must preserve every typed connection value'
+		).toBe(false);
+	});
+
+	it('handleLinkCancelled assigns the linkNotice state', () => {
+		expect(
+			/linkNotice\s*=/.test(handleLinkCancelledBody),
+			'expected handleLinkCancelled to assign linkNotice — a user who cancelled must be told their options, not left with silence'
+		).toBe(true);
+	});
+
+	it('handleLinkCancelled sets neither describeFailed nor connectError — declining a link opportunity is not a failed connection test', () => {
+		expect(
+			handleLinkCancelledBody.includes('describeFailed'),
+			'expected handleLinkCancelled to never touch describeFailed — the Save-anyway control (gated on it) must stay hidden on a cancelled link'
+		).toBe(false);
+		expect(
+			handleLinkCancelledBody.includes('connectError'),
+			'expected handleLinkCancelled to never touch connectError — declining a link opportunity is not a failed connection test'
+		).toBe(false);
+	});
+
+	it("resetFlowState clears linkNotice, alongside the other per-session resets", () => {
+		expect(
+			/linkNotice\s*=\s*('{2}|"{2})/.test(resetFlowStateBody),
+			'expected resetFlowState to clear linkNotice back to the empty string'
+		).toBe(true);
+	});
+
+	it("selectPluginType clears linkNotice, so a second plugin-type selection in the same modal session does not inherit the previous one's notice", () => {
+		expect(
+			/linkNotice\s*=\s*('{2}|"{2})/.test(selectPluginTypeBody),
+			'expected selectPluginType to clear linkNotice — otherwise a stale notice from a prior selection could leak into a new one'
+		).toBe(true);
+	});
+
+	it('the connect branch renders the notice expression, gated so it only shows once set', () => {
+		expect(
+			connectBranch.includes('linkNotice'),
+			'expected the connect branch to render the linkNotice state somewhere'
+		).toBe(true);
+		expect(
+			connectBranch.includes('{#if linkNotice}'),
+			'expected the notice to be rendered inside its own {#if linkNotice} guard, not unconditionally'
+		).toBe(true);
+	});
+
+	it('the notice markup carries no variant="destructive" — it must never read as the connection-failure Alert', () => {
+		const noticeBlock = extractBetween(connectBranch, '{#if linkNotice}', '{/if}');
+		expect(
+			noticeBlock.includes('{linkNotice}'),
+			'expected the linkNotice {#if} block to actually render the {linkNotice} expression'
+		).toBe(true);
+		expect(
+			noticeBlock.includes('variant="destructive"'),
+			'expected the slice of markup containing the notice to carry no variant="destructive" — declining to link is not a failed connection test, and e2e case 8\'s E5 evidence depends on this staying true'
+		).toBe(false);
+		expect(
+			noticeBlock.includes('<Alert'),
+			'expected the notice to render outside any Alert component entirely — a plain muted paragraph, not a destructive or informational alert'
+		).toBe(false);
+	});
+
+	it("renders the exact notice literal locked in 08-UI-SPEC.md's Amendment 2", () => {
+		expect(
+			stripped.includes(
+				'Not linked yet — you can save this source now and link later from its menu (Re-link…).'
+			),
+			'expected the exact frozen notice copy from 08-UI-SPEC.md Amendment 2'
+		).toBe(true);
+	});
+});
+
 describe('Step 1 failure branch: exact copy plus a Save anyway action', () => {
 	it('renders the exact "Couldn\'t verify this connection." copy', () => {
 		expect(
