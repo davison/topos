@@ -123,6 +123,8 @@ Accent reserved for: the "Open in source" button, inline text links, focus-visib
 | Stream-load error (kernel API unreachable) | "Couldn't load this webspace" / "The webspaces service didn't respond — check that it's running, then retry." (backstop — see UI Considerations) |
 | Destructive confirmation | N/A — Phase 1 is a strictly read-only viewer; no destructive UI actions exist (confirmed with user) |
 
+*Superseded 2026-08-10 (`08-UAT.md` G-08-3, Plan `08-10`): the "Stream-load error (kernel API unreachable)" row above originally shipped for TWO distinct causes under one message — a genuinely failed stream fetch, and a per-source sync failure that returned zero items. The second cause was split out into `08-UI-SPEC.md` Amendment 3's degraded stream state (`StreamSyncDegraded.svelte`, title "A source couldn't sync") — a webspace whose only failing source is one of several must never claim the whole service is down. This row's own copy now applies only to its original parenthetical's actual scope — a genuinely unreachable kernel API — which is what "kernel API unreachable" always said. The row's text above is left intact; this note supersedes its former dual-cause scope rather than rewriting history, the same convention `06-UI-SPEC.md` used to supersede `03-UI-SPEC.md`'s match-emphasis rule.*
+
 ---
 
 ## UI Considerations
