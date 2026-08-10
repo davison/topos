@@ -19,6 +19,8 @@ import (
 
 	goplugin "github.com/hashicorp/go-plugin"
 
+	wastore "go.mau.fi/whatsmeow/store"
+
 	"github.com/davison/topos/sdk"
 )
 
@@ -34,6 +36,16 @@ type sourceConfig struct {
 }
 
 func main() {
+	// Cosmetic fix (2026-08-10 real-device spike): whatsmeow's own
+	// package-level DeviceProps.Os defaults to the literal string
+	// "whatsmeow" — that's what a real phone's WhatsApp > Linked Devices
+	// list showed for this plugin's linked session. SetOSInfo mutates
+	// that shared global var, so it must run once, early, before EITHER
+	// code path below ever constructs a whatsmeow.Client (link.go's
+	// runLinkCLI or connect.go's startBackgroundClient) — both are
+	// reached from this single main(), so calling it here covers both.
+	wastore.SetOSInfo("topos", [3]uint32{0, 1, 0})
+
 	linkMode := flag.Bool("link", false, "run the one-shot terminal QR link flow against -path, then exit")
 	linkPath := flag.String("path", "", "the plugin's own data directory (same value as [sources.whatsapp].path in config.toml)")
 	flag.Parse()
