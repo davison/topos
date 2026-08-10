@@ -24,6 +24,8 @@ func TestLinkEvent_MarshalsToOneLine(t *testing.T) {
 		pairedLinkEvent(),
 		newErrorLinkEvent(linkErrorCodeFailed, "boom"),
 		timeoutLinkEvent(),
+		pairingAcceptedLinkEvent(),
+		alreadyLinkedLinkEvent(),
 	}
 	for _, ev := range events {
 		line, err := marshalLinkEvent(ev)
@@ -56,6 +58,94 @@ func TestLinkEvent_QRPayloadShape(t *testing.T) {
 	}
 	if ev.ExpiresInSeconds <= 0 {
 		t.Fatalf("expires_in_seconds must be positive, got %d", ev.ExpiresInSeconds)
+	}
+}
+
+// TestLinkEvent_ProgressEventsCarryOnlyKind proves a pairing_accepted line
+// and an already_linked line each carry only a "kind" key — no
+// png_data_uri, no expires_in_seconds, no code, no message — asserted on
+// the decoded map's key set, not on a substring.
+func TestLinkEvent_ProgressEventsCarryOnlyKind(t *testing.T) {
+	tests := []struct {
+		name string
+		ev   linkEvent
+		kind string
+	}{
+		{"pairing_accepted", pairingAcceptedLinkEvent(), string(linkEventKindPairingAccepted)},
+		{"already_linked", alreadyLinkedLinkEvent(), string(linkEventKindAlreadyLinked)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line, err := marshalLinkEvent(tt.ev)
+			if err != nil {
+				t.Fatalf("marshal event: %v", err)
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(line, &decoded); err != nil {
+				t.Fatalf("unmarshal event: %v", err)
+			}
+			if len(decoded) != 1 {
+				t.Fatalf("expected exactly one key, got %d: %v", len(decoded), decoded)
+			}
+			if kind, ok := decoded["kind"]; !ok || kind != tt.kind {
+				t.Fatalf("expected kind %q, got %v", tt.kind, decoded)
+			}
+		})
+	}
+}
+
+// TestJSONLinkEmitter_PairingAccepted proves driving
+// jsonLinkEmitter.pairingAccepted() writes exactly one event line to
+// stdout whose kind is pairing_accepted, and also writes its existing
+// human diagnostic to stderr.
+func TestJSONLinkEmitter_PairingAccepted(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	emitter := newJSONLinkEmitter(&stdout, &stderr)
+	emitter.pairingAccepted()
+
+	lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte("\n"))
+	if len(lines) != 1 {
+		t.Fatalf("expected exactly one stdout event line, got %d: %s", len(lines), stdout.String())
+	}
+	var ev linkEvent
+	if err := json.Unmarshal(lines[0], &ev); err != nil {
+		t.Fatalf("unmarshal stdout event: %v", err)
+	}
+	if ev.Kind != linkEventKindPairingAccepted {
+		t.Fatalf("expected kind %q, got %q", linkEventKindPairingAccepted, ev.Kind)
+	}
+	if !strings.Contains(stderr.String(), "pairing accepted") {
+		t.Fatalf("expected the existing human diagnostic on stderr, got %q", stderr.String())
+	}
+}
+
+// TestJSONLinkEmitter_AlreadyLinked proves driving
+// jsonLinkEmitter.alreadyLinked(deviceID) writes exactly one event line
+// to stdout whose kind is already_linked, that line does not contain the
+// device id anywhere, while the stderr diagnostic still does.
+func TestJSONLinkEmitter_AlreadyLinked(t *testing.T) {
+	const distinctiveDeviceID = "fake-distinctive-device-id-12345"
+
+	var stdout, stderr bytes.Buffer
+	emitter := newJSONLinkEmitter(&stdout, &stderr)
+	emitter.alreadyLinked(distinctiveDeviceID)
+
+	lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte("\n"))
+	if len(lines) != 1 {
+		t.Fatalf("expected exactly one stdout event line, got %d: %s", len(lines), stdout.String())
+	}
+	var ev linkEvent
+	if err := json.Unmarshal(lines[0], &ev); err != nil {
+		t.Fatalf("unmarshal stdout event: %v", err)
+	}
+	if ev.Kind != linkEventKindAlreadyLinked {
+		t.Fatalf("expected kind %q, got %q", linkEventKindAlreadyLinked, ev.Kind)
+	}
+	if bytes.Contains(stdout.Bytes(), []byte(distinctiveDeviceID)) {
+		t.Fatalf("stdout event leaked the device id: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), distinctiveDeviceID) {
+		t.Fatalf("expected the stderr diagnostic to still name the device id, got %q", stderr.String())
 	}
 }
 
