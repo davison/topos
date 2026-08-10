@@ -187,11 +187,32 @@ plugin set would ship a fixture plugin into every real install's plugin
 directory, where the kernel would discover and offer it in the
 operator's own "+ New …" picker.
 
+## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
+
+Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
+to end in the browser, hermetically: both entry points (inline in the
+Add-Source Step 1 dialog, and the source chip's Re-link… entry), all five
+panel states, QR rotation, session cancellation releasing the subprocess,
+and the "not linked is not a trial-launch failure" rule (the E5
+evidence). Because `topos-plugin-whatsapp` is, like the real
+paperless/silverbullet/proton/signal plugins, structurally excluded from
+this harness's closed plugin set (see "The two mock-shaped plugins",
+above), this spec never exercises a real WhatsApp plugin binary — it
+intercepts plugin discovery, the trial-launch describe call, and the
+three link-session routes at the route layer, and seeds a real
+`topos-plugin-mock` instance for the parts of the flow (an actual saved
+webspace/source) that don't need WhatsApp specifically. The spec file's
+own header comment records the full reasoning, including the one
+deliberate exception (case 8's own final save is written directly to
+`config.toml` rather than round-tripped through a real, un-launchable
+plugin subprocess — real kernel behaviour against a binary this harness
+never builds, not a gap in the shipped SPA code).
+
 ## What stays manual, and why
 
-Two UAT items from Phase 7 remain manual, accepted risk — they are
-non-deterministic timing windows around a `SIGKILL`, not something a
-browser driver can reliably provoke:
+Three items remain manual, accepted risk — non-deterministic timing
+windows a browser driver cannot reliably provoke, or requiring hardware
+this harness cannot have:
 
 1. **Killing the kernel between the `config.toml.bak` write and the
    atomic rename during a config save.** The window is a handful of
@@ -202,11 +223,16 @@ browser driver can reliably provoke:
    sync-run deletion starting). Same class of problem: the window this
    needs to land inside is a race between two database writes, not
    something observable or controllable from the browser.
+3. **A real pairing against a real WhatsApp account.** This needs an
+   actual phone running WhatsApp to scan a genuine, live QR code — no
+   hermetic harness can fabricate that hardware step. Covered instead by
+   Plan 08-01 Task 3's hands-on spike (a real, one-time manual pairing
+   run, recorded in `08-01-SUMMARY.md`), not by an automated gate.
 
 Recording this here, in shipped documentation, is deliberate: the
 standing rule below says future UI work extends this suite, and a reader
 who only sees the suite's specs (never this file) could reasonably assume
-it covers everything. It does not — these two remain an accepted,
+it covers everything. It does not — these three remain an accepted,
 explicitly-scoped gap, not a silent one.
 
 ## What changed
