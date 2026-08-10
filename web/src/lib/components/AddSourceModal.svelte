@@ -116,6 +116,18 @@
 	let savedAnywayMessage = $state('');
 	let newInstanceId = $state<string | null>(null);
 	let newVocabulary = $state<string[]>([]);
+	// linkOffered (D-02, 08-04-PLAN.md Task 3's E5 evidence): tracks
+	// whether the WhatsApp QR opportunity has already been shown once in
+	// THIS modal session. The first successful trial launch for WhatsApp
+	// routes to 'link'; a later "Next" click (reached after the panel's
+	// own cancelled callback returns to 'connect') routes straight to
+	// 'match' instead of re-showing the panel — the opportunity was
+	// offered once, cancelling it is a real decision to move on, not a
+	// gate that must be satisfied before Step 2 is reachable. This is
+	// what makes "cancelling out still reaches the match step and saves"
+	// true, per the UI-SPEC amendment's own framing that Step 1 and Step
+	// 2 can both succeed while the device stays unpaired.
+	let linkOffered = $state(false);
 
 	function resetFlowState() {
 		step = null;
@@ -133,6 +145,7 @@
 		savedAnywayMessage = '';
 		newInstanceId = null;
 		newVocabulary = [];
+		linkOffered = false;
 	}
 
 	// selectExisting reads the instance's declared match vocabulary via
@@ -267,13 +280,21 @@
 			// succeeds identically whether or not a WhatsApp device is
 			// paired — there is no field on this response that reports
 			// linked status, so this trial-launch success is itself the
-			// only signal Step 1 has. For WhatsApp, that success routes to
-			// the 'link' step (the QR opportunity) rather than straight to
-			// 'match'; the load-bearing property is what this branch does
-			// NOT do — describeFailed stays false and the Save-anyway
-			// control (gated on it) stays hidden, so an unpaired instance
-			// is never treated as a trial-launch failure.
-			step = selectedPluginType === WHATSAPP_PLUGIN_BINARY ? 'link' : 'match';
+			// only signal Step 1 has. For WhatsApp, the FIRST such success
+			// routes to the 'link' step (the QR opportunity); once that
+			// opportunity has been offered and declined (linkOffered),
+			// a later success routes straight to 'match' instead of
+			// re-showing the panel. The load-bearing property either way
+			// is what this branch does NOT do — describeFailed stays
+			// false and the Save-anyway control (gated on it) stays
+			// hidden, so an unpaired instance is never treated as a
+			// trial-launch failure.
+			if (selectedPluginType === WHATSAPP_PLUGIN_BINARY && !linkOffered) {
+				linkOffered = true;
+				step = 'link';
+			} else {
+				step = 'match';
+			}
 		} catch (err) {
 			describeFailed = true;
 			const detail =

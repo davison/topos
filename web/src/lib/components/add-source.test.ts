@@ -154,11 +154,19 @@ describe('WhatsApp not-linked branch (D-01/D-02): link step, never a trial-launc
 		'\n\t}'
 	);
 
-	it("handleConnectNext's success path routes the WhatsApp plugin type to the 'link' step", () => {
+	it("handleConnectNext's success path routes the WhatsApp plugin type to the 'link' step the first time, guarded by linkOffered", () => {
 		expect(
-			handleConnectNextBody.includes("selectedPluginType === WHATSAPP_PLUGIN_BINARY ? 'link' : 'match'"),
-			'expected the trial-launch success branch to route WhatsApp to the link step and every other plugin type to match'
+			handleConnectNextBody.includes("selectedPluginType === WHATSAPP_PLUGIN_BINARY && !linkOffered"),
+			'expected the trial-launch success branch to route WhatsApp to the link step only while linkOffered is still false'
 		).toBe(true);
+		expect(
+			handleConnectNextBody.includes("step = 'link'") && handleConnectNextBody.includes("step = 'match'"),
+			'expected the success branch to assign both step values across its two arms'
+		).toBe(true);
+	});
+
+	it('a second WhatsApp trial-launch success (after linkOffered is set) routes to match, never re-showing the panel — this is what makes cancelling out still reach match settings', () => {
+		expect(handleConnectNextBody.includes('linkOffered = true')).toBe(true);
 	});
 
 	it('the success path (before the catch block) never sets describeFailed = true — only the catch block does', () => {
