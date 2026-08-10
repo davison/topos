@@ -39,6 +39,28 @@ func (l pluginLogger) printf(level, msg string, args ...any) {
 	fmt.Fprintf(os.Stderr, "topos-plugin-whatsapp[%s %s]: "+msg+"\n", append([]any{l.module, level}, args...)...)
 }
 
+// whatsmeowSessionDSN builds the modernc.org/sqlite connection string for
+// whatsmeow's own session store (whatsmeow.db). whatsmeow's own
+// sqlstore.Container.Upgrade checks `PRAGMA foreign_keys` on the
+// connection it is handed and refuses to run its migrations if it comes
+// back off — confirmed live (2026-08-10): a bare `file:<path>` DSN (or the
+// `?_foreign_keys=on` shorthand whatsmeow's own doc comment illustrates,
+// which is mattn/go-sqlite3's query-param convention, not
+// modernc.org/sqlite's) fails at container open with "failed to upgrade
+// database: foreign keys are not enabled" before ever reaching the QR
+// flow. modernc.org/sqlite's own DSN pragma syntax is
+// `_pragma=<pragma-body>` — one query param per pragma, applied via
+// `PRAGMA <body>` on every new pooled connection (sqlite.go's
+// applyQueryParams) — so `_foreign_keys=on` is silently ignored as an
+// unrecognised query param rather than erroring, which is what made this
+// fail quietly instead of at compile/lint time. Both link.go's one-shot
+// link flow and connect.go's persistent serve-mode connection MUST open
+// whatsmeow's sqlstore with this identical DSN — the CONTEXT hard
+// requirement is that both open it the same way.
+func whatsmeowSessionDSN(dbPath string) string {
+	return "file:" + dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)"
+}
+
 // startBackgroundClient acquires the store lock, opens whatsmeow's own
 // sqlstore (whatsmeow.db — a file distinct from this plugin's own
 // messages.db, messagestore.go), constructs a whatsmeow.Client, registers
@@ -57,7 +79,7 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 	p.lock = lock
 
 	dbPath := filepath.Join(p.dir, "whatsmeow.db")
-	container, err := sqlstore.New(ctx, "sqlite", "file:"+dbPath+"?_foreign_keys=on", newPluginLogger("whatsmeow/store"))
+	container, err := sqlstore.New(ctx, "sqlite", whatsmeowSessionDSN(dbPath), newPluginLogger("whatsmeow/store"))
 	if err != nil {
 		return fmt.Errorf("whatsapp: open whatsmeow session store %s: %w", dbPath, err)
 	}

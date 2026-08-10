@@ -30,7 +30,7 @@ func runLinkCLI(ctx context.Context, dir string) error {
 	defer lock.Release()
 
 	dbPath := filepath.Join(dir, "whatsmeow.db")
-	container, err := sqlstore.New(ctx, "sqlite", "file:"+dbPath+"?_foreign_keys=on", newPluginLogger("whatsmeow/link"))
+	container, err := sqlstore.New(ctx, "sqlite", whatsmeowSessionDSN(dbPath), newPluginLogger("whatsmeow/link"))
 	if err != nil {
 		return fmt.Errorf("whatsapp: open whatsmeow session store %s: %w", dbPath, err)
 	}
