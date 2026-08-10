@@ -14,9 +14,9 @@ provides:
 affects: [08-02-whatsapp-1-1-and-health-taxonomy, 08-03-whatsapp-in-app-pairing]
 
 actuals:
-  tokens: 21100
+  tokens: 24350
   tasks: 2
-  commits: 3
+  commits: 6
 
 tech-stack:
   added: ["go.mau.fi/whatsmeow@v0.0.0-20260806224404-e277b766ab33", "modernc.org/sqlite v1.54.0 (plugin-local)", "github.com/mdp/qrterminal/v3 v3.2.1"]
@@ -39,6 +39,8 @@ key-files:
     - plugins/whatsapp/render.go
     - plugins/whatsapp/deeplink.go
     - plugins/whatsapp/go.mod
+    - plugins/whatsapp/connect_test.go
+    - plugins/whatsapp/pairwait.go
   modified:
     - go.work
     - Makefile
@@ -50,15 +52,17 @@ key-decisions:
   - "buildMessageRuns determines run ownership from messageRecord.IsFromMe directly (WhatsApp's own store gives this natively) rather than Signal's derived-from-display-name-string convention — a minor correctness improvement over the ported pattern, not a Signal-parity break"
   - "Deletion/edit handling implemented via whatsmeow ProtocolMessage REVOKE/MESSAGE_EDIT events (messagestore.MarkDeleted/MarkEdited) — not explicitly named in 08-01-PLAN.md's action text but required for the schema's own is_deleted/is_edited columns to ever be set by anything"
   - "Added .gitignore entries for plugins/whatsapp/whatsapp and plugins/mockstrict/mockstrict (the latter a pre-existing gap, not introduced by this plan) — both are stray `go build ./...`-without--o binaries the existing stray-binary block already covers for every other plugin"
+  - "whatsmeow's own sqlstore requires PRAGMA foreign_keys on at open time — modernc.org/sqlite's DSN pragma syntax (`_pragma=foreign_keys(1)`) differs from the mattn/go-sqlite3-style `_foreign_keys=on` shorthand whatsmeow's own doc comment illustrates; whatsmeowSessionDSN() is the one shared helper both link-mode and serve-mode call"
+  - "PairSuccess (and the QR channel's own 'success' event) fires BEFORE the post-pair login handshake completes, per whatsmeow's own doc comment — pairLoginWaiter (pairwait.go) makes -link wait for a genuine *events.Connected before disconnecting, in both the fresh-pairing path and the already-linked/reconnect path (whatsmeow persists Store.ID before PairSuccess dispatches, so a saved device row alone never proves a session actually completed)"
 
 requirements-completed: []
 
 coverage:
   - id: D1
-    description: "plugins/whatsapp module builds pure-Go (CGO_ENABLED=0), joins go.work, and its own test suite (storelock, messagestore, digest/render edge cases) passes"
+    description: "plugins/whatsapp module builds pure-Go (CGO_ENABLED=0), joins go.work, and its own test suite (storelock, messagestore, digest/render edge cases, DSN/foreign_keys, pairLoginWaiter) passes"
     verification:
       - kind: unit
-        ref: "plugins/whatsapp: go test ./... -run 'TestStoreLock|TestDigest|TestMessageStore' -v"
+        ref: "plugins/whatsapp: go test ./... -run 'TestStoreLock|TestDigest|TestMessageStore|TestWhatsmeowSessionDSN|TestPairLoginWaiter' -v (18 tests)"
         status: pass
       - kind: integration
         ref: "make test-portable (full workspace, whatsapp module included)"
@@ -154,10 +158,26 @@ See `key-decisions` in frontmatter above. Summary: Task 1's pin approved as-is; 
 - **Verification:** New `TestWhatsmeowSessionDSN_MigrationsRunAgainstRealSQLStore` opens `sqlstore.New` against a real temp-file DB via `whatsmeowSessionDSN` and calls `GetFirstDevice` — reverting the fix locally reproduced the user's exact live error message, confirming the test is a real regression guard, not a vacuous pass. `CGO_ENABLED=0 go build ./plugins/whatsapp` and the full `plugins/whatsapp` test suite (13 tests) pass with the fix in place; `make test-portable` passes for the whole workspace
 - **Committed in:** `397e94c`
 
+**4. [Rule 1 - Bug] Fixed premature disconnect in `-link` mode stranding the phone mid post-pair login**
+- **Found during:** Second round of checkpoint feedback — the user's QR scan succeeded ("Linked successfully" printed, immediately followed by `Error sending close to websocket: failed to close WebSocket: failed to read frame header: EOF`), but the phone stayed on "Logging in…" with the camera still active
+- **Issue:** `runLinkCLI`'s QR-loop `case "success"` returned immediately (firing the deferred `client.Disconnect()`). But `"success"` fires on whatsmeow's `*events.PairSuccess`, whose own doc comment states: "this is generally followed by a websocket reconnection, so you should wait for [`*events.`]Connected before trying to send anything." Disconnecting at `PairSuccess` drops the socket before the phone-side login handshake (app-state/key exchange over a NEW authenticated connection) completes, stranding the phone
+- **Fix:** Added `pairwait.go`'s `pairLoginWaiter` — registered as an additional `Client.AddEventHandler` callback *before* `Connect()`, alongside the QR channel's own internal handler, signalling on a genuine `*events.Connected` (success) or `LoggedOut`/`StreamReplaced`/`ConnectFailure` (definitive failure). `link.go`'s `"success"` branch now sets a flag and prints progress instead of returning; after the QR loop exits, it calls `loginWaiter.wait(60s timeout)`, then holds the connection open for a 5s grace window before disconnecting and reporting success
+- **Files modified:** plugins/whatsapp/link.go, plugins/whatsapp/pairwait.go (new), plugins/whatsapp/pairwait_test.go (new)
+- **Verification:** `pairwait_test.go` unit-tests `pairLoginWaiter` directly with fake whatsmeow events (Connected → success; LoggedOut/StreamReplaced → named failure; no qualifying event → named timeout; a second event after the first is signalled does not block/panic) — no live server needed, since the seam is the event-handler callback itself. Confirmed `connect.go`'s serve-mode path carries no equivalent risk: it never calls `Disconnect()` at all (the connection is held for the plugin subprocess's entire lifetime; the only `Close()` call is `store.Close()`, and only on `startBackgroundClient`'s own construction-failure path, before any connection exists). `CGO_ENABLED=0 go build ./plugins/whatsapp`, the full `plugins/whatsapp` test suite (18 tests), and `make test-portable` all pass
+- **Committed in:** `314d5de`
+
+**5. [Rule 1 - Bug] `-link`'s "already linked" branch now reconnects and confirms instead of trusting a saved device row**
+- **Found during:** Same investigation as #4 above — checking whatsmeow's own source (`pair.go`'s `handlePair`) showed `cli.Store.Save(ctx)` persists `Store.ID` (making `device.ID` non-nil) *synchronously inside the pairing handshake, before `*events.PairSuccess` is even dispatched* — i.e. strictly before the point #4's bug disconnected. This means the user's interrupted first attempt almost certainly left a fully-saved device row despite the phone never finishing "Logging in…"
+- **Issue:** `runLinkCLI`'s original `if device.ID != nil { print "Already linked"; return nil }` branch never attempted to connect at all — a subsequent `-link` run (the exact next step the docs tell a user to take) would have printed a falsely reassuring "Already linked" message and exited, leaving the phone stuck exactly as before with no path to complete the login short of running serve mode separately
+- **Fix:** The `device.ID != nil` branch now calls `client.Connect()` and waits on the same `pairLoginWaiter` (60s timeout, 5s grace window) before reporting anything — safe and correct in both cases: an already-fully-linked device reconnects normally (identical to what `connect.go`'s serve-mode path does on every kernel restart), and a half-finished device completes its login handshake here instead of needing a wipe and re-scan
+- **Files modified:** plugins/whatsapp/link.go
+- **Verification:** `CGO_ENABLED=0 go build ./plugins/whatsapp`, the full `plugins/whatsapp` test suite (18 tests), and `make test-portable` all pass. Not exercised live (requires a real half-linked device to reproduce the exact race) — the fix's correctness rests on `pair.go`'s own source (cited above) plus `connect.go`'s already-live-proven reconnect path being the identical code shape
+- **Committed in:** `ae6cf53`
+
 ---
 
-**Total deviations:** 3 auto-fixed (1 missing critical, 1 blocking, 1 bug found via checkpoint feedback)
-**Impact on plan:** All three necessary for correctness/hygiene. No scope creep.
+**Total deviations:** 5 auto-fixed (1 missing critical, 1 blocking, 3 bugs found via two rounds of checkpoint feedback)
+**Impact on plan:** All five necessary for correctness/hygiene. No scope creep.
 
 ## Issues Encountered
 
@@ -190,17 +210,29 @@ None yet in the code sense (no external service credentials) — but Task 2's hu
 
 ### Checkpoint Details
 
-Run these commands yourself (no CLI step here can be automated further). **Rebuild the binary first** — the previous attempt failed at `sqlstore.Container.Upgrade` with `foreign keys are not enabled` before ever reaching the QR flow; this is now fixed (see Deviations #3 above, commit `397e94c`) by opening whatsmeow's session store with modernc.org/sqlite's own `_pragma=foreign_keys(1)` DSN syntax instead of the mattn/go-sqlite3-style `_foreign_keys=on` shorthand, which modernc.org/sqlite silently ignored:
+**Two real-device rounds of feedback so far, both now fixed:**
+1. `foreign keys are not enabled` at store-open, before any QR ever rendered — fixed by Deviation #3 (`397e94c`).
+2. QR scanned successfully, but the plugin disconnected the instant pairing was accepted (before the phone's own post-pair login handshake completed) — phone stuck on "Logging in…", plugin printed a misleading `EOF` warning right after "Linked successfully." Fixed by Deviations #4 and #5 (`314d5de`, `ae6cf53`): `-link` now waits for a genuine `*events.Connected` before disconnecting, in BOTH the fresh-pairing path and the "already linked" path.
+
+**Guidance for the current half-linked state (round 2's interrupted attempt):**
+
+- **What to check on the phone first:** open WhatsApp → Settings → Linked Devices. whatsmeow persists the device's identity (`Store.ID`) to `whatsmeow.db` *synchronously, before the post-pair login handshake even starts* (confirmed by reading `pair.go`'s `handlePair`: `cli.Store.Save(ctx)` runs before `dispatchEvent(&events.PairSuccess{...})`, which is what our old code's premature disconnect fired right after). So the device may or may not already be visible in this list — either is consistent with what happened; if it's NOT listed, WhatsApp's servers likely expired the incomplete session and a fresh QR scan is needed anyway (the rebuilt binary's normal fresh-link path handles this the same as any first link).
+- **Do NOT wipe `~/.local/share/topos/whatsapp/` (whatsmeow.db, its `-wal`/`-shm` files, or messages.db) as a first step.** The locally-saved device row from the interrupted attempt is cryptographically complete (the pairing handshake itself, including key exchange, finishes before `Store.Save` — what never finished was the SEPARATE post-pair reconnect-and-login-sync this plugin's fix now waits for). Deviation #5 specifically makes a plain re-run of `-link` reconnect using that saved identity and wait for login to actually complete, rather than short-circuiting with "Already linked" — this is safe whether the device shows up in the phone's Linked Devices list or not.
+- **Recommended next step:** rebuild and simply re-run `-link` exactly as before — no extra flags, no manual file cleanup:
+  ```bash
+  CGO_ENABLED=0 go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
+  bin/plugins/topos-plugin-whatsapp -link -path ~/.local/share/topos/whatsapp
+  ```
+  Two possible outcomes, both handled correctly now: (a) if the device is still known to WhatsApp's servers, you'll see "Already linked as `<jid>` — reconnecting to confirm the session is fully established…" followed by "Session confirmed." with NO new QR needed; (b) if the phone-side session expired, WhatsApp will reject the stale reconnect and whatsmeow will need a fresh pairing — if step (a) instead prints a reconnect-failure error, delete `~/.local/share/topos/whatsapp/whatsmeow.db*` (all three files: `whatsmeow.db`, `whatsmeow.db-wal`, `whatsmeow.db-shm` — leave `messages.db` alone, it holds no session state) and re-run `-link` to get a fresh QR. Only do this file cleanup if the reconnect attempt itself reports a failure, not preemptively.
+- After a successful link (fresh or reconnect-confirmed), proceed with the original checkpoint steps below.
 
 ```bash
-mkdir -p ~/.local/share/topos/whatsapp
+mkdir -p ~/.local/share/topos/whatsapp   # already exists if you're resuming; harmless if so
 CGO_ENABLED=0 go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
 bin/plugins/topos-plugin-whatsapp -link -path ~/.local/share/topos/whatsapp
 ```
 
-If you already ran `-link` before this fix and it failed with the foreign-keys error, no partial state was left behind (the failure happened before any device/session data was written) — the rebuilt binary should proceed straight to rendering the QR code.
-
-1. Scan the rendered ASCII QR code with your phone (WhatsApp > Linked devices > Link a device). Confirm the process exits 0 with "Linked successfully."
+1. Confirm the process exits 0 with either "Linked successfully." (fresh pair) or "Session confirmed." (reconnect path) — and, most importantly, confirm the phone's own WhatsApp UI leaves the "Logging in…" screen and shows the device as connected under Linked Devices.
 2. Add a `[sources.whatsapp]` block (already present in `config.example.toml` — copy into your real `config.toml`) plus a webspace `match` block naming a real group you're in.
 3. Run `make dev`. Confirm the WhatsApp source chip appears healthy, a digest row for that group appears in the stream within a sync cycle, and opening it renders the Phase 4 chat transcript.
 4. Restart the kernel (`make dev` down/up) and confirm it reconnects with no second QR scan (Task 2's must_haves criterion 1).
@@ -208,7 +240,7 @@ If you already ran `-link` before this fix and it failed with the foreign-keys e
 
 ### Awaiting
 
-The user's real-device verification of Task 2's human-check step, followed by Task 3's four spike answers (backfill row count + date range + DB size; deep-link scheme result; restart/airplane-mode observations; de-link event name + whether captured rows survived) plus an "approved" or corrective response. `08-01-PLAN.md`'s `<output>` block requires both to be recorded verbatim in this SUMMARY before the plan can be marked complete — Plans 08-02 and 08-03 consume them directly (Task 3's deep-link answer, in particular, may require correcting `deeplink.go`).
+The user's real-device verification of Task 2's human-check step (now past two rounds of live-bug fixes — DSN pragma syntax, then premature post-pair disconnect in both the fresh-pair and already-linked paths), followed by Task 3's four spike answers (backfill row count + date range + DB size; deep-link scheme result; restart/airplane-mode observations; de-link event name + whether captured rows survived) plus an "approved" or corrective response. `08-01-PLAN.md`'s `<output>` block requires both to be recorded verbatim in this SUMMARY before the plan can be marked complete — Plans 08-02 and 08-03 consume them directly (Task 3's deep-link answer, in particular, may require correcting `deeplink.go`).
 
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
