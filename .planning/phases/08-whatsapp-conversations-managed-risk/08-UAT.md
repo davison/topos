@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 08-whatsapp-conversations-managed-risk
 source: [08-VERIFICATION.md]
 started: 2026-08-11T00:35:00Z
-updated: 2026-08-10T23:44:03Z
+updated: 2026-08-10T23:56:13Z
 supersedes: previous 08-UAT.md cycle (3 tests, 2 passed, 1 issue → G-08-3, diagnosed in .planning/debug/whatsapp-grpc-closing-fails-webspace.md, closed in code by plans 08-09/08-10)
 ---
 
@@ -38,6 +38,26 @@ blocked: 0
   reason: "User reported: after login and opening the webspace: A source couldn't sync / Nothing to show here yet. Your other sources are unaffected — check the source chips above, then retry. / whatsapp: match against source \"whatsapp\": rpc error: code = Unavailable desc = whatsapp: Not linked — pair this device with WhatsApp to start syncing. Use this source's chip menu (\"Re-link…\") or run this plugin binary's -link flag."
   severity: major
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
-  context: "G-08-3's presentation half is confirmed fixed (per-source StreamSyncDegraded, no fake outage). This gap is the kernel/plugin seam: the freshly paired session is not picked up by the running instance."
+  root_cause: "AND-gate of two defects, empirically confirmed (a zero-value &SourcePlugin{} reproduces the reported gRPC message byte-for-byte). (1) Plugin: plugins/whatsapp has no 'linked, connecting' health state and startBackgroundClient's SUCCESSFUL path (device.ID != nil, client.Connect() == nil) sets no health state at all — p.state stays at the Go zero value, which health.go defines as healthStateNotLinked; healthStateLinked is assigned in exactly one place, eventhandler.go's *events.Connected case, which arrives only after a further server round trip. (2) Kernel: no plugin-readiness gate exists between subprocess launch and first Match — commitGeneration → startScheduler → runSource refreshes immediately, and main.go completes the go-plugin handshake at the first instant of the not-yet-Connected window, so the kernel's Match deterministically beats the WhatsApp login round trip (Bohrbug, not flake). The errored sync_runs row is then pinned for DefaultSyncInterval=15m and the stream banner renders it (banner reads persisted sync run, not live health). Same window exists at kernel boot and every Apply; 08-09's eager first refresh is the newly-introduced trigger. plugins/mock's Match is unconditionally ready, so no automated gate could catch this class."
+  artifacts:
+    - path: "plugins/whatsapp/connect.go"
+      issue: "successful startBackgroundClient path (~128) returns without any setHealthState — leaves zero-value NotLinked"
+    - path: "plugins/whatsapp/health.go"
+      issue: "taxonomy has no connecting/logging-in state; NotLinked is iota==0 so it doubles as the uninitialised value"
+    - path: "plugins/whatsapp/eventhandler.go"
+      issue: "line 28 *events.Connected is the only transition to healthy"
+    - path: "kernel/supervisor/supervisor.go"
+      issue: "commitGeneration/resume/NewSupervisor start the scheduler with no plugin-readiness gate"
+    - path: "kernel/syncer/scheduler.go"
+      issue: "runSource (73-74) fires the first refresh immediately, before its ticker"
+    - path: "kernel/httpapi/stream.go"
+      issue: "banner (95-97) reads the persisted errored sync run, not live health — pinned 15m by DefaultSyncInterval"
+    - path: "plugins/mock/plugin.go"
+      issue: "Match (201-210) unconditionally ready — no fixture can surface a launch-readiness window"
+  missing:
+    - "Add a distinct healthStateConnecting ('Linked — connecting to WhatsApp…') and set it explicitly on connect.go's success path so NotLinked stops doubling as the uninitialised zero value"
+    - "Close the readiness race: reuse pairwait.go's pairLoginWaiter in startBackgroundClient (bounded wait for *events.Connected, fall through to connecting on timeout) so the go-plugin handshake genuinely means ready"
+    - "Decide whether a Match failure in the connecting state should persist an errored sync_runs row at all, given the 15m interval pins the banner"
+    - "Give plugins/mock an opt-in 'not ready for N ms after launch' mode so this failure class has a fixture"
+  debug_session: .planning/debug/whatsapp-paired-session-not-picked-up.md
+  context: "G-08-3's presentation half is confirmed fixed (per-source StreamSyncDegraded, no fake outage). This gap is the kernel/plugin seam: the freshly paired session IS read correctly from the store — the instance just reports the wrong health state during its connect window and the kernel queries it before it is ready."
