@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
 - [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
-- [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (gap closure in progress — 08-REVIEW.md CR-01, orphaned link session)
+- [ ] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (gap closure in progress — 08-UAT.md G-08-3, a re-link left the source dead and the webspace faking an outage)
 
 ## Phase Details
 
@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 8/8 plans executed (G-08-1 closed; gap closure in progress — `08-REVIEW.md` CR-01 open)
+**Plans:** 8/10 plans executed (G-08-1 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-3 open)
 
 Plans:
 **Wave 1**
@@ -464,6 +464,11 @@ Plans:
 
 - [x] 08-08-PLAN.md — CR-01/WR-01/IN-01: cancel the link session created while the panel was being torn down, armor it structurally and in the browser, clear the stale declined-link notice
 
+**Gap closure — Wave 5** *(08-UAT.md G-08-3: after a successful pairing, opening a webspace failed entirely with a service-unreachable error — an AND-gate of two independent defects, planned as two parallel plans)*
+
+- [ ] 08-09-PLAN.md — Kernel lifecycle half: suspend/resume becomes a generation change so a re-linked source still syncs, background syncs become cancellable, link-session contexts detached
+- [ ] 08-10-PLAN.md — Presentation half: a per-source sync failure degrades its webspace instead of faking an outage, and a webspace's sync status is scoped to the sources that feed it
+
 Notes:
 
 - Deliberately last. WhatsApp has no official personal-use API and the linked-device route can be de-linked or banned without warning; sequencing it after every other source means v1 is already useful if this plugin has to be dropped or shipped as best-effort.
@@ -486,7 +491,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 8/8 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 8/10 | In Progress|  |
 
 ## Requirement Coverage
 
