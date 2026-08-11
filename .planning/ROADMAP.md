@@ -588,14 +588,17 @@ Plans:
 
 ### Phase 09.1: 1.0 Release UX Essentials: responsive narrow-viewport layout (detail pane stacks below the stream pane at mobile widths with compact stream cards - halved height, reduced font sizes) and first-run bootstrap (missing config.toml no longer aborts startup: write a default config and greet the user with a friendly prompt to create their first webspace) (INSERTED)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** The app works on a phone and survives a fresh install. Below 768px, opening a stream item becomes a full-viewport detail takeover with a back control and a browser history entry (superseding this entry's "stacks below" wording, per 09.1-CONTEXT.md D-01), stream and search rows collapse to a 60px compact form, and every hover-gated header affordance gains a touch equivalent — with layout at 1024px and above byte-identical to today. A missing `config.toml` stops being fatal: the kernel writes a canonical default and boots into the already-shipped "No webspaces yet" greeting.
+**Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, 09.1-BOOTSTRAP, 09.1-TOUCH (no REQUIREMENTS.md REQ-ID maps to this inserted phase — see 09.1-RESEARCH.md `<phase_requirements>`; 09.1-CONTEXT.md decision IDs plus two phase-local handles are the traceability keys)
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 09.1 to break down)
+- [ ] 09.1-01-PLAN.md — Tracer: mobile detail takeover end-to-end (pane composition, shallow-routing history entry, slim detail bar, mobile e2e)
+- [ ] 09.1-02-PLAN.md — First-run bootstrap: write a canonical default config when none exists, never overwriting a broken one
+- [ ] 09.1-03-PLAN.md — Compact stream and search rows below 768px; date-marker ruler hidden and its gutter reclaimed
+- [ ] 09.1-04-PLAN.md — Header touch adaptation: chip actions and health detail reachable without hover
 
 ### Phase 10: Docs and Release Readiness
 
