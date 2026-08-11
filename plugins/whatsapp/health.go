@@ -13,15 +13,31 @@ import "go.mau.fi/whatsmeow/types/events"
 type healthState int
 
 const (
+	// healthStateConnecting means a paired device row WAS found and the
+	// socket dial succeeded, but whatsmeow has not yet delivered
+	// *events.Connected — a further server round trip (whatsmeow
+	// dispatches Connected only from handleConnectSuccess on the server's
+	// <success> node). Declared FIRST in this iota block so it is this
+	// plugin's Go zero value, replacing healthStateNotLinked in that role:
+	// gap G-08-4 (.planning/debug/whatsapp-paired-session-not-picked-up.md)
+	// found a zero-value *SourcePlugin reproducing the exact false
+	// "Not linked — pair this device..." message byte-for-byte for an
+	// already-paired, actively-connecting device, because the OLD zero
+	// value (healthStateNotLinked, iota == 0) doubled as "uninitialised"
+	// and "never paired" at once. connect.go's startBackgroundClient now
+	// also explicitly assigns this state before dialing (belt and braces
+	// with the zero-value fix), and 08-11's bounded serve-mode login wait
+	// means the kernel normally never observes this state at all — it is
+	// transient and self-clearing, offering no recovery action.
+	healthStateConnecting healthState = iota
 	// healthStateNotLinked is the state before any device has ever been
-	// paired (connect.go's own "no device found" branch), and is also
-	// this plugin's safe zero-value default (never silently reports
-	// linked) — including the one boot-time branch Task 1's plan text
-	// does not itself name: an ALREADY-paired device whose very first
-	// Connect() dial fails transiently (see connect.go's own comment at
-	// that call site for why this state, not a new 7th enum value, is the
-	// deliberate choice there).
-	healthStateNotLinked healthState = iota
+	// paired (connect.go's own "no device found" branch), or an
+	// ALREADY-paired device whose very first Connect() dial fails
+	// transiently (see connect.go's own comment at that call site for why
+	// this state, not a new enum value, is the deliberate choice there).
+	// No longer this plugin's zero-value default (see healthStateConnecting
+	// above, gap G-08-4) — it is reached only by explicit assignment.
+	healthStateNotLinked
 	// healthStateLinked is the only Healthy() state.
 	healthStateLinked
 	// healthStateDelinked is a remote unpair — the user (or someone with
@@ -70,6 +86,8 @@ func (s healthState) Healthy() bool { return s == healthStateLinked }
 // non-healthy template below says the opposite explicitly.
 var healthMessages = map[healthState]string{
 	healthStateLinked: "",
+	healthStateConnecting: "Linked — connecting to WhatsApp… syncing starts as soon as the connection completes. " +
+		"Previously captured messages are still here.",
 	healthStateNotLinked: "Not linked — pair this device with WhatsApp to start syncing. " +
 		"Use this source's chip menu (\"Re-link…\") or run this plugin binary's -link flag.",
 	healthStateDelinked: "Unlinked from WhatsApp — re-link to resume syncing. Previously captured messages are still here. " +

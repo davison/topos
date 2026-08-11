@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
@@ -13,6 +15,7 @@ import (
 // healthStateLinked — the set delink_test.go's per-state regression and
 // this file's own per-state assertions both iterate.
 var nonHealthyStates = []healthState{
+	healthStateConnecting,
 	healthStateNotLinked,
 	healthStateDelinked,
 	healthStateBanned,
@@ -178,5 +181,51 @@ func TestHealth_ReachableFalseWithLastErrorPerState(t *testing.T) {
 	}
 	if !resp.GetReachable() {
 		t.Fatalf("healthStateLinked: want Reachable=true, got LastError=%q", resp.GetLastError())
+	}
+}
+
+// TestConnectingState_IsTheZeroValue proves gap G-08-4's root cause 2 is
+// closed: a fresh, never-assigned healthState value IS healthStateConnecting,
+// not healthStateNotLinked — so a *SourcePlugin whose state was never
+// explicitly set can never report the false "not linked" pairing
+// instruction for an already-paired device.
+func TestConnectingState_IsTheZeroValue(t *testing.T) {
+	var s healthState
+	if s != healthStateConnecting {
+		t.Fatalf("G-08-4: var s healthState (the Go zero value) = %d, want healthStateConnecting (%d)", s, healthStateConnecting)
+	}
+	if healthState(0) == healthStateNotLinked {
+		t.Fatalf("G-08-4: healthState(0) must NOT equal healthStateNotLinked — the zero value must never double as the never-paired state")
+	}
+}
+
+// TestConnectingState_MatchMessageIsNotThePairingInstruction is the exact
+// byte-level regression the debug session's E-04 experiment pinned against
+// the user's verbatim G-08-4 report: a zero-value *SourcePlugin's Match
+// error must carry the connecting template, never the not-linked template's
+// device-pairing instruction.
+func TestConnectingState_MatchMessageIsNotThePairingInstruction(t *testing.T) {
+	p := newTestPlugin(t) // zero value healthState — nothing assigned
+
+	resp, err := p.Match(context.Background(), nonEmptyGroupsRequest())
+	if resp != nil {
+		t.Fatalf("G-08-4: want nil response for a zero-value (connecting) plugin, got %+v", resp)
+	}
+	if err == nil {
+		t.Fatal("G-08-4: want a non-nil error for a zero-value (connecting) plugin, got nil")
+	}
+	if got := status.Code(err); got != codes.Unavailable {
+		t.Fatalf("G-08-4: want codes.Unavailable, got %v (err=%v)", got, err)
+	}
+
+	msg := status.Convert(err).Message()
+	connectingText := healthStateConnecting.Message()
+	notLinkedText := healthStateNotLinked.Message()
+
+	if !contains(msg, connectingText) {
+		t.Fatalf("G-08-4: Match error %q does not contain the connecting template %q", msg, connectingText)
+	}
+	if contains(msg, notLinkedText) {
+		t.Fatalf("G-08-4: Match error %q contains the not-linked pairing instruction %q — a zero-value (actively-connecting) plugin must never claim the device isn't paired", msg, notLinkedText)
 	}
 }
