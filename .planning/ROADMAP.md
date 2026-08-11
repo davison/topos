@@ -586,6 +586,17 @@ Plans:
 - [x] 09-06-PLAN.md — Reload config moves to the switcher root as its only entry point; single "+" on create; plugin icons in Manage sources
 - [x] 09-07-PLAN.md — "+" picker rework: instances show their configured location, plugin catalog visually separated as its own group
 
+### Phase 09.1: 1.0 Release UX Essentials: responsive narrow-viewport layout (detail pane stacks below the stream pane at mobile widths with compact stream cards - halved height, reduced font sizes) and first-run bootstrap (missing config.toml no longer aborts startup: write a default config and greet the user with a friendly prompt to create their first webspace) (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 09.1 to break down)
+
 ### Phase 10: Docs and Release Readiness
 
 **Goal**: A new user landing on the repo can understand, install, and configure topos from the docs alone — README speaks to users, contributor material lives in CONTRIBUTING.md, security reporting has a home, and every plugin has a consistent one-page doc — and the repo is release-ready: GitHub milestones mirror .planning/ milestones, and CI publishes nightly builds and release artifacts

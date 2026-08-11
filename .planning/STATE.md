@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 10
-current_phase_name: Docs and Release Readiness
+current_phase: "09.1"
+current_phase_name: 1.0 Release UX Essentials
 status: planning
-stopped_at: Phase 09 complete (UAT 2/2, threats_open 0), ready to plan Phase 10
-last_updated: "2026-08-11T18:47:39.856Z"
+stopped_at: Phase 09.1 inserted (responsive mobile layout + first-run bootstrap), ready to plan
+last_updated: "2026-08-11T21:41:17.110Z"
 last_activity: 2026-08-11
 last_activity_desc: Quick task 260811-rqc completed (header branding lockup, human-verified live); Phase 10 still ready to plan
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 10
   total_plans: 83
   completed_plans: 83
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-11)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 10 — Docs and Release Readiness
+**Current focus:** Phase 09.1 — 1.0 Release UX Essentials (then Phase 10 — Docs and Release Readiness)
 
 ## Current Position
 
-Phase: 10 — Docs and Release Readiness
+Phase: 09.1 — 1.0 Release UX Essentials (INSERTED)
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-11 — Phase 09 complete, transitioned to Phase 10
+Last activity: 2026-08-11 — Phase 09.1 inserted before docs phase (responsive mobile layout + first-run bootstrap)
 
 Progress: [████████████████████] 83/83 plans (100%)
 
@@ -127,6 +127,7 @@ Progress: [████████████████████] 83/83 p
 - Phase 10 added: Docs and Release Readiness — TODO.md v1.0 docs items: new-user README + screenshots, CONTRIBUTING.md split, SECURITY.md, docs/plugins with _template.md (added 2026-08-11)
 - Kernel plugin-subprocess reaping bug (TODO.md) routed to /gsd-debug rather than a phase (2026-08-11)
 - Phase 10 edited: edited fields: goal, requirements, success_criteria — added GitHub-milestone sync (no GSD-native mechanism; own gh api process) and GHA publishing workflow (change-gated nightlies + release artifacts)
+- Phase 09.1 inserted after Phase 9: 1.0 Release UX Essentials: responsive mobile layout (stacked detail pane, compact stream cards) + first-run config bootstrap with friendly first-webspace prompt - inserted before docs so Phase 10 screenshots capture the final UI (URGENT)
 
 ### Decisions
 
