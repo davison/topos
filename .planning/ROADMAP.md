@@ -569,11 +569,22 @@ Plans:
   4. The "+" menu is reworked: instances display their configured URL/directory rather than the plugin name, and adding a NEW source type is presented as picking from a plugin catalog, visually separated from configuring another instance of an installed plugin
   5. Playwright specs cover the browser-drivable changes per the standing Phase 07.1 rule
 
-**Plans:** 0 plans
+**Plans:** 7 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 9 to break down)
+**Wave 1**
+
+- [ ] 09-01-PLAN.md — Tracer: plugin-provided icons end to end — additive proto contract, kernel icon endpoint, PluginIcon fallback chain, one plugin, browser-verified
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 09-02-PLAN.md — The remaining six plugin icons with licensing provenance, WhatsApp de-branding, and a topos-branded pairing panel
+- [ ] 09-03-PLAN.md — topos favicon, a robots.txt that disallows crawling, and a real elevation step for floating menus
+- [ ] 09-04-PLAN.md — Search clear button stops jumping on mouse-down; media previewer becomes 3:4 bounded with text flowing around it
+- [ ] 09-05-PLAN.md — Source chip: de-duplicated relative-time tooltips and refresh folded into the overflow menu
+- [ ] 09-06-PLAN.md — Reload config moves to the switcher root as its only entry point; single "+" on create; plugin icons in Manage sources
+- [ ] 09-07-PLAN.md — "+" picker rework: instances show their configured location, plugin catalog visually separated as its own group
 
 ### Phase 10: Docs and Release Readiness
 
