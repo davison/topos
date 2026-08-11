@@ -1,3 +1,4 @@
-# allow crawling everything by default
+# topos is a local, personal-data tool — nothing served here is meant
+# for public indexing, even if this instance is reachable on a LAN/tailnet.
 User-agent: *
-Disallow:
+Disallow: /
