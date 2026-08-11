@@ -184,6 +184,11 @@ type SourcePlugin struct {
 	// ready is nil in the normal case — see readiness.go for why the field
 	// exists at all (08-UAT.md gap G-08-4's fixture).
 	ready *readinessWindow
+	// renditionFixture is false in the normal case — see
+	// renditionfixture.go for why the field exists at all (09-04-PLAN.md
+	// Task 3's fixture, making DetailPane.svelte's media branch reachable
+	// by this repo's hermetic browser harness).
+	renditionFixture bool
 }
 
 // NewSourcePlugin builds a SourcePlugin. Unlike every real plugin's
@@ -199,6 +204,14 @@ func NewSourcePlugin() *SourcePlugin {
 // plugin contract — no real plugin needs an equivalent setter.
 func (p *SourcePlugin) withReadinessWindow(w *readinessWindow) *SourcePlugin {
 	p.ready = w
+	return p
+}
+
+// withRenditionFixture sets the fixture-only rendition flag (see
+// renditionfixture.go) and returns p for chaining from main.go. Not part
+// of the plugin contract — no real plugin needs an equivalent setter.
+func (p *SourcePlugin) withRenditionFixture(enabled bool) *SourcePlugin {
+	p.renditionFixture = enabled
 	return p
 }
 
@@ -297,14 +310,35 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 		return nil, status.Errorf(codes.NotFound, "mock: item %q not found", sourceID)
 	}
 
+	// renditionFixture (renditionfixture.go, 09-04-PLAN.md Task 3): active
+	// only for the ONE designated fixture item, so every other item keeps
+	// exercising the no-rendition path below in the same run, and only
+	// when the fixture is on — off (the default), this whole block is
+	// unreachable and Fetch behaves byte-identically to before the
+	// fixture existed.
+	fixtureActive := p.renditionFixture && sourceID == renditionFixtureItemID
+
 	switch req.GetVariant() {
 	case toposv1.ContentVariant_CONTENT_VARIANT_FULL:
-		return &toposv1.FetchResponse{
+		resp := &toposv1.FetchResponse{
 			Available:  true,
 			Text:       mockFullText[sourceID],
 			Provenance: it.GetProvenance(),
-		}, nil
+		}
+		if fixtureActive {
+			resp.MimeType = fixtureRenditionMIME
+			resp.SizeBytes = int64(len(fixtureRenditionPNG))
+		}
+		return resp, nil
 	case toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW, toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
+		if fixtureActive {
+			return &toposv1.FetchResponse{
+				Available: true,
+				MimeType:  fixtureRenditionMIME,
+				SizeBytes: int64(len(fixtureRenditionPNG)),
+				Data:      fixtureRenditionPNG,
+			}, nil
+		}
 		// No text on these variants — matches the contract's "PREVIEW:
 		// just the inline-preview rendition, no text" / "THUMBNAIL: just
 		// a small thumbnail rendition, no text".

@@ -39,6 +39,15 @@ export interface FixtureConfigSpec {
 	// spec needing the Plan 07.1-02 e2e plugin (or any future plugin type
 	// this harness grows) names it here without editing this fixture file.
 	pluginBinaries?: string[];
+	// env: extra environment variables layered onto the spawned KERNEL
+	// process's fixed allowlist (kernel.ts's launchKernel) — never
+	// replacing it. This is how a spec reaches a mock-plugin fixture env
+	// var (e.g. WEBSPACES_MOCK_RENDITION, docs/testing.md) — the kernel
+	// subprocess-spawns each plugin via append(os.Environ(), ...), so a
+	// value set here on the kernel process reaches the plugin subprocess
+	// whole. Empty/undefined by default, so a spec naming nothing extra
+	// here is byte-identical to before this field existed.
+	env?: Record<string, string>;
 }
 
 export interface BuildConfigOptions {

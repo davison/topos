@@ -245,6 +245,40 @@ since go-plugin's own client `StartTimeout` default is a full minute.
   promptly — a slow plugin relaunch no longer freezes every other
   source's routes kernel-wide.
 
+### `WEBSPACES_MOCK_RENDITION` — the mock's media-previewer fixture
+
+`topos-plugin-mock` also carries a third, sibling opt-in fixture
+(`plugins/mock/renditionfixture.go`), making `DetailPane.svelte`'s
+`bodyVariant === 'media'` branch (09-UI-SPEC.md Fix 9) reachable by this
+hermetic browser harness at all: the mock never has a byte rendition to
+offer for any item (`noRenditionReason`), so nothing in this repo's closed
+mock-shaped plugin set could otherwise route an item through the media
+branch, and Fix 9's aspect-locked box/conditional-float geometry could
+never be proven end to end in a real browser.
+
+- Set `WEBSPACES_MOCK_RENDITION=<any non-empty, non-"0" value>` on the
+  **kernel** process — inherited by the subprocess the same way
+  `WEBSPACES_MOCK_READY_AFTER_MS`/`WEBSPACES_MOCK_LAUNCH_DELAY_MS` are,
+  through `pluginhost.launch`'s `os.Environ()` construction.
+- Off by default (absent, empty, or `"0"`): the mock's `Fetch` behaviour
+  is byte-identical to a build with no fixture at all, so `make e2e`'s
+  other specs and every real installation are unaffected.
+- While on, only the ONE designated fixture item (`"1"`, which also
+  carries non-empty extracted text) gains a rendition: its `FULL` Fetch
+  response additionally carries a rendition descriptor (`mime_type
+  image/png`), and its `PREVIEW`/`THUMBNAIL` responses return a small
+  embedded PNG's bytes instead of `available: false`. Every other mock
+  item stays on the no-rendition path in the same run, unlike the two
+  fixtures above (which apply kernel-wide once set), a narrower "gates a
+  case" fixture (a simple boolean, no numeric parsing/malformed-value
+  path) — Task 3 confirms `image/png` is already on
+  `kernel/httpapi/item.go`'s `allowedRenditionTypes` allowlist rather
+  than widening it.
+- Exercised by `web/e2e/specs/09-search-clear-and-previewer.spec.ts`,
+  which enables this fixture for its own kernel to prove the previewer's
+  geometry (bounded 3:4 aspect ratio) and that extracted text flows
+  beside the float, both against a real browser.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end

@@ -283,8 +283,13 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 		// Explicit allowlist, never a spread of process.env (T-07.1-05):
 		// nothing else is inherited — in particular the developer's own
 		// XDG_CONFIG_HOME must never reach the child, or the test kernel
-		// would load the operator's real config.toml.
+		// would load the operator's real config.toml. configSpec.env is
+		// layered on TOP of this fixed allowlist (never replacing it) —
+		// the one sanctioned way a spec reaches a mock-plugin fixture env
+		// var (e.g. WEBSPACES_MOCK_RENDITION, docs/testing.md); it cannot
+		// override PATH/HOME/XDG_* since those keys are set again below.
 		env: {
+			...configSpec.env,
 			PATH: process.env.PATH,
 			HOME: tmpDir,
 			XDG_CONFIG_HOME: tmpDir,

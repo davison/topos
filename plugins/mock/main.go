@@ -55,10 +55,20 @@ func main() {
 		time.Sleep(delay)
 	}
 
+	// Fixture-only rendition (renditionfixture.go, 09-04-PLAN.md Task 3) —
+	// off by default (see renditionFixtureEnabled), so a real installation's
+	// mock is unaffected. Unlike the two fixtures above, an unset/invalid
+	// value is never a startup error — it is a simple boolean gate, exactly
+	// mirroring readiness.go's off-by-default posture but with no malformed
+	// value to reject.
+	renditionFixture := renditionFixtureEnabled(os.Getenv)
+
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
 		Plugins: map[string]goplugin.Plugin{
-			"source": &sdk.SourcePluginGRPCPlugin{Impl: NewSourcePlugin().withReadinessWindow(ready)},
+			"source": &sdk.SourcePluginGRPCPlugin{
+				Impl: NewSourcePlugin().withReadinessWindow(ready).withRenditionFixture(renditionFixture),
+			},
 		},
 		// sdk.GRPCServer (not goplugin.DefaultGRPCServer) raises the gRPC
 		// message-size ceiling to match the kernel's own dial options —
