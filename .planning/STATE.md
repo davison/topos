@@ -122,6 +122,9 @@ Progress: [█████████░] 96%
 - Phase 7 inserted after Phase 6: Webspace Builder UI — configure plugin instances from the UI, save as webspace, saved searches as permanent filters
 - Phase 8 edited: WhatsApp Conversations (Managed Risk) shifted from Phase 5 to Phase 8; now depends on Phase 4 (chat renderer) and Phase 5 (per-instance matching contract)
 - Phase 07.1 inserted after Phase 7: Browser E2E Harness — Playwright suite over hermetic kernel (mock plugin); automates Phase 7 UAT items 1-7 and 10 as regression armor before Phase 8 (URGENT)
+- Phase 9 added: UI Polish and Source Management Rework — TODO.md v1.0 web/plugin items: 8 small UI fixes, PDF previewer sizing, per-plugin icons (decided over badges), WhatsApp Topos branding, and the "+"-menu source/instance redesign (added 2026-08-11, pre-1.0 polish before milestone close)
+- Phase 10 added: Docs and Release Readiness — TODO.md v1.0 docs items: new-user README + screenshots, CONTRIBUTING.md split, SECURITY.md, docs/plugins with _template.md (added 2026-08-11)
+- Kernel plugin-subprocess reaping bug (TODO.md) routed to /gsd-debug rather than a phase (2026-08-11)
 
 ### Decisions
 

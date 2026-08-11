@@ -20,7 +20,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Source Instances & Per-Type Matching** - Sources become named plugin instances, each with matching config typed to its plugin, replacing the single shared keyword list (completed 2026-08-06)
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
 - [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
-- [x] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (gap closure in progress — 08-UAT.md G-08-3, a re-link left the source dead and the webspace faking an outage) (completed 2026-08-11)
+- [x] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (completed 2026-08-11)
+- [ ] **Phase 9: UI Polish and Source Management Rework** - v1.0 polish backlog from TODO.md: small UI fixes, PDF previewer sizing, per-plugin icons, and the source/instance "+"-menu redesign
+- [ ] **Phase 10: Docs and Release Readiness** - New-user README with screenshots, CONTRIBUTING.md split, SECURITY.md, and per-plugin docs from a shared template
 
 ## Phase Details
 
@@ -553,3 +555,40 @@ All 31 v1 requirements are mapped to exactly one phase (8 added in the 2026-08-0
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 9: UI Polish and Source Management Rework
+
+**Goal**: The v1.0 UI is release-clean — the small rough edges catalogued in TODO.md are gone, every plugin is visually identifiable by its own icon, and adding sources follows a redesigned model that separates "install a plugin" from "configure an instance"
+**Requirements**: none (polish backlog from TODO.md v1.0 sections)
+**Depends on**: Phase 8
+**Success Criteria** (what must be TRUE):
+
+  1. The eight small fixes land: topos favicon replaces the Svelte default, search clear button no longer jumps 15px on mouse-down, "ago" is not duplicated in source-instance sync alt text, the create-webspace entry shows a single "+", chip refresh lives in the 3-dot menu, robots.txt is valid, "Reload Config" sits at the root of the dropdown, and dropdown menus are visually distinct from pane backgrounds
+  2. The PDF previewer flexes to a bounded size with a sensible aspect ratio maintained, and surrounding text flows around it
+  3. Each plugin (paperless, SilverBullet, email, Signal, WhatsApp, mock) ships its own recognizable icon used consistently in chips and menus; the WhatsApp plugin is branded as Topos (not whatsmeow) with an app icon
+  4. The "+" menu is reworked: instances display their configured URL/directory rather than the plugin name, and adding a NEW source type is presented as picking from a plugin catalog, visually separated from configuring another instance of an installed plugin
+  5. Playwright specs cover the browser-drivable changes per the standing Phase 07.1 rule
+
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
+### Phase 10: Docs and Release Readiness
+
+**Goal**: A new user landing on the repo can understand, install, and configure topos from the docs alone — README speaks to users, contributor material lives in CONTRIBUTING.md, security reporting has a home, and every plugin has a consistent one-page doc
+**Requirements**: none (docs backlog from TODO.md v1.0 sections)
+**Depends on**: Phase 9
+**Success Criteria** (what must be TRUE):
+
+  1. The main README is new-user focused with indexed screenshot placeholders (docs/ss/1.png .. n.png) ready for the operator's images, dev-focused content moved to CONTRIBUTING.md, and credits for Claude and openGSD
+  2. SECURITY.md exists following GitHub's recommended format
+  3. docs/plugins/ contains a one-page doc per plugin (description, install requirements, config, gotchas, security/privacy notes), each derived from docs/plugins/_template.md so future plugins stay consistent
+  4. The Svelte default README under web/ is replaced with something useful or removed
+
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 10 to break down)
