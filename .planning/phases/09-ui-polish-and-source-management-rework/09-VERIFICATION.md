@@ -1,14 +1,16 @@
 ---
 phase: 09-ui-polish-and-source-management-rework
 verified: 2026-08-11T17:14:56Z
-status: human_needed
+status: passed
 score: 6/6 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "With the kernel's `[plugins] dir` pointed at freshly-built plugin binaries from this codebase (not a stale external bin/plugins/), open a webspace with at least one instance of each plugin type (paperless, SilverBullet, Proton/email, Signal, WhatsApp, mock) configured, and view the chip row, the '+' picker, the Manage Sources rows, and the stream/search row icons at their shipped sizes (14px chip/stream, 16px picker/Manage-Sources)."
     expected: "Every plugin's icon is legible and visually distinguishable from the others at 14-16px on the dark palette — the real paperless-ngx and SilverBullet marks read as their upstream logos, and the Lucide-derived Mail/MessageCircle/MessageSquare/FlaskConical glyphs read as recognizably distinct shapes, not a blur."
     why_human: "Small-size glyph legibility is a visual-perception judgment call that cannot be verified by source inspection or automated tests; this is exactly the check Task 4 of 09-02-PLAN.md's blocking human-verify checkpoint exists for. The user's first attempt was foiled by a local, external configuration issue (a stale `[plugins] dir` serving pre-icon-contract binaries, diagnosed and documented in README.md/config.example.toml by 09-02) rather than completed — see 09-02-SUMMARY.md's `coverage: D5` (`human_judgment: true`, no verification recorded)."
+
   - test: "Before shipping, recheck paperless-ngx's and SilverBullet's current trademark/brand-usage policies (not just their code license) for any restriction on embedding their logo mark in third-party software."
     expected: "Confirmation that no separate trademark policy prohibits topos from embedding these upstream logo assets (GPL-3.0 / MIT code license alone does not settle trademark use), or a decision to swap either mark for a generic glyph if a restrictive policy is found."
     why_human: "Trademark-policy interpretation is a legal/policy judgment, not something derivable from the repository. 09-UI-SPEC.md's own Fix 10 table flags this explicitly ('no separate restrictive brand policy is known to exist ... executor should recheck before shipping'), and 09-02-SUMMARY.md's D5 records this recheck as not yet performed."

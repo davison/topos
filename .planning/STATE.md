@@ -2,43 +2,43 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 09
-current_phase_name: ui-polish-and-source-management-rework
-status: executing
-stopped_at: Phase 9 UI-SPEC revised (plugin-provided icons) and re-approved
-last_updated: "2026-08-11T15:35:22.665Z"
+current_phase: 10
+current_phase_name: Docs and Release Readiness
+status: planning
+stopped_at: Phase 09 complete (UAT 2/2, threats_open 0), ready to plan Phase 10
+last_updated: "2026-08-11T18:23:53.209Z"
 last_activity: 2026-08-11
-last_activity_desc: Phase 08 execution resumed (wave continue)
+last_activity_desc: Phase 09 verified and marked complete
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 83
-  completed_plans: 76
+  completed_plans: 83
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-09)
+See: .planning/PROJECT.md (updated 2026-08-11)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 09 — ui-polish-and-source-management-rework
+**Current focus:** Phase 10 — Docs and Release Readiness
 
 ## Current Position
 
-Phase: 09 (ui-polish-and-source-management-rework) — EXECUTING
-Plan: 1 of 7
-Status: Executing Phase 09
-Last activity: 2026-08-11 — Phase 09 execution started
+Phase: 10 — Docs and Release Readiness
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-11 — Phase 09 complete, transitioned to Phase 10
 
-Progress: [█████████░] 96%
+Progress: [████████████████████] 83/83 plans (100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 76
+- Total plans completed: 83
 - Average duration: —
 - Total execution time: —
 
@@ -55,6 +55,7 @@ Progress: [█████████░] 96%
 | 07 | 16 | - | - |
 | 07.1 | 6 | - | - |
 | 08 | 15 | - | - |
+| 09 | 7 | - | - |
 
 **Recent Trend:**
 
@@ -238,6 +239,11 @@ Recent decisions affecting current work:
 - [Phase ?]: 07-14: WebspaceHeader chip content filters through participation.ts's shared predicate; row visibility deliberately stays unfiltered so the + trigger survives zero-participant webspaces
 - [Phase ?]: [Phase 07-15]: webspaceIsKnown (config OR index disjunction, config first) is the single existence gate for stream/search/agent-stream — closes G-07-1's create-flow 404 and its zero-configured-sources permanent-404 corollary; client load() classifies ApiError('webspace_not_found') into a new neutral StreamMissing state (no Retry), leaving StreamError for genuine outages
 - [Phase ?]: [Phase 07-16]: correlate.ParticipatesIn extracted as the one kernel-side participation predicate; Supervisor.purgeDeparticipatedWebspaceRows clears a de-participated (webspace, source) pair's rows synchronously in Apply, scoped to names present in both configs; +page.svelte's load() gained a quiet mode so ensurePolling's sync-completion refetch updates the stream without ever showing a skeleton over an already-rendered view — closes 07-UAT.md G-07-7
+- [Phase 09]: Plugin identity icons travel in the Describe response (no kernel table of plugin types); kernel enforces the trust boundary — MIME allowlist (svg/png only), 64 KiB cap, CSP `default-src 'none'; sandbox` + nosniff on the icon route
+- [Phase 09]: All seven plugin modules carry a four-key provenance block (Source-Project/File/Version/License) above their `//go:embed`; `internal/audit/plugin_icons_test.go` fails the build on a missing key or a `currentColor` leak
+- [Phase 09]: XML-comment gotcha — a literal `--` inside an SVG's comment body silently fails Chromium's strict `<img>` SVG parse with no console error naming the file; icon falls back to Puzzle with zero diagnostics
+- [Phase 09]: Stale-plugin-binary staleness risk documented in config.example.toml + README — a personal `[plugins] dir` absolute path pointing outside the checkout serves old binaries (all icons 404) while sources stay healthy
+- [Phase 09]: e2e fixture kernels can now receive explicit env vars via `FixtureConfigSpec.env`, layered under (never over) the hermetic PATH/HOME/XDG allowlist
 
 ### Pending Todos
 
@@ -248,8 +254,8 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- Phase 8 (WhatsApp, formerly Phase 5): Highest-risk area. No official API; linked-device route can be de-linked or banned. Spike must answer linking stability, backfill volume, event-stream persistence, and recovery before planning.
-- ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix` or fold into Phase 7 UI work.
+- ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix`.
+- ⚠️ [Phase 8, ongoing operational risk] WhatsApp linked-device route can still be de-linked or banned by Meta at any time; plugin degrades honestly (named health states, captured rows survive) but there is no recovery beyond re-linking.
 
 ### Quick Tasks Completed
 
@@ -274,6 +280,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T14:42:22.010Z
-Stopped at: Phase 9 UI-SPEC revised (plugin-provided icons) and re-approved
-Resume file: .planning/phases/09-ui-polish-and-source-management-rework/09-UI-SPEC.md
+Last session: 2026-08-11T18:25:00Z
+Stopped at: Phase 09 complete, ready to plan Phase 10
+Resume file: None

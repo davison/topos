@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: UI — Scalable Source Surface** - Header combines health and filtering into one scalable per-source affordance; deep-link fidelity differentiation, detail-pane search highlighting, themed scrollbars with date markers (completed 2026-08-06)
 - [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
 - [x] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (completed 2026-08-11)
-- [ ] **Phase 9: UI Polish and Source Management Rework** - v1.0 polish backlog from TODO.md: small UI fixes, PDF previewer sizing, per-plugin icons, and the source/instance "+"-menu redesign
+- [x] **Phase 9: UI Polish and Source Management Rework** - v1.0 polish backlog from TODO.md: small UI fixes, PDF previewer sizing, per-plugin icons, and the source/instance "+"-menu redesign (completed 2026-08-11)
 - [ ] **Phase 10: Docs and Release Readiness** - New-user README with screenshots, CONTRIBUTING.md split, SECURITY.md, and per-plugin docs from a shared template
 
 ## Phase Details
@@ -569,7 +569,7 @@ Plans:
   4. The "+" menu is reworked: instances display their configured URL/directory rather than the plugin name, and adding a NEW source type is presented as picking from a plugin catalog, visually separated from configuring another instance of an installed plugin
   5. Playwright specs cover the browser-drivable changes per the standing Phase 07.1 rule
 
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 
