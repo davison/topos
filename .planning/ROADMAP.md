@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 12 plans (10/12 executed — G-08-1, G-08-3 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-4 open, plans 08-11/08-12 created)
+**Plans:** 12/12 plans executed (10/12 executed — G-08-1, G-08-3 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-4 open, plans 08-11/08-12 created)
 
 Plans:
 **Wave 1**
@@ -471,8 +471,8 @@ Plans:
 
 **Gap closure — Wave 6** *(08-UAT.md G-08-4: immediately after a real-device pairing the plugin still reported "Not linked" — an AND-gate of a plugin health-state defect and a missing kernel launch-readiness gate, planned as two parallel plans)*
 
-- [ ] 08-11-PLAN.md — Plugin half: a named `connecting` health state that is also the Go zero value, and a bounded serve-mode wait on `*events.Connected` so the go-plugin handshake means ready
-- [ ] 08-12-PLAN.md — Kernel + fixture half: the scheduler retries a generation's first refresh instead of pinning an errored run for 15 minutes, and `plugins/mock` gains an opt-in launch-readiness window so the failure class finally has a gate
+- [x] 08-11-PLAN.md — Plugin half: a named `connecting` health state that is also the Go zero value, and a bounded serve-mode wait on `*events.Connected` so the go-plugin handshake means ready
+- [x] 08-12-PLAN.md — Kernel + fixture half: the scheduler retries a generation's first refresh instead of pinning an errored run for 15 minutes, and `plugins/mock` gains an opt-in launch-readiness window so the failure class finally has a gate
 
 Notes:
 
@@ -496,7 +496,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 10/10 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 12/12 | In Progress|  |
 
 ## Requirement Coverage
 
