@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"strconv"
@@ -20,12 +21,31 @@ const (
 	displayName     = "paperless-ngx"
 	contractVersion = "topos.v2"
 	previewRuneCap  = 500
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-02-PLAN.md Task 1, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
 // reads from MatchRequest.match_fields — paperless-ngx's own native
 // categorization is its document tags.
 var matchVocabulary = []string{"tags"}
+
+// iconSVG is paperless-ngx's own real logo mark (dark-theme-legible,
+// no-text variant), wrapped in a square viewBox by this repo so the
+// asset renders consistently alongside the Lucide-derived glyphs — the
+// upstream path data itself is copied byte-for-byte, only the enclosing
+// <svg>/<g> wrapper (width/height/viewBox and a centering translate) was
+// added.
+//
+// Source-Project: paperless-ngx (paperless-ngx/paperless-ngx)
+// Source-File:    src-ui/src/assets/logo-white-notext.svg
+// Source-Version: 7620cd02f0c9303c57fe512a5922aa17e24b7d60
+// Source-License: GPL-3.0-only
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // SourcePlugin implements sdk.SourcePlugin against a paperless-ngx
 // instance via Client.
@@ -50,6 +70,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

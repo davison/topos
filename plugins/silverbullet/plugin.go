@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,6 +27,10 @@ const (
 	// large space from opening hundreds of simultaneous connections
 	// against the user's own home server.
 	matchConcurrency = 4
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-02-PLAN.md Task 1, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
@@ -34,6 +39,23 @@ const (
 // fields, unlike frontmatter.go's combined MatchesKeyword (see tag/page
 // helpers below).
 var matchVocabulary = []string{"tags", "pages"}
+
+// iconSVG is SilverBullet's own real logo mark. Upstream ships this mark
+// only as a raster PNG (client/images/logo-dock-96x96.png) — no vector
+// source exists — so this asset wraps that exact PNG's bytes as a base64
+// data URI inside a plain square <svg><image> document, the identical
+// technique upstream's own client/images/favicon.svg already uses for
+// its own PNG-backed icon. The embedded bytes are the unmodified upstream
+// PNG; only the enclosing SVG wrapper (needed to satisfy this repo's
+// uniform icon.svg/image-svg+xml contract) was added.
+//
+// Source-Project: SilverBullet (silverbulletmd/silverbullet)
+// Source-File:    client/images/logo-dock-96x96.png
+// Source-Version: a99e5d98bec3317da75e192f1f4b6e3c07dccbec
+// Source-License: MIT
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // SourcePlugin implements sdk.SourcePlugin against a SilverBullet instance
 // via Client.
@@ -60,6 +82,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 
