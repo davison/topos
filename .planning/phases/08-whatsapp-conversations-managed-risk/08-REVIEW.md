@@ -1,197 +1,217 @@
 ---
 phase: 08-whatsapp-conversations-managed-risk
-reviewed: 2026-08-11T00:36:50Z
+reviewed: 2026-08-11T12:15:26Z
 depth: standard
-files_reviewed: 12
+files_reviewed: 14
 files_reviewed_list:
   - docs/testing.md
+  - kernel/index/store.go
+  - kernel/index/store_test.go
+  - kernel/pluginhost/host.go
+  - kernel/supervisor/launchlatency_test.go
   - kernel/supervisor/readiness_test.go
+  - kernel/supervisor/supervisor.go
+  - kernel/supervisor/supervisor_test.go
   - kernel/syncer/scheduler.go
-  - kernel/syncer/scheduler_test.go
   - plugins/mock/main.go
-  - plugins/mock/plugin.go
   - plugins/mock/plugin_test.go
   - plugins/mock/readiness.go
   - plugins/whatsapp/connect.go
   - plugins/whatsapp/connect_test.go
-  - plugins/whatsapp/health.go
-  - plugins/whatsapp/health_test.go
 findings:
   critical: 0
   warning: 2
-  info: 1
-  total: 3
+  info: 2
+  total: 4
 status: issues_found
 ---
 
-# Phase 08: Code Review Report
+# Phase 08: Code Review Report (gap-closure wave 7)
 
-**Reviewed:** 2026-08-11T00:36:50Z
+**Reviewed:** 2026-08-11T12:15:26Z
 **Depth:** standard
-**Files Reviewed:** 12
-**Status:** issues_found
+**Files Reviewed:** 14
+**Status:** issues_found (no blockers; two warnings, two informational items)
 
 ## Summary
 
-This is the G-08-4 gap-closure wave: 08-11 makes `healthStateConnecting`
-the WhatsApp plugin's zero value and adds a bounded serve-mode login wait
-before the go-plugin handshake completes; 08-12 adds a bounded
-first-refresh retry to the kernel scheduler and an opt-in
-launch-readiness fixture to the mock plugin, plus a hermetic supervisor
-test proving the two work together.
+This wave (08-13/08-14, plus the 998a9ab debug-session fix) makes three
+changes: (1) `kernel/supervisor.Supervisor` splits its single mutation
+mutex (`s.mu`) so that `Host()`/`Coordinator()` reads go through a
+separate `genMu.RWMutex` instead, so a slow plugin relaunch under
+`SuspendInstance`'s resume closure no longer freezes every other source's
+health/refresh routes; (2) `kernel/pluginhost.Host` gains its own internal
+`sync.RWMutex` around the `plugins` slice, and `Reconcile` now performs its
+launch loop with no lock held, taking the write lock only for the
+kill-and-commit step; (3) `plugins/whatsapp/connect.go` moves the
+serve-mode login wait off the launch path onto a background goroutine, so
+a kernel boot/relaunch with an already-linked WhatsApp source no longer
+pays up to 15s before `goplugin.Serve` is reached; and (4) `index.Store`
+gains a test-only `SyncRunsForSourceForTesting` reader used to fix a
+flaky assertion in `TestApply_MidFlightSyncLeavesNoStrandedRunningRow`
+that had been reading the wrong row via `LatestSyncRunPerSource`.
 
-I read all twelve files, diffed each against the stated base commit to
-separate genuinely new code from pre-existing code, cross-checked the
-new code against callers/callees outside the diff (`plugin.go`,
-`eventhandler.go`, `pairwait.go`, `main.go`, `kernel/pluginhost/host.go`,
-`cmd/topos/main.go`), inspected the vendored `go-plugin` and `whatsmeow`
-source to verify specific claims made in code comments (go-plugin's
-default `StartTimeout`, whatsmeow's `AddEventHandler`/`RemoveEventHandler`
-pair), and ran the full test suite for the affected packages with the
-race detector (`go test -race`), including the real-subprocess hermetic
-supervisor test. Everything passes, no data race was detected, and the
-zero-value/retry logic is well covered by both unit and structural
-(AST-based) tests. I did not find a defect that rises to Critical
-(security/data-loss/crash) under this review's severity rubric.
+I traced the full lock-ordering story across `supervisor.go`/`host.go`
+(genMu vs. mu, mu vs. Host's own internal mu) and found it internally
+consistent: every writer of `s.host`/`s.coord` holds `s.mu` for the
+mutation's whole duration and takes `genMu.Lock()` only for the bare
+field assignment, so readers taking `genMu.RLock()` never wait behind a
+`Host.Reconcile` call, and the plain (unlocked) reads of `s.coord` inside
+`startScheduler`/`stopScheduler`/`commitGeneration` are always either
+same-goroutine reads of a value that goroutine just wrote, or reads that
+can never be concurrent with a write because `s.mu` already excludes any
+other mutator — so they cannot race with `Coordinator()`'s `genMu.RLock()`
+reads (read/read is not a race). `pluginhost.Host`'s new internal lock
+correctly narrows to protect only the `plugins` field, releasing the lock
+across the slow subprocess-launch loop and re-acquiring it only for the
+kill+commit region, which is the specific defect G-08-5 targeted. The
+WhatsApp `connect.go` goroutine dispatch is structurally sound: the
+success and failure branches are mutually exclusive, so
+`RemoveEventHandler` is called exactly once regardless of outcome, and
+`Match`'s own readiness gate (`healthState.Healthy()`) is driven
+independently by the already-registered `p.handleEvent`'s synchronous
+`*events.Connected` case, not by the (now purely diagnostic) login-wait
+goroutine — so the dispatched goroutine's own 15s timeout has no bearing
+on correctness, only on how long a stuck login stays silently
+unexplained in the log.
 
-I did find one real, provable regression to kernel/plugin boot latency
-that the diff's own reasoning does not fully account for (WR-01), plus a
-smaller resource-cleanup gap specific to the new long-lived serve-mode
-code path (WR-02) that a look at the sibling short-lived `-link` CLI flow
-makes clear is a genuine omission, not an intentional convention. One
-maintainability nit (IN-01) rounds out the findings.
+No blocker-level defects found. Two warnings below describe real,
+if narrow, risk surfaces this wave leaves in place; two info items note
+minor quality/robustness gaps.
 
 ## Warnings
 
-### WR-01: The new serve-mode login wait can block the ENTIRE kernel's HTTP startup, not just the WhatsApp source
+### WR-01: WhatsApp's first post-relaunch Match now races a fixed 7s retry budget against a live login round trip that has never been proven against a real degraded network
 
-**File:** `plugins/whatsapp/connect.go:168-170` (the `loginWaiter.wait(serveLoginTimeout)` call added by this diff)
+**File:** `plugins/whatsapp/connect.go:143-202`, `kernel/syncer/scheduler.go:48-66`
 
-**Issue:** `startBackgroundClient`'s already-paired success path now blocks
-for up to `serveLoginTimeout` (15s) waiting for a real `*events.Connected`
-before returning. This wait runs *before* `goplugin.Serve()` is ever
-called in `plugins/whatsapp/main.go`, which means the go-plugin handshake
-line the parent process is blocking on doesn't get written to stdout
-until the wait resolves (success, a definitive failure event, or the 15s
-timeout) — exactly what the code comment itself acknowledges: "every
-second spent here is a second the kernel's `pluginhost.launch` is blocked
-on the handshake completing."
+**Issue:** Before this wave, `startBackgroundClient` synchronously awaited
+`loginWaiter.wait(serveLoginTimeout)` (up to 15s) before returning, which
+made the go-plugin handshake itself a soft proxy for "login is likely
+done" by the time the kernel's first scheduled `Match` could land. This
+wave removes that guarantee outright — the comment at connect.go:138-148
+states it plainly: "the go-plugin handshake no longer implies login has
+completed." The safety net is now `kernel/syncer/scheduler.go`'s
+`defaultFirstRefreshRetryDelays` (`{2s, 5s}`, ~7s of total retry cover),
+which relies on `Match` returning `codes.Unavailable` while
+`healthState` is still `healthStateConnecting` (not `Healthy()`) and
+being retried before the source is pinned on an errored `sync_runs` row.
+The scheduler.go comment itself concedes the number is a judgment call
+("a WhatsApp login round trip is measured in hundreds of milliseconds"),
+and the connect_test.go/launchlatency_test.go suite proves only the
+*ordering* (goroutine dispatch, handler removal) via AST structural
+guards and a synthetic mock-plugin delay — never a real WhatsApp login
+against a slow/lossy network. If a real login takes longer than ~7s
+(congested Wi-Fi, VPN, a first-link cold start on a large account), the
+source is left on an errored sync run for the rest of the default sync
+interval (15 minutes) rather than "within seconds" as the comment at
+scheduler.go:56 promises. This exact gap is already tracked in this
+phase's planning docs (a "real-device gate" plan is called out as
+pending in the wave that produced this file), so it is not undiscovered,
+but it is worth restating here as a live, shipped risk rather than a
+closed one: the code review found no in-repo evidence this retry budget
+has been validated against a real degraded connection.
 
-What the comment does not account for is *what else* is blocked on that
-same call. `kernel/pluginhost/host.go`'s `Discover` (used at boot) and
-`Reconcile` (used by hot-apply) launch every configured source
-**sequentially**, in a single `for name, src := range sources { launch(...) }`
-loop (host.go:137-144, 191-200) — not one goroutine per source. And
-`cmd/topos/main.go` does not call `http.ListenAndServe` until
-`supervisor.NewSupervisor` — which calls `pluginhost.Discover` synchronously
-— returns. So on **every normal kernel restart** with an already-linked
-WhatsApp source configured (the steady-state case, not an edge case), the
-entire kernel's HTTP server — and therefore every *other*, unrelated
-source's own reachability, and the web UI itself — cannot become
-available until WhatsApp's login either completes or times out. Because
-Go map iteration order is randomized, whether WhatsApp's wait lands first
-or last in the launch sequence (and therefore how much of the up-to-15s
-delay other sources inherit) is non-deterministic run to run.
+**Fix:** Either (a) keep this as an explicitly accepted, tracked gap and
+make sure the pending real-device UAT gate actually exercises a
+throttled/high-latency network before this ships to end users, or (b)
+widen `defaultFirstRefreshRetryDelays` with one more attempt further out
+(e.g. `{2s, 5s, 10s}`) to buy more margin without reintroducing a
+launch-path block, since the retries are already bounded and
+context-cancellable.
 
-Before this diff, `startBackgroundClient`'s already-paired success path
-returned immediately after dispatching `client.Connect()` (a non-blocking
-dial), so this was not a bottleneck. Checked every sibling plugin's
-`main.go` (`paperless`, `silverbullet`, `proton`, `signal`) — none of them
-perform any blocking network/login round trip before `goplugin.Serve()`;
-this diff introduces the only such synchronous, multi-second,
-network-dependent wait in the whole launch path.
+### WR-02: `pluginhost.Host.Reconcile` has no internal protection against concurrent invocation — correctness depends entirely on a caller convention documented in a different package
 
-This is a real, provable regression to boot/hot-apply latency, not a
-"performance" tuning concern (Big-O, N+1 queries) that this review's scope
-excludes — it's a missing concurrency boundary that lets one source's slow
-login gate the whole kernel's and every sibling source's availability, on
-a path (`cmd/topos/main.go`'s boot sequence) that previously had no such
-dependency.
+**File:** `kernel/pluginhost/host.go:195-265`
 
-**Fix:** Pick one:
-- Launch each configured source concurrently in `Discover`/`Reconcile`
-  (e.g. an `errgroup.Group` per source, preserving the existing
-  "every launch this call needed has now succeeded — only now kill/commit"
-  ordering guarantee) so one slow source can never delay a sibling's
-  launch or the HTTP listener; or
-- Move the login wait off the synchronous startup path entirely — start
-  `startBackgroundClient`'s dial, return immediately once
-  `healthStateConnecting` is recorded, and let 08-12's own
-  first-refresh retry (already built for exactly this "handshake
-  completed before Match is truly ready" gap) absorb the residual window
-  instead of blocking the handshake on it; or, at minimum,
-- Shorten `serveLoginTimeout` substantially and lean more on the
-  kernel-side retry, since 08-12 already covers the failure mode this
-  wait exists for.
+**Issue:** The new `h.mu sync.RWMutex` (host.go:129-139) protects
+`h.plugins` against a *reader* racing a single in-flight `Reconcile`, but
+it does nothing to serialize two *concurrent* `Reconcile` calls against
+each other: the `existing`/`kept`/`launched` maps are built from a
+snapshot taken under a released `RLock()`, and the final commit
+(`h.plugins = next`) is a plain last-writer-wins assignment under
+`Lock()`. If two `Reconcile` calls ever ran concurrently, the second
+call's `next` slice is built from its own stale `existing`/`kept` view
+and would silently clobber whatever the first call had just committed —
+including plugin instances the first call launched and the second knew
+nothing about — with no compile-time or runtime signal that this
+happened (not even a `-race` failure, since every access is technically
+lock-protected). The code's own comment (host.go:135-138) says this is
+safe *only* because "kernel/supervisor's own mutation lock
+(Supervisor.mu) ... every caller of Reconcile in this repo already holds
+for the call's whole duration" — i.e., `pluginhost` is a generically
+importable package whose most safety-critical exported method's
+correctness is guaranteed entirely by an invariant enforced in a sibling
+package, with nothing in `pluginhost` itself preventing a future caller
+(a second command, a test harness, a future HTTP-triggered reconcile
+path) from violating it. This is a pre-existing limitation carried
+forward rather than something this wave newly introduced (Host had *no*
+internal locking at all before this wave), but the wave's own framing —
+"the write lock only for the kill-and-commit region" — reads as if
+concurrent-Reconcile safety were now handled, when only reader/single-writer
+safety is.
 
-### WR-02: `loginWaiter`'s event handler is never removed from the long-lived serve-mode client
-
-**File:** `plugins/whatsapp/connect.go:130-131, 168-170`
-
-**Issue:** `client.AddEventHandler(loginWaiter.handleEvent)` returns a
-`uint32` handler ID (`whatsmeow.Client.AddEventHandler`, which pairs with
-`Client.RemoveEventHandler(id)` — confirmed in the vendored whatsmeow
-source), but the return value is discarded here, and no
-`RemoveEventHandler` call follows `loginWaiter.wait(...)` once it
-returns. Compare with `link.go`'s identical registration
-(`client.AddEventHandler(loginWaiter.handleEvent)` at link.go:109): there
-it's harmless because the `-link` CLI flow's client is short-lived and
-disconnected/exited shortly after. `connect.go`'s serve-mode client is
-different — it's the plugin's persistent connection for the entire
-subprocess lifetime (per `plugin.go`'s own doc comment), which is
-typically days or weeks of uptime. Once `wait()` returns, this handler
-becomes permanent dead weight: it is invoked (and does nothing, since
-`pairLoginWaiter.signal`'s `sync.Once` already fired) for every single
-whatsmeow event dispatched for the rest of the process's life, and the
-`loginWaiter` (its buffered channel and `sync.Once`) is never eligible
-for garbage collection.
-
-Not a correctness bug — `signal`'s `sync.Once` plus a buffered channel of
-size 1 makes the extra calls safe (no panic, no leak of unbounded memory)
-— but it's a straightforward, low-risk cleanup the whatsmeow API was
-clearly designed to support, and copying the short-lived `-link` flow's
-registration pattern into the long-lived serve-mode path without also
-copying (or adding) a matching teardown is a real omission introduced by
-this diff.
-
-**Fix:**
-```go
-handlerID := client.AddEventHandler(loginWaiter.handleEvent)
-// ...
-if err := loginWaiter.wait(serveLoginTimeout); err != nil {
-    fmt.Fprintf(p.logOut, "%s: serve-mode startup: %v\n", pluginName, err)
-}
-client.RemoveEventHandler(handlerID)
-```
+**Fix:** At minimum, tighten the doc comment on `Reconcile` to state
+explicitly that concurrent calls are undefined behavior (silent state
+loss, not a panic or a race-detector-visible fault) rather than merely
+implying it is "excluded" by an external convention. Consider a cheap
+internal guard for defense in depth — e.g. a second, dedicated
+`reconciling atomic.Bool` (or a plain non-reentrant `sync.Mutex` around
+the whole `Reconcile` body, orthogonal to `h.mu`) that returns a named
+error instead of silently losing a launch if `Reconcile` is ever called
+re-entrantly.
 
 ## Info
 
-### IN-01: The hermetic readiness test's timing comments are coupled to a production constant with no assertion enforcing the link
+### IN-01: The new WR-01 background goroutine adds a third concurrent writer to `p.logOut` (`os.Stderr`) with no synchronization
 
-**File:** `kernel/supervisor/readiness_test.go:56-59`
+**File:** `plugins/whatsapp/connect.go:197-202`, `plugins/whatsapp/eventhandler.go` (multiple `fmt.Fprintf(p.logOut, ...)` call sites), `plugins/whatsapp/groupsync.go`
 
-**Issue:** The test's comment states "the default retry schedule's first
-delay is 2s and the readiness window is only 0.7s, so the retry should
-supersede the launch-window error well inside 15s" — this is accurate
-today (`kernel/syncer/scheduler.go`'s `defaultFirstRefreshRetryDelays =
-[]time.Duration{2 * time.Second, 5 * time.Second}`), and the test itself
-(generous 15s deadline) won't break if that constant is tuned later. But
-the comment's *specific* numeric claim ("first delay is 2s") has no
-assertion tying it to the actual constant — a future change to
-`defaultFirstRefreshRetryDelays` would silently leave this comment
-describing stale behaviour while the test keeps passing. Low-value to fix
-on its own, but worth a note since it's the kind of drift that makes a
-"why does this test use a 15s deadline" question harder to answer
-correctly later.
+**Issue:** `p.logOut` is a plain `io.Writer` (`os.Stderr` in production)
+written to via bare `fmt.Fprintf` calls from several independent
+goroutines: the whatsmeow event-dispatch goroutine (`eventhandler.go`,
+`groupsync.go`), gRPC handler goroutines (`plugin.go`'s `Match`/`Health`
+paths), and now this wave's own dispatched login-wait goroutine
+(connect.go:197-202). None of these writers coordinate with each other.
+This predates this wave (the event-handler and gRPC paths already wrote
+concurrently), but the wave adds one more concurrent writer to the same
+unsynchronized sink, increasing the odds of two log lines interleaving
+into one garbled line under load (a real WhatsApp account with active
+groups can fire many events per second). This is a log-hygiene issue,
+not a correctness one — no data is lost or corrupted beyond the log
+stream's own readability.
 
-**Fix:** Either reference `defaultFirstRefreshRetryDelays` directly in
-the comment via a `//go:generate`-free code comment pointer (already
-partially done — the comment names the file), or accept this as
-acceptable drift risk given the deadline itself is generous enough not to
-require tightening.
+**Fix:** Wrap `p.logOut` in a small `sync.Mutex`-guarded writer (or route
+every log line through a single `setHealthState`-style helper that holds
+`p.mu`) so concurrent `Fprintf` calls can never interleave mid-line.
+Low priority given the log stream's own diagnostic (not functional) role.
+
+### IN-02: `index.Store.SyncRunsForSourceForTesting` ships as an unbounded, unenforced-test-only production symbol
+
+**File:** `kernel/index/store.go:800-853`
+
+**Issue:** The method is documented at length as "TEST-ONLY" and named
+after the existing `config.NewStoreForTesting` convention, but — like
+that predecessor — it lives in a non-`_test.go` file and ships in the
+production binary with no compiler, lint, or build-tag enforcement
+stopping a real request-path caller from using it. It also runs
+`SELECT ... WHERE source = ? ORDER BY id` with no `LIMIT`, which is fine
+for today's test fixtures (a handful of rows) but would become an
+unbounded read if a caller with a genuinely long-lived instance ever
+used it. Since this exactly mirrors an already-established house
+convention (`config.NewStoreForTesting`) rather than introducing a new
+pattern, this is not a regression — just worth a reviewer's eyes given
+the review's specific instruction to check "whether the test-only index
+reader is properly fenced": it is fenced by naming and doc comment only,
+not by tooling.
+
+**Fix:** No action required to match house convention; if this method's
+usage is ever considered for a real (non-test) call site, add a `LIMIT`
+and drop the `ForTesting` suffix at that point, per the method's own doc
+comment.
 
 ---
 
-_Reviewed: 2026-08-11T00:36:50Z_
+_Reviewed: 2026-08-11T12:15:26Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
