@@ -334,14 +334,36 @@
 	  drop-down listing every configured webspace plus the "+ New
 	  webspace" / "Manage sources…" escape hatches (D-13).
 	-->
-	<WebspaceSwitcher
-		{webspace}
-		{webspaces}
-		oncreate={oncreatewebspace}
-		{onreload}
-		{reloadBusy}
-		onmanage={onmanagesources}
-	/>
+	<div class="flex items-start justify-between gap-4">
+		<div class="min-w-0">
+			<WebspaceSwitcher
+				{webspace}
+				{webspaces}
+				oncreate={oncreatewebspace}
+				{onreload}
+				{reloadBusy}
+				onmanage={onmanagesources}
+			/>
+		</div>
+
+		<!--
+		  Header branding lockup (quick task 260811-rqc): app icon + "topos"
+		  wordmark + tagline, right-aligned beside the webspace-switcher
+		  title. shrink-0 so the switcher's own truncate (min-w-0 on its
+		  sibling column above) gives way before this block is ever
+		  squeezed. A SIBLING of — and rendered entirely BEFORE — the
+		  measured chip row below (bind:this={rowEl}): nesting it inside
+		  that row would silently shrink visibleChipCount's
+		  available-width input with no visible error (T-rqc-02).
+		-->
+		<div class="flex shrink-0 items-center gap-2">
+			<img src="/app-icon.png" alt="" class="size-10 shrink-0 rounded-md" />
+			<div class="flex flex-col text-muted-foreground">
+				<span class="text-[20px] leading-[1.2] font-semibold">topos</span>
+				<span class="text-[12px] leading-[1.4]">bringing all your topics to one place</span>
+			</div>
+		</div>
+	</div>
 
 	<!--
 	  Reload-config failure (Fix 7, relocated): the same modal-less
