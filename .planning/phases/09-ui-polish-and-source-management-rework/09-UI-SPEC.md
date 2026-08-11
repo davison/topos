@@ -1,7 +1,7 @@
 ---
 phase: 9
 slug: ui-polish-and-source-management-rework
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, tailwind v4 (inherited from Phase 1, unchanged — no re-init; components.json still records these contract values even though shadcn-svelte's live CLI/registry has since retired this baseColor/style combination — every actual color the app renders comes from web/src/app.css's hand-authored hex tokens, not the CLI)"
 created: 2026-08-11
@@ -287,34 +287,55 @@ Accent reserved for: unchanged list from Phase 2/5/6/7, no additions.
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-This is a polish/rework phase over already-shipped surfaces, not a new-flow phase — most of the 11 fixes are static asset/copy corrections or single-state visual-token changes with no real state matrix to enumerate (favicon, robots.txt, single-"+", ago-dedup, popover-token). The rows below focus on the fixes that genuinely vary with data: the refreshed chip menu, the reworked previewer, plugin icons, and the reworked picker. **10 elements probed: 24 covered, 8 dismissed (reasons recorded), 2 backstop, 0 unresolved.**
+This is a polish/rework phase over already-shipped surfaces, not a new-flow phase — most of the 11 fixes are static asset/copy corrections or single-state visual-token changes with no real state matrix to enumerate (favicon, robots.txt, single-"+", ago-dedup, popover-token). Probe engine run (ui-consideration-probe.cjs) over 9 elements: **64 applicable considerations — 24 resolved (verification: explicit), 1 resolved (verification: backstop), 39 dismissed with recorded reasons, 0 unresolved.** Element kinds and the resolution map confirmed by the user (2026-08-11).
 
-| Category | Element | Status | Resolution / Reason |
-|----------|---------|--------|---------------------|
-| populated | E1 chip menu: normal flow (Fix 5) | ✅ covered | `Refresh now` / separator / `Edit connection…` / `Edit match settings…` / (`Re-link…`) / separator / `Remove from this webspace` — see Fix 5. |
-| loading | E1 chip menu: refresh in flight | ✅ covered | `Refresh now` is `disabled` and its icon `animate-spin`s while `source.syncing` — mirrors the removed standalone button's own spin treatment, now inside the menu item. |
-| error | E1 chip menu | ➖ dismissed | No new async surface — refresh's own success/failure is the existing chip health-dot/tooltip state, unchanged by relocating the trigger. |
-| zero-one-many | E1 chip menu: WhatsApp vs. non-WhatsApp | ✅ covered | `Re-link…` item's existing `isWhatsApp` gate is unchanged by this fix — still present only for the one plugin type that can re-link. |
-| empty | E2 previewer: no extracted text (Fix 9) | ✅ covered | Box renders centered/block, not floated — nothing to wrap text around, so no float is applied (see Fix 9 point 2). |
-| populated | E2 previewer: text present, PDF or image | ✅ covered | Box floats left, aspect-locked, text flows in the remaining line-box space — see Fix 9. |
-| overflow | E2 previewer: very short extracted text (shorter than the float's own height) | ✅ covered | Ordinary float behavior — remaining text simply ends; no special-case needed, the scroll container's own `overflow-y-auto` still governs the whole region's height. |
-| long-text | E2 previewer: very long extracted text | ✅ covered | Text keeps flowing/wrapping past the float's bottom edge exactly as CSS floats already handle — no new behavior to define. |
-| zero-one-many | E3 plugin icons: all six known plugin types | ✅ covered | Explicit per-binary lookup table, Fix 10. |
-| zero-one-many | E3 plugin icons: unrecognised/future plugin binary | ✅ covered | `Puzzle` fallback icon — a new plugin type never renders with no icon (Fix 10). |
-| populated | E3 plugin icons: WhatsApp specifically | ✅ covered | Raster `/app-icon.png` at the same box size as every Lucide sibling icon — see Fix 10's sizing note. |
-| empty | E4 picker: nothing left to add (Fix 11) | ✅ covered | Unchanged copy/state: `All available sources are already in this webspace.` |
-| empty | E4 picker: Group 1 empty, Group 2 non-empty | ✅ covered | Group 1's header/list simply doesn't render when `availableInstances` is empty — mirrors the existing separator-only-if-both-non-empty guard, extended to per-group header visibility. |
-| empty | E4 picker: Group 2 empty, Group 1 non-empty | ✅ covered | Symmetric — Group 2's header/tiles don't render when `pluginTypes` is empty (e.g. every discoverable plugin type is already configured). |
-| long-text | E4 picker: long `base_url`/`path` value | ✅ covered | `truncate` + native `title` on the instance row's location line, matching every other truncated-with-title precedent in this codebase (source chip name, Manage Sources row labels). |
-| overflow | E4 picker: many instances / many plugin types | 🧪 backstop | Popover already carries `max-h-80 overflow-y-auto` (unchanged from Phase 7) — adequate at today's plugin count (6), but the two-section split reduces visible rows-per-scroll-height versus the old flat list; needs a visual check or an explicit per-group `max-h` if the catalog grows well past 6 in a future phase. |
-| zero-one-many | E4 picker: instance with neither `base_url` nor `path` set | ✅ covered | Falls back to `pluginTypeLabel(source.plugin)` — never renders a blank second line (Fix 11's explicit fallback). |
-| populated | E5 webspace switcher: root menu with Reload config (Fix 7) | ✅ covered | Three static items (`New webspace`, `Reload config`, `Manage sources…`) in the declared order — see Fix 7. |
-| error | E5 reload failure | ✅ covered | Modal-less destructive `Alert` in the header region, fixed copy, cleared on next successful action — same pattern as chip-menu-remove/filter writes (Copywriting Contract). |
-| loading | E5 reload in flight | ✅ covered | The `Reload config` menu item disables for the duration of the request, same shared in-flight pattern as every other write in the app. |
-| overflow | E6 dropdown/popover surface token change (Fix 8) | ➖ dismissed | A pure color-token swap on already-existing, already-scrollable containers — no new overflow behavior introduced. |
-| populated | E7 favicon / robots.txt (Fixes 1, 6) | ➖ dismissed | Static assets, no runtime state. |
-| populated | E8 search clear button (Fix 2) | ✅ covered | Interaction-state contract (rest/hover/active/focus-visible must not shift position) — see Fix 2; not a data state, an interaction-fidelity requirement. |
-| populated | E9 "New webspace" / "ago" copy fixes (Fixes 3, 4) | ➖ dismissed | Pure string corrections on already-covered existing states (Phase 2/6/7's own health-tone and switcher-menu state matrices already apply unchanged). |
+### Resolved — explicit
+
+| Category | Element | Status | Resolution |
+|----------|---------|--------|------------|
+| populated | E1 chip menu: normal flow (Fix 5) | ✅ resolved (explicit) | `Refresh now` / separator / `Edit connection…` / `Edit match settings…` / (`Re-link…`) / separator / `Remove from this webspace` — see Fix 5. |
+| loading | E1 chip menu: refresh in flight | ✅ resolved (explicit) | `Refresh now` is `disabled` and its icon `animate-spin`s while `source.syncing` — mirrors the removed standalone button's own spin treatment, now inside the menu item. |
+| zero-one-many | E1 chip menu: WhatsApp vs. non-WhatsApp | ✅ resolved (explicit) | `Re-link…` item's existing `isWhatsApp` gate is unchanged by this fix — still present only for the one plugin type that can re-link. |
+| empty | E2 previewer: no extracted text (Fix 9) | ✅ resolved (explicit) | Box renders centered/block, not floated — nothing to wrap text around, so no float is applied (see Fix 9 point 2). |
+| populated | E2 previewer: text present, PDF or image | ✅ resolved (explicit) | Box floats left, aspect-locked, text flows in the remaining line-box space — see Fix 9. |
+| loading | E2 previewer: media still loading | ✅ resolved (explicit) | Sizing/float-only change — the box's `max-w-sm aspect-[3/4]` dimensions are fixed by CSS before the iframe/img loads, so there is no layout shift during load; media load behavior itself is unchanged from the shipped implementation. |
+| error | E2 previewer: media fails to load | ✅ resolved (explicit) | Unchanged from shipped implementation — Fix 9 changes the box's sizing/float only, not the iframe/img failure behavior; the aspect-locked box bounds whatever the browser renders on failure. |
+| overflow | E2 previewer: very short extracted text (shorter than the float's own height) | ✅ resolved (explicit) | Ordinary float behavior — remaining text simply ends; no special-case needed, the scroll container's own `overflow-y-auto` still governs the whole region's height. |
+| long-text | E2 previewer: very long extracted text | ✅ resolved (explicit) | Text keeps flowing/wrapping past the float's bottom edge exactly as CSS floats already handle — no new behavior to define. |
+| zero-one-many | E3 plugin icons: all six known plugin types + unrecognised fallback | ✅ resolved (explicit) | Explicit per-binary lookup table (Fix 10); `Puzzle` fallback — a new plugin type never renders with no icon. |
+| empty | E3 plugin icons: missing/unknown binary name | ✅ resolved (explicit) | Same `Puzzle` fallback — an icon-less row is unreachable by construction (Fix 10's lookup always returns a glyph). |
+| populated | E3 plugin icons: WhatsApp specifically | ✅ resolved (explicit) | Raster `/app-icon.png` at the same box size as every Lucide sibling icon — see Fix 10's sizing note. |
+| loading | E3 plugin icons: raster icon while loading | ✅ resolved (explicit) | The `<img>` sits in a fixed `size-3.5`/`size-4` box (`object-contain`), so no layout shift while the (local, same-binary-served) PNG loads. |
+| error | E3 plugin icons: raster icon fails to load | ✅ resolved (explicit) | `alt=""` (decorative — the adjacent text label carries the name), so a failed load renders an empty fixed-size box, never a broken-image glyph or stray alt text. |
+| empty | E4 picker: nothing left to add (Fix 11) | ✅ resolved (explicit) | Unchanged copy/state: `All available sources are already in this webspace.` — plus per-group header visibility: Group 1's header/list doesn't render when `availableInstances` is empty; symmetrically Group 2's header/tiles don't render when `pluginTypes` is empty. |
+| populated | E4 picker: both groups populated | ✅ resolved (explicit) | Two visually distinct headed groups — plain instance rows vs. bordered catalog tiles — per Fix 11's full layout spec. |
+| partial | E4 picker: instance with neither `base_url` nor `path` set | ✅ resolved (explicit) | Falls back to `pluginTypeLabel(source.plugin)` — never renders a blank second line (Fix 11's explicit fallback). |
+| long-text | E4 picker: long `base_url`/`path` value | ✅ resolved (explicit) | `truncate` + native `title` on the instance row's location line, matching every other truncated-with-title precedent in this codebase (source chip name, Manage Sources row labels). |
+| zero-one-many | E4 picker: zero/one/many instances per group | ✅ resolved (explicit) | Group headers are plural-neutral (`Add to this webspace` / `Install a new source`); one row and many rows share the same row treatment; zero = the per-group header-hiding rule above. |
+| populated | E5 webspace switcher: root menu with Reload config (Fix 7) | ✅ resolved (explicit) | Three static items (`New webspace`, `Reload config`, `Manage sources…`) in the declared order — see Fix 7. |
+| error | E5 reload failure | ✅ resolved (explicit) | Modal-less destructive `Alert` in the header region, fixed copy, cleared on next successful action — same pattern as chip-menu-remove/filter writes (Copywriting Contract). |
+| loading | E5 reload in flight | ✅ resolved (explicit) | The `Reload config` menu item disables for the duration of the request, same shared in-flight pattern as every other write in the app. |
+| populated | E8 search clear button (Fix 2) | ✅ resolved (explicit) | Interaction-state contract (rest/hover/active/focus-visible must not shift position) — see Fix 2; not a data state, an interaction-fidelity requirement. |
+| populated | E9 "ago" tooltip fix across all formatter variants (Fix 3) | ✅ resolved (explicit) | The de-duplicated copy is correct for **every** `Intl.RelativeTimeFormat({numeric:'auto'})` output — `"5 minutes ago"`, `"yesterday"`, `"last week"`, `"now"` — because the formatter's own phrase is used verbatim with no literal suffix (Fix 3's table). |
+
+### Resolved — backstop
+
+| Category | Element | Status | Statement |
+|----------|---------|--------|-----------|
+| overflow | E4 picker: many instances / many plugin types | 🧪 resolved (backstop) | Popover already carries `max-h-80 overflow-y-auto` (unchanged from Phase 7) — adequate at today's plugin count (6), but the two-section split reduces visible rows-per-scroll-height versus the old flat list; needs a visual check (or an explicit per-group `max-h`) if the catalog grows well past 6. |
+
+### Dismissed (reason required, recorded)
+
+| Element | Categories dismissed | Reason |
+|---------|----------------------|--------|
+| E1 chip menu | empty, partial, overflow, long-text, error | Fixed static item list — never empty, no partial data, no overflow at ≤7 short fixed-copy items; refresh's own success/failure surfaces through the existing chip health-dot/tooltip state, unchanged by relocating the trigger. |
+| E3 plugin icons | partial, overflow, long-text | Fixed-size glyph with no text content — no partial-data, overflow, or long-text axis exists. |
+| E4 picker | loading, error | Picker renders from already-loaded client state (the sources list) — no async fetch on open, hence no loading or error state of its own. |
+| E5 webspace switcher | empty, partial, overflow, zero-one-many, long-text | The webspace-list portion (zero/one/many webspaces, long names, scrolling) is Phase 7's shipped behavior, untouched by Fix 7's static-item addition. |
+| E6 popover surface token | all 8 | Pure color-token swap on already-existing, already-scrollable containers — no state variance introduced. |
+| E7 favicon / robots.txt | all 4 | Static assets, no runtime state. |
+| E8 search clear button | empty, loading, error, partial, long-text | The button's visibility logic (shown only with a non-empty query) and the input's own states are shipped behavior untouched by the positioning fix. |
+| E9 copy fixes | empty, loading, error, partial, overflow, zero-one-many | Pure string corrections on already-covered existing states — Phase 2/6/7's own health-tone and switcher-menu state matrices apply unchanged (long-text/variant coverage handled by the explicit Fix 3 row above). |
 
 ---
 
@@ -330,11 +351,11 @@ No third-party registries declared for Phase 9. Registry vetting gate not trigge
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved — gsd-ui-checker, 2026-08-11 (6/6 PASS, no recommendations); UI-consideration probe run and confirmed same day (64 applicable: 24 explicit, 1 backstop, 39 dismissed, 0 unresolved)
