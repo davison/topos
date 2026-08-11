@@ -1,19 +1,29 @@
-// 07-04-PLAN.md Task 3's structural guard over SourceChip.svelte's new
-// edit-menu control (D-12): the aria-label prefix and size-8 sizing, the
+// 07-04-PLAN.md Task 3's structural guard over SourceChip.svelte's edit-menu
+// control (D-12): the trigger's aria-label and size-8 sizing, the
 // stopPropagation-before-callback click handler (the D-12 vs Phase 6 D-01
 // collision — a click must never also toggle the chip's filter) with the
-// filter button's own handler left untouched, the exact four-item-plus-
-// separator menu contents (no instance-deletion item — D-12/D-13's "exactly
-// one place in the app deletes an instance" rule), the remove item's
-// destructive tint, and WebspaceHeader.svelte's measurement clones still
-// wiring a no-op onedit.
+// filter button's own handler left untouched, the menu's exact contents
+// (no instance-deletion item — D-12/D-13's "exactly one place in the app
+// deletes an instance" rule), the remove item's destructive tint, and
+// WebspaceHeader.svelte's measurement clones still wiring a no-op onedit.
 //
-// 08-04-PLAN.md Task 2 (D-03) extends this file: the menu's fourth entry,
-// "Re-link…", is guarded on the WhatsApp source_type — this is a static
+// 08-04-PLAN.md Task 2 (D-03) extends this file: the menu's "Re-link…"
+// entry is guarded on the WhatsApp source_type — this is a static
 // source-scan guard (the DropdownMenuItem markup always exists in the
 // component's source regardless of the runtime {#if} branch it's wrapped
 // in), so the guard assertion below checks the {#if isWhatsApp} wrapper
 // itself, not a rendered absence.
+//
+// 09-05-PLAN.md Task 2 (09-UI-SPEC.md Fix 5) updates three assertions that
+// encoded the pre-fix state, in place, per the 07-11 precedent for updating
+// a superseded rule rather than treating the update as a regression: the
+// trigger's aria-label broadens from the edit-only "Edit {name}" phrasing to
+// "{name} actions" (it is no longer edit-only); the separator count becomes
+// two (Refresh now gained its own leading separator); and the menu-item
+// label set gains "Refresh now" as its first member, since refresh folded
+// into this menu from a standalone button. New behaviour this same task
+// adds — the Refresh now item's syncing-disabled guard and spin class — has
+// no prior assertion to update and is added fresh below.
 //
 // House pattern (matches source-chip-pill.test.ts / source-chip-selected.test.ts):
 // comment-stripped source scanning, `extractBetween` scoping, a
@@ -65,12 +75,12 @@ describe('chip-edit-menu guard: found non-empty comment-stripped sources', () =>
 	});
 });
 
-// The edit control's own Button element, inside the DropdownMenuTrigger's
+// The overflow trigger's own Button element, inside the DropdownMenuTrigger's
 // child snippet — located via its unique aria-label expression, then
-// walked backward to that same element's own `<Button` opening (not
-// `indexOf('<Button')`, which would find the earlier refresh Button
-// instead).
-const ariaLabelMarker = 'aria-label={`Edit ${source.display_name}`}';
+// walked backward to that same element's own `<Button` opening. Since Fix 5
+// removed the standalone refresh Button, this trigger is now the chip's
+// ONLY Button element.
+const ariaLabelMarker = 'aria-label={`${source.display_name} actions`}';
 const ariaLabelIndex = strippedChip.indexOf(ariaLabelMarker);
 expect(ariaLabelIndex, `expected to find "${ariaLabelMarker}" in the scanned source`).toBeGreaterThanOrEqual(
 	0
@@ -86,16 +96,21 @@ const editClickHandlerBody = extractBetween(
 	'\n\t}'
 );
 
-describe('edit control: aria-label prefix and size-8 sizing', () => {
-	it('the aria-label carries an "Edit " prefix', () => {
-		expect(strippedChip.includes('aria-label={`Edit ${source.display_name}`}')).toBe(true);
+describe('overflow trigger: aria-label reads "{name} actions" (Fix 5, no longer edit-only), size-8 sizing', () => {
+	it('the aria-label reads "{display_name} actions"', () => {
+		expect(strippedChip.includes('aria-label={`${source.display_name} actions`}')).toBe(true);
 	});
 
 	it('the trigger button carries size-8 sizing', () => {
 		expect(
 			/\bsize-8\b/.test(editButtonBlock),
-			'expected the edit-menu trigger to carry size-8 sizing, matching the refresh control\'s own sub-44px exception'
+			'expected the overflow trigger to carry size-8 sizing — the chip\'s only sub-44px control now that Fix 5 removed the standalone refresh button'
 		).toBe(true);
+	});
+
+	it('exactly one aria-label exists in the file — the refresh button that carried a second one is gone', () => {
+		const matches = strippedChip.match(/aria-label=/g) ?? [];
+		expect(matches.length).toBe(1);
 	});
 });
 
@@ -124,10 +139,10 @@ describe('click handling: stopPropagation before the callback, filter button unt
 	});
 });
 
-describe('menu contents: exactly four action items plus one separator, no delete-instance item', () => {
-	it('contains exactly one DropdownMenuSeparator', () => {
+describe('menu contents: Refresh now first, two separators, no delete-instance item', () => {
+	it('contains exactly two DropdownMenuSeparators (Fix 5 — one after Refresh now, one before Remove)', () => {
 		const separators = editMenuBlock.match(/<DropdownMenuSeparator/g) ?? [];
-		expect(separators.length).toBe(1);
+		expect(separators.length).toBe(2);
 	});
 
 	// Finds the index of the `>` that closes an opening JSX tag starting at
@@ -147,7 +162,7 @@ describe('menu contents: exactly four action items plus one separator, no delete
 		return -1;
 	}
 
-	it('the menu item label set equals exactly the three expected labels', () => {
+	it('the menu item label set equals exactly the five expected labels, Refresh now first (Fix 5)', () => {
 		const items = [...editMenuBlock.matchAll(/<DropdownMenuItem[\s\S]*?<\/DropdownMenuItem>/g)].map(
 			(m) => m[0]
 		);
@@ -162,8 +177,61 @@ describe('menu contents: exactly four action items plus one separator, no delete
 		});
 		expect(
 			labels,
-			'expected the menu item label set to equal exactly [Edit connection…, Edit match settings…, Re-link…, Remove from this webspace] — proven by set equality, not by grepping for the absent word "Delete"'
-		).toEqual(['Edit connection…', 'Edit match settings…', 'Re-link…', 'Remove from this webspace']);
+			'expected the menu item label set to equal exactly [Refresh now, Edit connection…, Edit match settings…, Re-link…, Remove from this webspace], Refresh now first — proven by an ordered array, not merely membership'
+		).toEqual([
+			'Refresh now',
+			'Edit connection…',
+			'Edit match settings…',
+			'Re-link…',
+			'Remove from this webspace'
+		]);
+	});
+});
+
+// New behaviour Fix 5 adds — the removed standalone refresh button never had
+// a syncing guard; this menu item does.
+describe('Refresh now: disabled and spinning while syncing (Fix 5, new guard)', () => {
+	const refreshItemBlock = extractBetween(editMenuBlock, '<DropdownMenuItem', '</DropdownMenuItem>');
+
+	it('is the first DropdownMenuItem in the menu', () => {
+		const firstItemIndex = editMenuBlock.indexOf('<DropdownMenuItem');
+		const refreshTextIndex = editMenuBlock.indexOf('Refresh now');
+		expect(firstItemIndex, 'expected to find a DropdownMenuItem').toBeGreaterThanOrEqual(0);
+		expect(refreshTextIndex, 'expected to find "Refresh now"').toBeGreaterThanOrEqual(0);
+		const firstItemBlock = editMenuBlock.slice(
+			firstItemIndex,
+			editMenuBlock.indexOf('</DropdownMenuItem>', firstItemIndex)
+		);
+		expect(
+			firstItemBlock.includes('Refresh now'),
+			'expected the first DropdownMenuItem in the menu to be Refresh now'
+		).toBe(true);
+	});
+
+	it('is disabled while source.syncing', () => {
+		expect(
+			refreshItemBlock.includes('disabled={source.syncing}'),
+			'expected the Refresh now item to be disabled={source.syncing} — refreshing something already mid-refresh is a no-op the removed standalone button never guarded against'
+		).toBe(true);
+	});
+
+	it('calls the existing onrefresh(source.name) — no prop-shape change', () => {
+		expect(
+			refreshItemBlock.includes('onSelect={() => onrefresh(source.name)}'),
+			'expected Refresh now to call the component\'s existing onrefresh(source.name), the same call the removed standalone button made'
+		).toBe(true);
+		const matches = strippedChip.match(/onrefresh\(source\.name\)/g) ?? [];
+		expect(matches.length, 'expected exactly one onrefresh(source.name) call site — the refresh call survived the move, unduplicated').toBe(1);
+	});
+
+	it('its RefreshCw icon carries animate-spin while source.syncing', () => {
+		expect(
+			/<RefreshCw[^>]*animate-spin[^>]*>/.test(refreshItemBlock) ||
+				/<RefreshCw[\s\S]*?source\.syncing[\s\S]*?animate-spin/.test(refreshItemBlock),
+			'expected the Refresh now item\'s RefreshCw icon to carry an animate-spin class while source.syncing'
+		).toBe(true);
+		const matches = strippedChip.match(/animate-spin/g) ?? [];
+		expect(matches.length, 'expected exactly one animate-spin reference in the file').toBe(1);
 	});
 });
 

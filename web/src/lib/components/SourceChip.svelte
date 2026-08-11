@@ -25,7 +25,7 @@
 
 	// The single merged per-instance affordance (D-01): health dot,
 	// display name, a real-button filter toggle, and a hover/focus-revealed
-	// refresh control — replacing the retired SourceHealthChip.svelte +
+	// overflow menu — replacing the retired SourceHealthChip.svelte +
 	// SourceFilterChips.svelte pair. This exact component renders both
 	// inline in WebspaceHeader's chip row and inside the overflow popover
 	// (06-UI-SPEC.md "Header Redesign") — reusing it unforked in both
@@ -33,10 +33,11 @@
 	// regardless of where a given chip is currently visible.
 	//
 	// D-12 (07-04-PLAN.md Task 3) adds a third control: an edit menu
-	// trailing the refresh button, offering Edit connection…/Edit match
-	// settings…/Remove from this webspace via `onedit`. A measurement
-	// clone (WebspaceHeader.svelte's invisible `measureEl` row) passes a
-	// no-op `onedit` — see this file's own guard, chip-edit-menu.test.ts.
+	// trailing the (then-standalone) refresh button, offering Edit
+	// connection…/Edit match settings…/Remove from this webspace via
+	// `onedit`. A measurement clone (WebspaceHeader.svelte's invisible
+	// `measureEl` row) passes a no-op `onedit` — see this file's own guard,
+	// chip-edit-menu.test.ts.
 	//
 	// D-03 (08-04-PLAN.md Task 2) widens the menu with a fourth entry,
 	// "Re-link…", offered only when `source.source_type` is WhatsApp's own
@@ -46,8 +47,13 @@
 	// 09-01-PLAN.md Task 3 (09-UI-SPEC.md Fix 10) adds the plugin's own
 	// identity icon (PluginIcon, kernel-served, mandatory Puzzle fallback)
 	// between the health dot and the display name — chip now reads
-	// [dot][icon][name]. Only this one addition; the tooltip copy and the
-	// trailing-control rework belong to 09-05.
+	// [dot][icon][name].
+	//
+	// 09-05-PLAN.md Task 2 (09-UI-SPEC.md Fix 5) folds the standalone
+	// refresh Button into this menu as its first item — the chip now
+	// reveals exactly ONE trailing hover/focus-visible control (the ⋮
+	// trigger), not two. `onrefresh`/`onedit`'s signatures are unchanged,
+	// so WebspaceHeader.svelte needs no edit.
 	let {
 		source,
 		selected,
@@ -120,13 +126,6 @@
 		}
 	});
 
-	// stopPropagation so a refresh click never also toggles the chip's own
-	// filter state — the two controls are siblings, not nested.
-	function handleRefreshClick(event: MouseEvent) {
-		event.stopPropagation();
-		onrefresh(source.name);
-	}
-
 	// stopPropagation before anything else — this is the D-12 versus Phase
 	// 6 D-01 collision, and the single most important line in this
 	// component's edit-menu control: opening the menu must never also
@@ -181,20 +180,6 @@
 		</Tooltip>
 	</TooltipProvider>
 
-	<Button
-		variant="ghost"
-		size="icon"
-		class={cn(
-			'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
-			source.syncing && 'opacity-100',
-			selected && 'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
-		)}
-		aria-label={`Refresh ${source.display_name}`}
-		onclick={handleRefreshClick}
-	>
-		<RefreshCw class={cn('size-4', source.syncing && 'animate-spin')} />
-	</Button>
-
 	<DropdownMenu>
 		<DropdownMenuTrigger>
 			{#snippet child({ props })}
@@ -207,7 +192,7 @@
 						selected &&
 							'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
 					)}
-					aria-label={`Edit ${source.display_name}`}
+					aria-label={`${source.display_name} actions`}
 					onclick={(event: MouseEvent) =>
 						handleEditClick(event, (props as { onclick?: (e: MouseEvent) => void }).onclick)}
 				>
@@ -216,6 +201,14 @@
 			{/snippet}
 		</DropdownMenuTrigger>
 		<DropdownMenuContent>
+			<DropdownMenuItem
+				disabled={source.syncing}
+				onSelect={() => onrefresh(source.name)}
+			>
+				<RefreshCw class={cn('size-4', source.syncing && 'animate-spin')} aria-hidden="true" />
+				Refresh now
+			</DropdownMenuItem>
+			<DropdownMenuSeparator />
 			<DropdownMenuItem onSelect={() => onedit(source.name, 'connection')}>
 				<Pencil aria-hidden="true" />
 				Edit connection…

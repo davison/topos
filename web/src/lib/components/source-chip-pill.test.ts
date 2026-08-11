@@ -21,6 +21,21 @@
 // shipped a defect. The two files are kept separate: they fail for
 // different reasons and should read as different incidents.
 //
+// 09-05-PLAN.md Task 2 (09-UI-SPEC.md Fix 5) removed the standalone refresh
+// `<Button>` this file originally guarded — refresh folded into the
+// overflow menu as its first `DropdownMenuItem`. `<Button` now resolves to
+// the chip's only remaining Button element, the ⋮ overflow trigger, so the
+// geometry/reveal-scoping assertions below (rounded-full, no size-11,
+// hover/keyboard reveal, no focus-within pin) are retargeted to it — they
+// still hold, and still guard against the same three-defect class G-06-3b
+// named, on the one control now carrying that surface. The one assertion
+// that does NOT carry over — the refresh icon forcing itself visible while
+// `source.syncing` — described behaviour specific to the removed standalone
+// button; its replacement (Refresh now disabled + spinning inside the menu)
+// is guarded by chip-edit-menu.test.ts's "Refresh now: disabled and
+// spinning while syncing" block instead, since that behaviour now lives on
+// a `DropdownMenuItem`, not a `Button`.
+//
 // House pattern (matches source-chip-selected.test.ts): comment-stripped
 // source scanning (web/vite.config.ts's test block runs environment: 'node'
 // with no component-mount harness, so there is no DOM to render against),
@@ -86,17 +101,19 @@ describe('source-chip-pill guard: found non-empty comment-stripped sources', () 
 });
 
 // Four scoped slices: the chip wrapper's opening tag, the filter button
-// element, the refresh Button element, and the overflow trigger's opening
-// tag in the header. The filter button uses a lowercase `<button` marker
-// (the refresh control is a capitalised component tag, so this matches only
-// the filter button). The overflow trigger is located via the literal
-// `more sources` text inside its aria-label — not `<button`, since
-// WebspaceHeader.svelte has more than one `<button` element — through the
-// following `>`; the popover's own "More sources" heading uses different
-// capitalisation and cannot collide with this lowercase marker.
+// element, the chip's own overflow-trigger Button element (the ONLY
+// `<Button` in SourceChip.svelte since Fix 5 removed the standalone refresh
+// Button), and the header's overflow-popover trigger's opening tag. The
+// filter button uses a lowercase `<button` marker (the trigger is a
+// capitalised component tag, so this matches only the filter button). The
+// header's overflow trigger is located via the literal `more sources` text
+// inside its aria-label — not `<button`, since WebspaceHeader.svelte has
+// more than one `<button` element — through the following `>`; the
+// popover's own "More sources" heading uses different capitalisation and
+// cannot collide with this lowercase marker.
 const wrapperTag = extractBetween(strippedChip, '<div', '>');
 const filterButtonBlock = extractBetween(strippedChip, '<button', '</button>');
-const refreshButtonBlock = extractBetween(strippedChip, '<Button', '</Button>');
+const triggerButtonBlock = extractBetween(strippedChip, '<Button', '</Button>');
 const overflowTriggerTag = extractBetween(strippedHeader, 'more sources', '>');
 
 describe('height parity: the chip and the overflow trigger declare the same height', () => {
@@ -142,41 +159,32 @@ describe('the filter button owns the full pill surface', () => {
 	});
 });
 
-describe('circular refresh surface, and no 44px height driver', () => {
-	it('the refresh Button carries a full-round radius and does not carry the 44px square-size utility', () => {
+describe('circular trigger surface, and no 44px height driver', () => {
+	it('the trigger Button carries a full-round radius and does not carry the 44px square-size utility', () => {
 		expect(
-			/\brounded-full\b/.test(refreshButtonBlock),
-			"expected the refresh Button to carry rounded-full explicitly — the shared button base supplies a rectangular radius, so an override that sets a size without a radius paints a rounded square inside the oval (this IS G-06-3b's second defect)"
+			/\brounded-full\b/.test(triggerButtonBlock),
+			"expected the trigger Button to carry rounded-full explicitly — the shared button base supplies a rectangular radius, so an override that sets a size without a radius paints a rounded square inside the oval (this IS G-06-3b's second defect)"
 		).toBe(true);
 		expect(
-			/\bsize-11\b/.test(refreshButtonBlock),
-			"found size-11 on the refresh Button — a 44px child cannot fit inside a 44px border-box pill, so reinstating that size silently re-inflates the chip and reopens G-06-3b's first defect"
+			/\bsize-11\b/.test(triggerButtonBlock),
+			"found size-11 on the trigger Button — a 44px child cannot fit inside a 44px border-box pill, so reinstating that size silently re-inflates the chip and reopens G-06-3b's first defect"
 		).toBe(false);
 	});
 });
 
 describe('reveal scoping: hover and keyboard focus only, never a mouse-click pin', () => {
-	it('the refresh Button reveals on hover and keyboard focus, and no longer on focus-within', () => {
+	it('the trigger Button reveals on hover and keyboard focus, and no longer on focus-within', () => {
 		expect(
-			refreshButtonBlock.includes('group-hover:opacity-100'),
-			"expected the refresh Button to still reveal on group-hover — this is D-03's primary reveal path"
+			triggerButtonBlock.includes('group-hover:opacity-100'),
+			"expected the trigger Button to still reveal on group-hover — this is D-03's primary reveal path"
 		).toBe(true);
 		expect(
-			refreshButtonBlock.includes('group-has-[:focus-visible]:opacity-100'),
-			"expected the refresh Button to reveal on group-has-[:focus-visible] — this is D-03's keyboard clause, and dropping it strands keyboard users on an invisible control"
+			triggerButtonBlock.includes('group-has-[:focus-visible]:opacity-100'),
+			"expected the trigger Button to reveal on group-has-[:focus-visible] — this is D-03's keyboard clause, and dropping it strands keyboard users on an invisible control"
 		).toBe(true);
 		expect(
-			refreshButtonBlock.includes('group-focus-within:opacity-100'),
-			"found a focus-within-scoped reveal on the refresh Button — focus-within also matches the persistent focus a mouse click leaves on the button, pinning the icon visible until the user clicks elsewhere (this IS G-06-3b's third defect)"
+			triggerButtonBlock.includes('group-focus-within:opacity-100'),
+			"found a focus-within-scoped reveal on the trigger Button — focus-within also matches the persistent focus a mouse click leaves on the button, pinning the icon visible until the user clicks elsewhere (this IS G-06-3b's third defect)"
 		).toBe(false);
-	});
-});
-
-describe('syncing spinner survives the reveal-scoping change', () => {
-	it('the refresh Button still forces itself visible while the source is syncing', () => {
-		expect(
-			/source\.syncing\s*&&\s*'opacity-100'/.test(refreshButtonBlock),
-			"expected the refresh Button's class expression to still force opacity-100 while source.syncing is true — the spinning icon is the sole in-place syncing indicator this phase (D-03), so a reveal-scoping change must never be able to hide it mid-sync"
-		).toBe(true);
 	});
 });

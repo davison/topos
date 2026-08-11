@@ -22,6 +22,22 @@
 // mentioning "bg-accent" in passing (this very file's header, for instance,
 // if it were the scanned file) must never be able to satisfy or trip a
 // structural assertion.
+//
+// 09-05-PLAN.md Task 2 (09-UI-SPEC.md Fix 5) removed the standalone refresh
+// `<Button>` and its `handleRefreshClick` handler — refresh folded into the
+// overflow menu as its first `DropdownMenuItem`, calling
+// `onrefresh(source.name)` directly with no dedicated click handler (a
+// DropdownMenuItem's `onSelect` never needs `stopPropagation`: the menu
+// content renders in a portal, disconnected from the chip's own DOM, so
+// there is no click-through-to-the-filter-button concern the way there was
+// for a Button sitting inline in the pill). `<Button` now resolves to the
+// chip's only remaining Button element, the ⋮ overflow trigger — the
+// below-retargeted assertions still guard the same D-01/D-03 behaviour
+// (selected re-toning, hover/keyboard reveal) on that one control. The
+// syncing-forces-visible assertion this file used to carry does not
+// translate — that behaviour now lives on a `DropdownMenuItem`, not a
+// `Button`, and is guarded by chip-edit-menu.test.ts's "Refresh now:
+// disabled and spinning while syncing" block instead.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -70,17 +86,13 @@ function extractBetween(source: string, startMarker: string, endMarker: string):
 }
 
 // The wrapper div's class expression, the display-name span's class
-// expression, the health-dot span's class expression and the refresh
-// Button's element (attrs + children), each scoped to just that fragment.
+// expression, the health-dot span's class expression and the chip's sole
+// remaining Button element (the ⋮ overflow trigger, attrs + children), each
+// scoped to just that fragment.
 const wrapperClassExpr = extractBetween(strippedChip, '<div', '>');
 const displayNameClassExpr = extractBetween(strippedChip, "'truncate text-[14px]", ')}');
 const healthDotClassExpr = extractBetween(strippedChip, "'size-2 shrink-0", ')}');
-const refreshButtonBlock = extractBetween(strippedChip, '<Button', '</Button>');
-const refreshHandlerBody = extractBetween(
-	strippedChip,
-	'function handleRefreshClick(event: MouseEvent) {',
-	'}'
-);
+const triggerButtonBlock = extractBetween(strippedChip, '<Button', '</Button>');
 
 describe('source-chip-selected guard: found non-empty comment-stripped sources', () => {
 	// Guards against a silent no-op: a wrong path resolution must fail
@@ -135,10 +147,10 @@ describe('every child re-tones when selected, not only the wrapper', () => {
 		).toBe(true);
 	});
 
-	it("the refresh button's class expression references `selected`", () => {
+	it("the overflow trigger's class expression references `selected`", () => {
 		expect(
-			refreshButtonBlock.includes('selected'),
-			'expected the refresh Button to re-tone conditionally on `selected` — its icon and hover surface must read on the fill, not on the neutral ghost-variant default'
+			triggerButtonBlock.includes('selected'),
+			'expected the overflow trigger Button to re-tone conditionally on `selected` — its icon and hover surface must read on the fill, not on the neutral ghost-variant default'
 		).toBe(true);
 	});
 });
@@ -151,34 +163,28 @@ describe('D-01/D-02/D-03/D-04 behaviour is untouched by the styling fix', () => 
 		).toBe(true);
 	});
 
-	it('the refresh handler still stops propagation before triggering refresh', () => {
+	it('onrefresh(source.name) is still called — now from the Refresh now menu item, with no dedicated click handler needed', () => {
 		expect(
-			refreshHandlerBody.includes('event.stopPropagation()'),
-			'expected handleRefreshClick to call event.stopPropagation() — without it, a refresh click would also toggle the chip filter (D-01/D-03 are siblings, not nested controls)'
-		).toBe(true);
-		expect(
-			refreshHandlerBody.includes('onrefresh(source.name)'),
-			'expected handleRefreshClick to still call onrefresh(source.name)'
+			strippedChip.includes('onSelect={() => onrefresh(source.name)}'),
+			'expected the Refresh now DropdownMenuItem to call onrefresh(source.name) directly — a DropdownMenuItem renders in a portal, so there is no click-through-to-the-filter-button concern a stopPropagation call would guard against'
 		).toBe(true);
 	});
 
-	it('the refresh control still reveals on group-hover and keyboard focus (D-03)', () => {
+	it('the overflow trigger still reveals on group-hover and keyboard focus (D-03)', () => {
 		expect(
-			refreshButtonBlock.includes('group-hover:opacity-100'),
-			'expected the refresh Button to still reveal on group-hover — a styling fix for the selected fill must not regress the hover-reveal behaviour'
+			triggerButtonBlock.includes('group-hover:opacity-100'),
+			'expected the overflow trigger Button to still reveal on group-hover — a styling fix for the selected fill must not regress the hover-reveal behaviour'
 		).toBe(true);
 		expect(
-			refreshButtonBlock.includes('group-has-[:focus-visible]:opacity-100'),
-			'expected the refresh Button to reveal on group-has-[:focus-visible] (keyboard focus only) — a focus-within-scoped reveal also matches the persistent focus a mouse click leaves on the button, so the icon stays pinned visible until the user clicks elsewhere (this IS G-06-3b)'
+			triggerButtonBlock.includes('group-has-[:focus-visible]:opacity-100'),
+			'expected the overflow trigger Button to reveal on group-has-[:focus-visible] (keyboard focus only) — a focus-within-scoped reveal also matches the persistent focus a mouse click leaves on the button, so the icon stays pinned visible until the user clicks elsewhere (this IS G-06-3b)'
 		).toBe(true);
 	});
 
-	it('the refresh control still forces itself visible while syncing (D-03)', () => {
-		expect(
-			/source\.syncing\s*&&\s*'opacity-100'/.test(refreshButtonBlock),
-			"expected the refresh Button's class expression to still force opacity-100 while source.syncing is true — the spinning icon is the sole in-place syncing indicator this phase and must never be hidden mid-sync"
-		).toBe(true);
-	});
+	// The syncing-forces-visible behaviour this block used to guard on the
+	// standalone refresh Button no longer has a Button-shaped equivalent —
+	// Refresh now's disabled+spinning-while-syncing guard now lives in
+	// chip-edit-menu.test.ts, scoped to the DropdownMenuItem it actually is.
 });
 
 describe("the chip row's overflow clipping (load-bearing for 06-04) is untouched", () => {
