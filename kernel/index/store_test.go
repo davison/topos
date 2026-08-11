@@ -399,6 +399,119 @@ func TestLatestSyncRunPerSource_TwoSourcesReturnsBothNewest(t *testing.T) {
 	}
 }
 
+// TestSyncRunsForSourceForTesting_OldestFirstAndScopedToTheSource proves the
+// per-instance history read returns every run for one source in insertion
+// order and nothing belonging to another source. The boundary cases —
+// a source that has never recorded a run, and one that has recorded
+// exactly one — are covered here too, since a caller indexing runs[0]
+// depends on both the emptiness signal and the ordering being right.
+func TestSyncRunsForSourceForTesting_OldestFirstAndScopedToTheSource(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	// Boundary: no runs at all.
+	runs, err := s.SyncRunsForSourceForTesting(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting (empty): %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no runs for a source that has never synced, got %d: %+v", len(runs), runs)
+	}
+
+	// Boundary: exactly one run.
+	id1, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless#1): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id1, "ok", "", 3); err != nil {
+		t.Fatalf("FinishSyncRun(paperless#1): %v", err)
+	}
+	runs, err = s.SyncRunsForSourceForTesting(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting (singleton): %v", err)
+	}
+	if len(runs) != 1 || runs[0].Status != "ok" || runs[0].ItemCount != 3 {
+		t.Fatalf("unexpected singleton history: %+v", runs)
+	}
+
+	// A second run for the same source, and one for a different source.
+	id2, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless#2): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id2, "error", "boom", 0); err != nil {
+		t.Fatalf("FinishSyncRun(paperless#2): %v", err)
+	}
+	if _, err := s.StartSyncRun(ctx, "silverbullet"); err != nil {
+		t.Fatalf("StartSyncRun(silverbullet): %v", err)
+	}
+
+	runs, err = s.SyncRunsForSourceForTesting(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected exactly 2 runs for paperless (the silverbullet run must not leak in), got %d: %+v", len(runs), runs)
+	}
+	if runs[0].Status != "ok" || runs[1].Status != "error" {
+		t.Errorf("expected oldest-first ordering [ok, error], got: %+v", runs)
+	}
+	for i, run := range runs {
+		if run.Source != "paperless" {
+			t.Errorf("run %d belongs to the wrong source: %+v", i, run)
+		}
+	}
+}
+
+// TestSyncRunsForSourceForTesting_EarlierFinishedRunSurvivesALaterRunningOne
+// is the arrangement that distinguishes this reader from
+// LatestSyncRunPerSource, and the exact one the supervisor's
+// mid-flight-apply test depends on
+// (.planning/debug/resolved/apply-midflight-sync-race.md): a finished run
+// followed by a still-running run for the SAME source. The latest-row
+// aggregate reports only the running one, which is correct for "is this
+// source syncing right now" and wrong for "was that earlier run
+// finalised" — a question only a per-run read can answer. Without this
+// fixture the two readers are indistinguishable and either could be
+// substituted for the other undetected (KB-002's stale-row lesson).
+func TestSyncRunsForSourceForTesting_EarlierFinishedRunSurvivesALaterRunningOne(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	id1, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(#1): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, id1, "ok", "", 7); err != nil {
+		t.Fatalf("FinishSyncRun(#1): %v", err)
+	}
+	if _, err := s.StartSyncRun(ctx, "paperless"); err != nil {
+		t.Fatalf("StartSyncRun(#2): %v", err)
+	}
+
+	runs, err := s.SyncRunsForSourceForTesting(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d: %+v", len(runs), runs)
+	}
+	if runs[0].Status != "ok" || runs[0].FinishedUnix == 0 {
+		t.Errorf("the earlier run must still read as finished, got: %+v", runs[0])
+	}
+	if runs[1].Status != "running" || runs[1].FinishedUnix != 0 {
+		t.Errorf("the later run must still read as running with FinishedUnix 0, got: %+v", runs[1])
+	}
+
+	latest, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if latest["paperless"].Status != "running" {
+		t.Errorf("LatestSyncRunPerSource must report the NEWEST run — that asymmetry is the whole reason SyncRunsForSourceForTesting exists; got: %+v", latest["paperless"])
+	}
+}
+
 // TestSyncingSources_UnrelatedSourceUnaffected proves a running row
 // for one source does not mark a different, never-started source as
 // syncing.

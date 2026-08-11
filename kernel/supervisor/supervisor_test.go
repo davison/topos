@@ -244,6 +244,25 @@ func (b *blockingSource) Match(ctx context.Context, _ map[string][]string) (*top
 // Coordinator.syncOne's own existing detached finalize,
 // kernel/syncer/coordinator.go) rather than left stranded, regardless of
 // whether Reconcile itself goes on to succeed.
+//
+// THE ASSERTION MUST ADDRESS ONE SPECIFIC RUN, NOT THE SOURCE'S LATEST ONE
+// (.planning/debug/resolved/apply-midflight-sync-race.md): Apply's
+// pre-Reconcile failure branch — the branch this test deliberately drives —
+// correctly restarts the OLD generation via startScheduler(oldCfg) BEFORE
+// returning, and syncer.Scheduler.Run fires every configured source's
+// immediate first refresh, which makes Coordinator.syncOne insert a SECOND
+// "running" sync_runs row for "slow" before Match is even called. The
+// shared blocker fixture then parks that second run on the new, uncancelled
+// generation's context, so it stays "running" for the rest of the test.
+// Asserting through idx.LatestSyncRunPerSource (MAX(id) per source) read
+// whichever of those two rows won a scheduling race, and reported the
+// perfectly healthy second run as a stranded mid-flight sync roughly a
+// quarter of the time under -race. SyncRunsForSourceForTesting is ordered
+// by id, so runs[0] is deterministically the run that was in flight when
+// Apply was called — the only run this test's must_have is about. The pin
+// is not weakened by the change: a genuinely stranded mid-flight sync
+// leaves runs[0] at status "running" with no finished time and still
+// fails here.
 func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 	idx := newTestIndex(t)
 	blocker := &blockingSource{name: "slow", entered: make(chan struct{})}
@@ -267,6 +286,13 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 	s.coord = syncer.NewCoordinator(idx, engine, []correlate.Source{blocker})
 	s.startScheduler(cfg)
 
+	// Stop whatever generation is running when this test ends. Without it the
+	// generation Apply restarts below is left with a Match parked forever on
+	// an uncancelled context: one leaked goroutine and one open index handle
+	// per iteration, which is exactly what made this test's own historic
+	// flakiness worsen with -count and under full-package parallelism.
+	t.Cleanup(s.Shutdown)
+
 	select {
 	case <-blocker.entered:
 	case <-time.After(2 * time.Second):
@@ -285,16 +311,24 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 		t.Fatal("Apply did not return in time — it must not block forever waiting on a source whose context it already cancelled")
 	}
 
-	runs, err := idx.LatestSyncRunPerSource(context.Background())
+	runs, err := idx.SyncRunsForSourceForTesting(context.Background(), "slow")
 	if err != nil {
-		t.Fatalf("LatestSyncRunPerSource: %v", err)
+		t.Fatalf("SyncRunsForSourceForTesting: %v", err)
 	}
-	run := runs["slow"]
-	if run.Status == "running" {
-		t.Errorf("expected the mid-flight sync to be finalised (not left at status \"running\") by the time Apply returns, got: %+v", run)
+	if len(runs) == 0 {
+		t.Fatal("expected the mid-flight sync to have recorded a sync_runs row before Apply was called — this test's own setup is not exercising a mid-flight sync at all")
 	}
-	if run.FinishedUnix == 0 {
-		t.Errorf("expected the mid-flight sync run to carry a finished time, got: %+v", run)
+	// runs[0] is the mid-flight run: it was started by the FIRST generation's
+	// immediate refresh, which the blocker.entered wait above already proved
+	// had begun before Apply was ever called, and sync_runs ids are monotonic
+	// in insertion order. See this test's doc comment for why the source's
+	// LATEST run is the wrong row to look at here.
+	midFlight := runs[0]
+	if midFlight.Status == "running" {
+		t.Errorf("expected the mid-flight sync to be finalised (not left at status \"running\") by the time Apply returns, got: %+v", midFlight)
+	}
+	if midFlight.FinishedUnix == 0 {
+		t.Errorf("expected the mid-flight sync run to carry a finished time, got: %+v", midFlight)
 	}
 }
 

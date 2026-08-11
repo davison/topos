@@ -797,6 +797,61 @@ WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source)
 	return out, nil
 }
 
+// SyncRunsForSourceForTesting returns every sync_runs row recorded for one
+// source INSTANCE id, oldest first — that instance's full run history
+// rather than the single latest row LatestSyncRunPerSource answers with.
+// Rows are ordered by id, which sync_runs' INTEGER PRIMARY KEY makes
+// monotonic in insertion order, so index 0 is always that instance's
+// first-ever recorded run. A still-running row (NULL finished_unix) scans
+// as FinishedUnix 0, exactly as the sibling readers above do.
+//
+// TEST-ONLY surface, named for it after config.NewStoreForTesting: no
+// production code path needs a source's full run history today, and this
+// reader exists solely because a test needed to address one SPECIFIC run.
+// Keeping the ForTesting suffix stops it being mistaken for part of the
+// supported read API — if a real production caller ever appears, rename it
+// then rather than letting the untested-in-production shape leak out now.
+//
+// The question it answers is the one the latest-row readers cannot, and
+// the distinction is exactly what KB-002 records
+// (.planning/debug/knowledge-base.md): "is this source syncing right now"
+// is a property of its latest row, but "was the run that was in flight at
+// moment T finalised" is a property of THAT row, and a latest-row
+// aggregate silently answers it with whichever later run has since
+// superseded it. TestApply_MidFlightSyncLeavesNoStrandedRunningRow
+// (kernel/supervisor) is the caller that needs the second question: it
+// pins that Apply finalises the sync that was mid-flight when it was
+// called, while Apply's own failure branch legitimately starts a fresh
+// generation whose immediate first refresh records a NEWER run for the
+// same instance before Apply returns.
+func (s *Store) SyncRunsForSourceForTesting(ctx context.Context, source string) ([]SyncRun, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT source, started_unix, finished_unix, status, error, item_count
+FROM sync_runs
+WHERE source = ?
+ORDER BY id
+`, source)
+	if err != nil {
+		return nil, fmt.Errorf("index: sync runs for source %s: %w", source, err)
+	}
+	defer rows.Close()
+
+	var out []SyncRun
+	for rows.Next() {
+		var run SyncRun
+		var finished sql.NullInt64
+		if err := rows.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount); err != nil {
+			return nil, fmt.Errorf("index: scan sync run row for source %s: %w", source, err)
+		}
+		run.FinishedUnix = finished.Int64
+		out = append(out, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("index: iterate sync run rows for source %s: %w", source, err)
+	}
+	return out, nil
+}
+
 // SyncingSources returns the set of source INSTANCE ids whose LATEST
 // sync_runs row is unfinished (status "running", finished_unix still
 // NULL) — i.e. the source instances syncing right now. Two instances of
