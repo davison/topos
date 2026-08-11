@@ -182,10 +182,19 @@ build artifact on a failed run.
   plugin type at once.
 
 Neither ever ships in `make build` or `make plugins` — both are built
-exclusively by `make e2e`'s own build step. Adding either to the real
-plugin set would ship a fixture plugin into every real install's plugin
-directory, where the kernel would discover and offer it in the
-operator's own "+ New …" picker.
+exclusively by `make e2e`'s own build step. `make e2e` DOES write both
+binaries into `bin/plugins/` — the same directory `make build`/`make dev`
+populate and a real `[plugins] dir` config value can point at — so a
+developer who has run the harness has both fixture binaries sitting in
+the same directory a real install reads. The kernel therefore refuses to
+offer either as an installable plugin type via
+`kernel/pluginhost.ExcludedPluginBinaries`, which filters the "+"
+picker's catalog listing only (`GET /api/config/plugin-types`); an
+already-configured instance of either is unaffected, since
+`DescribePluginHandler` reads the unfiltered `DiscoverAllBinaries`. See
+`kernel/pluginhost/discover_binaries_test.go`'s `ExcludesMockBinary`/
+`ExcludesMockstrictBinary` pair and `web/e2e/specs/
+mockstrict-discovery.spec.ts` for the specs that gate this.
 
 ### `WEBSPACES_MOCK_READY_AFTER_MS` — the mock's launch-readiness fixture
 

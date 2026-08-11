@@ -162,10 +162,17 @@ dev-check:
 # building the kernel first would embed whatever stale SPA happens to be
 # on disk and the whole suite would then test yesterday's UI while
 # reporting green. topos-plugin-mockstrict is built HERE and nowhere
-# else: it exists only for this browser harness (07.1-02-PLAN.md D-06),
-# and adding it to the "plugins" target would ship a fixture plugin into
-# every real install's plugin directory, where the kernel would discover
-# it and offer it in the operator's own "+ New …" picker.
+# else: it exists only for this browser harness (07.1-02-PLAN.md D-06).
+# Shipping it into the "plugins" target would still be wrong, but keeping
+# it out of that target is NOT what protects the operator's own "+ New …"
+# picker — this target writes both fixture binaries into bin/plugins/,
+# the same directory `make build`/`make dev` populate and a real
+# `[plugins] dir` can point at, so any developer who has run `make e2e`
+# has them there too. The actual guarantee is
+# kernel/pluginhost.ExcludedPluginBinaries (quick task 260811-r5d),
+# which excludes both fixture binaries from the picker's catalog listing
+# unconditionally, regardless of what happens to be sitting in
+# bin/plugins/.
 e2e:
 	npm --prefix web ci
 	npm --prefix web run build
