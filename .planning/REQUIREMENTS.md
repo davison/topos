@@ -27,7 +27,7 @@ Defined 2026-07-27. REQ-IDs are stable references; traceability is filled by the
 
 - [x] **SRC-01**: Email plugin (IMAP) works against Proton Mail Bridge (self-signed cert handling); uses `BODY.PEEK` so mail is never marked read; matches webspace keyword against folders/labels; dedups by Message-ID
 - [x] **SRC-02**: Signal plugin reads Signal Desktop DB strictly read-only (`mode=ro`); extracts key via OS keyring (backend-detected); detects schema version and fails loudly on unknown
-- [ ] **SRC-03**: WhatsApp plugin runs as a whatsmeow linked device with its own persistent message store; degrades gracefully on de-link/ban; matches on group names
+- [x] **SRC-03**: WhatsApp plugin runs as a whatsmeow linked device with its own persistent message store; degrades gracefully on de-link/ban; matches on group names
 - [x] **SRC-04**: paperless-ngx plugin via REST API; matches on tags; exact deep links to documents
 - [x] **SRC-05**: SilverBullet plugin; matches on tags/pages; exact deep links to pages
 
