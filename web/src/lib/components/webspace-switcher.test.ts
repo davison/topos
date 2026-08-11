@@ -4,9 +4,11 @@
 // carries aria-current, exactly one font-semibold weight cue appears in
 // the per-webspace item template (no font-medium anywhere in the file —
 // 07-UI-SPEC.md Typography's strict two-weight budget), the menu contains
-// exactly the two D-13 escape hatches (+ New webspace, Manage sources…)
-// and no third action item, and the trigger keeps its truncate + title
-// treatment (the same one the retired <h1> carried).
+// exactly the three static items 09-UI-SPEC.md Fix 7 permits (New
+// webspace, Reload config, Manage sources…) and no fourth action item —
+// widened from D-13's original two-item rule (09-06-PLAN.md Task 1) — and
+// the trigger keeps its truncate + title treatment (the same one the
+// retired <h1> carried).
 //
 // House pattern (matches filter-chip.test.ts / overlay-primitives.test.ts):
 // comment-stripped source scanning, a found-non-empty-source guard first,
@@ -99,26 +101,69 @@ describe('current-webspace emphasis: aria-current plus exactly one weight cue', 
 	});
 });
 
-describe('menu contents: exactly the two D-13 escape hatches, no third action item', () => {
-	it('contains "+ New webspace"', () => {
-		expect(stripped.includes('+ New webspace')).toBe(true);
+describe('menu contents: exactly the three 09-UI-SPEC.md Fix 7 static items, no fourth action item', () => {
+	// 09-06-PLAN.md Task 1 supersedes 07-UI-SPEC.md's D-13 ("exactly two
+	// static DropdownMenuItem entries outside the per-webspace loop") per
+	// 09-UI-SPEC.md Fix 7's explicit "widened to three" contract note. This
+	// is a deliberate contract change, updated in place here per Fix 7's
+	// own instruction, not a regression to route around.
+
+	it('contains "New webspace" (single "+" — the leading Plus icon alone, no doubled text)', () => {
+		expect(stripped.includes('New webspace')).toBe(true);
+		expect(stripped.includes('+ New webspace')).toBe(false);
+	});
+
+	it('contains "Reload config"', () => {
+		expect(stripped.includes('Reload config')).toBe(true);
 	});
 
 	it('contains "Manage sources…"', () => {
 		expect(stripped.includes('Manage sources…')).toBe(true);
 	});
 
-	it('renders exactly two static-copy DropdownMenuItem entries beyond the per-webspace loop', () => {
+	it('renders exactly three static-copy DropdownMenuItem entries beyond the per-webspace loop', () => {
 		// Every DropdownMenuItem usage in the file: one dynamic (inside the
 		// {#each webspaces} block, asserted separately above) plus exactly
-		// two static action items (create, manage) — never a third.
+		// three static action items (create, reload, manage) — never a
+		// fourth. Widened from two to three by 09-UI-SPEC.md Fix 7.
 		const allItemOpenings = stripped.match(/<DropdownMenuItem\b/g) ?? [];
 		const eachBlock = extractBetween(stripped, '{#each webspaces', '{/each}');
 		const dynamicItemOpenings = eachBlock.match(/<DropdownMenuItem\b/g) ?? [];
 		const staticItemCount = allItemOpenings.length - dynamicItemOpenings.length;
 		expect(
 			staticItemCount,
-			'expected exactly two static DropdownMenuItem entries outside the per-webspace loop (+ New webspace, Manage sources…) — a third would violate D-13\'s "no other global settings surface" rule'
-		).toBe(2);
+			'expected exactly three static DropdownMenuItem entries outside the per-webspace loop (New webspace, Reload config, Manage sources…) — a fourth would violate 09-UI-SPEC.md Fix 7\'s widened "no other global settings surface" rule'
+		).toBe(3);
+	});
+
+	it('Reload config sits between New webspace and the separator before Manage sources…', () => {
+		const createIndex = stripped.indexOf('New webspace');
+		const reloadIndex = stripped.indexOf('Reload config');
+		const manageIndex = stripped.indexOf('Manage sources…');
+		expect(
+			createIndex,
+			'expected to find New webspace'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			reloadIndex,
+			'expected Reload config to appear after New webspace in source order'
+		).toBeGreaterThan(createIndex);
+		expect(
+			manageIndex,
+			'expected Manage sources… to appear after Reload config in source order'
+		).toBeGreaterThan(reloadIndex);
+	});
+
+	it('Reload config carries a leading RotateCw icon', () => {
+		expect(stripped.includes("from '@lucide/svelte/icons/rotate-cw'")).toBe(true);
+		const reloadItemBlock = extractBetween(stripped, 'onSelect={onreload}', '</DropdownMenuItem>');
+		expect(
+			/<RotateCw\b/.test(reloadItemBlock),
+			'expected the Reload config item to render a leading RotateCw icon'
+		).toBe(true);
+	});
+
+	it('Reload config disables while a reload is in flight', () => {
+		expect(stripped.includes('disabled={reloadBusy}')).toBe(true);
 	});
 });

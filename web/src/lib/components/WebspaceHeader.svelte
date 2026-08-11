@@ -318,6 +318,7 @@
 		{webspace}
 		{webspaces}
 		oncreate={oncreatewebspace}
+		onreload={() => {}}
 		onmanage={onmanagesources}
 	/>
 

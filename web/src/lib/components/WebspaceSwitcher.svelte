@@ -3,7 +3,9 @@
 	// composition entry point. Trigger reads exactly as the heading it
 	// replaces (same Display role, same truncate+title treatment) until
 	// hovered/focused; the menu lists every configured webspace plus the
-	// two escape hatches D-13 permits and nothing else.
+	// three static items 09-UI-SPEC.md Fix 7 permits (superseding D-13's
+	// original two-item rule — see the widened test assertion in
+	// webspace-switcher.test.ts) and nothing else.
 	import { goto } from '$app/navigation';
 	import {
 		DropdownMenu,
@@ -14,12 +16,15 @@
 	} from '$lib/components/ui/dropdown-menu/index.js';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Plus from '@lucide/svelte/icons/plus';
+	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import { cn } from '$lib/utils.js';
 
 	let {
 		webspace,
 		webspaces,
 		oncreate,
+		onreload,
+		reloadBusy = false,
 		onmanage
 	}: {
 		webspace: string;
@@ -32,6 +37,15 @@
 		// what this component honours instead.
 		webspaces: string[];
 		oncreate: () => void;
+		// onreload/reloadBusy (09-06-PLAN.md Task 1, 09-UI-SPEC.md Fix 7):
+		// the relocated `Reload config` action, now a single-click item at
+		// the menu root rather than buried in ManageSourcesModal's footer.
+		// reloadBusy disables the item for the duration of the request —
+		// the same shared in-flight pattern every other write in the app
+		// uses. The route owns the actual reload call (Task 2); this
+		// component only renders the item and forwards the click.
+		onreload: () => void;
+		reloadBusy?: boolean;
 		onmanage: () => void;
 	} = $props();
 
@@ -74,7 +88,11 @@
 		<DropdownMenuSeparator />
 		<DropdownMenuItem onSelect={oncreate}>
 			<Plus class="size-4" aria-hidden="true" />
-			+ New webspace
+			New webspace
+		</DropdownMenuItem>
+		<DropdownMenuItem disabled={reloadBusy} onSelect={onreload}>
+			<RotateCw class="size-4" aria-hidden="true" />
+			Reload config
 		</DropdownMenuItem>
 		<DropdownMenuSeparator />
 		<DropdownMenuItem onSelect={onmanage}>Manage sources…</DropdownMenuItem>
