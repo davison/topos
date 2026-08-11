@@ -81,15 +81,26 @@
 		class="pr-9 pl-8"
 	/>
 	{#if inputValue}
-		<Button
-			type="button"
-			variant="ghost"
-			size="icon"
-			class="absolute top-1/2 right-0 size-11 -translate-y-1/2"
-			aria-label={searchCopy.clearLabel}
-			onclick={handleClear}
-		>
-			<X class="size-4" />
-		</Button>
+		<!--
+		  Centred via a fixed-height flex track, not a vertical transform —
+		  ui/button/button.svelte's shared press affordance writes a
+		  vertical translate on :active, and a translate-based centring
+		  technique here would collide with it on the same CSS custom
+		  property (09-UI-SPEC.md Fix 2). This wrapper stretches the full
+		  input height and flex-centres its child instead, so the two
+		  concerns never share an axis.
+		-->
+		<div class="absolute inset-y-0 right-0 flex items-center">
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				class="size-11"
+				aria-label={searchCopy.clearLabel}
+				onclick={handleClear}
+			>
+				<X class="size-4" />
+			</Button>
+		</div>
 	{/if}
 </div>
