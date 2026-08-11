@@ -131,3 +131,90 @@ passed throughout. What was missing:
 
 When writing tests for a status/lifecycle table, include an aged-stale-row fixture. It is the case
 that distinguishes correct from incorrect aggregation, and it is almost never written by default.
+
+---
+
+## KB-003 — A latest-row aggregate is the wrong oracle for a question about one specific run
+
+**Discovered:** 2026-08-11 · [apply-midflight-sync-race](resolved/apply-midflight-sync-race.md) · fix `998a9ab`
+**Class:** test oracle / query semantics · **Severity:** flaky gate, ~25%/iteration, misattributed to a recent refactor
+
+### The pattern
+
+This is KB-002's mirror image, and reading KB-002 alone will lead you straight into it. KB-002
+established that "is this source syncing *right now*" must use latest-row (`MAX(id) GROUP BY source`)
+semantics. The trap: that makes latest-row feel like the *correct* reader generally, so it gets
+reached for again when the question has quietly changed shape.
+
+A test asserted "was the sync that was in flight when `Apply` was called finalised?" through
+`LatestSyncRunPerSource`. But that aggregate can only ever address the source's *newest* run, and
+the code under test legitimately started a newer one before returning — `Apply`'s pre-Reconcile
+failure branch restarts the old generation, whose immediate first refresh inserts a second `running`
+row for the same source. Whenever that INSERT won the race against the test's read, the oracle
+inspected a perfectly healthy new run and reported it as a stranded mid-flight sync.
+
+**The question determines the reader:**
+
+| Question | Correct reader |
+|---|---|
+| Is this entity in state X *now*? | latest row (`MAX(id) GROUP BY entity`) — KB-002 |
+| Was *that specific* unit of work finalised? | that row, addressed directly (here: oldest-first `ORDER BY id`, index 0) |
+
+An aggregate cannot express the second question. If a later record can legitimately supersede the
+one you mean, any aggregate over the group is answering a different question than you asked.
+
+### Why it hid — and why it looked like a regression
+
+The failure surfaced immediately after a concurrency refactor (the `genMu` reader/writer split) that
+touched *exactly* the ordering contract the test pins. Every circumstantial signal pointed at the new
+code. It was wrong by 3 days: the test reproduced identically at the pre-refactor baseline, and
+`git log -S` showed the bad assertion had been there since the test was written.
+
+What actually changed was *amplification*. The test leaked one goroutine — parked forever in a
+fixture's `Match` on an uncancelled context — plus one open index handle **per iteration**. As the
+suite grew and iteration counts rose, contention climbed and the latent race began winning often
+enough to trip the gate.
+
+> **A flake that appears the day you touch the relevant code may still predate you.** Before
+> bisecting the suspect refactor, run the failing test at the baseline *at a high enough iteration
+> count*. An isolated `-count=3` pass is not evidence of anything against a ~25%/iteration failure
+> rate — that was the under-sampling that made this look refactor-induced for the first hour.
+
+### The fix shape
+
+1. **Address the specific record.** Add a per-entity, insertion-ordered read (`WHERE source = ?
+   ORDER BY id`) so index 0 is deterministically the run that already existed when the operation
+   under test began.
+2. **Mark test-only surface as such.** No production caller needed a source's full run history, so
+   the reader is `SyncRunsForSourceForTesting`, following the existing `config.NewStoreForTesting`
+   precedent. A test need should not silently widen the supported API.
+3. **Stop leaking the amplifier.** `t.Cleanup(s.Shutdown)` ends the generation the operation under
+   test restarts. A test that leaves a live goroutine behind degrades *every* later test in the
+   package, and the resulting flakes will be blamed on whatever was committed most recently.
+
+### Gate gap this exposed
+
+`go test -count=1` cannot see this class at all — that is the gate every plan runs. The failure
+needs either a raised iteration count or accumulated in-package contention to appear, so it slipped
+through every per-plan gate and only surfaced at a phase-final full-suite run, by which point it
+looked like fallout from the most recent merge.
+
+**Recurrence guards now in place:** the repaired test itself (mutation-checked — reverting KB-001's
+detached finalise kills it 10/10, removing `stopScheduler`'s `<-s.done` wait kills it 5/10, so it
+genuinely still pins the production contract); and
+`TestSyncRunsForSourceForTesting_EarlierFinishedRunSurvivesALaterRunningOne`, the
+earlier-finished-plus-later-running fixture that is the *only* arrangement where the per-run reader
+and the latest-row aggregate disagree. Without that fixture the two are substitutable undetected and
+the aggregate can quietly creep back in — the same "write the fixture that distinguishes the two
+readers" lesson KB-002 closes on.
+
+### Checklist for review
+
+- [ ] Does this assertion name a *specific* unit of work? If a later record for the same entity can
+      supersede it, an aggregate cannot express the assertion — address the row directly.
+- [ ] Does the code under test legitimately start new work before returning? Then "the latest row"
+      and "the row I mean" are different rows.
+- [ ] Does this test leave any goroutine, scheduler generation, or DB handle running at return?
+- [ ] Before blaming a flake on the newest commit: does it reproduce at the baseline at
+      `-count=20`+?
+- [ ] New read/write method added only because a test needed it — is it `ForTesting`-suffixed?
