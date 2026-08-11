@@ -29,7 +29,7 @@ test.describe('07-UAT item 1 (G-07-1): create-webspace lands empty; an unconfigu
 		await page.goto(`${kernel.baseURL}/w/existing`);
 
 		await page.getByRole('button', { name: 'existing' }).click();
-		await page.getByRole('menuitem', { name: '+ New webspace' }).click();
+		await page.getByRole('menuitem', { name: 'New webspace' }).click();
 
 		await expect(page.getByRole('heading', { name: 'New webspace' })).toBeVisible();
 		await page.getByLabel('Name').fill('fresh-project');

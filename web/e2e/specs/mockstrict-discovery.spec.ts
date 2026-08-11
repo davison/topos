@@ -2,7 +2,7 @@
 // (07.1-02-PLAN.md Task 3): the fixture plugins directory holds exactly
 // the requested closed set, the kernel's plugin-type discovery excludes
 // the mock reference fixture but includes mockstrict, and the SPA's "+"
-// chip picker renders a "New Mockstrict…" row backed by pluginTypeLabel's
+// chip picker renders a Mockstrict catalog tile backed by pluginTypeLabel's
 // title-case fallback branch (no PLUGIN_TYPE_LABELS entry exists for it).
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,13 +48,13 @@ test.describe('mockstrict plugin-type discovery', () => {
 		expect(body.plugin_types).not.toContain('topos-plugin-mock');
 	});
 
-	test('the add-source picker renders a "New Mockstrict…" row', async ({ page, kernel }) => {
+	test('the add-source picker renders a Mockstrict catalog tile', async ({ page, kernel }) => {
 		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
 
 		await page.goto(`${kernel.baseURL}/w/discovery`);
 
 		await page.getByRole('button', { name: 'Add source' }).click();
 
-		await expect(page.getByText('New Mockstrict…')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mockstrict', exact: true })).toBeVisible();
 	});
 });

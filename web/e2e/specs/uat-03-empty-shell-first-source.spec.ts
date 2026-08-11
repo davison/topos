@@ -42,7 +42,7 @@ test.describe('07-UAT item 3: a UI-created webspace is an empty shell, and the c
 		await page.goto(`${kernel.baseURL}/w/existing`);
 
 		await page.getByRole('button', { name: 'existing' }).click();
-		await page.getByRole('menuitem', { name: '+ New webspace' }).click();
+		await page.getByRole('menuitem', { name: 'New webspace' }).click();
 		await page.getByLabel('Name').fill('fresh-shell');
 		await page.getByRole('dialog').getByRole('button', { name: 'Create webspace' }).click();
 
