@@ -46,17 +46,23 @@ type Scheduler struct {
 }
 
 // defaultFirstRefreshRetryDelays is the production backoff schedule for a
-// generation's first refresh (see firstRefresh). G-08-4's window is a
-// WhatsApp login round trip measured in hundreds of milliseconds; plan
-// 08-11 already absorbs up to 15s of that inside the plugin's own launch
-// (its Describe/handshake does not return until link state is known), so
-// these two delays exist purely to cover the remaining gap between
-// "subprocess launched" and "first Match answered ready" — roughly seven
-// further seconds of cover, at a cost of at most two extra Match calls per
-// source per generation. This is a superseding retry, not a readiness
-// probe: the kernel has no RPC to ask a plugin "are you ready yet", and
-// inventing one would be a plugin contract change, which this plan
-// deliberately does not make.
+// generation's first refresh (see firstRefresh). As of plan 08-14 (closing
+// 08-REVIEW.md WR-01 and 08-VERIFICATION.md G-08-5), no plugin in this repo
+// blocks its handshake on a live login — the WhatsApp plugin's own bounded
+// login wait was moved off the launch path entirely, onto a background
+// goroutine that runs concurrently with goplugin.Serve — so this schedule
+// now has to cover the WHOLE window between a plugin subprocess completing
+// its handshake and being able to answer Match successfully, not merely the
+// remainder left over after a launch-time absorber. This is a superseding
+// retry, not a readiness probe: the kernel has no RPC to ask a plugin "are
+// you ready yet", and inventing one would be a plugin contract change,
+// which this plan deliberately does not make. The cost bound is unchanged:
+// at most two extra Match calls per source per generation. The schedule's
+// numeric values still suffice for that wider window: a WhatsApp login
+// round trip is measured in hundreds of milliseconds, so the first retry
+// landing two seconds after the immediate refresh already clears it with a
+// wide margin, and a genuinely broken source still ends on an errored row a
+// few seconds later exactly as before.
 var defaultFirstRefreshRetryDelays = []time.Duration{2 * time.Second, 5 * time.Second}
 
 // Run starts one goroutine per configured source and blocks until ctx is
