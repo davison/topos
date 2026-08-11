@@ -138,3 +138,52 @@ func TestBootstrapConfig_NeverOverwritesExistingFile(t *testing.T) {
 		t.Errorf("existing broken config was modified: before=%q after=%q", malformed, after)
 	}
 }
+
+// TestBootstrapConfig_HermeticEndToEndViaConfigPath closes the loop between
+// "the branch is correct in isolation" (the cases above, all hand-passed
+// paths) and "a fresh machine actually boots": it exercises configPath()
+// itself — the real XDG_CONFIG_HOME-resolution seam — rather than a
+// hand-passed path, and runs the exact sequence setup() runs:
+// config.NewStore, bootstrapConfig, config.NewStore again.
+//
+// Deliberately does NOT call setup() itself: setup also calls index.Open
+// on the expanded index path, which would create a database outside this
+// test's temp root. A later reader must not "simplify" this test into
+// calling setup() directly — doing so would start writing to the
+// developer's real data directory the moment DefaultConfig()'s
+// Index.Path ("~/.local/share/topos/index.db") got expanded and opened.
+func TestBootstrapConfig_HermeticEndToEndViaConfigPath(t *testing.T) {
+	xdgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdgHome)
+
+	path := configPath()
+	wantPrefix := filepath.Join(xdgHome, "topos")
+	if filepath.Dir(path) != wantPrefix {
+		t.Fatalf("configPath() = %q, expected it to resolve under %q", path, wantPrefix)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no file at %q before bootstrap, stat returned: %v", path, err)
+	}
+
+	_, loadErr := config.NewStore(path)
+	if loadErr == nil {
+		t.Fatalf("expected config.NewStore(%q) to fail before bootstrap", path)
+	}
+
+	wrote, err := bootstrapConfig(path, loadErr, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("bootstrapConfig: %v", err)
+	}
+	if !wrote {
+		t.Fatalf("expected bootstrapConfig to report wrote == true")
+	}
+
+	cfgStore, err := config.NewStore(path)
+	if err != nil {
+		t.Fatalf("config.NewStore after bootstrap: %v", err)
+	}
+	expanded := cfgStore.Expanded()
+	if len(expanded.Webspaces) != 0 {
+		t.Errorf("expected zero webspaces on the freshly bootstrapped config, got %d", len(expanded.Webspaces))
+	}
+}
