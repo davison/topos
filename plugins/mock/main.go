@@ -39,6 +39,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Fixture-only launch delay (readiness.go, G-08-5) — off by default
+	// (see launchDelayFromEnv), so a real installation's mock is
+	// unaffected. A malformed value fails startup loudly, exactly as the
+	// readiness-window branch above. On a non-zero duration, sleep BEFORE
+	// goplugin.Serve: the handshake line is not written until the sleep
+	// ends, so the kernel's pluginhost.launch blocks for that long — the
+	// whole point of this fixture.
+	delay, err := launchDelayFromEnv(os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "topos-plugin-mock:", err)
+		os.Exit(1)
+	}
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
 		Plugins: map[string]goplugin.Plugin{

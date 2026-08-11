@@ -122,9 +122,36 @@ type Host struct {
 	// pluginsDir is the directory Discover launched every plugin binary
 	// from — retained (07-02-PLAN.md Task 1) so Reconcile can launch a
 	// replacement/added instance later without a caller having to thread
-	// the directory through a second time.
+	// the directory through a second time. Set once at construction and
+	// never written again, so it needs no lock.
 	pluginsDir string
-	plugins    []*Plugin
+
+	// mu guards ONLY the plugins field below (08-13-PLAN.md Task 1(C),
+	// closing G-08-5's second, latent defect: kernel/supervisor.Supervisor
+	// already called Host.Fetch with no lock held, concurrently with a
+	// Reconcile writing this field in place — a genuine data race at HEAD,
+	// merely narrow enough that no test provoked it). This lock makes
+	// concurrent READERS (Plugins/ProbeSources/Fetch/byInstance, via
+	// snapshot below) safe against a single in-flight Reconcile; two
+	// concurrent Reconcile calls remain excluded by kernel/supervisor's own
+	// mutation lock (Supervisor.mu), which every caller of Reconcile in
+	// this repo already holds for the call's whole duration.
+	mu      sync.RWMutex
+	plugins []*Plugin
+}
+
+// snapshot returns a defensive copy of the currently launched plugin set
+// under mu.RLock() — the one place the read lock is taken for the plugin
+// set, so every read path below shares it rather than reimplementing its
+// own lock/copy. A copy, not the live backing array, so a caller ranging
+// over the result after the lock is released can never observe a
+// concurrent Reconcile's commit mid-iteration.
+func (h *Host) snapshot() []*Plugin {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]*Plugin, len(h.plugins))
+	copy(out, h.plugins)
+	return out
 }
 
 // Discover launches one subprocess per configured source, in pluginsDir,
@@ -164,11 +191,24 @@ func Discover(ctx context.Context, pluginsDir string, sources map[string]config.
 // so which instance is reported first on a multi-failure config is
 // deterministic run to run, matching this package's existing discipline
 // (matchconfig.go).
+//
+// Locking (08-13-PLAN.md Task 1(C), G-08-5): this call takes h.mu.RLock()
+// only to build existing from a snapshot of the CURRENT plugin set, then
+// releases it and performs the whole toLaunch launch loop with NO LOCK
+// HELD, then takes h.mu.Lock() for the kill-and-commit region only (the
+// existing kill loop plus the h.plugins = next assignment). Holding the
+// write lock across the launches is exactly the defect this fix closes —
+// a plugin subprocess slow to complete its handshake used to freeze every
+// concurrent reader (Plugins/ProbeSources/Fetch/byInstance) kernel-wide,
+// contradicting phase success criterion 4's "every other source is
+// unaffected" — so it must never be done here again.
 func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, logger hclog.Logger) error {
+	h.mu.RLock()
 	existing := make(map[string]*Plugin, len(h.plugins))
 	for _, p := range h.plugins {
 		existing[p.name] = p
 	}
+	h.mu.RUnlock()
 
 	names := make([]string, 0, len(sources))
 	for name := range sources {
@@ -199,8 +239,12 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 		launched[name] = p
 	}
 
-	// Every launch this call needed has now succeeded — only now kill the
-	// instances being replaced or removed, and commit the new plugin set.
+	// Every launch this call needed has now succeeded — only now take the
+	// write lock, kill the instances being replaced or removed, and commit
+	// the new plugin set.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	for name, p := range existing {
 		if _, stillKept := kept[name]; stillKept {
 			continue
@@ -435,9 +479,12 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 	}, nil
 }
 
-// Plugins returns every launched plugin.
+// Plugins returns every launched plugin — a defensive copy (via snapshot)
+// taken under h.mu.RLock(), never the live backing array, so a caller
+// ranging over the result cannot observe a concurrent Reconcile's commit
+// mid-iteration.
 func (h *Host) Plugins() []*Plugin {
-	return h.plugins
+	return h.snapshot()
 }
 
 // DescribeInfo is the three Describe-derived facts the "+" chip picker's
@@ -517,9 +564,10 @@ type SourceHealth struct {
 // text in ProbeError; ProbeSources itself never returns a Go error — one
 // plugin being unreachable is data, not a failure of the whole probe.
 func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
-	out := make([]SourceHealth, len(h.plugins))
+	plugins := h.snapshot()
+	out := make([]SourceHealth, len(plugins))
 	var wg sync.WaitGroup
-	for i, p := range h.plugins {
+	for i, p := range plugins {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
@@ -606,9 +654,11 @@ func (h *Host) Fetch(ctx context.Context, source, sourceID string, variant topos
 // byInstance returns the launched plugin whose config-key instance id
 // (Name()) matches, or nil if none is registered. Keyed on instance id, not
 // on the Describe-learned plugin kind, so two launched instances of one
-// plugin binary resolve to two distinct *Plugin values (D-08).
+// plugin binary resolve to two distinct *Plugin values (D-08). Takes
+// h.mu.RLock() itself (via snapshot) — Fetch, its only caller, makes no
+// other access to h.plugins, so there is no nested-lock risk here.
 func (h *Host) byInstance(source string) *Plugin {
-	for _, p := range h.plugins {
+	for _, p := range h.snapshot() {
 		if p.name == source {
 			return p
 		}
@@ -618,6 +668,8 @@ func (h *Host) byInstance(source string) *Plugin {
 
 // Shutdown kills every launched plugin subprocess.
 func (h *Host) Shutdown() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	for _, p := range h.plugins {
 		p.Kill()
 	}

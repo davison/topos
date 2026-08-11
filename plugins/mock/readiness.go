@@ -76,3 +76,44 @@ func readinessWindowFromEnv(now time.Time, getenv func(string) string) (*readine
 
 	return &readinessWindow{readyAt: now.Add(time.Duration(ms) * time.Millisecond)}, nil
 }
+
+// launchDelayEnvVar names the env var that opts this plugin into an
+// artificial delay BEFORE goplugin.Serve is reached — distinct from
+// readyAfterEnvVar above, which delays Match/Health readiness AFTER the
+// go-plugin handshake has already completed. This one delays the
+// handshake itself: it models a plugin that is slow to come up at all
+// (the shape plugins/whatsapp's serve-mode login wait presented, and the
+// shape any plugin can present, since go-plugin's own client
+// StartTimeout default is a full minute). It exists so
+// kernel/supervisor's cross-source isolation gate
+// (kernel/supervisor/launchlatency_test.go,
+// TestResume_SlowRelaunchDoesNotFreezeOtherSources) has a controllable
+// slow launch to drive against a real subprocess. Kept in this file so
+// the package's "TEST FIXTURE, not contract" header governs it too.
+const launchDelayEnvVar = "WEBSPACES_MOCK_LAUNCH_DELAY_MS"
+
+// launchDelayFromEnv parses launchDelayEnvVar, read via getenv (a
+// parameter, never a direct os.Getenv call, so this is unit-testable with
+// no process env mutation) — mirroring readinessWindowFromEnv's contract
+// exactly. Absent, empty, or "0" returns a zero duration and a nil error
+// (no delay, byte-identical to the plugin's pre-fixture behaviour). A
+// positive base-10 integer returns that many milliseconds. Any other
+// value (non-integer, negative) is a loud startup failure — never a
+// silently ignored setting — reported as an error naming both the
+// variable and the bad value.
+func launchDelayFromEnv(getenv func(string) string) (time.Duration, error) {
+	raw := getenv(launchDelayEnvVar)
+	if raw == "" || raw == "0" {
+		return 0, nil
+	}
+
+	ms, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: invalid value %q: must be a non-negative integer number of milliseconds: %w", launchDelayEnvVar, raw, err)
+	}
+	if ms < 0 {
+		return 0, fmt.Errorf("%s: invalid value %q: must be a non-negative integer number of milliseconds", launchDelayEnvVar, raw)
+	}
+
+	return time.Duration(ms) * time.Millisecond, nil
+}

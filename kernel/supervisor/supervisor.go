@@ -44,10 +44,37 @@ type Supervisor struct {
 	// almost immediately).
 	baseCtx context.Context
 
-	mu     sync.Mutex // serializes Apply calls — never two applies in flight together
-	host   *pluginhost.Host
-	coord  *syncer.Coordinator
-	cfg    *config.Config // the config.Config the currently running host/coord/scheduler set was built from
+	// mu is the MUTATION lock only (08-13-PLAN.md Task 1(D), closing
+	// G-08-5): it serializes Apply, SuspendInstance, its resume closure and
+	// Shutdown — never two mutations in flight together — but the reader
+	// path (Host/Coordinator, and therefore Fetch/ProbeSources/Refresh/
+	// RefreshAll) deliberately does NOT sit behind it. A resume closure
+	// runs synchronously on the WhatsApp link poll/cancel HTTP request path
+	// (kernel/httpapi/whatsapplink.go) and holds this lock across a real
+	// subprocess launch (Host.Reconcile); before this fix that used to
+	// freeze every other source's item-fetch, health-probe and
+	// manual-refresh routes for the duration — phase success criterion 4's
+	// "every other source is unaffected", violated (08-VERIFICATION.md
+	// G-08-5). See genMu below for what readers take instead.
+	mu    sync.Mutex
+	host  *pluginhost.Host
+	coord *syncer.Coordinator
+	cfg   *config.Config // the config.Config the currently running host/coord/scheduler set was built from
+
+	// genMu guards ONLY s.host and s.coord (08-13-PLAN.md Task 1(D)):
+	// Host()/Coordinator() take genMu.RLock() and never touch s.mu at all,
+	// so a reader never waits behind a mutation's Reconcile call — no
+	// matter how long a plugin subprocess takes to launch. Every write to
+	// s.host or s.coord (NewSupervisor's two assignments, and
+	// commitGeneration's s.coord assignment) takes genMu.Lock() for the
+	// assignment alone, never across a Reconcile or a stopScheduler. Every
+	// writer of s.host/s.coord already holds s.mu too (mutations are still
+	// fully serialized by it), so a read of either field from INSIDE a
+	// mutation path (Apply, SuspendInstance, its resume closure, Shutdown)
+	// needs no genMu read lock to be correct, and must not take one where
+	// genMu.Lock() is already held in the same call path.
+	genMu sync.RWMutex
+
 	cancel context.CancelFunc
 	done   chan struct{} // closed when the CURRENT scheduler generation's Run has fully returned
 
@@ -112,8 +139,10 @@ func NewSupervisor(ctx context.Context, idx *index.Store, cfgStore *config.Store
 		return nil, err
 	}
 
+	s.genMu.Lock()
 	s.host = host
 	s.coord = newCoordinator(idx, cfg, host)
+	s.genMu.Unlock()
 	s.cfg = cfg
 	s.startScheduler(cfg)
 
@@ -178,17 +207,21 @@ func (s *Supervisor) stopScheduler() {
 	}
 }
 
-// Host returns the currently launched plugin host.
+// Host returns the currently launched plugin host. Takes genMu.RLock()
+// only — never s.mu (08-13-PLAN.md Task 1(D), G-08-5) — so this never
+// waits behind an in-flight mutation's Host.Reconcile call, no matter how
+// long a plugin subprocess takes to launch.
 func (s *Supervisor) Host() *pluginhost.Host {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.genMu.RLock()
+	defer s.genMu.RUnlock()
 	return s.host
 }
 
-// Coordinator returns the current sync coordinator.
+// Coordinator returns the current sync coordinator. Takes genMu.RLock()
+// only — never s.mu — for the identical reason Host() does, above.
 func (s *Supervisor) Coordinator() *syncer.Coordinator {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.genMu.RLock()
+	defer s.genMu.RUnlock()
 	return s.coord
 }
 
@@ -430,9 +463,18 @@ func (s *Supervisor) Shutdown() {
 // installed AFTER startScheduler runs would be invisible to the goroutine
 // already launched — the same class of defect as gaps[0] itself, on a
 // different seam. Caller must hold s.mu (the same convention startScheduler
-// and stopScheduler already state).
+// and stopScheduler already state). The read of s.host and the write of
+// s.coord below need no genMu.RLock/Lock ceremony beyond the write itself
+// (08-13-PLAN.md Task 1(D)): the caller already holds s.mu, and every
+// writer of s.host also holds s.mu, so s.host cannot change underneath
+// this read; the s.coord assignment still takes genMu.Lock(), for the
+// assignment alone, so a concurrent reader (Coordinator(), on the
+// lock-free path) never observes a torn value.
 func (s *Supervisor) commitGeneration(cfg *config.Config) {
-	s.coord = newCoordinator(s.idx, cfg, s.host)
+	newCoord := newCoordinator(s.idx, cfg, s.host)
+	s.genMu.Lock()
+	s.coord = newCoord
+	s.genMu.Unlock()
 	s.cfg = cfg
 	s.startScheduler(cfg)
 }
