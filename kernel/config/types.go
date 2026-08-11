@@ -251,3 +251,30 @@ const (
 	DefaultPluginsDir   = "plugins"
 	DefaultSyncInterval = "15m"
 )
+
+// DefaultConfig returns the raw (never expanded) config written on first
+// run, when cmd/topos's setup() finds no config.toml at all (09.1-BOOTSTRAP,
+// planner_resolutions R1/R3). Its four scalar fields are set from the four
+// Default* constants directly above; Sources and Webspaces are deliberately
+// non-nil EMPTY maps rather than nil or a seeded example — a seeded example
+// webspace would render a populated stream for a webspace the user never
+// asked for, defeating the "friendly prompt to create your first webspace"
+// framing 09.1-UI-SPEC.md requires. Non-nil is load-bearing, not stylistic:
+// a nil map marshals to an omitted TOML key via go-toml/v2, while an empty
+// non-nil map marshals to an explicit `[sources]`/`[webspaces]` table
+// header, so the written file documents its own shape to whoever opens it.
+//
+// This value must only ever be passed to WriteCanonical in this exact raw
+// form — never an expanded/secret-resolved config — per Phase 7's D-05
+// secret discipline (WriteCanonical's own doc comment repeats this
+// constraint at the write site).
+func DefaultConfig() *Config {
+	return &Config{
+		Server:    ServerConfig{Listen: DefaultListen},
+		Index:     IndexConfig{Path: DefaultIndexPath},
+		Plugins:   PluginsConfig{Dir: DefaultPluginsDir},
+		Sync:      SyncConfig{Interval: DefaultSyncInterval},
+		Sources:   map[string]Source{},
+		Webspaces: map[string]Webspace{},
+	}
+}
