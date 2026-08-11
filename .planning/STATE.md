@@ -2,18 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 09.1
-current_phase_name: 1.0 Release UX Essentials
 status: executing
-stopped_at: Phase 9.1 UI-SPEC approved
-last_updated: "2026-08-11T23:32:48.152Z"
-last_activity: 2026-08-11
-last_activity_desc: Phase 09.1 inserted before docs phase (responsive mobile layout + first-run bootstrap)
+last_updated: "2026-08-11T23:35:26.018Z"
+last_activity: 2026-08-11 -- Phase 09.1 execution started
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 10
   total_plans: 87
   completed_plans: 83
+  percent: 77
 ---
 
 # Project State
@@ -23,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-11)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 09.1 — 1.0 Release UX Essentials (then Phase 10 — Docs and Release Readiness)
+**Current focus:** Phase 09.1 — 1-0-release-ux-essentials-responsive-narrow-viewport-layout
 
 ## Current Position
 
-Phase: 09.1 — 1.0 Release UX Essentials (INSERTED)
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-11 — Phase 09.1 inserted before docs phase (responsive mobile layout + first-run bootstrap)
+Phase: 09.1 (1-0-release-ux-essentials-responsive-narrow-viewport-layout) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 09.1
+Last activity: 2026-08-11 -- Phase 09.1 execution started
 
 Progress: [████████████████████] 83/83 plans (100%)
 
