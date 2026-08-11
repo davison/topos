@@ -6,6 +6,7 @@
 // a native title, and that neither pre-existing add flow regressed.
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { attachedWebspace, type FixtureConfigSpec, type FixtureSourceSpec } from '../fixtures/config-builder';
+import { offerPluginType } from '../fixtures/plugin-types';
 
 // Two configured-but-unattached mock-01/mock-02 instances of the SAME
 // plugin binary (topos-plugin-mock), each with a distinct base_url — the
@@ -53,8 +54,16 @@ const configSpec: FixtureConfigSpec = {
 	sources,
 	webspaces: [attachedWebspace('armor', ['mock-01'], { 'mock-01': { labels: ['demo'] } })],
 	// topos-plugin-mockstrict is discovered but never configured with an
-	// instance — exactly the state Group 2's catalog tile renders (Fix
-	// 11's honest "never Described, always Puzzle" case).
+	// instance — the shape Group 2's catalog tile renders (Fix 11's honest
+	// "never Described, always Puzzle" case). The kernel no longer
+	// advertises it as an installable catalog type (quick task 260811-r5d,
+	// kernel/pluginhost.ExcludedPluginBinaries), so the three tests below
+	// that need Group 2 populated (its "Install a new source" heading
+	// and/or the Mockstrict tile itself) restore it via offerPluginType
+	// (../fixtures/plugin-types) route injection — this fixture's own
+	// Group 2 subject is restored, not deleted. The remaining two tests
+	// (the location-vs-plugin-name row test and the truncation test) only
+	// ever assert on Group 1 and are unaffected.
 	pluginBinaries: ['topos-plugin-mock', 'topos-plugin-mockstrict']
 };
 
@@ -63,6 +72,10 @@ test.use({ configSpec });
 test.describe('09-07: two-group "+" picker (Fix 11)', () => {
 	test('two headed groups render with their exact copy', async ({ page, kernel }) => {
 		await waitForFirstSync(kernel.baseURL, ['mock-01', 'mock-02', 'mock-03'], { logs: kernel.logs });
+		// The kernel excludes topos-plugin-mockstrict from the catalog
+		// (quick task 260811-r5d) — restore Group 2 via injection so its own
+		// "Install a new source" heading has a tile to render for.
+		await offerPluginType(page, 'topos-plugin-mockstrict');
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		await page.getByRole('button', { name: 'Add source' }).click();
@@ -95,6 +108,9 @@ test.describe('09-07: two-group "+" picker (Fix 11)', () => {
 
 	test('a catalog tile is visually distinct from an instance row via computed style', async ({ page, kernel }) => {
 		await waitForFirstSync(kernel.baseURL, ['mock-01', 'mock-02', 'mock-03'], { logs: kernel.logs });
+		// The kernel excludes topos-plugin-mockstrict from the catalog
+		// (quick task 260811-r5d) — restore the Group 2 tile via injection.
+		await offerPluginType(page, 'topos-plugin-mockstrict');
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		await page.getByRole('button', { name: 'Add source' }).click();
@@ -140,6 +156,9 @@ test.describe('09-07: two-group "+" picker (Fix 11)', () => {
 		kernel
 	}) => {
 		await waitForFirstSync(kernel.baseURL, ['mock-01', 'mock-02', 'mock-03'], { logs: kernel.logs });
+		// The kernel excludes topos-plugin-mockstrict from the catalog
+		// (quick task 260811-r5d) — restore the Group 2 tile via injection.
+		await offerPluginType(page, 'topos-plugin-mockstrict');
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		// --- One-step existing-instance flow, entered via a Group 1 row.

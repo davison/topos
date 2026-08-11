@@ -9,6 +9,7 @@
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { attachedWebspace, type FixtureConfigSpec, type FixtureSourceSpec } from '../fixtures/config-builder';
 import { readConfigToml } from '../fixtures/toml';
+import { offerPluginType } from '../fixtures/plugin-types';
 
 const sources: FixtureSourceSpec[] = [
 	{ id: 'mock-01', plugin: 'topos-plugin-mock', displayName: 'Mock One' }
@@ -34,6 +35,16 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		kernel
 	}) => {
 		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+
+		// The kernel no longer advertises topos-plugin-mockstrict as an
+		// installable catalog type (quick task 260811-r5d,
+		// kernel/pluginhost.ExcludedPluginBinaries), so this spec supplies it
+		// itself via route interception — registered BEFORE navigation, per
+		// this file's own established rule. Everything after the catalog-tile
+		// click below is unmocked: describe-plugin, the plugin subprocess
+		// launch, and the final PUT /api/config all hit the real kernel and
+		// the real on-disk mockstrict binary.
+		await offerPluginType(page, 'topos-plugin-mockstrict');
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		// Route handlers registered BEFORE any triggering action, per this
