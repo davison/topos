@@ -14,15 +14,22 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// serveLoginTimeout bounds how long serve-mode startup (startBackgroundClient's
-// success path, below) blocks before falling through to goplugin.Serve in the
-// connecting state. Deliberately much shorter than link.go's
-// postPairLoginTimeout: a link flow has a human watching a QR code and
-// waiting for it, a boot does not. It must also stay comfortably under
-// go-plugin's own client StartTimeout default of one minute
-// (hashicorp/go-plugin), because main.go calls NewSourcePlugin BEFORE
-// goplugin.Serve — every second spent here is a second the kernel's
-// pluginhost.launch is blocked on the handshake completing.
+// serveLoginTimeout bounds how long the serve-mode login waiter's event
+// handler stays registered on the long-lived client — NOT how long plugin
+// launch takes. As of plan 08-14 (closing 08-REVIEW.md WR-01 and
+// 08-VERIFICATION.md G-08-5), the wait that this constant bounds runs on
+// its own goroutine, dispatched AFTER startBackgroundClient has already
+// returned and goplugin.Serve has already been reached; nothing on the
+// launch path waits on it, so go-plugin's own client StartTimeout ceiling
+// (hashicorp/go-plugin's one-minute default) no longer constrains this
+// value the way it once did. The wait moved because every kernel restart
+// and hot-apply relaunch with an already-linked WhatsApp source was paying
+// up to this long before ANY source's routes existed — the go-plugin
+// handshake is what kernel/pluginhost.launch blocks on, and
+// Discover/Reconcile launch sources sequentially. The mechanism that now
+// covers a Match landing inside the connecting window this wait used to
+// close synchronously is kernel/syncer/scheduler.go's bounded first-refresh
+// retry schedule (defaultFirstRefreshRetryDelays), not this wait.
 const serveLoginTimeout = 15 * time.Second
 
 // pluginLogger implements waLog.Logger, writing to os.Stderr (never
@@ -127,8 +134,20 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 	// post-wait state assignment of its own — doing so would risk
 	// clobbering a LoggedOut or StreamReplaced that landed in the same
 	// instant.
+	//
+	// Plan 08-14 (WR-01/G-08-5) trade, recorded here rather than left
+	// implicit: from this point on, the go-plugin handshake no longer
+	// implies login has completed — the wait that used to make that true
+	// is dispatched below, not awaited. What keeps G-08-4's user-visible
+	// symptom closed without it is two OTHER legs, both left completely
+	// intact by this plan: healthStateConnecting being the Go zero value
+	// plus the explicit pre-dial assignment above (so a connecting
+	// instance can never emit the false pairing instruction), and
+	// kernel/syncer/scheduler.go's bounded first-refresh retry (so a Match
+	// that lands inside the connecting window is superseded by an ok sync
+	// run within seconds, not pinned for the full sync interval).
 	loginWaiter := newPairLoginWaiter()
-	client.AddEventHandler(loginWaiter.handleEvent)
+	loginWaiterID := client.AddEventHandler(loginWaiter.handleEvent)
 
 	if err := client.Connect(); err != nil {
 		// Not fatal to process startup — a transient network failure at
@@ -153,21 +172,34 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 		// LastError stays specific rather than merely the fixed
 		// not-linked template verbatim.
 		p.setHealthState(healthStateNotLinked, fmt.Sprintf("initial connect failed, retrying: %v", err))
+		// WR-02: the waiter has no wait to serve on this branch — there
+		// was no successful dial for it to observe a login outcome on —
+		// so its handler is retired here rather than left registered on a
+		// client that lives for the whole process.
+		client.RemoveEventHandler(loginWaiterID)
 		return nil
 	}
 
-	// Bounded wait for the SAME client to observe a real *events.Connected
-	// (or a definitive login failure) before this function returns and
-	// main.go reaches goplugin.Serve — so the kernel's first Match after a
-	// (re)launch normally lands after login genuinely completed, not at
-	// the first instant of the dial. The wait outcome is never fatal to
-	// control flow: every path below still returns nil so goplugin.Serve
-	// is always reached; a non-nil wait error is only logged, one line,
+	// WR-01/G-08-5: the bounded wait for the SAME client to observe a real
+	// *events.Connected (or a definitive login failure) now runs on its
+	// own goroutine, dispatched here rather than awaited — so
+	// startBackgroundClient returns immediately after a successful dial,
+	// and main.go reaches goplugin.Serve without waiting on any network
+	// event. Every kernel restart and hot-apply relaunch with an
+	// already-linked WhatsApp source now costs what any other plugin's
+	// launch costs. The wait still happens and still logs a definitive
+	// failure or timeout exactly once, through the same p.logOut line
 	// under this package's fixed pluginName prefix, carrying no chat name,
-	// sender name, message body, or key material.
-	if err := loginWaiter.wait(serveLoginTimeout); err != nil {
-		fmt.Fprintf(p.logOut, "%s: serve-mode startup: %v\n", pluginName, err)
-	}
+	// sender name, message body, or key material — only its position on
+	// the launch path changes, not its behaviour. The deferred removal
+	// inside the literal means a future early return from this goroutine
+	// cannot skip retiring the waiter's handler.
+	go func() {
+		defer client.RemoveEventHandler(loginWaiterID)
+		if err := loginWaiter.wait(serveLoginTimeout); err != nil {
+			fmt.Fprintf(p.logOut, "%s: serve-mode startup: %v\n", pluginName, err)
+		}
+	}()
 
 	return nil
 }
