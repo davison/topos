@@ -1,244 +1,197 @@
 ---
 phase: 08-whatsapp-conversations-managed-risk
-reviewed: 2026-08-11T00:00:00Z
+reviewed: 2026-08-11T00:36:50Z
 depth: standard
-files_reviewed: 17
+files_reviewed: 12
 files_reviewed_list:
-  - docs/api.md
-  - kernel/httpapi/agent.go
-  - kernel/httpapi/agent_test.go
-  - kernel/httpapi/sources.go
-  - kernel/httpapi/sources_test.go
-  - kernel/httpapi/stream.go
-  - kernel/httpapi/stream_test.go
-  - kernel/httpapi/webspaces.go
-  - kernel/httpapi/whatsapplink.go
-  - kernel/httpapi/whatsapplink_test.go
-  - kernel/supervisor/supervisor.go
-  - kernel/supervisor/supervisor_test.go
-  - kernel/supervisor/suspend_test.go
-  - web/e2e/specs/g-08-3-degraded-source-not-outage.spec.ts
-  - web/src/lib/components/stream-degraded.test.ts
-  - web/src/lib/components/StreamError.svelte
-  - web/src/lib/components/StreamList.svelte
-  - web/src/lib/components/StreamSyncDegraded.svelte
+  - docs/testing.md
+  - kernel/supervisor/readiness_test.go
+  - kernel/syncer/scheduler.go
+  - kernel/syncer/scheduler_test.go
+  - plugins/mock/main.go
+  - plugins/mock/plugin.go
+  - plugins/mock/plugin_test.go
+  - plugins/mock/readiness.go
+  - plugins/whatsapp/connect.go
+  - plugins/whatsapp/connect_test.go
+  - plugins/whatsapp/health.go
+  - plugins/whatsapp/health_test.go
 findings:
   critical: 0
   warning: 2
-  info: 2
-  total: 4
+  info: 1
+  total: 3
 status: issues_found
 ---
 
-# Phase 08: Code Review Report (gap-closure wave, 08-09/08-10, G-08-3)
+# Phase 08: Code Review Report
 
-**Reviewed:** 2026-08-11
+**Reviewed:** 2026-08-11T00:36:50Z
 **Depth:** standard
-**Files Reviewed:** 17
-**Status:** issues_found (no blockers; two warnings, two info items)
+**Files Reviewed:** 12
+**Status:** issues_found
 
 ## Summary
 
-This wave closes UAT gap G-08-3 on two independent fronts:
+This is the G-08-4 gap-closure wave: 08-11 makes `healthStateConnecting`
+the WhatsApp plugin's zero value and adds a bounded serve-mode login wait
+before the go-plugin handshake completes; 08-12 adds a bounded
+first-refresh retry to the kernel scheduler and an opt-in
+launch-readiness fixture to the mock plugin, plus a hermetic supervisor
+test proving the two work together.
 
-1. **Kernel-side per-webspace sync scoping** (`filterRunsByParticipation`,
-   applied identically in `StreamHandler`, `WebspacesHandler`,
-   `agentStreamHandler`, `agentWebspacesHandler`): a webspace's reported
-   `sync` object is now scoped to sources that actually
-   `correlate.ParticipatesIn` it, so a failing non-participating source can
-   no longer make an unrelated webspace look broken. Traced this against
-   `correlate.ParticipatesIn`'s actual implementation (allowlist gate +
-   has-match-input rule) and it composes correctly, including the
-   documented edge case of an index-only, config-unknown webspace
-   resolving to zero participants. Composition with `filterRunsByGrant` on
-   the `/agent/v1` mirrors is a correct intersection (grant can only
-   narrow, never widen, what participation already narrowed). Covered by
-   new, well-targeted unit tests in both `sources_test.go`,
-   `stream_test.go` and `agent_test.go`; all pass.
+I read all twelve files, diffed each against the stated base commit to
+separate genuinely new code from pre-existing code, cross-checked the
+new code against callers/callees outside the diff (`plugin.go`,
+`eventhandler.go`, `pairwait.go`, `main.go`, `kernel/pluginhost/host.go`,
+`cmd/topos/main.go`), inspected the vendored `go-plugin` and `whatsmeow`
+source to verify specific claims made in code comments (go-plugin's
+default `StartTimeout`, whatsmeow's `AddEventHandler`/`RemoveEventHandler`
+pair), and ran the full test suite for the affected packages with the
+race detector (`go test -race`), including the real-subprocess hermetic
+supervisor test. Everything passes, no data race was detected, and the
+zero-value/retry logic is well covered by both unit and structural
+(AST-based) tests. I did not find a defect that rises to Critical
+(security/data-loss/crash) under this review's severity rubric.
 
-2. **`SuspendInstance`/resume now correctly perform a full generation
-   change** (`stopScheduler` -> `Host.Reconcile` -> `commitGeneration`,
-   mirroring `Apply`'s own sequence) rather than only killing/relaunching
-   the subprocess while leaving the coordinator stale — the root cause of
-   G-08-3's WhatsApp-specific failure (a resumed instance's syncs kept
-   dying with a "grpc: the client connection is closing" error because the
-   coordinator still held a handle to the killed subprocess). The new
-   `genCtx`/`genWG` generation-scoping on `Apply`'s eager-resync dispatch
-   correctly bounds `stopScheduler`'s wait so a suspend/resume triggered
-   from the WhatsApp link-start HTTP path can't block forever on an
-   untracked background sync. Verified the locking discipline (`s.mu` held
-   across the whole suspend/resume/Apply sequence) is race-free for
-   `genWG.Add`/`Wait` ordering, and confirmed via `go build`, `go vet`, and
-   `go test ./...` (whole repo) that everything compiles and passes,
-   including the new
-   `TestApply_EagerResyncDoesNotOutliveItsGeneration`,
-   `TestSuspendInstance_ResumedInstanceStillSyncs`, and
-   `TestSuspendInstance_SuspendedWindowRecordsNoErroredRun` tests.
-
-3. **Frontend split of the degraded-source presentation**
-   (`StreamSyncDegraded.svelte` vs `StreamError.svelte`) is clean: the
-   `syncError` prop was fully removed from `StreamError` (verified no
-   other call site still passes it), `StreamList.svelte`'s branch ordering
-   (`sync-failed` still precedes both empty variants) is preserved and
-   pinned by a dedicated structural test
-   (`stream-degraded.test.ts`), and the new Playwright spec
-   (`g-08-3-degraded-source-not-outage.spec.ts`) exercises all three
-   relevant states (zero-item sync failure, genuine fetch failure, sync
-   failure alongside items) against the real component tree. Frontend
-   tests (`vitest run`) pass.
-
-No BLOCKER-level defects were found. The two WARNING findings below are
-both about test-coverage gaps on new failure-recovery branches introduced
-by this wave, not incorrect behavior observed in the code itself — the
-logic in those branches is consistent with the design documented
-alongside it, but neither branch is exercised by any test, and this exact
-class of bug (a failure branch that forgets to restart the scheduler,
-leaving the kernel with no scheduler running at all) is the literal
-regression `07-VERIFICATION.md gaps[0]` / `07-REVIEW.md`'s post-07-09 CR-01
-already caught once before on `Apply`'s own analogous branches.
+I did find one real, provable regression to kernel/plugin boot latency
+that the diff's own reasoning does not fully account for (WR-01), plus a
+smaller resource-cleanup gap specific to the new long-lived serve-mode
+code path (WR-02) that a look at the sibling short-lived `-link` CLI flow
+makes clear is a genuine omission, not an intentional convention. One
+maintainability nit (IN-01) rounds out the findings.
 
 ## Warnings
 
-### WR-01: `SuspendInstance`'s new pre-Reconcile failure branch has no test coverage
+### WR-01: The new serve-mode login wait can block the ENTIRE kernel's HTTP startup, not just the WhatsApp source
 
-**File:** `kernel/supervisor/supervisor.go:340-359`
+**File:** `plugins/whatsapp/connect.go:168-170` (the `loginWaiter.wait(serveLoginTimeout)` call added by this diff)
 
-**Issue:** This wave adds `s.stopScheduler()` before `Host.Reconcile` in
-`SuspendInstance`, and — new, and load-bearing — a call to
-`s.startScheduler(s.cfg)` in the failure branch to put the scheduler back:
+**Issue:** `startBackgroundClient`'s already-paired success path now blocks
+for up to `serveLoginTimeout` (15s) waiting for a real `*events.Connected`
+before returning. This wait runs *before* `goplugin.Serve()` is ever
+called in `plugins/whatsapp/main.go`, which means the go-plugin handshake
+line the parent process is blocking on doesn't get written to stdout
+until the wait resolves (success, a definitive failure event, or the 15s
+timeout) — exactly what the code comment itself acknowledges: "every
+second spent here is a second the kernel's `pluginhost.launch` is blocked
+on the handshake completing."
 
+What the comment does not account for is *what else* is blocked on that
+same call. `kernel/pluginhost/host.go`'s `Discover` (used at boot) and
+`Reconcile` (used by hot-apply) launch every configured source
+**sequentially**, in a single `for name, src := range sources { launch(...) }`
+loop (host.go:137-144, 191-200) — not one goroutine per source. And
+`cmd/topos/main.go` does not call `http.ListenAndServe` until
+`supervisor.NewSupervisor` — which calls `pluginhost.Discover` synchronously
+— returns. So on **every normal kernel restart** with an already-linked
+WhatsApp source configured (the steady-state case, not an edge case), the
+entire kernel's HTTP server — and therefore every *other*, unrelated
+source's own reachability, and the web UI itself — cannot become
+available until WhatsApp's login either completes or times out. Because
+Go map iteration order is randomized, whether WhatsApp's wait lands first
+or last in the launch sequence (and therefore how much of the up-to-15s
+delay other sources inherit) is non-deterministic run to run.
+
+Before this diff, `startBackgroundClient`'s already-paired success path
+returned immediately after dispatching `client.Connect()` (a non-blocking
+dial), so this was not a bottleneck. Checked every sibling plugin's
+`main.go` (`paperless`, `silverbullet`, `proton`, `signal`) — none of them
+perform any blocking network/login round trip before `goplugin.Serve()`;
+this diff introduces the only such synchronous, multi-second,
+network-dependent wait in the whole launch path.
+
+This is a real, provable regression to boot/hot-apply latency, not a
+"performance" tuning concern (Big-O, N+1 queries) that this review's scope
+excludes — it's a missing concurrency boundary that lets one source's slow
+login gate the whole kernel's and every sibling source's availability, on
+a path (`cmd/topos/main.go`'s boot sequence) that previously had no such
+dependency.
+
+**Fix:** Pick one:
+- Launch each configured source concurrently in `Discover`/`Reconcile`
+  (e.g. an `errgroup.Group` per source, preserving the existing
+  "every launch this call needed has now succeeded — only now kill/commit"
+  ordering guarantee) so one slow source can never delay a sibling's
+  launch or the HTTP listener; or
+- Move the login wait off the synchronous startup path entirely — start
+  `startBackgroundClient`'s dial, return immediately once
+  `healthStateConnecting` is recorded, and let 08-12's own
+  first-refresh retry (already built for exactly this "handshake
+  completed before Match is truly ready" gap) absorb the residual window
+  instead of blocking the handshake on it; or, at minimum,
+- Shorten `serveLoginTimeout` substantially and lean more on the
+  kernel-side retry, since 08-12 already covers the failure mode this
+  wait exists for.
+
+### WR-02: `loginWaiter`'s event handler is never removed from the long-lived serve-mode client
+
+**File:** `plugins/whatsapp/connect.go:130-131, 168-170`
+
+**Issue:** `client.AddEventHandler(loginWaiter.handleEvent)` returns a
+`uint32` handler ID (`whatsmeow.Client.AddEventHandler`, which pairs with
+`Client.RemoveEventHandler(id)` — confirmed in the vendored whatsmeow
+source), but the return value is discarded here, and no
+`RemoveEventHandler` call follows `loginWaiter.wait(...)` once it
+returns. Compare with `link.go`'s identical registration
+(`client.AddEventHandler(loginWaiter.handleEvent)` at link.go:109): there
+it's harmless because the `-link` CLI flow's client is short-lived and
+disconnected/exited shortly after. `connect.go`'s serve-mode client is
+different — it's the plugin's persistent connection for the entire
+subprocess lifetime (per `plugin.go`'s own doc comment), which is
+typically days or weeks of uptime. Once `wait()` returns, this handler
+becomes permanent dead weight: it is invoked (and does nothing, since
+`pairLoginWaiter.signal`'s `sync.Once` already fired) for every single
+whatsmeow event dispatched for the rest of the process's life, and the
+`loginWaiter` (its buffered channel and `sync.Once`) is never eligible
+for garbage collection.
+
+Not a correctness bug — `signal`'s `sync.Once` plus a buffered channel of
+size 1 makes the extra calls safe (no panic, no leak of unbounded memory)
+— but it's a straightforward, low-risk cleanup the whatsmeow API was
+clearly designed to support, and copying the short-lived `-link` flow's
+registration pattern into the long-lived serve-mode path without also
+copying (or adding) a matching teardown is a real omission introduced by
+this diff.
+
+**Fix:**
 ```go
-s.stopScheduler()
-
-if err := s.host.Reconcile(ctx, withoutName, s.logger); err != nil {
-    s.startScheduler(s.cfg)
-    return nil, fmt.Errorf("supervisor: suspend instance %q: %w", name, err)
+handlerID := client.AddEventHandler(loginWaiter.handleEvent)
+// ...
+if err := loginWaiter.wait(serveLoginTimeout); err != nil {
+    fmt.Fprintf(p.logOut, "%s: serve-mode startup: %v\n", pluginName, err)
 }
+client.RemoveEventHandler(handlerID)
 ```
-
-Before this wave, `SuspendInstance` never stopped the scheduler at all, so
-this failure branch's `startScheduler` call is entirely new code, and it
-is the only thing standing between a failed suspend and a kernel left with
-**no scheduler generation running at all** (every configured source
-silently stops syncing until the next `Apply`, restart, or another
-`SuspendInstance` call happens to fix it as a side effect). No test in
-`kernel/supervisor/suspend_test.go` or `supervisor_test.go` forces
-`Host.Reconcile` to fail from inside a `SuspendInstance` call — every
-existing `SuspendInstance` test uses `buildMockPluginDir` against a
-plugin binary that reconciles successfully. The parallel technique already
-used elsewhere in this package to force a deterministic `Reconcile`
-failure (an empty/nonexistent `pluginsDir` so a launch attempt fails, see
-`supervisor_test.go:260`'s comment) would apply here too.
-
-**Fix:** Add a test that forces `Host.Reconcile` to fail inside
-`SuspendInstance` (e.g. suspend an instance, then before calling
-`resume`, corrupt/replace the plugin binary or otherwise make a
-subsequent internal `Reconcile` fail — or, more simply, extract a seam
-similar to the existing `blockingSource` fixture) and assert:
-
-```go
-resume, err := sup.SuspendInstance(ctx, "suspend-me")
-// ... force the *next* Reconcile call (this one, or the resume's) to fail ...
-if err == nil {
-    t.Fatal("expected SuspendInstance to fail")
-}
-// Assert the scheduler is still running: a subsequent Refresh of an
-// unrelated, still-configured, still-launched source must still work.
-if _, err := sup.Refresh(ctx, "leave-alone"); err != nil {
-    t.Fatalf("expected the scheduler to still be running after a failed suspend: %v", err)
-}
-```
-
-### WR-02: resume closure's Reconcile-failure branch is likewise untested
-
-**File:** `kernel/supervisor/supervisor.go:380-400`
-
-**Issue:** The same new pattern (`stopScheduler` -> `Reconcile` ->
-`startScheduler`-on-failure `else` `commitGeneration`-on-success) was added
-to the `resume` closure `SuspendInstance` returns. On a failed resume,
-`name` is deleted from `s.suspended` (deliberately, per the doc comment,
-so a later `Apply` is free to retry launching it) but `s.coord` is never
-rebuilt — it still reflects the pre-resume, name-less coordinator — while
-the scheduler is restarted against `s.cfg`, which *does* still list `name`
-as configured. This is a legitimate, if narrow, "stuck until the next
-config save" state, and it's exactly the kind of asymmetric-branch defect
-this same file's own `Apply` doc comment (`gaps[0]` / CR-01) warns future
-readers about. No test drives a resume-time `Reconcile` failure to confirm
-(a) the scheduler really does come back up for every *other* still-healthy
-source, and (b) a subsequent `Apply` really does relaunch `name` cleanly
-from this state.
-
-**Fix:** Same technique as WR-01, applied to the `resume` closure returned
-by `SuspendInstance`: force `Host.Reconcile` to fail on the resume call
-specifically (suspend succeeds, then the relaunch fails), and assert both
-that `leave-alone`'s refresh still works and that a subsequent `Apply`
-(with the plugin binary made reconcilable again) successfully relaunches
-`name`.
 
 ## Info
 
-### IN-01: `WebspacesHandler` silently swallows a `LatestSyncRunPerSource` failure into the neutral "unknown" sync status
+### IN-01: The hermetic readiness test's timing comments are coupled to a production constant with no assertion enforcing the link
 
-**File:** `kernel/httpapi/webspaces.go:47-51`
+**File:** `kernel/supervisor/readiness_test.go:56-59`
 
-**Issue:** This wave's refactor makes the error-swallowing more visible but
-does not change it:
+**Issue:** The test's comment states "the default retry schedule's first
+delay is 2s and the readiness window is only 0.7s, so the retry should
+supersede the launch-window error well inside 15s" — this is accurate
+today (`kernel/syncer/scheduler.go`'s `defaultFirstRefreshRetryDelays =
+[]time.Duration{2 * time.Second, 5 * time.Second}`), and the test itself
+(generous 15s deadline) won't break if that constant is tuned later. But
+the comment's *specific* numeric claim ("first delay is 2s") has no
+assertion tying it to the actual constant — a future change to
+`defaultFirstRefreshRetryDelays` would silently leave this comment
+describing stale behaviour while the test keeps passing. Low-value to fix
+on its own, but worth a note since it's the kind of drift that makes a
+"why does this test use a 15s deadline" question harder to answer
+correctly later.
 
-```go
-runs, err := store.LatestSyncRunPerSource(ctx)
-if err != nil {
-    runs = nil
-}
-```
-
-A genuine local-index read failure (e.g. a corrupted/locked SQLite file)
-is indistinguishable, from the API consumer's point of view, from "nothing
-has ever synced" — every webspace's `last_sync` silently renders as the
-zero value instead of the response failing with `500 internal_error`.
-This predates this wave (the prior code had the identical `if err == nil`
-short-circuit) and is unchanged in observable behavior, so it is not a
-regression — but since this wave touched these exact lines, it's a fair
-place to note the pattern reads more like an oversight than a documented
-decision, especially compared to `agentWebspacesHandler`'s sibling code a
-few lines away in `agent.go`, which does propagate this same error as
-`500 internal_error`. Consider making the two call sites consistent.
-
-**Fix:** Either propagate the error (`WriteError(w,
-http.StatusInternalServerError, "internal_error", err.Error()); return`,
-matching `agentWebspacesHandler`'s treatment of the identical call), or
-add a one-line comment at the swallow site explaining why `/api/webspaces`
-specifically prefers a degraded-but-200 response over a hard failure here
-(unlike its own agent-namespace mirror).
-
-### IN-02: `TestApply_EagerResyncDoesNotOutliveItsGeneration` doesn't exercise `Apply`'s actual dispatch loop
-
-**File:** `kernel/supervisor/supervisor_test.go:323-394`
-
-**Issue:** The test's own doc comment is candid about this: it manually
-constructs a `*Supervisor`, calls `s.startScheduler(cfg)` directly, and
-then hand-copies `Apply`'s eager-resync dispatch snippet (`coord :=
-s.coord; genCtx := s.genCtx; genWG := s.genWG; genWG.Add(1); go func() {
-... }()`) rather than driving it through a real `s.Apply(ctx)` call,
-because `pluginhost.Host` has no seam for an in-memory fake source. This
-is a reasonable, well-justified workaround given the stated constraint,
-but it means a future edit to `Apply`'s actual dispatch loop (e.g.
-accidentally reading a stale `genWG` captured before `commitGeneration`,
-or reordering the `genWG.Add`/goroutine-launch pair) would not be caught
-by this test — only a hand-maintained duplicate of the logic is verified,
-not the real call site. `TestApply_MidFlightSyncLeavesNoStrandedRunningRow`
-and other `Apply`-driving tests in this file do exercise the real
-function, but none of them currently create the specific
-long-running-eager-resync-during-a-later-stopScheduler race this test
-was written to guard.
-
-**Fix:** No action required if the constraint is accepted as documented.
-If a future phase adds any test seam to `pluginhost.Host` for fake
-sources, prefer rewriting this test to drive it through a real
-`s.Apply(ctx)` call so a regression in the actual dispatch loop (not a
-hand-copied replica of it) is what gets caught.
+**Fix:** Either reference `defaultFirstRefreshRetryDelays` directly in
+the comment via a `//go:generate`-free code comment pointer (already
+partially done — the comment names the file), or accept this as
+acceptable drift risk given the deadline itself is generous enough not to
+require tightening.
 
 ---
 
-_Reviewed: 2026-08-11_
+_Reviewed: 2026-08-11T00:36:50Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
