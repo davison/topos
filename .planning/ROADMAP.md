@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 14/15 plans executed (12/15 executed — G-08-1, G-08-3, G-08-4 closed; gap closure in progress — `08-VERIFICATION.md` G-08-5 open, plans 08-13/08-14/08-15 created)
+**Plans:** 15/15 plans executed (12/15 executed — G-08-1, G-08-3, G-08-4 closed; gap closure in progress — `08-VERIFICATION.md` G-08-5 open, plans 08-13/08-14/08-15 created)
 
 Plans:
 **Wave 1**
@@ -478,7 +478,7 @@ Plans:
 
 - [x] 08-13-PLAN.md — Kernel half: the supervisor's reader path leaves the mutation lock, `pluginhost.Host` becomes internally synchronised, and a slow-launch mock fixture gives criterion 4's "every other source is unaffected" clause its first hermetic gate
 - [x] 08-14-PLAN.md — Plugin half: the serve-mode login wait leaves the synchronous launch path onto its own goroutine (WR-01), the login waiter's handler is retired on both dial outcomes (WR-02), and three doc comments the change would falsify are corrected
-- [ ] 08-15-PLAN.md — Final gate: every repository gate re-run after both fixes, then the real-device re-link a human must watch with a second source open beside it — also discharging the real-device item carried forward from the previous verification cycle
+- [x] 08-15-PLAN.md — Final gate: every repository gate re-run after both fixes, then the real-device re-link a human must watch with a second source open beside it — also discharging the real-device item carried forward from the previous verification cycle
 
 Notes:
 
@@ -502,7 +502,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 14/15 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 15/15 | In Progress|  |
 
 ## Requirement Coverage
 
