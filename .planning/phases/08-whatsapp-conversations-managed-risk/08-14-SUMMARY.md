@@ -163,6 +163,10 @@ None - no external service configuration required.
 - Plan 08-15 (this wave's gate, per the plan's own Playwright scope note) runs next; this plan touches no frontend file and adds no new route or response shape, so the existing e2e suite is expected to pass unchanged.
 - Plan 08-13's `kernel/supervisor/launchlatency_test.go` is the behavioural, real-subprocess proof for the cross-source consequence this plan's structural guard cannot itself prove (a slow-launching plugin delaying every other source's launch) — not re-run here, out of this plan's own scope, but named in both the test's doc comment and this summary for traceability.
 
+## Self-Check: PASSED
+
+All claimed files verified present on disk (`plugins/whatsapp/connect.go`, `plugins/whatsapp/connect_test.go`, `kernel/syncer/scheduler.go`, `.planning/phases/08-whatsapp-conversations-managed-risk/08-UI-SPEC.md`, this SUMMARY.md), and all three task commits plus this doc commit verified present in `git log --oneline` (`09edf08`, `09e0e71`, `9b70e22`, `4136109`).
+
 ---
 *Phase: 08-whatsapp-conversations-managed-risk*
 *Completed: 2026-08-11*
