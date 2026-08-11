@@ -37,6 +37,7 @@
 	import EditSourceModal from './EditSourceModal.svelte';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import PluginIcon from '$lib/components/PluginIcon.svelte';
 	import { removeSourceInstance, removeWebspace } from '$lib/config-edit';
 	import {
 		putConfig,
@@ -201,14 +202,21 @@
 				{#each instanceIds as id (id)}
 					{@const source = localConfig.sources[id]}
 					<div class="flex items-center justify-between gap-2 py-2">
-						<div class="min-w-0">
-							<p
-								class="truncate text-[14px] leading-[1.4] text-foreground"
-								title={displayNameFor(id)}
-							>
-								{displayNameFor(id)}
-							</p>
-							<p class="text-[14px] leading-[1.4] text-muted-foreground">{source.plugin}</p>
+						<div class="flex min-w-0 items-center gap-2">
+							<!-- 09-UI-SPEC.md Fix 10 sizing rule: size-4 (16px),
+							     matching the Pencil/Trash2 sizing already in this
+							     row. shrink-0 so the icon survives a long
+							     truncating display name. -->
+							<PluginIcon plugin={source.plugin} size="size-4 shrink-0" />
+							<div class="min-w-0">
+								<p
+									class="truncate text-[14px] leading-[1.4] text-foreground"
+									title={displayNameFor(id)}
+								>
+									{displayNameFor(id)}
+								</p>
+								<p class="text-[14px] leading-[1.4] text-muted-foreground">{source.plugin}</p>
+							</div>
 						</div>
 						<div class="flex shrink-0 items-center gap-1">
 							<Button variant="ghost" size="sm" onclick={() => (editInstance = id)}>

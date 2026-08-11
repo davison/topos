@@ -68,6 +68,40 @@ describe('section headings: both "Source instances" and "Webspaces"', () => {
 	});
 });
 
+describe('instance rows: leading PluginIcon at size-4 (09-06-PLAN.md Task 3, 09-UI-SPEC.md Fix 10)', () => {
+	const rowBlock = extractBetween(stripped, '{#each instanceIds as id (id)}', '{/each}');
+
+	it('ManageSourcesModal imports PluginIcon', () => {
+		expect(stripped.includes("from '$lib/components/PluginIcon.svelte'")).toBe(true);
+	});
+
+	it('the instance row renders a PluginIcon keyed on source.plugin', () => {
+		expect(
+			/<PluginIcon\s+plugin=\{source\.plugin\}/.test(rowBlock),
+			'expected the instance row to render <PluginIcon plugin={source.plugin} .../>'
+		).toBe(true);
+	});
+
+	it('the icon renders at size-4 (16px), matching the Pencil/Trash2 sizing already in this row', () => {
+		expect(
+			/<PluginIcon\s+plugin=\{source\.plugin\}\s+size="size-4/.test(rowBlock),
+			'expected the PluginIcon to carry a size-4 class, matching the row\'s existing Pencil/Trash2 sizing'
+		).toBe(true);
+	});
+
+	it('the icon carries shrink-0 so it survives a long truncating display name', () => {
+		expect(
+			/<PluginIcon\s+plugin=\{source\.plugin\}\s+size="size-4\s+shrink-0"/.test(rowBlock),
+			'expected the PluginIcon\'s size class to include shrink-0'
+		).toBe(true);
+	});
+
+	it('the row\'s existing two-line display-name/plugin-name layout is otherwise unchanged', () => {
+		expect(rowBlock.includes('{displayNameFor(id)}')).toBe(true);
+		expect(rowBlock.includes('{source.plugin}')).toBe(true);
+	});
+});
+
 describe('instance rows: truncate plus a title binding (SourceChip precedent)', () => {
 	it('the instance-row name element carries both truncate and a title binding', () => {
 		const rowBlock = extractBetween(stripped, '{#each instanceIds as id (id)}', '{/each}');
