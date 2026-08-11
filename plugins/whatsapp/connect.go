@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -12,6 +13,17 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+// serveLoginTimeout bounds how long serve-mode startup (startBackgroundClient's
+// success path, below) blocks before falling through to goplugin.Serve in the
+// connecting state. Deliberately much shorter than link.go's
+// postPairLoginTimeout: a link flow has a human watching a QR code and
+// waiting for it, a boot does not. It must also stay comfortably under
+// go-plugin's own client StartTimeout default of one minute
+// (hashicorp/go-plugin), because main.go calls NewSourcePlugin BEFORE
+// goplugin.Serve — every second spent here is a second the kernel's
+// pluginhost.launch is blocked on the handshake completing.
+const serveLoginTimeout = 15 * time.Second
 
 // pluginLogger implements waLog.Logger, writing to os.Stderr (never
 // os.Stdout, which the go-plugin subprocess handshake protocol owns) at a
@@ -99,6 +111,25 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 		return nil
 	}
 
+	// G-08-4 (missing[0]): explicitly assign the connecting state BEFORE
+	// dialing, belt and braces with health.go's zero-value fix — the
+	// plugin's reported state is honest from the first instant of the
+	// dial rather than only after Connect() returns.
+	p.setHealthState(healthStateConnecting, "")
+
+	// G-08-4 (missing[1]): register a pairLoginWaiter (pairwait.go — the
+	// SAME primitive the link flow already proves against a real device)
+	// AFTER p.handleEvent is already registered above. Ordering is
+	// load-bearing: whatsmeow dispatches an event to its handlers
+	// synchronously, in registration order, so by the time this waiter is
+	// signalled, p.handleEvent's own *events.Connected case has ALREADY
+	// assigned healthStateLinked. That is why the wait below adds no
+	// post-wait state assignment of its own — doing so would risk
+	// clobbering a LoggedOut or StreamReplaced that landed in the same
+	// instant.
+	loginWaiter := newPairLoginWaiter()
+	client.AddEventHandler(loginWaiter.handleEvent)
+
 	if err := client.Connect(); err != nil {
 		// Not fatal to process startup — a transient network failure at
 		// boot should not crash-loop the plugin subprocess; Health/Match
@@ -123,6 +154,19 @@ func (p *SourcePlugin) startBackgroundClient(ctx context.Context) error {
 		// not-linked template verbatim.
 		p.setHealthState(healthStateNotLinked, fmt.Sprintf("initial connect failed, retrying: %v", err))
 		return nil
+	}
+
+	// Bounded wait for the SAME client to observe a real *events.Connected
+	// (or a definitive login failure) before this function returns and
+	// main.go reaches goplugin.Serve — so the kernel's first Match after a
+	// (re)launch normally lands after login genuinely completed, not at
+	// the first instant of the dial. The wait outcome is never fatal to
+	// control flow: every path below still returns nil so goplugin.Serve
+	// is always reached; a non-nil wait error is only logged, one line,
+	// under this package's fixed pluginName prefix, carrying no chat name,
+	// sender name, message body, or key material.
+	if err := loginWaiter.wait(serveLoginTimeout); err != nil {
+		fmt.Fprintf(p.logOut, "%s: serve-mode startup: %v\n", pluginName, err)
 	}
 
 	return nil
