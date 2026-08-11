@@ -9,7 +9,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
 
@@ -26,10 +28,21 @@ func main() {
 	// treats its absence as an error.
 	_ = os.Getenv("WEBSPACES_SOURCE_CONFIG")
 
+	// Fixture-only launch-readiness window (readiness.go, G-08-4) — off by
+	// default (see readinessWindowFromEnv), so a real installation's mock
+	// is unaffected. A malformed value fails startup loudly rather than
+	// silently altering behaviour, matching every other plugin's
+	// fail-loud-by-name startup discipline.
+	ready, err := readinessWindowFromEnv(time.Now(), os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "topos-plugin-mock:", err)
+		os.Exit(1)
+	}
+
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
 		Plugins: map[string]goplugin.Plugin{
-			"source": &sdk.SourcePluginGRPCPlugin{Impl: NewSourcePlugin()},
+			"source": &sdk.SourcePluginGRPCPlugin{Impl: NewSourcePlugin().withReadinessWindow(ready)},
 		},
 		// sdk.GRPCServer (not goplugin.DefaultGRPCServer) raises the gRPC
 		// message-size ceiling to match the kernel's own dial options —

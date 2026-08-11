@@ -161,10 +161,16 @@ func provenanceFor(sourceID string) map[string]string {
 }
 
 // SourcePlugin implements sdk.SourcePlugin with a fixed, in-memory item
-// set. No fields: unlike a real plugin (which holds an HTTP client, a
-// base URL, a database handle, ...), the mock has no per-instance state
-// at all — every launched copy behaves identically.
-type SourcePlugin struct{}
+// set. Unlike a real plugin (which holds an HTTP client, a base URL, a
+// database handle, ...), the mock has no per-instance CONNECTION state at
+// all — every launched copy behaves identically. The one field it does
+// carry, ready, is not connection state: it is a fixture-only affordance
+// (see readiness.go) that is nil in every normal launch.
+type SourcePlugin struct {
+	// ready is nil in the normal case — see readiness.go for why the field
+	// exists at all (08-UAT.md gap G-08-4's fixture).
+	ready *readinessWindow
+}
 
 // NewSourcePlugin builds a SourcePlugin. Unlike every real plugin's
 // constructor (plugins/paperless.NewSourcePlugin,
@@ -174,12 +180,26 @@ func NewSourcePlugin() *SourcePlugin {
 	return &SourcePlugin{}
 }
 
+// withReadinessWindow sets the fixture-only readiness window (see
+// readiness.go) and returns p for chaining from main.go. Not part of the
+// plugin contract — no real plugin needs an equivalent setter.
+func (p *SourcePlugin) withReadinessWindow(w *readinessWindow) *SourcePlugin {
+	p.ready = w
+	return p
+}
+
 // Describe is called once, immediately after the handshake, before any
 // other RPC (contract: "RPC semantics: Describe"). It returns the
 // plugin's identity: source_type is the kernel's only trusted source of
 // this plugin's identity (never the config key or the binary filename),
 // display_name is for UI/logs, and contract_version is the
 // additive-compatibility signal.
+// Describe is deliberately NEVER gated by the readiness window (see
+// readiness.go): kernel/pluginhost.launch calls Describe immediately after
+// the handshake and treats any error there as a launch failure, so a
+// guarded Describe would make the plugin fail to launch at all — the
+// launch-readiness scenario this fixture exists to model could then never
+// be reached in the first place.
 func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
 	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
@@ -199,6 +219,17 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 // never a substring or prefix match. An empty or absent "labels" value list
 // matches nothing (see the worked example in docs/plugin-contract.md).
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
+	// Readiness guard (fixture-only, see readiness.go): sits above keyword
+	// resolution because it mirrors the shape a REAL not-yet-ready plugin
+	// answers with (see plugins/whatsapp/plugin.go's own Match health
+	// guard) — which is the whole point of this fixture: giving G-08-4's
+	// failure class its first automated, real-subprocess gate. Fetch is
+	// deliberately left unguarded (no equivalent check there) since Fetch
+	// is never on the sync path this gap concerns.
+	if !p.ready.ready(time.Now()) {
+		return nil, status.Error(codes.Unavailable, notReadyMessage)
+	}
+
 	keywords := req.GetMatchFields()["labels"].GetValues()
 	var items []*toposv1.Item
 	for _, it := range mockItems {
@@ -286,6 +317,15 @@ func findMockItem(sourceID string) *toposv1.Item {
 // Health"). The mock has nothing to be unreachable from, so it always
 // reports reachable with no error.
 func (p *SourcePlugin) Health(_ context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
+	// Readiness guard (fixture-only, see readiness.go) — same window Match
+	// checks above, so a not-yet-ready mock reports unhealthy consistently
+	// across both RPCs.
+	if !p.ready.ready(time.Now()) {
+		return &toposv1.HealthResponse{
+			Reachable: false,
+			LastError: notReadyMessage,
+		}, nil
+	}
 	return &toposv1.HealthResponse{
 		Reachable:    true,
 		LastSyncUnix: time.Now().Unix(),

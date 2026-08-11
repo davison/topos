@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -228,5 +229,103 @@ func TestHealth_AlwaysReachableWithNoError(t *testing.T) {
 	}
 	if resp.GetLastError() != "" {
 		t.Errorf("expected empty last_error, got %q", resp.GetLastError())
+	}
+}
+
+// TestReadinessWindowFromEnv is a table test over the fixture's env-var
+// parsing (readiness.go): absent, empty, and "0" all mean "no window";
+// a positive value builds a window; a negative or non-numeric value is a
+// loud parse error.
+func TestReadinessWindowFromEnv(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name      string
+		raw       string
+		present   bool
+		wantNil   bool
+		wantError bool
+	}{
+		{name: "absent", present: false, wantNil: true},
+		{name: "empty", raw: "", present: true, wantNil: true},
+		{name: "zero", raw: "0", present: true, wantNil: true},
+		{name: "positive", raw: "700", present: true, wantNil: false},
+		{name: "negative", raw: "-1", present: true, wantError: true},
+		{name: "non-numeric", raw: "soon", present: true, wantError: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			getenv := func(name string) string {
+				if name != readyAfterEnvVar {
+					t.Fatalf("unexpected getenv call for %q", name)
+				}
+				if !tc.present {
+					return ""
+				}
+				return tc.raw
+			}
+
+			w, err := readinessWindowFromEnv(now, getenv)
+
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readinessWindowFromEnv: %v", err)
+			}
+			if tc.wantNil && w != nil {
+				t.Errorf("expected a nil window, got %+v", w)
+			}
+			if !tc.wantNil && w == nil {
+				t.Error("expected a non-nil window")
+			}
+		})
+	}
+}
+
+// TestMatch_ReadinessWindowInFutureRefusesMatchButDescribeStillSucceeds
+// proves the guard shape the whole fixture exists for: a plugin whose
+// window has not yet elapsed refuses Match with codes.Unavailable and
+// notReadyMessage, while Describe — deliberately never gated — still
+// succeeds (mirroring pluginhost.launch's post-handshake Describe call,
+// which must never observe the window).
+func TestMatch_ReadinessWindowInFutureRefusesMatchButDescribeStillSucceeds(t *testing.T) {
+	now := time.Now()
+	p := NewSourcePlugin().withReadinessWindow(&readinessWindow{readyAt: now.Add(time.Hour)})
+
+	_, err := p.Match(context.Background(), matchFieldsReq([]string{"demo"}))
+	if err == nil {
+		t.Fatal("expected an error for a Match call inside the readiness window")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.Unavailable {
+		t.Errorf("expected codes.Unavailable, got %v", err)
+	}
+	if st.Message() != notReadyMessage {
+		t.Errorf("expected message %q, got %q", notReadyMessage, st.Message())
+	}
+
+	if _, err := p.Describe(context.Background(), &toposv1.DescribeRequest{}); err != nil {
+		t.Errorf("expected Describe to succeed regardless of the readiness window, got %v", err)
+	}
+}
+
+// TestMatch_ReadinessWindowElapsedReturnsNormalItemSet proves a window
+// constructed from a past readyAt (never a sleep) behaves exactly like an
+// unconfigured plugin.
+func TestMatch_ReadinessWindowElapsedReturnsNormalItemSet(t *testing.T) {
+	now := time.Now()
+	p := NewSourcePlugin().withReadinessWindow(&readinessWindow{readyAt: now.Add(-time.Hour)})
+
+	resp, err := p.Match(context.Background(), matchFieldsReq([]string{"demo"}))
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != len(mockItems) {
+		t.Errorf("expected all %d fixed 'demo'-labelled items once the window has elapsed, got %d", len(mockItems), len(resp.GetItems()))
 	}
 }
