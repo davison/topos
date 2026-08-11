@@ -887,4 +887,61 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 			)
 		).toHaveCount(0);
 	});
+
+	test('14. (09-02) topos-branded pairing panel: the app icon decodes in a real browser and no third-party brand asset is fetched', async ({
+		page,
+		kernel
+	}) => {
+		// Clones case 1's exact setup — the populated-QR state is the one
+		// browser-drivable surface 09-UI-SPEC.md Fix 10 requires proof
+		// for (ROADMAP success criterion 5, the standing Phase 07.1
+		// rule): a source scan cannot prove a served asset actually
+		// resolves through the kernel's embedded SPA.
+		await offerWhatsAppPluginType(page);
+		await scriptDescribeWhatsApp(page);
+		const qrResponse = {
+			status: 200,
+			body: {
+				schema_version: 1,
+				session: 'sess-1',
+				state: 'qr',
+				png_data_uri: 'data:image/png;base64,AAAA',
+				expires_in_seconds: 30
+			}
+		};
+		await scriptLinkSession(page, { start: qrResponse, polls: [qrResponse], deleteCalls: 0 });
+
+		await waitForFirstSync(kernel.baseURL, ['mock-01'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/armor`);
+		await openWhatsAppConnectStep(page, 'Branded WhatsApp');
+
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByAltText(/pairing QR code/)).toBeVisible();
+
+		// Located by its own src, not by role or accessible name: the
+		// app icon is decorative by design (alt=""), so it has no
+		// accessible name — an accessible-name query would contradict
+		// the markup this same fix writes.
+		const appIcon = dialog.locator('img[src="/app-icon.png"]');
+		await expect(appIcon).toBeVisible();
+		// The standard 09-01's tracer spec set: an image is proven by
+		// its own naturalWidth, never by the presence of an <img> tag
+		// — the only assertion that separates a genuinely served asset
+		// from a broken image icon.
+		await expect
+			.poll(async () => appIcon.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+			.toBeGreaterThan(0);
+
+		// The negative half of the de-branding claim: every image the
+		// panel renders in this state is either the session's own QR
+		// data URI or the app icon — no third-party brand asset is
+		// fetched.
+		const imgSrcs = await dialog
+			.locator('img')
+			.evaluateAll((imgs) => imgs.map((img) => (img as HTMLImageElement).getAttribute('src')));
+		expect(new Set(imgSrcs)).toEqual(new Set(['data:image/png;base64,AAAA', '/app-icon.png']));
+
+		// The panel's rendered text carries no whatsmeow mention.
+		await expect(dialog).not.toContainText(/whatsmeow/i);
+	});
 });

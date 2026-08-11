@@ -318,6 +318,15 @@
 </script>
 
 <div class="flex flex-col items-center gap-2">
+	<!-- topos-branded pairing surface (09-UI-SPEC.md Fix 10): a small,
+	     decorative topos app icon above the QR/skeleton area so a user
+	     scanning a code sees they are pairing a device with topos, not
+	     WhatsApp/Meta. alt="" is deliberate — the copy directly below
+	     already states what this is; this image carries no independent
+	     accessible name. Rendered unconditionally across every phase
+	     (additive branding, not a rework of the existing phase branches
+	     below, which stay byte-identical). -->
+	<img src="/app-icon.png" alt="" class="size-10 rounded-md" />
 	{#if phase === 'loading'}
 		<Skeleton class="size-48 rounded-md" />
 	{:else if phase === 'qr'}

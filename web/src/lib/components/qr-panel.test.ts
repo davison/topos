@@ -283,6 +283,30 @@ describe('the countdown line falls back to a waiting copy once it reaches zero w
 	});
 });
 
+describe('the panel is topos-branded, not WhatsApp/Meta-branded (09-UI-SPEC.md Fix 10, T-09-10)', () => {
+	it('renders the topos app icon from /app-icon.png with a decorative empty alt', () => {
+		expect(
+			/<img\s+src="\/app-icon\.png"\s+alt=""/.test(stripped),
+			'expected an <img src="/app-icon.png" alt="" ...> element — the topos app icon, decorative (the adjacent phase copy already states what this is)'
+		).toBe(true);
+	});
+
+	it('every <img> element\'s src is either the app icon or the session\'s own QR data URI — no third-party brand asset', () => {
+		const imgSrcs = [...stripped.matchAll(/<img\s+src=(\{[^}]*\}|"[^"]*")/g)].map((m) => m[1]);
+		expect(imgSrcs.length, 'expected exactly two <img> elements in the panel').toBe(2);
+		for (const src of imgSrcs) {
+			expect(
+				src === '{qrDataUri}' || src === '"/app-icon.png"',
+				`expected every <img> src to be either {qrDataUri} (the session's own code) or "/app-icon.png" (the topos app icon), got ${src}`
+			).toBe(true);
+			expect(
+				src.toLowerCase().includes('whatsapp'),
+				`expected no <img> src to reference a WhatsApp-branded asset, got ${src}`
+			).toBe(false);
+		}
+	});
+});
+
 describe('the three terminal cases still set retired = true and call clearTimers() (unchanged, pinned against this refactor)', () => {
 	for (const [label, caseMarker, nextMarker] of [
 		['paired', "case 'paired':", "\n\t\t\tcase 'error':"],

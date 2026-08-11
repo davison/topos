@@ -6,11 +6,14 @@ Provenance (09-01-PLAN.md Task 2, T-09-05):
   license:        ISC
 
 Derived from Lucide's FlaskConical glyph. The stroke color is baked as the
-literal hex #94a3b8 (muted-foreground) instead of the upstream
-stroke="currentColor": an img-loaded SVG renders in its own opaque
-context and cannot inherit a page CSS color (09-UI-SPEC.md Fix 10, "Baked
-color, not currentColor"). ISC is a permissive license that allows
-redistributing this modified copy.
+literal hex #94a3b8 (muted-foreground) instead of the upstream stroke
+value (Lucide's own dynamic, CSS-inherited default): an img-loaded SVG
+renders in its own opaque context and cannot inherit a page CSS color
+(09-UI-SPEC.md Fix 10, "Baked color, not the CSS-inherited default").
+ISC is a permissive license that allows redistributing this modified
+copy. (internal/audit/plugin_icons_test.go mechanically forbids this
+file from containing the CSS-inherited stroke keyword itself, so it is
+deliberately never spelled out literally in this comment either.)
 
 Note for future editors of this file: an XML/SVG comment must never
 contain a literal double-hyphen sequence in its body (only as the closing

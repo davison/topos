@@ -44,6 +44,11 @@ const (
 // Describe's Icon field; the kernel caches it at that call site and serves
 // it at GET /api/plugins/topos-plugin-mock/icon.
 //
+// Source-Project: @lucide/svelte (lucide-icons/lucide)
+// Source-File:    dist/icons/flask-conical.svelte
+// Source-Version: @lucide/svelte v1.27.0
+// Source-License: ISC
+//
 //go:embed assets/icon.svg
 var iconSVG []byte
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +27,31 @@ const (
 	// pluginName identifies this plugin in Item.Provenance's "plugin" key
 	// and in this process's own log lines.
 	pluginName = "topos-plugin-whatsapp"
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from both of this module's Describe implementations (plugin.go and
+	// describeonly.go), 09-02-PLAN.md Task 3, 09-UI-SPEC.md Fix 10.
+	iconMIME = "image/svg+xml"
 )
+
+// iconSVG is this plugin's identity icon — a Lucide MessageSquare glyph
+// with its stroke color baked to the literal --muted-foreground hex (see
+// assets/icon.svg's own provenance comment). Deliberately NOT the topos
+// app icon and NOT any WhatsApp/Meta mark, and deliberately a different
+// bubble shape from Signal's MessageCircle glyph so the two chat sources
+// stay tellable apart by icon alone. Returned verbatim from both
+// SourcePlugin.Describe (below) and describeOnlyPlugin.Describe
+// (describeonly.go), so the two launch modes never disagree; the kernel
+// caches it at that call site and serves it at
+// GET /api/plugins/topos-plugin-whatsapp/icon.
+//
+// Source-Project: @lucide/svelte (lucide-icons/lucide)
+// Source-File:    dist/icons/message-square.svelte
+// Source-Version: @lucide/svelte v1.27.0
+// Source-License: ISC
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
 // reads from MatchRequest.match_fields — exactly two fields per D-05,
@@ -172,6 +197,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

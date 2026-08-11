@@ -38,6 +38,8 @@ func (describeOnlyPlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

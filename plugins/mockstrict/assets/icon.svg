@@ -9,11 +9,14 @@ Derived from Lucide's FlaskConical glyph — the same glyph
 plugins/mock/assets/icon.svg uses, matching mockstrict's own status as
 a developer fixture, never a real user-facing source (09-UI-SPEC.md
 "Icon art per first-party plugin"). The stroke color is baked as the
-literal hex #94a3b8 (muted-foreground) instead of the upstream
-stroke="currentColor": an img-loaded SVG renders in its own opaque
-context and cannot inherit a page CSS color (09-UI-SPEC.md Fix 10,
-"Baked color, not currentColor"). ISC is a permissive license that
-allows redistributing this modified copy.
+literal hex #94a3b8 (muted-foreground) instead of the upstream stroke
+value (Lucide's own dynamic, CSS-inherited default): an img-loaded SVG
+renders in its own opaque context and cannot inherit a page CSS color
+(09-UI-SPEC.md Fix 10, "Baked color, not the CSS-inherited default").
+ISC is a permissive license that allows redistributing this modified
+copy. (internal/audit/plugin_icons_test.go mechanically forbids this
+file from containing the CSS-inherited stroke keyword itself, so it is
+deliberately never spelled out literally in this comment.)
 
 Note for future editors of this file: an XML/SVG comment must never
 contain a literal double-hyphen sequence in its body (only as the
