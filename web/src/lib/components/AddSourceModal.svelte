@@ -29,6 +29,7 @@
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import ConnectionForm from './ConnectionForm.svelte';
 	import QRPanel from './QRPanel.svelte';
+	import PluginIcon from '$lib/components/PluginIcon.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import {
 		pluginTypeLabel,
@@ -447,43 +448,64 @@
 			</button>
 		{/snippet}
 	</PopoverTrigger>
-	<PopoverContent class="max-h-80 overflow-y-auto">
+	<PopoverContent class="w-80 max-h-80 overflow-y-auto">
 		{#if pickerEmpty}
 			<p class="text-[14px] leading-[1.4] text-muted-foreground">
 				All available sources are already in this webspace.
 			</p>
 		{:else}
 			<div class="flex flex-col gap-1">
-				{#each availableInstances as instanceId (instanceId)}
-					{@const source = config.sources[instanceId]}
-					<button
-						type="button"
-						class="flex flex-col items-start rounded-sm px-2 py-1.5 text-left hover:bg-muted"
-						onclick={() => selectExisting(instanceId)}
+				{#if availableInstances.length > 0}
+					<p
+						class="px-2 pt-1 text-[14px] leading-[1.4] font-medium tracking-wide text-muted-foreground uppercase"
 					>
-						<span class="text-[14px] leading-[1.4] text-foreground">
-							{source.display_name ?? instanceId}
-						</span>
-						<span class="text-[14px] leading-[1.4] text-muted-foreground">
-							{source.plugin}
-						</span>
-					</button>
-				{/each}
+						Add to this webspace
+					</p>
+					{#each availableInstances as instanceId (instanceId)}
+						{@const source = config.sources[instanceId]}
+						{@const location = source.base_url || source.path || pluginTypeLabel(source.plugin)}
+						<button
+							type="button"
+							class="flex items-start gap-1.5 rounded-sm px-2 py-1.5 text-left hover:bg-muted"
+							onclick={() => selectExisting(instanceId)}
+						>
+							<PluginIcon plugin={source.plugin} size="size-4 mt-0.5 shrink-0" />
+							<span class="flex min-w-0 flex-col">
+								<span class="text-[14px] leading-[1.4] text-foreground">
+									{source.display_name ?? instanceId}
+								</span>
+								<span
+									class="truncate text-[14px] leading-[1.4] text-muted-foreground"
+									title={location}
+								>
+									{location}
+								</span>
+							</span>
+						</button>
+					{/each}
+				{/if}
 
 				{#if availableInstances.length > 0 && pluginTypes.length > 0}
 					<div class="-mx-1 my-1 h-px bg-border"></div>
 				{/if}
 
-				{#each pluginTypes as plugin (plugin)}
-					<button
-						type="button"
-						class="flex items-center gap-1.5 rounded-sm px-2 py-1.5 text-left text-[14px] leading-[1.4] text-foreground hover:bg-muted"
-						onclick={() => selectPluginType(plugin)}
+				{#if pluginTypes.length > 0}
+					<p
+						class="px-2 pt-1 text-[14px] leading-[1.4] font-medium tracking-wide text-muted-foreground uppercase"
 					>
-						<Plus class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-						New {pluginTypeLabel(plugin)}…
-					</button>
-				{/each}
+						Install a new source
+					</p>
+					{#each pluginTypes as plugin (plugin)}
+						<button
+							type="button"
+							class="flex items-center gap-1.5 rounded-md border border-border p-2 text-left text-[14px] leading-[1.4] text-foreground hover:border-primary hover:bg-muted"
+							onclick={() => selectPluginType(plugin)}
+						>
+							<PluginIcon plugin={plugin} size="size-4 shrink-0" />
+							{pluginTypeLabel(plugin)}
+						</button>
+					{/each}
+				{/if}
 			</div>
 		{/if}
 	</PopoverContent>

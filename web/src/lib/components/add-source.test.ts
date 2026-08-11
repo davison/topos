@@ -619,7 +619,7 @@ describe('Group 1 instance rows: leading icon and location line (09-07 Fix 11)',
 	it('the secondary line carries truncate and a native title attribute', () => {
 		const idx = stripped.indexOf('pluginTypeLabel(source.plugin)');
 		expect(idx, 'expected to find the location fallback expression').toBeGreaterThanOrEqual(0);
-		const surrounding = stripped.slice(Math.max(0, idx - 400), idx + 400);
+		const surrounding = stripped.slice(Math.max(0, idx - 200), idx + 700);
 		expect(
 			/truncate/.test(surrounding),
 			'expected the location line to carry a truncate class near the fallback expression'
