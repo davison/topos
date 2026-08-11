@@ -26,7 +26,7 @@
 		{side}
 		{align}
 		class={cn(
-			"data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-80 w-72 origin-(--bits-popover-content-transform-origin) overflow-y-auto rounded-md border border-border bg-card p-3 text-foreground shadow-md outline-none",
+			"data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-80 w-72 origin-(--bits-popover-content-transform-origin) overflow-y-auto rounded-md border border-border bg-popover p-3 text-foreground shadow-md outline-none",
 			className
 		)}
 		{...restProps}

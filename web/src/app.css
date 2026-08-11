@@ -67,7 +67,19 @@
 	/* Secondary (30%): cards, detail pane surface, top header/nav bar. */
 	--card: #0f172a;
 	--card-foreground: #f1f5f9;
-	--popover: #0f172a;
+	/*
+	 * --popover extends the dark-elevation staircase by one real step
+	 * (09-UI-SPEC.md Fix 8): --background (darkest) -> --card (pane
+	 * surfaces) -> --popover, new (this step) -> --secondary/--border/
+	 * --muted/--accent (lightest of the four). It must sit strictly
+	 * between --card and --border in lightness so a floating menu reads
+	 * lighter than the pane behind it while its own border-border frame
+	 * stays legible against its new fill. Previously byte-identical to
+	 * --card, which is why this separation never had any visible effect
+	 * until now. Declared twice in this file (:root + .dark, both mirror
+	 * the same palette) — change both together.
+	 */
+	--popover: #172033;
 	--popover-foreground: #f1f5f9;
 	--secondary: #1e293b;
 	--secondary-foreground: #f1f5f9;
@@ -152,7 +164,7 @@
 	--foreground: #f1f5f9;
 	--card: #0f172a;
 	--card-foreground: #f1f5f9;
-	--popover: #0f172a;
+	--popover: #172033;
 	--popover-foreground: #f1f5f9;
 	--secondary: #1e293b;
 	--secondary-foreground: #f1f5f9;
