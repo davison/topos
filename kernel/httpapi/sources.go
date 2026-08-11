@@ -41,9 +41,14 @@ type Refresher interface {
 
 // sourceStatus mirrors one entry of GET /api/sources's "sources" array.
 type sourceStatus struct {
-	Name         string `json:"name"`
-	SourceType   string `json:"source_type"`
-	DisplayName  string `json:"display_name"`
+	Name        string `json:"name"`
+	SourceType  string `json:"source_type"`
+	DisplayName string `json:"display_name"`
+	// Plugin is the launched instance's plugin BINARY name (e.g.
+	// "topos-plugin-mock"), added 09-01-PLAN.md Task 3 so the SPA can
+	// address GET /api/plugins/{plugin}/icon directly off this row —
+	// never source_type (the plugin KIND) and never the instance id.
+	Plugin       string `json:"plugin"`
 	Reachable    bool   `json:"reachable"`
 	Syncing      bool   `json:"syncing"`
 	LastStatus   string `json:"last_status"`
@@ -104,6 +109,7 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			Name:         h.Name,
 			SourceType:   h.SourceType,
 			DisplayName:  h.DisplayName,
+			Plugin:       h.Plugin,
 			Reachable:    h.Reachable,
 			Syncing:      syncing[h.Name],
 			LastStatus:   run.Status,

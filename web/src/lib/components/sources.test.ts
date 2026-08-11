@@ -19,6 +19,7 @@ function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
 		name: 'paperless',
 		source_type: 'paperless',
 		display_name: 'paperless-ngx',
+		plugin: 'topos-plugin-paperless',
 		reachable: true,
 		syncing: false,
 		last_status: 'ok',

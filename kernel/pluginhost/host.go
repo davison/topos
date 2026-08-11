@@ -633,8 +633,14 @@ type SourceHealth struct {
 	Name        string // config key under [sources.<name>]
 	SourceType  string // Describe-learned
 	DisplayName string // Describe-learned
-	Reachable   bool
-	ProbeError  string
+	// Plugin is the launched instance's plugin BINARY name (src.Plugin,
+	// e.g. "topos-plugin-mock") — never the instance id or SourceType.
+	// Threaded through to GET /api/sources (09-01-PLAN.md Task 3) so the
+	// SPA can address GET /api/plugins/{plugin}/icon per row without a
+	// second lookup.
+	Plugin     string
+	Reachable  bool
+	ProbeError string
 }
 
 // ProbeSources calls every launched plugin's Health RPC concurrently — a
@@ -653,7 +659,7 @@ func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
-			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName()}
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin}
 			resp, err := p.Health(ctx)
 			switch {
 			case err != nil:

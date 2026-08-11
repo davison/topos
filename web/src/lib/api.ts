@@ -263,6 +263,7 @@ export interface SourceStatus {
 	name: string; // source INSTANCE id (the [sources.<id>] config key, D-08) — matches StreamItem.source, filter/staleness/grant identity
 	source_type: string; // plugin kind (Describe-reported), matches StreamItem.source_type — descriptive only, never identity
 	display_name: string; // this instance's resolved display name (D-09): configured display_name, or `name` itself when omitted
+	plugin: string; // plugin BINARY name (e.g. "topos-plugin-mock") — the key PluginIcon.svelte addresses GET /api/plugins/{plugin}/icon with (09-01-PLAN.md Task 3)
 	reachable: boolean;
 	syncing: boolean;
 	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown

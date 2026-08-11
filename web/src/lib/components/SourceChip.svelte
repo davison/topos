@@ -17,6 +17,7 @@
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import QrCode from '@lucide/svelte/icons/qr-code';
+	import PluginIcon from '$lib/components/PluginIcon.svelte';
 	import { cn } from '$lib/utils.js';
 	import { healthTone, formatRelativeTime, type HealthTone } from '$lib/format';
 	import { WHATSAPP_SOURCE_TYPE } from '$lib/plugin-fields';
@@ -41,6 +42,12 @@
 	// "Re-link…", offered only when `source.source_type` is WhatsApp's own
 	// Describe-reported kind — every other plugin type has nothing to
 	// re-link, and an inert menu entry is worse than an absent one.
+	//
+	// 09-01-PLAN.md Task 3 (09-UI-SPEC.md Fix 10) adds the plugin's own
+	// identity icon (PluginIcon, kernel-served, mandatory Puzzle fallback)
+	// between the health dot and the display name — chip now reads
+	// [dot][icon][name]. Only this one addition; the tooltip copy and the
+	// trailing-control rework belong to 09-05.
 	let {
 		source,
 		selected,
@@ -150,6 +157,7 @@
 							)}
 							aria-hidden="true"
 						></span>
+						<PluginIcon plugin={source.plugin} size="size-3.5 shrink-0" />
 						<span
 							class={cn(
 								'truncate text-[14px] leading-[1.4]',

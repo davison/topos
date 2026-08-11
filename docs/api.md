@@ -418,13 +418,15 @@ document regardless of any query string supplied.
 One entry per configured source **instance** (`name`, the `[sources.<id>]`
 config map key — `D-08`): its resolved `display_name` (`D-09`), the
 plugin-reported `source_type` (the plugin kind, shared by every instance
-of that plugin binary), a **live** reachability probe result, whether it
-is currently syncing, and the kernel's own recorded sync history for it
-(`PLUG-04`). Sorted by instance id — so two instances of one plugin type
-always appear in the same deterministic order, run to run. Two
-`[sources.*]` entries whose `plugin` value is identical (e.g. two Proton
-accounts) always produce **two distinct entries** here, never one merged
-row.
+of that plugin binary), the configured `plugin` binary name (e.g.
+`"topos-plugin-paperless"` — `09-01-PLAN.md` Task 3, the key
+`GET /api/plugins/{plugin}/icon` addresses), a **live** reachability probe
+result, whether it is currently syncing, and the kernel's own recorded
+sync history for it (`PLUG-04`). Sorted by instance id — so two instances
+of one plugin type always appear in the same deterministic order, run to
+run. Two `[sources.*]` entries whose `plugin` value is identical (e.g. two
+Proton accounts) always produce **two distinct entries** here, never one
+merged row.
 
 ```
 $ curl -s http://127.0.0.1:7777/api/sources | jq
@@ -435,6 +437,7 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
       "name": "paperless",
       "source_type": "paperless",
       "display_name": "paperless-ngx",
+      "plugin": "topos-plugin-paperless",
       "reachable": true,
       "syncing": false,
       "last_status": "ok",
@@ -445,6 +448,7 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
       "name": "silverbullet",
       "source_type": "silverbullet",
       "display_name": "SilverBullet",
+      "plugin": "topos-plugin-silverbullet",
       "reachable": false,
       "syncing": false,
       "last_status": "error",
