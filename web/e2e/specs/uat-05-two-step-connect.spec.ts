@@ -52,7 +52,9 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		});
 
 		await page.getByRole('button', { name: 'Add source' }).click();
-		await page.getByText('New Mockstrict…').click();
+		// 09-07-PLAN.md Fix 11 retired the "New {label}…" catalog-row copy —
+		// the picker's Group 2 tile now reads just the plugin type label.
+		await page.getByRole('button', { name: 'Mockstrict', exact: true }).click();
 
 		const dialog = page.getByRole('dialog');
 

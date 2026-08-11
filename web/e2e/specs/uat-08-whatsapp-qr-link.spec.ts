@@ -292,7 +292,9 @@ async function interceptWhatsAppSaveOnly(page: Page, configPath: string): Promis
 /** Opens the "+" picker, chooses "New WhatsApp…", and fills the required fields — every test starts the connect step this way. */
 async function openWhatsAppConnectStep(page: Page, displayName: string): Promise<void> {
 	await page.getByRole('button', { name: 'Add source' }).click();
-	await page.getByText('New WhatsApp…').click();
+	// 09-07-PLAN.md Fix 11 retired the "New {label}…" catalog-row copy —
+	// the picker's Group 2 tile now reads just the plugin type label.
+	await page.getByRole('button', { name: 'WhatsApp', exact: true }).click();
 	const dialog = page.getByRole('dialog');
 	await expect(dialog.getByRole('heading', { name: 'Connect WhatsApp' })).toBeVisible();
 	await dialog.locator('#conn-display_name').fill(displayName);
