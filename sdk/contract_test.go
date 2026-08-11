@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // protoRelPath is the published contract's source of truth, read relative
@@ -101,6 +103,55 @@ func TestContractDeclaresMatchVocabulary(t *testing.T) {
 	liveFieldRe := regexp.MustCompile(`\bkeywords\s*=\s*\d+\s*;`)
 	if liveFieldRe.MatchString(stripped) {
 		t.Errorf("expected %s to NOT declare a live \"keywords\" field — it must remain retired via reserved only", protoRelPath)
+	}
+}
+
+// TestContractDeclaresIconFields is Phase 9's contract-shape gate
+// (09-01-PLAN.md Task 1, 09-UI-SPEC.md Fix 10): the published proto must
+// declare DescribeResponse's icon (field 5) and icon_mime (field 6) — the
+// additive icon-identity change every plugin's icon rides on — using the
+// same read-the-.proto-source technique TestContractDeclaresMatchVocabulary
+// above already established.
+func TestContractDeclaresIconFields(t *testing.T) {
+	stripped := stripComments(readProto(t))
+
+	iconRe := regexp.MustCompile(`\bicon\s*=\s*5\s*;`)
+	if !iconRe.MatchString(stripped) {
+		t.Errorf("expected %s to declare DescribeResponse.icon = 5", protoRelPath)
+	}
+
+	iconMimeRe := regexp.MustCompile(`\bicon_mime\s*=\s*6\s*;`)
+	if !iconMimeRe.MatchString(stripped) {
+		t.Errorf("expected %s to declare DescribeResponse.icon_mime = 6", protoRelPath)
+	}
+}
+
+// TestContractIconFieldsAreAdditive pins the two guarantees a proto3
+// additive field change must uphold (09-01-PLAN.md Task 1): the RPC set is
+// unchanged — icon/icon_mime are fields, not a new RPC, already enforced by
+// TestContractRPCAllowlist above against the unchanged allowedRPCs — and
+// sdk.Handshake.ProtocolVersion stays at 2, so a plugin binary built
+// against the pre-Phase-9 contract (which never sets these two fields)
+// keeps handshaking successfully exactly as it did before this phase.
+func TestContractIconFieldsAreAdditive(t *testing.T) {
+	if Handshake.ProtocolVersion != 2 {
+		t.Errorf("expected sdk.Handshake.ProtocolVersion to remain 2 (icon fields are an additive proto3 change, not a wire break), got %d", Handshake.ProtocolVersion)
+	}
+}
+
+// TestDescribeResponseIconFieldsZeroValue proves the pre-Phase-9-plugin
+// case against the regenerated stubs directly: a DescribeResponse with
+// neither icon field set (exactly what a plugin built against the old
+// contract produces) reports empty bytes and an empty mime string, never a
+// nil-pointer panic or a non-empty zero value.
+func TestDescribeResponseIconFieldsZeroValue(t *testing.T) {
+	desc := &toposv1.DescribeResponse{}
+
+	if got := desc.GetIcon(); len(got) != 0 {
+		t.Errorf("expected GetIcon() on an icon-less DescribeResponse to return empty bytes, got %d bytes", len(got))
+	}
+	if got := desc.GetIconMime(); got != "" {
+		t.Errorf("expected GetIconMime() on an icon-less DescribeResponse to return \"\", got %q", got)
 	}
 }
 

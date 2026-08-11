@@ -243,8 +243,28 @@ type DescribeResponse struct {
 	// (e.g. Phase 8's WhatsApp) declares its own vocabulary here with no
 	// proto change required.
 	MatchVocabulary []string `protobuf:"bytes,4,rep,name=match_vocabulary,json=matchVocabulary,proto3" json:"match_vocabulary,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// icon and icon_mime are Phase 9's additive icon-identity fields
+	// (09-UI-SPEC.md Fix 10). This is a proto3 additive change: a plugin
+	// binary built against the pre-Phase-9 contract simply never sets these
+	// two fields, so impl.Describe(...) on the kernel side returns
+	// icon: nil, icon_mime: "" for it — no handshake break, and
+	// sdk.Handshake.ProtocolVersion is deliberately NOT bumped here
+	// (contrast Phase 5's typed-match-field break above, which changed an
+	// EXISTING field's meaning and therefore did require a bump).
+	//
+	// icon is a small square SVG or PNG of at most 65536 (64KB) bytes.
+	// Empty means the plugin declares no icon — never treated as an error,
+	// just "no icon for this plugin type yet" (e.g. a pre-Phase-9 binary, or
+	// a plugin type with no configured/launched instance).
+	Icon []byte `protobuf:"bytes,5,opt,name=icon,proto3" json:"icon,omitempty"`
+	// icon_mime is either "image/svg+xml" or "image/png". It is the empty
+	// string if and only if icon is empty — a non-empty icon with an empty
+	// mime, or a mime outside that two-value allowlist, is dropped kernel-
+	// side and treated identically to "no icon declared"
+	// (kernel/pluginhost/host.go's allowedIconMIME).
+	IconMime      string `protobuf:"bytes,6,opt,name=icon_mime,json=iconMime,proto3" json:"icon_mime,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DescribeResponse) Reset() {
@@ -303,6 +323,20 @@ func (x *DescribeResponse) GetMatchVocabulary() []string {
 		return x.MatchVocabulary
 	}
 	return nil
+}
+
+func (x *DescribeResponse) GetIcon() []byte {
+	if x != nil {
+		return x.Icon
+	}
+	return nil
+}
+
+func (x *DescribeResponse) GetIconMime() string {
+	if x != nil {
+		return x.IconMime
+	}
+	return ""
 }
 
 // StringList wraps a repeated string as a map value — proto3 maps cannot
@@ -857,13 +891,15 @@ var File_topos_v1_plugin_proto protoreflect.FileDescriptor
 const file_topos_v1_plugin_proto_rawDesc = "" +
 	"\n" +
 	"\x15topos/v1/plugin.proto\x12\btopos.v1\"\x11\n" +
-	"\x0fDescribeRequest\"\xac\x01\n" +
+	"\x0fDescribeRequest\"\xdd\x01\n" +
 	"\x10DescribeResponse\x12\x1f\n" +
 	"\vsource_type\x18\x01 \x01(\tR\n" +
 	"sourceType\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12)\n" +
 	"\x10contract_version\x18\x03 \x01(\tR\x0fcontractVersion\x12)\n" +
-	"\x10match_vocabulary\x18\x04 \x03(\tR\x0fmatchVocabulary\"$\n" +
+	"\x10match_vocabulary\x18\x04 \x03(\tR\x0fmatchVocabulary\x12\x12\n" +
+	"\x04icon\x18\x05 \x01(\fR\x04icon\x12\x1b\n" +
+	"\ticon_mime\x18\x06 \x01(\tR\biconMime\"$\n" +
 	"\n" +
 	"StringList\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\tR\x06values\"\xc0\x01\n" +

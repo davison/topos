@@ -38,6 +38,26 @@ message DescribeResponse {
   // (e.g. Phase 8's WhatsApp) declares its own vocabulary here with no
   // proto change required.
   repeated string match_vocabulary = 4;
+  // icon and icon_mime are Phase 9's additive icon-identity fields
+  // (09-UI-SPEC.md Fix 10). This is a proto3 additive change: a plugin
+  // binary built against the pre-Phase-9 contract simply never sets these
+  // two fields, so impl.Describe(...) on the kernel side returns
+  // icon: nil, icon_mime: "" for it — no handshake break, and
+  // sdk.Handshake.ProtocolVersion is deliberately NOT bumped here
+  // (contrast Phase 5's typed-match-field break above, which changed an
+  // EXISTING field's meaning and therefore did require a bump).
+  //
+  // icon is a small square SVG or PNG of at most 65536 (64KB) bytes.
+  // Empty means the plugin declares no icon — never treated as an error,
+  // just "no icon for this plugin type yet" (e.g. a pre-Phase-9 binary, or
+  // a plugin type with no configured/launched instance).
+  bytes icon = 5;
+  // icon_mime is either "image/svg+xml" or "image/png". It is the empty
+  // string if and only if icon is empty — a non-empty icon with an empty
+  // mime, or a mime outside that two-value allowlist, is dropped kernel-
+  // side and treated identically to "no icon declared"
+  // (kernel/pluginhost/host.go's allowedIconMIME).
+  string icon_mime = 6;
 }
 
 // StringList wraps a repeated string as a map value — proto3 maps cannot

@@ -257,8 +257,25 @@ message DescribeResponse {
   string display_name     = 2;  // e.g. "paperless-ngx" — for UI/logs
   string contract_version = 3;  // e.g. "topos.v2"
   repeated string match_vocabulary = 4;
+  bytes  icon              = 5;  // small square SVG or PNG, <= 64KB
+  string icon_mime         = 6;  // "image/svg+xml" or "image/png"
 }
 ```
+
+`icon`/`icon_mime` (Phase 9, 09-UI-SPEC.md Fix 10) are the plugin's own
+declared identity icon, additive fields appended after
+`match_vocabulary`. `icon` is a small square SVG or PNG of at most 65536
+(64KB) bytes; empty means the plugin declares no icon. `icon_mime` is
+either `"image/svg+xml"` or `"image/png"`, and is the empty string if and
+only if `icon` is empty — the kernel drops (never truncates) an icon whose
+mime is empty, unset, or outside that two-value allowlist, treating it
+identically to "no icon declared." The kernel captures both fields at the
+same `Describe` call site it already makes (no new RPC), caches them per
+launched plugin binary, and serves them at
+`GET /api/plugins/{plugin_binary}/icon`. Because this is a proto3
+additive change, a plugin built against the pre-Phase-9 contract simply
+never sets these two fields — it keeps working completely unchanged, with
+no handshake break and no `sdk.Handshake.ProtocolVersion` bump.
 
 `contract_version` is the additive-compatibility signal: a plugin built
 against an older but still-compatible revision of this contract can report
