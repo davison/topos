@@ -27,9 +27,11 @@ test.describe('09-01 Task 3: the mock source chip renders a kernel-served, plugi
 		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
 
 		// exact: true — the chip's own filter button, distinct from the
-		// sibling "Refresh Mock Source"/"Edit Mock Source" controls and the
-		// unrelated stream-row button whose accessible name is an item
-		// title, all of which also contain/equal this substring.
+		// sibling "Mock Source actions" overflow-trigger control (09-05-
+		// PLAN.md Fix 5 folded the once-separate refresh control into that
+		// same trigger) and the unrelated stream-row button whose accessible
+		// name is an item title, all of which also contain/equal this
+		// substring.
 		const chip = page.getByRole('button', { name: 'Mock Source', exact: true });
 		await expect(chip).toBeVisible();
 

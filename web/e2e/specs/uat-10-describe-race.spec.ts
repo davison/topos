@@ -77,12 +77,12 @@ test.describe('07-UAT item 10: chip-edit describePlugin race — the second clic
 
 		// --- Steps 1-3: choose "Edit match settings…" on the mock-backed
 		// chip first — its describe request is now delayed.
-		await page.getByRole('button', { name: 'Edit Alpha Mock' }).click();
+		await page.getByRole('button', { name: 'Alpha Mock actions' }).click();
 		await page.getByRole('menuitem', { name: 'Edit match settings…' }).click();
 
 		// --- Step 4: before that resolves, choose "Edit match settings…"
 		// on the mockstrict-backed chip.
-		await page.getByRole('button', { name: 'Edit Beta Strict' }).click();
+		await page.getByRole('button', { name: 'Beta Strict actions' }).click();
 		await page.getByRole('menuitem', { name: 'Edit match settings…' }).click();
 
 		// --- Step 5: the modal that opens shows the mockstrict vocabulary
@@ -116,7 +116,7 @@ test.describe('07-UAT item 10: chip-edit describePlugin race — the second clic
 		await expect(dialog).toHaveCount(0);
 		await page.unroute('**/api/config/describe-plugin');
 
-		await page.getByRole('button', { name: 'Edit Alpha Mock' }).click();
+		await page.getByRole('button', { name: 'Alpha Mock actions' }).click();
 		await page.getByRole('menuitem', { name: 'Edit match settings…' }).click();
 		await expect(dialog.getByLabel('Labels')).toBeVisible();
 		await expect(dialog.getByLabel('Tags')).toHaveCount(0);

@@ -74,16 +74,16 @@ test.describe('07-UAT item 6: remove-chip round-trip, with other webspaces prova
 		const betaBaseline = baseline.webspaces.beta;
 
 		await page.goto(`${kernel.baseURL}/w/alpha`);
-		await expect(page.getByRole('button', { name: 'Edit Mock One' })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock One actions' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toBeVisible();
 
 		// --- Step 2: remove Mock Two from alpha through its chip menu — the
 		// chip disappears with no page reload.
-		await page.getByRole('button', { name: 'Edit Mock Two' }).click();
+		await page.getByRole('button', { name: 'Mock Two actions' }).click();
 		await page.getByRole('menuitem', { name: 'Remove from this webspace' }).click();
 
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toHaveCount(0);
-		await expect(page.getByRole('button', { name: 'Edit Mock One' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Mock One actions' })).toBeVisible();
 
 		// --- Steps 3/4: alpha's sources array names only mock-01, alpha's
 		// match table has only a mock-01 key, in the exact shape
@@ -111,7 +111,7 @@ test.describe('07-UAT item 6: remove-chip round-trip, with other webspaces prova
 
 		// --- Step 7: the chip returns and, once the resync lands, its items
 		// are back in the stream — with no page reload at any point.
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toBeVisible();
 		await expect(page.locator('[data-item-id^="mock-02:"]')).toHaveCount(4, { timeout: 15_000 });
 
 		// --- Step 8: alpha is back to two participants, and beta is STILL
@@ -125,8 +125,8 @@ test.describe('07-UAT item 6: remove-chip round-trip, with other webspaces prova
 		// and its stream is unaffected — the on-disk equality proven in the
 		// browser too, with no reload anywhere in this spec.
 		await page.goto(`${kernel.baseURL}/w/beta`);
-		await expect(page.getByRole('button', { name: 'Edit Mock One' })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock One actions' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toBeVisible();
 		await expect(page.locator('[data-item-id]')).toHaveCount(8);
 	});
 });

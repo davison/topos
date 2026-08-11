@@ -77,9 +77,9 @@ test.describe('07-UAT item 3: a UI-created webspace is an empty shell, and the c
 		await matchDialog.getByRole('button', { name: 'Add source' }).click();
 
 		// Exactly one chip renders for the new webspace.
-		await expect(page.getByRole('button', { name: 'Edit Mock 02' })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Edit Mock 01' })).toHaveCount(0);
-		await expect(page.getByRole('button', { name: 'Edit Mock 03' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Mock 02 actions' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock 01 actions' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Mock 03 actions' })).toHaveCount(0);
 
 		// This is the item's real teeth: exactly the CHOSEN instance was
 		// attached, not every configured instance.

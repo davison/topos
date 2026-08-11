@@ -540,15 +540,15 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		// The non-WhatsApp chip's menu never offers Re-link….
-		await expect(page.getByRole('button', { name: 'Edit Mock One' })).toBeVisible();
-		await page.getByRole('button', { name: 'Edit Mock One' }).click();
+		await expect(page.getByRole('button', { name: 'Mock One actions' })).toBeVisible();
+		await page.getByRole('button', { name: 'Mock One actions' }).click();
 		await expect(page.getByRole('menuitem', { name: 'Re-link…' })).toHaveCount(0);
 		await page.keyboard.press('Escape');
 
 		// The WhatsApp-typed chip's menu offers it, and opening it shows
 		// the same QRPanel component.
-		await expect(page.getByRole('button', { name: 'Edit WhatsApp One' })).toBeVisible();
-		await page.getByRole('button', { name: 'Edit WhatsApp One' }).click();
+		await expect(page.getByRole('button', { name: 'WhatsApp One actions' })).toBeVisible();
+		await page.getByRole('button', { name: 'WhatsApp One actions' }).click();
 		await page.getByRole('menuitem', { name: 'Re-link…' }).click();
 
 		const dialog = page.getByRole('dialog');

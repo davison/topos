@@ -88,15 +88,15 @@ test.describe("07-UAT item 2 (G-07-7): a removed source's items leave with its c
 		await page.goto(`${kernel.baseURL}/w/armor`);
 
 		// --- Baseline: two chips, full row count from both instances ------
-		await expect(page.getByRole('button', { name: 'Edit Mock One' })).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock One actions' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toBeVisible();
 		await expect(page.locator('[data-item-id]')).toHaveCount(BASELINE_ROW_COUNT);
 
 		// --- Clause 1: remove takes the chip AND the items, no reload -----
-		await page.getByRole('button', { name: 'Edit Mock Two' }).click();
+		await page.getByRole('button', { name: 'Mock Two actions' }).click();
 		await page.getByRole('menuitem', { name: 'Remove from this webspace' }).click();
 
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toHaveCount(0);
 		await expect(page.locator('[data-item-id]')).toHaveCount(HALVED_ROW_COUNT);
 		await expect(page.locator('[data-item-id^="mock-02:"]')).toHaveCount(0);
 		await expect(page.locator('[data-item-id^="mock-01:"]')).toHaveCount(HALVED_ROW_COUNT);
@@ -119,7 +119,7 @@ test.describe("07-UAT item 2 (G-07-7): a removed source's items leave with its c
 		await matchDialog.getByRole('button', { name: 'Add source' }).click();
 
 		// The chip returns without a page reload.
-		await expect(page.getByRole('button', { name: 'Edit Mock Two' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Mock Two actions' })).toBeVisible();
 
 		// The items appear once the resync lands — still no manual refresh
 		// or reload anywhere in this spec.
@@ -156,7 +156,8 @@ test.describe("07-UAT item 2 (G-07-7): a removed source's items leave with its c
 			await route.continue();
 		});
 
-		await page.getByRole('button', { name: 'Refresh Mock One' }).click();
+		await page.getByRole('button', { name: 'Mock One actions' }).click();
+		await page.getByRole('menuitem', { name: 'Refresh now' }).click();
 		// Fetch #1: the foreground load — deliberately observed BEFORE
 		// arming, so its own permitted skeleton flash is excluded.
 		await expect.poll(() => streamFetchCount, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
@@ -205,7 +206,8 @@ test.describe("07-UAT item 2 (G-07-7): a removed source's items leave with its c
 			});
 		});
 
-		await page.getByRole('button', { name: 'Refresh Mock One' }).click();
+		await page.getByRole('button', { name: 'Mock One actions' }).click();
+		await page.getByRole('menuitem', { name: 'Refresh now' }).click();
 		await expect.poll(() => clause4FetchCount, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
 
 		await page.evaluate(() => {
@@ -233,7 +235,8 @@ test.describe("07-UAT item 2 (G-07-7): a removed source's items leave with its c
 		// Recovery, not merely tolerance: remove the failing handler and
 		// confirm a further refresh still updates normally.
 		await page.unroute('**/api/webspaces/armor/stream');
-		await page.getByRole('button', { name: 'Refresh Mock One' }).click();
+		await page.getByRole('button', { name: 'Mock One actions' }).click();
+		await page.getByRole('menuitem', { name: 'Refresh now' }).click();
 		await expect(page.locator('[data-item-id]')).toHaveCount(BASELINE_ROW_COUNT, { timeout: 15_000 });
 		await expect(page.getByText("Couldn't load this webspace")).toHaveCount(0);
 	});

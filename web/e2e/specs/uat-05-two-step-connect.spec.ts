@@ -130,7 +130,7 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		await dialog.getByRole('button', { name: 'Add source' }).click();
 
 		await expect(page.getByRole('dialog')).toHaveCount(0);
-		await expect(page.getByRole('button', { name: 'Edit Corpus One' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Corpus One actions' })).toBeVisible();
 		expect(putConfigRequestCount).toBe(1);
 
 		// --- Step 8: the parsed config gains a source table with
