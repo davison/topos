@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, pushState } from '$app/navigation';
 	import {
 		getStream,
 		getSources,
@@ -51,6 +51,57 @@
 	// its declaration" compiler error).
 	let loadState: 'loading' | 'error' | 'not-found' | 'ready' = $state('loading');
 	let selectedId = $state<string | null>(null);
+
+	// Mobile takeover history (D-01/D-03/D-04, 09.1-01-PLAN.md Task 1):
+	// takeoverActive mirrors whether the current history entry carries the
+	// shallow-routing marker pushed below. selectItem/closeDetail are the
+	// only two call sites that touch it — both the visible back control
+	// and the phone's back button converge on closeDetail's
+	// `history.back()` path (planner_resolutions R3), so there is exactly
+	// one popstate transition, not two.
+	let takeoverActive = $derived(page.state.itemOpen === true);
+
+	function selectItem(id: string) {
+		selectedId = id;
+		// Guarded for a non-browser environment even though this app is
+		// SPA-only: page.state is empty before the client router mounts,
+		// so nothing here may assume a window exists yet. The
+		// `!takeoverActive` guard is "one history entry per takeover
+		// session, not per item" — selecting a second item from inside an
+		// already-open takeover reassigns the selection without stacking
+		// a second history entry.
+		if (
+			typeof window !== 'undefined' &&
+			window.matchMedia('(max-width: 767px)').matches &&
+			!takeoverActive
+		) {
+			pushState('', { itemOpen: true });
+		}
+	}
+
+	function closeDetail() {
+		if (takeoverActive) {
+			history.back();
+		} else {
+			selectedId = null;
+		}
+	}
+
+	// Deliberately a plain `let`, NOT `$state` — writing it inside the
+	// effect below must not retrigger that same effect. This open-to-
+	// closed edge detector is what keeps a closed takeover and a
+	// deselected stream from becoming two states that can drift apart. It
+	// must NOT clear the selection on a plain "not open" read: at desktop
+	// width `itemOpen` is always absent while a selection is legitimately
+	// set.
+	let wasTakeoverOpen = false;
+	$effect(() => {
+		const isOpen = page.state.itemOpen === true;
+		if (wasTakeoverOpen && !isOpen) {
+			selectedId = null;
+		}
+		wasTakeoverOpen = isOpen;
+	});
 
 	// Search state (KERN-05 browser half, 03-04): kept in component state
 	// rather than the URL — the UI-SPEC specifies no URL persistence for
@@ -714,36 +765,42 @@
 </svelte:head>
 
 <div class="flex h-full min-h-0 flex-col">
-	<WebspaceHeader
-		{webspace}
-		webspaces={webspaceNames}
-		oncreatewebspace={() => (createOpen = true)}
-		onreload={handleReload}
-		{reloadBusy}
-		{reloadError}
-		onmanagesources={handleManageSources}
-		{sources}
-		{sourcesState}
-		{selectedSources}
-		onfilter={toggleFilter}
-		onclearfilters={clearFilters}
-		onrefresh={handleRefreshSource}
-		onrefreshall={handleRefreshAll}
-		{searchQuery}
-		onsearch={handleSearch}
-		{filters}
-		{filterBusy}
-		{filterError}
-		{unknownConfigKeys}
-		onsavefilter={saveFilter}
-		onremovefilter={removeFilter}
-		config={configResponse?.config ?? null}
-		baseHash={configResponse?.hash ?? ''}
-		{pluginTypes}
-		envVars={configResponse?.env_vars ?? {}}
-		onsourceadded={handleSourceAdded}
-		onedit={handleChipEdit}
-	/>
+	<!-- D-04 (09.1-01-PLAN.md Task 1): max-md:invisible conceals the app
+	     header while the mobile takeover is up. shrink-0 mirrors
+	     WebspaceHeader's own root class so the surrounding flex column
+	     behaves identically whether this wrapper is here or not. -->
+	<div class="shrink-0 {selectedItem ? 'max-md:invisible' : ''}">
+		<WebspaceHeader
+			{webspace}
+			webspaces={webspaceNames}
+			oncreatewebspace={() => (createOpen = true)}
+			onreload={handleReload}
+			{reloadBusy}
+			{reloadError}
+			onmanagesources={handleManageSources}
+			{sources}
+			{sourcesState}
+			{selectedSources}
+			onfilter={toggleFilter}
+			onclearfilters={clearFilters}
+			onrefresh={handleRefreshSource}
+			onrefreshall={handleRefreshAll}
+			{searchQuery}
+			onsearch={handleSearch}
+			{filters}
+			{filterBusy}
+			{filterError}
+			{unknownConfigKeys}
+			onsavefilter={saveFilter}
+			onremovefilter={removeFilter}
+			config={configResponse?.config ?? null}
+			baseHash={configResponse?.hash ?? ''}
+			{pluginTypes}
+			envVars={configResponse?.env_vars ?? {}}
+			onsourceadded={handleSourceAdded}
+			onedit={handleChipEdit}
+		/>
+	</div>
 
 	{#if configResponse}
 		<CreateWebspaceModal
@@ -808,13 +865,21 @@
 		  which returns exactly as it was when the query is cleared.
 
 		  Sizing: the detail pane (below) is the reading surface, so it
-		  absorbs viewport width changes (flex-1). The stream pane holds a
-		  fixed width (w-[480px], the same width the detail pane used to
-		  own) whenever an item is selected and the detail pane is open --
+		  absorbs viewport width changes (flex-1) at every band. The stream
+		  pane's width, when an item is selected, now follows three bands
 		  driven by the same `selectedItem` value that gates the detail
-		  pane's rendering, so the two can never disagree. With nothing
-		  selected there is no sibling to size against, so the stream pane
-		  falls back to flex-1 and keeps filling the full content width.
+		  pane's rendering, so the panes can never disagree (D-02,
+		  09.1-01-PLAN.md):
+		    - below 768px: `max-md:invisible max-md:flex-1` -- the stream
+		      keeps its layout box (so its scroll offset survives, D-01;
+		      see planner_resolutions R1 -- `invisible`, never `hidden`)
+		      but is visually concealed behind the detail pane's takeover;
+		    - 768-1024px: `md:w-[clamp(240px,30vw,400px)] md:shrink-0` --
+		      a proportional mid-band (RESEARCH Open Question 2);
+		    - 1024px and up: `lg:` fixed 480 pixels -- today's exact fixed
+		      width, byte-identical to the pre-phase layout.
+		  With nothing selected there is no sibling to size against, so the
+		  stream pane falls back to flex-1 at every band.
 
 		  Wrapped in a `relative` container (UI-11) so StreamDateMarkers
 		  can render as an absolutely-positioned sibling of the actual
@@ -823,8 +888,19 @@
 		  overflow/scroll classes are unchanged; the conditional width
 		  moves to this wrapper since it -- not the scroll div -- is now
 		  the flex child `main` sizes.
+
+		  Positioning caveat (UI-SPEC): `fixed inset-0` on the detail
+		  wrapper below resolves against the viewport only while no
+		  ancestor establishes a containing block via transform, filter, or
+		  perspective. None does today. A future phase adding one to an
+		  ancestor of this route must give the takeover its own isolation
+		  or move it to a portal.
 		-->
-		<div class="relative min-h-0 min-w-0 {selectedItem ? 'w-[480px] shrink-0' : 'flex-1'}">
+		<div
+			class="relative min-h-0 min-w-0 {selectedItem
+				? 'max-md:invisible max-md:flex-1 md:w-[clamp(240px,30vw,400px)] md:shrink-0 lg:w-[480px]'
+				: 'flex-1'}"
+		>
 			<!-- pr-6 (24px) below reserves a right gutter for
 			     StreamDateMarkers' own lane (UI-11 gap closure G-06-6).
 			     Load-bearing, not cosmetic: without it the marker lane
@@ -838,7 +914,7 @@
 				bind:this={streamScrollEl}
 				bind:clientHeight={streamScrollHeight}
 				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-6 {selectedItem
-					? 'w-[480px] shrink-0'
+					? 'max-md:invisible max-md:flex-1 md:w-[clamp(240px,30vw,400px)] md:shrink-0 lg:w-[480px]'
 					: 'flex-1'}"
 			>
 				{#if searchQuery.trim()}
@@ -847,7 +923,7 @@
 						state={searchState}
 						results={searchResults}
 						{selectedId}
-						onselect={(id) => (selectedId = id)}
+						onselect={selectItem}
 						staleSources={staleInstances}
 						{sourcesByInstance}
 					/>
@@ -857,7 +933,7 @@
 						{response}
 						{webspace}
 						{selectedId}
-						onselect={(id) => (selectedId = id)}
+						onselect={selectItem}
 						onretry={() => load(navGeneration)}
 						staleSources={staleInstances}
 						{selectedSources}
@@ -882,7 +958,9 @@
 		</div>
 
 		{#if selectedItem}
-			<div class="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border pl-8">
+			<div
+				class="fixed inset-0 z-20 flex flex-col overflow-hidden bg-background md:static md:inset-auto md:z-auto md:min-w-0 md:flex-1 md:border-l md:border-border md:pl-8"
+			>
 				<DetailPane
 					item={selectedItem}
 					displayName={sourcesByInstance.get(selectedItem.source)?.display_name ??
@@ -890,6 +968,7 @@
 						selectedItem.source}
 					sourceReachable={sourcesByInstance.get(selectedItem.source)?.reachable ?? true}
 					{searchQuery}
+					onback={closeDetail}
 				/>
 			</div>
 		{/if}

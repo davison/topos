@@ -5,7 +5,11 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			// Set via `pushState('', { itemOpen: true })` when the narrow-
+			// viewport mobile takeover opens (09.1-01-PLAN.md D-03/D-04).
+			itemOpen?: boolean;
+		}
 		// interface Platform {}
 	}
 }
