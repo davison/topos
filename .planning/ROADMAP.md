@@ -594,9 +594,13 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 09.1-01-PLAN.md — Tracer: mobile detail takeover end-to-end (pane composition, shallow-routing history entry, slim detail bar, mobile e2e)
 - [ ] 09.1-02-PLAN.md — First-run bootstrap: write a canonical default config when none exists, never overwriting a broken one
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 09.1-03-PLAN.md — Compact stream and search rows below 768px; date-marker ruler hidden and its gutter reclaimed
 - [ ] 09.1-04-PLAN.md — Header touch adaptation: chip actions and health detail reachable without hover
 
