@@ -588,8 +588,8 @@ Plans:
 
 ### Phase 10: Docs and Release Readiness
 
-**Goal**: A new user landing on the repo can understand, install, and configure topos from the docs alone — README speaks to users, contributor material lives in CONTRIBUTING.md, security reporting has a home, and every plugin has a consistent one-page doc
-**Requirements**: none (docs backlog from TODO.md v1.0 sections)
+**Goal**: A new user landing on the repo can understand, install, and configure topos from the docs alone — README speaks to users, contributor material lives in CONTRIBUTING.md, security reporting has a home, and every plugin has a consistent one-page doc — and the repo is release-ready: GitHub milestones mirror .planning/ milestones, and CI publishes nightly builds and release artifacts
+**Requirements**: none (docs backlog from TODO.md v1.0 sections + release-engineering additions 2026-08-11)
 **Depends on**: Phase 9
 **Success Criteria** (what must be TRUE):
 
@@ -597,6 +597,8 @@ Plans:
   2. SECURITY.md exists following GitHub's recommended format
   3. docs/plugins/ contains a one-page doc per plugin (description, install requirements, config, gotchas, security/privacy notes), each derived from docs/plugins/_template.md so future plugins stay consistent
   4. The Svelte default README under web/ is replaced with something useful or removed
+  5. GitHub repo milestones stay in sync with .planning/ milestones — GSD has no native mechanism (verified against gsd-tools/workflows 2026-08-11), so the repo carries its own: milestones created/closed via `gh api` at milestone boundaries, with the process (or script) documented
+  6. A GitHub Actions publishing workflow exists: nightly builds run only when code has changed since the last nightly, and releases attach the built kernel + plugin binaries as GitHub release artifacts
 
 **Plans:** 0 plans
 
