@@ -98,6 +98,46 @@ func setupLogger() hclog.Logger {
 	})
 }
 
+// bootstrapConfig makes a genuinely-missing config.toml a first-run event
+// instead of a fatal error (09.1-BOOTSTRAP): it writes a canonical default
+// config at path and reports whether it did so. Kept as its own function
+// (rather than inlined in setup) specifically so it is unit-testable —
+// setup itself also opens the index at the configured path, which a unit
+// test must not do on a developer's real machine.
+//
+// The single errors.Is(loadErr, os.ErrNotExist) gate below is the whole
+// safety property (RESEARCH Pitfall 3, threat T-09.1-B1): a malformed
+// TOML file, a permission-denied read, a directory sitting at path, or a
+// validation failure on an existing file are all NOT os.ErrNotExist, so
+// they fall straight through to (false, nil) and reach fatal(err) at the
+// call site exactly as they do today — bootstrap fires only when the file
+// genuinely does not exist, never as a substitute for a broken one.
+func bootstrapConfig(path string, loadErr error, logger hclog.Logger) (bool, error) {
+	if !errors.Is(loadErr, os.ErrNotExist) {
+		return false, nil
+	}
+
+	// The config directory is a genuine gap, not a safety net that already
+	// exists: nothing in kernel/config or cmd/topos creates it today, and
+	// WriteCanonical's own os.CreateTemp(dir, ...) fails with ENOENT on a
+	// machine that has never had a ~/.config/topos/. 0o700 (not 0o755) is
+	// deliberate — this directory can later hold a config.toml carrying
+	// ${VAR} references and per-source connection details (T-09.1-B2).
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, fmt.Errorf("bootstrap config dir %s: %w", filepath.Dir(path), err)
+	}
+
+	// Only the raw, secret-free DefaultConfig() is ever passed here — never
+	// any expanded/secret-resolved config, per Phase 7 D-05 and
+	// WriteCanonical's own doc comment (threat T-09.1-B3).
+	if err := config.WriteCanonical(path, config.DefaultConfig()); err != nil {
+		return false, fmt.Errorf("bootstrap config write %s: %w", path, err)
+	}
+
+	logger.Info("no config file found, wrote a default config", "path", path)
+	return true, nil
+}
+
 // setup loads the config store and opens the index. Callers must call
 // store.Close(); the plugin host/coordinator/scheduler triple is built
 // separately, by supervisor.NewSupervisor (below) — setup no longer
@@ -105,10 +145,36 @@ func setupLogger() hclog.Logger {
 // kernel/supervisor so it is the ONE construction sequence runServe,
 // runSync, and a future hot-apply all share, rather than being
 // duplicated here and re-derived again inside Supervisor.Apply).
+//
+// setup shares one bootstrapConfig gate for both runServe and runSync
+// (09.1-BOOTSTRAP, planner_resolutions R2) — a fresh `topos sync` reports
+// zero sources honestly rather than dying, and the INFO log line
+// bootstrapConfig emits is what makes that self-explaining rather than
+// silent.
 func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Store, error) {
-	cfgStore, err := config.NewStore(configPath())
+	path := configPath()
+	cfgStore, err := config.NewStore(path)
 	if err != nil {
-		return nil, nil, err
+		wrote, bootErr := bootstrapConfig(path, err, logger)
+		if bootErr != nil {
+			return nil, nil, bootErr
+		}
+		if !wrote {
+			// Not a missing-file case (or bootstrapConfig itself declined) —
+			// the ORIGINAL load error is the one that names the actual
+			// problem (malformed TOML, permission denied, etc.) and must
+			// reach the caller unchanged rather than a generic one.
+			return nil, nil, err
+		}
+		// Re-load through the normal path rather than constructing a Store
+		// in memory: this proves the just-written file actually round-trips
+		// through real validation on the user's own machine, so a default
+		// that somehow failed validation surfaces here at first run instead
+		// of at some later reload.
+		cfgStore, err = config.NewStore(path)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	cfg := cfgStore.Expanded()
 
