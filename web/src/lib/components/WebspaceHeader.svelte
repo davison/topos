@@ -31,6 +31,9 @@
 		webspace,
 		webspaces,
 		oncreatewebspace,
+		onreload,
+		reloadBusy,
+		reloadError,
 		onmanagesources,
 		sources,
 		sourcesState,
@@ -62,6 +65,23 @@
 		// filter-write path, 07-01-PLAN.md).
 		webspaces: string[];
 		oncreatewebspace: () => void;
+		// onreload/reloadBusy/reloadError (09-06-PLAN.md Task 2,
+		// 09-UI-SPEC.md Fix 7): the relocated "Reload config" action. The
+		// first two are forwarded to WebspaceSwitcher exactly as
+		// oncreatewebspace/onmanagesources already are — this component owns
+		// no reload logic of its own, only threads it through. reloadError,
+		// when non-null, renders a destructive Alert in the header region
+		// using the identical treatment as filterError below — kept as a
+		// DISTINCT prop rather than merged into filterError's own slot: a
+		// filter write failing and a config reload failing are different
+		// events with different recovery, and conflating them would make
+		// the copy ambiguous about which action actually failed. The route
+		// owns the reload call itself (mirroring how it already owns
+		// oncreatewebspace/onmanagesources) and clears reloadError on the
+		// next successful action, matching how filterError is cleared today.
+		onreload: () => void;
+		reloadBusy: boolean;
+		reloadError: string | null;
 		onmanagesources: () => void;
 		sources: SourceStatus[];
 		sourcesState: 'loading' | 'error' | 'ready';
@@ -318,9 +338,23 @@
 		{webspace}
 		{webspaces}
 		oncreate={oncreatewebspace}
-		onreload={() => {}}
+		{onreload}
+		{reloadBusy}
 		onmanage={onmanagesources}
 	/>
+
+	<!--
+	  Reload-config failure (Fix 7, relocated): the same modal-less
+	  destructive-Alert pattern as the filterError Alert below — a config
+	  reload failing is a different event from a filter write failing
+	  (distinct props, see the prop-block comment above), but shares the
+	  identical header-region treatment.
+	-->
+	{#if reloadError}
+		<Alert variant="destructive" class="mt-3">
+			<AlertDescription>{reloadError}</AlertDescription>
+		</Alert>
+	{/if}
 
 	<!--
 	  config.toml has a hand-authored key the kernel doesn't model (a stray

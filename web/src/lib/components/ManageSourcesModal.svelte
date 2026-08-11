@@ -1,19 +1,22 @@
 <script lang="ts">
 	// D-13's deliberately minimal escape hatch — the ONE place in the app
-	// that deletes a source instance or a webspace outright, and the ONE
-	// place a hand-edited config.toml is pulled into the running kernel
-	// without a restart. Opened only from WebspaceSwitcher's "Manage
-	// sources…" item (07-05-PLAN.md Task 1).
+	// that deletes a source instance or a webspace outright. Opened only
+	// from WebspaceSwitcher's "Manage sources…" item (07-05-PLAN.md Task
+	// 1). The config-reload affordance this modal used to also hold has
+	// relocated to WebspaceSwitcher's own menu root, owned by the webspace
+	// route (09-06-PLAN.md Task 2, 09-UI-SPEC.md Fix 7) — this file no
+	// longer imports reloadConfig or renders any reload control; one entry
+	// point for that action, not two.
 	//
 	// Holds its own local (localConfig/localHash) snapshot, seeded from the
 	// incoming config/baseHash props whenever the modal transitions open
 	// (CreateWebspaceModal's own reset-on-open pattern) and updated
-	// directly from each successful putConfig/reloadConfig/getConfig
-	// response — never waiting on the parent route's own onchanged-
-	// triggered refresh to land before the NEXT delete/reload in this same
-	// modal session can proceed with a fresh base_hash. onchanged() is
-	// still called after every success so the parent's chip row/stream/
-	// header state also refreshes once that fetch resolves.
+	// directly from each successful putConfig/getConfig response — never
+	// waiting on the parent route's own onchanged-triggered refresh to land
+	// before the NEXT delete in this same modal session can proceed with a
+	// fresh base_hash. onchanged() is still called after every success so
+	// the parent's chip row/stream/header state also refreshes once that
+	// fetch resolves.
 	import { goto } from '$app/navigation';
 	import {
 		Dialog,
@@ -34,11 +37,9 @@
 	import EditSourceModal from './EditSourceModal.svelte';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import { removeSourceInstance, removeWebspace } from '$lib/config-edit';
 	import {
 		putConfig,
-		reloadConfig,
 		getConfig,
 		ApiError,
 		CONFIG_CONFLICT_MESSAGE,
@@ -79,8 +80,6 @@
 	let editInstance = $state<string | null>(null);
 	let deleting = $state(false);
 	let deleteError = $state<string | null>(null);
-	let reloading = $state(false);
-	let reloadError = $state<string | null>(null);
 
 	// Reset local state whenever the modal transitions to open, so a second
 	// open after a prior session never shows a stale error or a stale
@@ -95,8 +94,6 @@
 			editInstance = null;
 			deleting = false;
 			deleteError = null;
-			reloading = false;
-			reloadError = null;
 		}
 	});
 
@@ -168,26 +165,6 @@
 						: 'Something went wrong deleting this webspace — check the browser console and try again.';
 		} finally {
 			deleting = false;
-		}
-	}
-
-	async function handleReload() {
-		if (reloading) return;
-		reloading = true;
-		reloadError = null;
-		try {
-			const res = await reloadConfig();
-			localConfig = res.config;
-			localHash = res.hash;
-			onchanged();
-		} catch (err) {
-			const detail =
-				err instanceof ApiError
-					? err.message
-					: 'check the browser console and try again';
-			reloadError = `${detail}. The previous configuration is still running.`;
-		} finally {
-			reloading = false;
 		}
 	}
 
@@ -278,23 +255,6 @@
 		{#if deleteError}
 			<Alert variant="destructive" class="mt-4">
 				<AlertDescription>{deleteError}</AlertDescription>
-			</Alert>
-		{/if}
-
-		<div class="mt-4 flex items-center justify-between gap-4 border-t border-border pt-4">
-			<Button variant="outline" size="sm" disabled={reloading} onclick={handleReload}>
-				<RotateCw class="size-4" aria-hidden="true" />
-				Reload config
-			</Button>
-			{#if !reloadError}
-				<p class="text-[14px] leading-[1.4] text-muted-foreground">
-					Re-reads config.toml and applies any hand-edited changes.
-				</p>
-			{/if}
-		</div>
-		{#if reloadError}
-			<Alert variant="destructive" class="mt-2">
-				<AlertDescription>{reloadError}</AlertDescription>
 			</Alert>
 		{/if}
 	</DialogContent>

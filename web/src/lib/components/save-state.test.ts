@@ -34,19 +34,6 @@ function stripComments(source: string): string {
 		.replace(/\/\/.*$/gm, ' ');
 }
 
-function extractBetween(source: string, startMarker: string, endMarker: string): string {
-	const startIndex = source.indexOf(startMarker);
-	expect(
-		startIndex,
-		`expected to find "${startMarker}" in the scanned source`
-	).toBeGreaterThanOrEqual(0);
-	const endIndex = source.indexOf(endMarker, startIndex);
-	expect(endIndex, `expected to find "${endMarker}" after "${startMarker}"`).toBeGreaterThan(
-		startIndex
-	);
-	return source.slice(startIndex, endIndex + endMarker.length);
-}
-
 // Walks web/src recursively, returning every .svelte/.ts file's absolute
 // path — skips node_modules-shaped junk (none live under src/, but this
 // keeps the walk cheap and defensive) and vitest's own .svelte-kit
@@ -124,14 +111,13 @@ describe('every one of the four modal components binds a disabled state on its s
 		}
 	});
 
-	it('ManageSourcesModal: the Reload config button and both AlertDialogAction delete buttons bind disabled', () => {
-		const reloadBlock = extractBetween(
-			strippedByModal.ManageSourcesModal,
-			'onclick={handleReload}',
-			'</Button>'
-		);
-		expect(/disabled=\{reloading\}/.test(strippedByModal.ManageSourcesModal)).toBe(true);
-		void reloadBlock; // the extractBetween call itself already asserts the marker exists
+	it('ManageSourcesModal: both AlertDialogAction delete buttons bind disabled (Reload config relocated to WebspaceSwitcher — 09-06-PLAN.md Task 2)', () => {
+		// The Reload config button/state this test used to also assert on
+		// no longer lives in ManageSourcesModal (09-UI-SPEC.md Fix 7); its
+		// own in-flight-disable guard is asserted by
+		// webspace-switcher.test.ts's "Reload config disables while a
+		// reload is in flight" case against WebspaceSwitcher's
+		// disabled={reloadBusy} binding instead.
 		const actionButtons =
 			strippedByModal.ManageSourcesModal.match(/<AlertDialogAction[\s\S]*?>/g) ?? [];
 		expect(actionButtons.length).toBe(2);

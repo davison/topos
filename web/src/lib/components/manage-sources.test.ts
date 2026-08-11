@@ -1,10 +1,14 @@
-// 07-05-PLAN.md Task 1's structural guard over ManageSourcesModal.svelte:
-// both section headings, the truncate+title precedent on instance rows,
-// both AlertDialogs' exact UI-SPEC copy with no type-to-confirm text
-// input, the RotateCw/RefreshCw icon distinction against SourceChip.svelte,
-// both lists' height-cap+scroll pair, and the single-entry-point rule for
-// instance deletion (D-12/D-13): the destructive delete action lives only
-// here, never also in SourceChip's own edit menu.
+// 07-05-PLAN.md Task 1's structural guard over ManageSourcesModal.svelte,
+// updated by 09-06-PLAN.md Task 2 (09-UI-SPEC.md Fix 7 relocates
+// Reload config out of this modal entirely): both section headings, the
+// truncate+title precedent on instance rows, both AlertDialogs' exact
+// UI-SPEC copy with no type-to-confirm text input, both lists'
+// height-cap+scroll pair, the single-entry-point rule for instance
+// deletion (D-12/D-13, the destructive delete action lives only here,
+// never also in SourceChip's own edit menu), and — new this plan — the
+// modal's control-label SET asserted by equality against exactly what its
+// instance/webspace rows still offer, so a lingering reload control fails
+// as a set mismatch rather than needing a grep for an absent word.
 //
 // House pattern (matches chip-edit-menu.test.ts / add-source.test.ts):
 // comment-stripped source scanning, `extractBetween` scoping, a
@@ -151,19 +155,59 @@ describe('webspace deletion AlertDialog: exact UI-SPEC copy, no type-to-confirm 
 	});
 });
 
-describe('reload icon: RotateCw here, distinct from SourceChip\'s own RefreshCw', () => {
-	it('ManageSourcesModal imports and renders RotateCw', () => {
-		expect(stripped.includes("from '@lucide/svelte/icons/rotate-cw'")).toBe(true);
-		expect(/<RotateCw\b/.test(stripped)).toBe(true);
+describe('reload control relocation (09-06-PLAN.md Task 2, 09-UI-SPEC.md Fix 7): no second entry point', () => {
+	// The modal's own rendered control-label set is asserted by SET
+	// EQUALITY against exactly what its instance/webspace rows still
+	// offer — a lingering reload control fails as a set mismatch rather
+	// than needing a grep for an absent word (the acceptance criterion
+	// this describe block exists to satisfy).
+	function extractButtonLabels(source: string): Set<string> {
+		// Attribute values in this file's <Button> opening tags include
+		// arrow-function onclick handlers (e.g. `onclick={() => (id = x)}`)
+		// whose `=>` contains a literal '>' — a naive `[^>]*` scan for the
+		// opening tag's end would stop there instead of at the tag's real
+		// closing '>'. Neutralising every arrow first (a value never
+		// otherwise present in this file's markup) removes that ambiguity
+		// before the tag-matching regex runs.
+		const neutralised = source.replace(/=>/g, '~~');
+		const labels = new Set<string>();
+		const buttonRegex = /<Button\b[^>]*>([\s\S]*?)<\/Button>/g;
+		let match: RegExpExecArray | null;
+		while ((match = buttonRegex.exec(neutralised)) !== null) {
+			const inner = match[1]
+				.replace(/<[^>]+>/g, ' ')
+				.replace(/\s+/g, ' ')
+				.trim();
+			if (inner) labels.add(inner);
+		}
+		return labels;
+	}
+
+	it("the Dialog region's own control-label set equals exactly {Delete, Edit} — the instance/webspace rows' own labels, nothing else", () => {
+		const dialogBlock = extractBetween(
+			stripped,
+			'<Dialog {open} onOpenChange={handleOpenChange}>',
+			'</Dialog>'
+		);
+		const labels = [...extractButtonLabels(dialogBlock)].sort();
+		expect(
+			labels,
+			'expected the modal\'s Dialog-region control-label set to equal exactly {Delete, Edit} — a lingering Reload config label would surface here as an unexpected third member'
+		).toEqual(['Delete', 'Edit']);
 	});
 
-	it('ManageSourcesModal never renders RefreshCw (the per-source refresh icon stays SourceChip\'s own)', () => {
+	it('the file no longer imports the config-reload API client or the RotateCw icon', () => {
+		expect(stripped.includes('reloadConfig')).toBe(false);
+		expect(stripped.includes("from '@lucide/svelte/icons/rotate-cw'")).toBe(false);
+		expect(stripped.includes('RotateCw')).toBe(false);
+	});
+
+	it('never renders RefreshCw (the per-source refresh icon stays SourceChip\'s own, unaffected by this relocation)', () => {
 		expect(stripped.includes('RefreshCw')).toBe(false);
 	});
 
-	it('SourceChip.svelte uses RefreshCw, not RotateCw — the two "reload" concepts are visually distinct icons across the two files', () => {
+	it('SourceChip.svelte still uses RefreshCw, unaffected by this relocation', () => {
 		expect(strippedChip.includes("from '@lucide/svelte/icons/refresh-cw'")).toBe(true);
-		expect(strippedChip.includes('RotateCw')).toBe(false);
 	});
 });
 

@@ -9,6 +9,7 @@
 		searchWebspace,
 		getConfig,
 		putConfig,
+		reloadConfig,
 		listPluginTypes,
 		describePlugin,
 		ApiError,
@@ -290,6 +291,47 @@
 		// delete or a reload inside the modal can change the config
 		// document, the source list, and the stream all at once.
 		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
+
+	// Reload-config state (09-06-PLAN.md Task 2, 09-UI-SPEC.md Fix 7): the
+	// route now owns the reload call outright, mirroring how it already
+	// owns oncreatewebspace (createOpen)/onmanagesources (manageOpen) above
+	// — ManageSourcesModal.svelte no longer holds its own reloading/
+	// reloadError state or Reload-config control; this is the one
+	// remaining entry point (WebspaceSwitcher's menu-root item). reloadBusy
+	// guards re-entry here (a second, route-owned guard alongside the menu
+	// item's own disabled={reloadBusy} — T-09-20 requires both, since the
+	// action tears down and relaunches every plugin subprocess).
+	let reloadBusy = $state(false);
+	let reloadError = $state<string | null>(null);
+
+	async function handleReload() {
+		if (reloadBusy) return;
+		reloadBusy = true;
+		try {
+			const res = await reloadConfig();
+			// Adopt the returned config/hash into the SAME state
+			// getConfig()/putConfig() already populate, so a hand-edited
+			// config.toml becomes visible without a page reload — then
+			// refresh sources/the stream through the identical paths every
+			// other config-changing handler already uses (D-07's eager
+			// reconcile, same shape as handleSourceAdded/
+			// handleManageSourcesChanged above).
+			configResponse = res;
+			reloadError = null;
+			await Promise.all([loadSources(), load(navGeneration)]);
+		} catch (err) {
+			// Copywriting Contract (09-UI-SPEC.md, "Reload-config failure"):
+			// the kernel's verbatim message followed by the fixed
+			// reassurance sentence — reloadConfig() itself leaves the
+			// kernel's previously running configuration completely
+			// untouched on failure (api.ts's own doc comment), so this is
+			// purely a user-facing report, not a rollback the UI performs.
+			const detail = err instanceof ApiError ? err.message : 'check the browser console and try again';
+			reloadError = `${detail}. The previous configuration is still running.`;
+		} finally {
+			reloadBusy = false;
+		}
 	}
 
 	async function handleWebspaceCreated(name: string) {
@@ -676,6 +718,9 @@
 		{webspace}
 		webspaces={webspaceNames}
 		oncreatewebspace={() => (createOpen = true)}
+		onreload={handleReload}
+		{reloadBusy}
+		{reloadError}
 		onmanagesources={handleManageSources}
 		{sources}
 		{sourcesState}
