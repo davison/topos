@@ -53,10 +53,14 @@ keywords = ["demo"]
 	}
 	defer sup.Shutdown()
 
-	// Poll LatestSyncRunPerSource against a generous deadline: the default
-	// retry schedule's first delay is 2s and the readiness window is only
-	// 0.7s, so the retry should supersede the launch-window error well
-	// inside 15s even on a loaded machine.
+	// Poll LatestSyncRunPerSource against a generous deadline: the
+	// readiness window (0.7s) is far shorter than
+	// kernel/syncer/scheduler.go's defaultFirstRefreshRetryDelays total
+	// (its authoritative production backoff schedule, not restated here as
+	// a bare number that could silently drift when that constant is
+	// tuned), and this deadline is generous relative to both, so the retry
+	// should supersede the launch-window error well inside 15s even on a
+	// loaded machine.
 	deadline := time.Now().Add(15 * time.Second)
 	var lastStatus, lastError string
 	synced := false

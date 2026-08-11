@@ -217,6 +217,34 @@ actually serve a sync.
   scheduler's bounded first-refresh retry (`kernel/syncer/scheduler.go`)
   survives it.
 
+### `WEBSPACES_MOCK_LAUNCH_DELAY_MS` — the mock's launch-delay fixture
+
+`topos-plugin-mock` also carries a second, sibling opt-in fixture
+(`plugins/mock/readiness.go`), closing 08-VERIFICATION.md gap G-08-5:
+a delay applied BEFORE the go-plugin handshake, distinct from
+`WEBSPACES_MOCK_READY_AFTER_MS` above, which delays `Match`/`Health`
+readiness AFTER the handshake has already completed. It models a plugin
+that is slow to come up at all — the shape `plugins/whatsapp`'s
+serve-mode login wait can present, and the shape any plugin can present,
+since go-plugin's own client `StartTimeout` default is a full minute.
+
+- Set `WEBSPACES_MOCK_LAUNCH_DELAY_MS=<milliseconds>` on the **kernel**
+  process — the subprocess inherits it the same way it inherits
+  `WEBSPACES_MOCK_READY_AFTER_MS`, through `pluginhost.launch`'s
+  `os.Environ()` construction.
+- Off by default (absent, empty, or `"0"`): `make e2e` and every real
+  installation are unaffected.
+- A malformed value fails the subprocess's startup loudly, matching every
+  other plugin's fail-loud-by-name startup discipline.
+- Exercised by `kernel/supervisor/launchlatency_test.go`'s
+  `TestResume_SlowRelaunchDoesNotFreezeOtherSources`, which proves phase
+  success criterion 4's "every other source is unaffected" clause: while
+  a suspended source instance's resume closure is relaunching a plugin
+  subprocess held to a 4-second delay by this variable, every other
+  configured source's health-probe and manual-refresh routes still answer
+  promptly — a slow plugin relaunch no longer freezes every other
+  source's routes kernel-wide.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
@@ -286,6 +314,19 @@ it can actually serve `Match` no longer pins a source on an errored sync
 run for the default 15-minute sync interval, and this failure class now
 has a hermetic gate over a real plugin subprocess
 (`kernel/supervisor/readiness_test.go`).
+
+**2026-08-11**: closing 08-VERIFICATION.md gap G-08-5, the supervisor's
+reader path (`Supervisor.Host()`/`Coordinator()`) was split off the
+mutation lock (`s.mu`) onto its own reader-only lock (`genMu`), and
+`pluginhost.Host` became internally synchronised (a new `Host.mu`
+guarding its launched-plugin set, with `Reconcile` performing its
+subprocess launches with no lock held) — closing both the structural
+freeze a slow plugin relaunch used to impose on every other source's
+routes, and a latent, pre-existing data race between a reader and a
+concurrent `Reconcile`. This failure class now has a hermetic gate over a
+real plugin subprocess (`kernel/supervisor/launchlatency_test.go`,
+`TestResume_SlowRelaunchDoesNotFreezeOtherSources`), using the mock
+plugin's new `WEBSPACES_MOCK_LAUNCH_DELAY_MS` fixture (above).
 
 ## Standing rule
 

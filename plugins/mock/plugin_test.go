@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -282,6 +283,64 @@ func TestReadinessWindowFromEnv(t *testing.T) {
 			}
 			if !tc.wantNil && w == nil {
 				t.Error("expected a non-nil window")
+			}
+		})
+	}
+}
+
+// TestLaunchDelayFromEnv is a table test over the fixture's launch-delay
+// env-var parsing (readiness.go), mirroring TestReadinessWindowFromEnv's
+// shape immediately above rather than inventing a second style: absent,
+// empty, and "0" all mean "no delay"; a positive value returns that many
+// milliseconds; a negative or non-numeric value is a loud parse error
+// naming both the variable and the offending raw value.
+func TestLaunchDelayFromEnv(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		present   bool
+		wantDur   time.Duration
+		wantError bool
+	}{
+		{name: "absent", present: false, wantDur: 0},
+		{name: "empty", raw: "", present: true, wantDur: 0},
+		{name: "zero", raw: "0", present: true, wantDur: 0},
+		{name: "positive", raw: "250", present: true, wantDur: 250 * time.Millisecond},
+		{name: "non-integer", raw: "abc", present: true, wantError: true},
+		{name: "negative", raw: "-1", present: true, wantError: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			getenv := func(name string) string {
+				if name != launchDelayEnvVar {
+					t.Fatalf("unexpected getenv call for %q", name)
+				}
+				if !tc.present {
+					return ""
+				}
+				return tc.raw
+			}
+
+			got, err := launchDelayFromEnv(getenv)
+
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected an error, got nil")
+				}
+				if !strings.Contains(err.Error(), launchDelayEnvVar) {
+					t.Errorf("expected error to name %q, got: %v", launchDelayEnvVar, err)
+				}
+				if !strings.Contains(err.Error(), tc.raw) {
+					t.Errorf("expected error to name the offending raw value %q, got: %v", tc.raw, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("launchDelayFromEnv: %v", err)
+			}
+			if got != tc.wantDur {
+				t.Errorf("expected duration %v, got %v", tc.wantDur, got)
 			}
 		})
 	}
