@@ -13,7 +13,7 @@ created: 2026-08-11
 
 **No CONTEXT.md / RESEARCH.md exist for this phase** (discuss-phase was skipped) — every decision below is derived directly from ROADMAP.md's Phase 9 success criteria, `TODO.md`'s "Web"/"Current Plugins" v1.0 sections, and a direct read of the shipped `web/src` implementation (Phases 1–8's design system, unchanged in kind — dark-only, `--card`/`--popover`/`--primary` token palette, Tailwind v4, `bits-ui` primitives, `@lucide/svelte` icons). This is a **polish/rework phase, not a new-feature phase**: every fix below is either (a) correcting a small, precisely-diagnosed visual/copy defect in an already-shipped component, or (b) reworking one already-shipped flow (the "+" source picker) whose shape the roadmap explicitly calls out as wrong. Nothing here introduces a new spacing value, font size, or font weight; exactly **one** new color token is introduced (`--popover`, see Color below), because the defect it fixes (menus indistinguishable from panes) is literally "two roles sharing one hex value."
 
-**Scope (per ROADMAP.md Phase 9 / TODO.md "Web" + "Current Plugins" v1.0 sections):** 8 named small fixes, the PDF/media previewer's sizing model, per-plugin identity icons (incl. WhatsApp's Topos-branded icon), and the "+" add-source picker's instance-vs-catalog rework. No new sources, no kernel contract change, no agent-surface change — every fix below is `web/src` (Svelte/CSS) plus two small static assets (`favicon`, `robots.txt`); the only cross-cutting non-`web/` touch is `docs/api.md`/`config.example.toml` if any copy quoted there goes stale (none identified).
+**Scope (per ROADMAP.md Phase 9 / TODO.md "Web" + "Current Plugins" v1.0 sections):** 8 named small fixes, the PDF/media previewer's sizing model, per-plugin identity icons declared by each plugin itself, and the "+" add-source picker's instance-vs-catalog rework. No new sources, no agent-surface change — this phase now includes exactly **one additive plugin-contract change** (revised 2026-08-11: plugin-provided icons replace a frontend Lucide lookup table): `DescribeResponse` gains `icon`/`icon_mime` fields (wire-compatible, no `ProtocolVersion` bump — see Fix 10), the kernel gains one new read-only icon-serving endpoint, and each in-repo plugin `go:embed`s its own icon asset. Every other fix below is `web/src` (Svelte/CSS) plus two small static assets (`favicon`, `robots.txt`); the cross-cutting non-`web/` touches are `proto/topos/v1/plugin.proto`, `sdk/`, `kernel/pluginhost/`, `kernel/httpapi/` (Fix 10's icon plumbing, all additive/read-only), each `plugins/*/main.go` (one embedded icon asset each), and `docs/api.md`/`docs/plugin-contract.md`/`config.example.toml` if any copy quoted there goes stale.
 
 ---
 
@@ -24,9 +24,9 @@ created: 2026-08-11
 | Tool | shadcn-svelte (already initialized — `web/components.json` present, unchanged this phase) |
 | Preset | `style: "new-york"`, `baseColor: "slate"`, `cssVariables: true`, Tailwind CSS v4, dark-mode-only (unchanged — no light/dark toggle) |
 | Component library | `bits-ui` (unchanged; this phase touches three already-installed primitives — `dropdown-menu`, `popover`, `dialog` — via their existing wrapper files, no new npm dependency) |
-| Icon library | `@lucide/svelte` (unchanged; new icons this phase: `Scan`, `NotebookText`, `Mail`, `MessageCircle`, `FlaskConical`, `Puzzle` — all confirmed present under `web/node_modules/@lucide/svelte/dist/icons/`, see Registry Safety) |
+| Icon library | `@lucide/svelte` (unchanged as a dependency; revised 2026-08-11 — the **frontend's own** icon imports for plugin identity reduce to `Puzzle` alone, the generic fallback glyph, plus the app's pre-existing per-context chrome icons. `Scan`/`NotebookText`/`Mail`/`MessageCircle`/`FlaskConical`, all confirmed present under `web/node_modules/@lucide/svelte/dist/icons/`, are **not** imported by `web/src` this phase — they are exported once as static SVG assets and `go:embed`'d directly into each plugin binary (Fix 10), never rendered as live Svelte icon components) |
 | Font | Inter (variable), unchanged |
-| New static asset | `web/static/app-icon.png` (1024×1024 PNG, already present untracked in the repo) — becomes both the site favicon (fix 1) and the WhatsApp plugin's identity icon (fix 10/D-WA) |
+| New static asset | `web/static/app-icon.png` (1024×1024 PNG, already present untracked in the repo) — revised 2026-08-11: used for exactly two roles this phase, both about *topos itself*, never as any plugin's chip identity icon — the site favicon (Fix 1) and the topos-branded pairing UI in the existing WhatsApp Re-link/QR flow (Fix 10) |
 
 **Visual hierarchy (unchanged from Phase 7's note):** the stream list remains the primary focal point; header, menus, and modals stay tertiary chrome. This phase's only hierarchy-relevant change is making that chrome tier internally legible — a floating menu must read as "floating above the pane," not "part of the pane," which is exactly what fix 8 (dropdown/popover surface token) repairs.
 
@@ -161,24 +161,57 @@ This extends the palette's existing dark-elevation staircase by one real step ra
 
 **Ask:** every plugin (paperless-ngx, SilverBullet, email/Proton, Signal, WhatsApp, mock) gets its own recognizable icon, used consistently in chips and menus; WhatsApp's icon is topos's own app icon, not a WhatsApp/whatsmeow mark.
 
-**Decision (locked, per STATE.md's 2026-08-11 roadmap-evolution entry, "icons decided over badges"):** icons, not colored-letter/text badges. Given the app already draws every icon in the product from `@lucide/svelte` (a generic outline icon set, not brand marks), plugin identity icons continue that convention — five plugin types get a distinct, thematically-apt Lucide glyph; the one plugin type whose real-world identity the roadmap explicitly wants **de-branded away from** (WhatsApp/whatsmeow) instead uses the app's own raster mark.
+**Decision (revised 2026-08-11, supersedes the original "icons decided over badges" draft's frontend lookup table):** icons, not colored-letter/text badges — that part stands. But the icon itself is now **declared by each plugin through the contract**, not looked up client-side from a binary-name table. The original draft's `web/src/lib/plugin-icons.ts` quietly reintroduced the exact thing D-05 (`proto/topos/v1/plugin.proto`'s own comment: "the kernel holds no built-in table of known plugin types") already rules out for the kernel — pushing that table into the frontend doesn't fix the principle, it just moves it. This revision grounds icon identity in the same place `source_type`/`display_name`/`match_vocabulary` already come from: the plugin's own `Describe` RPC response.
 
-**New lookup — `web/src/lib/plugin-icons.ts`** (or co-located in `plugin-fields.ts`; either is fine, same binary-name key space as `pluginTypeLabel`):
+### Contract change — additive, wire-compatible
 
-| Plugin binary | Icon | Kind | Rationale |
+`proto/topos/v1/plugin.proto`'s `DescribeResponse` gains two fields, appended after the existing `match_vocabulary = 4`:
+
+```protobuf
+message DescribeResponse {
+  string source_type      = 1;
+  string display_name     = 2;
+  string contract_version = 3;
+  repeated string match_vocabulary = 4;
+  bytes  icon              = 5;  // small square SVG or PNG, ≤ 64KB; empty = no icon declared
+  string icon_mime         = 6;  // "image/svg+xml" or "image/png"; "" iff icon is empty
+}
+```
+
+Proto3's additive-field rule makes this safe by construction: a plugin binary built against the pre-Phase-9 contract simply never sets fields 5/6, so `impl.Describe(...)` on the kernel side returns `icon: nil, icon_mime: ""` for it — no handshake break, no `sdk.Handshake.ProtocolVersion` bump (unlike Phase 5's typed-match-field break, this changes no existing field's meaning). `kernel/pluginhost/host.go`'s `Plugin` struct gains two fields (`iconBytes []byte`, `iconMIME string`) populated at the same `desc := impl.Describe(...)` call site `launch()` already makes (line ~453) — no new RPC, no new subprocess round-trip.
+
+### Kernel icon endpoint (new, read-only, additive)
+
+`GET /api/plugins/{plugin_binary}/icon` — keyed by **plugin binary name** (`source.plugin`, e.g. `topos-plugin-paperless`; already present on every `SourceStatus`/config `Source` object per `docs/api.md`), not `source_type` (which, like the icon itself, is only learned once a plugin binary has actually been launched and Described — a plugin binary alone, before any instance of it is configured, has no known `source_type` either). The kernel serves the cached bytes with `Content-Type` from `icon_mime`, `Cache-Control: public, max-age=31536000, immutable` (icon bytes are static for a given binary build) and an `ETag`. 404 for a binary the kernel has never successfully Described (no configured instance has ever launched, or every launch attempt failed before reaching `Describe`) — this is the same "undescribed" case the fallback chain below always covers, never a client-visible error state. This endpoint mutates nothing and adds no RPC to the plugin contract (`Describe` already ran); PLUG-02's read-only guarantee is untouched.
+
+### Which plugin binaries can actually be Described, and why that matters for the picker
+
+`launch()` (grounded by reading `plugins/paperless/main.go`, `plugins/silverbullet/main.go`, `plugins/proton/main.go`, `plugins/signal/main.go`, `plugins/whatsapp/main.go`) sends connection fields via `WEBSPACES_SOURCE_CONFIG` and **every one of these plugins calls `fatal()` and exits before `goplugin.Serve` if a required field (e.g. paperless's `base_url`/`token`) is empty** — a locked Phase 7 behavior (07-13-PLAN.md, closing G-07-5). `Describe` is only reachable *after* `goplugin.Serve` starts. Consequence, stated plainly rather than papered over: **the kernel can only learn a plugin's icon once at least one instance of that binary has been configured with valid connection fields and successfully launched** (`Discover`/`Reconcile`, or the trial-launch inside `DescribePluginType`/`DescribePluginHandler` once the user has typed step-1 fields). A plugin type with **zero** configured instances anywhere — Fix 11's Group 2 "Install a new source" catalog tiles, before the user has typed anything — has never been Described by the kernel and therefore has no known icon. This is not a bug to route around; it is the direct, honest consequence of icon identity coming from the plugin itself rather than a static frontend table. Group 2 tiles render the `Puzzle` fallback until the plugin type has at least one configured, successfully-launched instance (after which Group 1 rows for that type, and every chip, show its real icon).
+
+### Frontend rendering — one `<img>` path, mandatory fallback chain
+
+Every plugin icon — real logo or plugin-embedded Lucide-derived glyph alike — renders through the identical `<img>` element, at `src="/api/plugins/{source.plugin}/icon"`, `object-contain`, decorative `alt=""` (the adjacent text label already carries the name). Sizing unchanged from the original draft: `size-3.5` (14px) in the source chip (`[dot][icon][name]`, `text-muted-foreground`'s CSS class no longer applies to an `<img>` — see Color below for the corrected contract), `size-4` (16px) in the add-source picker rows and Manage Sources instance rows, matching the existing `Pencil`/`Trash2` sizing there. **Fallback chain is mandatory, in this order:** (1) `source.plugin`/binary unknown to the frontend at all → `Puzzle`; (2) known binary, kernel 404s the icon endpoint (undescribed — no configured instance has ever launched successfully, or a pre-Phase-9 plugin binary returning empty icon bytes) → `Puzzle`; (3) the `<img>`'s own `onerror` fires (malformed bytes, network hiccup) → swap to `Puzzle`. A plugin icon row must never render an empty box or a broken-image glyph — every path terminates in either the real icon or `Puzzle`. `pluginTypeLabel`'s existing text labels are unchanged by this fix (`WhatsApp` stays `WhatsApp` as a label; Signal/WhatsApp remain textually distinguishable regardless of icon).
+
+### Icon art per first-party plugin
+
+Each in-repo plugin `go:embed`s one small (SVG or PNG, ≤ 64KB, square, legible at 14–16px on the dark palette) icon asset and returns it verbatim from `Describe`:
+
+| Plugin | Embedded icon | Kind | Rationale |
 |---|---|---|---|
-| `topos-plugin-paperless` | `Scan` | Lucide, vector | paperless-ngx is a scanned-document archive |
-| `topos-plugin-silverbullet` | `NotebookText` | Lucide, vector | personal wiki / notes app |
-| `topos-plugin-proton` | `Mail` | Lucide, vector | email |
-| `topos-plugin-signal` | `MessageCircle` | Lucide, vector | chat (distinct glyph from WhatsApp's, since both are chat sources) |
-| `topos-plugin-whatsapp` | `/app-icon.png` | **Raster, topos's own mark** | Explicit de-branding ask: the plugin's UI identity is topos, never a WhatsApp trademark or the underlying `whatsmeow` library's own name/mascot |
-| `topos-plugin-mock` / `topos-plugin-mockstrict` | `FlaskConical` | Lucide, vector | reference/test fixture, never a real user-facing source |
-| any unrecognised/future plugin binary | `Puzzle` | Lucide, vector | generic fallback — a new plugin type must never render with no icon at all |
+| `topos-plugin-paperless` | Real paperless-ngx logo | SVG, real mark | paperless-ngx is a GPL-3.0 project (`paperless-ngx/paperless-ngx`); its own repo ships redistributable SVG logo variants (`src-ui/src/assets/logo-notext.svg` or similar dark-theme variant) — no separate restrictive brand policy is known to exist for it, unlike Proton/Signal/WhatsApp below. **Provenance to record at embed time:** exact source file + commit/tag it was pulled from; the repo's code license (GPL-3.0) covers the asset unless the project publishes a separate trademark policy — none found during this research, but the executor should recheck before shipping. |
+| `topos-plugin-silverbullet` | Real SilverBullet logo | SVG, real mark | SilverBullet (`silverbulletmd/silverbullet`) is MIT-licensed end to end, no separate trademark restriction known. **Provenance to record at embed time:** exact source file + commit/tag pulled from the upstream repo. |
+| `topos-plugin-proton` | Lucide `Mail` glyph | SVG, embedded asset (not a live component) | Proton's trademark guidelines are restrictive — no real Proton mark is used |
+| `topos-plugin-signal` | Lucide `MessageCircle` glyph | SVG, embedded asset | Signal's trademark guidelines are restrictive — no real Signal mark; message-bubble glyph reads as "chat" |
+| `topos-plugin-whatsapp` | Lucide `MessageSquare` glyph | SVG, embedded asset | **Not** the topos app icon, **not** any WhatsApp/Meta mark — a distinct message-bubble glyph from Signal's (`MessageSquare` vs. `MessageCircle`) so the two chat sources stay tellable apart by icon alone, satisfying the de-branding ask without borrowing topos's own identity for a plugin chip |
+| `topos-plugin-mock` / `topos-plugin-mockstrict` | Lucide `FlaskConical` glyph | SVG, embedded asset | reference/test fixture, never a real user-facing source (unchanged from the original draft) |
+| any unrecognised/future/undescribed plugin binary | `Puzzle` | Lucide, frontend-known fallback only | the one icon still shipped inside `web/src` — a new or not-yet-configured plugin type must never render with no icon at all |
 
-**Sizing/placement:**
-- **Source chip** (`SourceChip.svelte`): the icon sits between the existing health dot and the display name — `[dot][icon][name]` — at `size-3.5` (14px), `text-muted-foreground` (never health-toned; the dot's sole job stays reporting health, the icon's sole job is reporting identity — the two are never merged into one glyph or one color channel). The raster WhatsApp variant renders at the identical box size (`class="size-3.5 object-contain"` on an `<img>`) so it reads as "the same kind of glyph in the row," not a visually foreign inclusion.
-- **Add-source picker rows** and **Manage Sources instance rows** (below): `size-4` (16px), matching the existing `Pencil`/`Trash2` icon sizing already used in those list contexts.
-- `pluginTypeLabel`'s existing text labels are **unchanged** by this fix (`WhatsApp` stays `WhatsApp` as a label — only its *icon* changes; the label already correctly describes what data the source pulls from, and Signal/WhatsApp remaining textually distinguishable by name is still required regardless of icon).
+### Baked color, not `currentColor` — the concrete rendering decision
+
+Lucide's own components render `stroke="currentColor"`, inheriting the surrounding CSS text color — but that only works for a live Svelte component in the same document. These glyphs are no longer live components: they are static SVG bytes served by the kernel and loaded through a plain `<img src="...">`, and an `<img>`-loaded SVG renders in its own opaque context that cannot inherit `currentColor` (or any CSS custom property) from the page. Two options existed here; **this spec picks baked color, not inline-SVG-injection-with-`currentColor`**, and states the tradeoff rather than leaving it implicit:
+
+- **Chosen — baked stroke color.** Each plugin-embedded Lucide-derived SVG asset hard-codes `stroke="#94a3b8"` (`--muted-foreground`'s literal hex in `app.css`) instead of `stroke="currentColor"`, keeping every icon — real logo or Lucide-derived glyph — on the exact same simple `<img>` rendering path with no special-casing. **Tradeoff accepted:** if `--muted-foreground` is ever re-tuned, these baked assets go stale until each plugin's embedded SVG is manually re-exported and the binary rebuilt — a rare, deliberate palette change, not a runtime concern.
+- **Rejected — fetch + sanitize + inline-inject the SVG so `currentColor` keeps working.** Would let the icon track live theme changes automatically, but requires the frontend to `fetch()` the SVG text, sanitize it before injecting as markup (plugin-supplied SVG could otherwise carry `<script>`/event-handler payloads — a new sanitization surface this phase does not otherwise need), and abandons the "one `<img>` path, mandatory fallback chain" simplicity above (`onerror` fallback is trivial on an `<img>`, much less so on injected markup that partially parses). Not worth the added attack surface and complexity for a palette value that changes rarely.
 
 ---
 
@@ -192,13 +225,13 @@ This extends the palette's existing dark-elevation staircase by one real step ra
 
 ### Group 1 — "Add to this webspace"
 Section header: Label role, `text-muted-foreground`, small-caps/uppercase-tracking treatment (a group label, not a clickable row). One plain row per available existing instance (`hover:bg-muted`, unchanged interaction/click target):
-- Leading plugin icon (`size-4`, Fix 10's lookup).
+- Leading plugin icon (`size-4`) — every row here names an *already-configured, already-launched* instance, so its plugin binary has necessarily been Described at least once; the kernel-served icon (Fix 10) always resolves here, `Puzzle` fallback only for the pre-Phase-9-contract/undescribed edge cases Fix 10 defines.
 - Line 1 (Label role, `text-foreground`): `display_name`.
 - Line 2 (Label role, `text-muted-foreground`, `truncate` + native `title` for an overlong value) — **replaces** the old plugin-name line — the instance's own configured location: `source.base_url ?? source.path`, falling back to `pluginTypeLabel(source.plugin)` only in the (never normally reached, since every real plugin type requires one or the other) case where an instance has neither field set. `base_url` is never a secret field (`CONNECTION_FIELDS`'s own `secret: false` marking), so displaying it verbatim here introduces no new exposure.
 
 ### Group 2 — "Install a new source"
 Section header, same treatment as Group 1's. Each still-undiscovered plugin binary renders as its own small bordered tile (`rounded-md border border-border p-2 hover:border-primary hover:bg-muted`) — deliberately heavier chrome than Group 1's plain rows, so "picking a new plugin type" visibly reads as a different *kind* of action (installing something into the app) from "connecting an already-installed one again":
-- Leading plugin icon (`size-4`).
+- Leading plugin icon (`size-4`) — **always the `Puzzle` fallback here**, not a preview of the plugin's real icon: a plugin type with zero configured instances has never reached its `Describe` RPC (see Fix 10's "which plugin binaries can actually be Described" note — every in-repo plugin fatals on missing required connection fields before `Describe` is reachable), so the kernel genuinely has no icon to serve for it yet. This is the expected, honest state for an uninstalled plugin, not a defect — once the user configures its first instance, that type's real icon appears in Group 1 and every chip from then on.
 - `pluginTypeLabel(plugin)` (e.g. `paperless-ngx`, `Signal`) — the literal `New {label}…` copy is retired; the group's own header already establishes "these are things you can install," so the row label is just the plugin's name.
 - `plugins/mock` stays excluded from this catalog (07-UI-SPEC.md's existing, unchanged rule — a developer reference fixture, never a real source a user knowingly installs).
 
@@ -250,9 +283,9 @@ Usage mapping (new/changed this phase): the picker's new group headers (`Add to 
 | Dominant (60%) | `#020617` | Page background, unchanged |
 | Secondary (30%) | `#0f172a` (`--card`) / `#1e293b` (`--secondary`/`--border`/`--muted`) | Panes (header, detail pane, stream rows), unchanged; Dialog/AlertDialog surface, unchanged (still `bg-card`, per Fix 8's explicit dialog carve-out) |
 | **New — Popover/menu surface** | `#172033` (`--popover`, new value — was byte-identical to `--card` before this phase) | `DropdownMenuContent`, `PopoverContent` — every floating menu in the app (webspace switcher, chip edit/refresh menu, add-source picker, overflow chip popover) |
-| Accent (10%) | `#60a5fa` | Unchanged roles: CTAs, links, focus rings, selected/active chip, primary modal submit buttons. **Explicitly still not** used for: any menu item hover state (unchanged neutral `--accent`-as-surface convention), the identity icon (always `text-muted-foreground`, never accent-tinted — it is not an interactive or selected-state signal), the catalog tile's resting border (only tints `hover:border-primary`, matching the existing add-source trigger's own resting/hover pattern) |
+| Accent (10%) | `#60a5fa` | Unchanged roles: CTAs, links, focus rings, selected/active chip, primary modal submit buttons. **Explicitly still not** used for: any menu item hover state (unchanged neutral `--accent`-as-surface convention), the identity icon (revised 2026-08-11 — kernel-served bytes rendered via `<img>`, colors baked into the served asset rather than the `text-muted-foreground` CSS class; the `Puzzle` fallback, still a live Lucide component, keeps `text-muted-foreground`. Never accent-tinted either way — it is not an interactive or selected-state signal), the catalog tile's resting border (only tints `hover:border-primary`, matching the existing add-source trigger's own resting/hover pattern) |
 | Destructive | `#f87171` | Unchanged: `Remove from this webspace`, both AlertDialogs (Phase 7, untouched) |
-| Success / Warning | `#4ade80` / `#fbbf24` | Unchanged: health-dot tones — explicitly **not** reused for the new identity icon (health and identity stay two independent visual channels per Fix 10) |
+| Success / Warning | `#4ade80` / `#fbbf24` | Unchanged: health-dot tones — explicitly **not** reused for the identity icon (health and identity stay two independent visual channels per Fix 10) |
 
 Accent reserved for: unchanged list from Phase 2/5/6/7, no additions.
 
@@ -302,11 +335,11 @@ This is a polish/rework phase over already-shipped surfaces, not a new-flow phas
 | error | E2 previewer: media fails to load | ✅ resolved (explicit) | Unchanged from shipped implementation — Fix 9 changes the box's sizing/float only, not the iframe/img failure behavior; the aspect-locked box bounds whatever the browser renders on failure. |
 | overflow | E2 previewer: very short extracted text (shorter than the float's own height) | ✅ resolved (explicit) | Ordinary float behavior — remaining text simply ends; no special-case needed, the scroll container's own `overflow-y-auto` still governs the whole region's height. |
 | long-text | E2 previewer: very long extracted text | ✅ resolved (explicit) | Text keeps flowing/wrapping past the float's bottom edge exactly as CSS floats already handle — no new behavior to define. |
-| zero-one-many | E3 plugin icons: all six known plugin types + unrecognised fallback | ✅ resolved (explicit) | Explicit per-binary lookup table (Fix 10); `Puzzle` fallback — a new plugin type never renders with no icon. |
-| empty | E3 plugin icons: missing/unknown binary name | ✅ resolved (explicit) | Same `Puzzle` fallback — an icon-less row is unreachable by construction (Fix 10's lookup always returns a glyph). |
-| populated | E3 plugin icons: WhatsApp specifically | ✅ resolved (explicit) | Raster `/app-icon.png` at the same box size as every Lucide sibling icon — see Fix 10's sizing note. |
-| loading | E3 plugin icons: raster icon while loading | ✅ resolved (explicit) | The `<img>` sits in a fixed `size-3.5`/`size-4` box (`object-contain`), so no layout shift while the (local, same-binary-served) PNG loads. |
-| error | E3 plugin icons: raster icon fails to load | ✅ resolved (explicit) | `alt=""` (decorative — the adjacent text label carries the name), so a failed load renders an empty fixed-size box, never a broken-image glyph or stray alt text. |
+| zero-one-many | E3 plugin icons: every plugin type's kernel-served icon + unrecognised/undescribed fallback (revised 2026-08-11) | ✅ resolved (explicit) | Each in-repo plugin embeds and returns its own icon via `DescribeResponse.icon` (Fix 10); the kernel serves it per plugin binary at `GET /api/plugins/{plugin_binary}/icon`. A plugin type with no configured instance has never been Described, and an older plugin built against the pre-icon contract returns empty bytes — both cases, plus any future/unrecognised binary, fall to the frontend `Puzzle` glyph, the one icon still shipped inside `web/src`. |
+| empty | E3 plugin icons: empty/missing icon bytes (undescribed plugin type, pre-icon-contract plugin binary, or unknown binary name) | ✅ resolved (explicit) | Same `Puzzle` fallback in all three cases — an icon-less row is unreachable by construction (the frontend always renders either the kernel-served `<img>` or `Puzzle`, never neither — see Fix 10's mandatory fallback chain). |
+| populated | E3 plugin icons: the two chat sources specifically, Signal and WhatsApp (revised 2026-08-11) | ✅ resolved (explicit) | Both render a plugin-embedded Lucide message-bubble glyph via the same kernel-served `<img>` path — visually distinct glyphs (`MessageCircle` vs. `MessageSquare`) so the two chat sources stay tellable apart by icon alone. The topos app icon plays no part in either chip; its only remaining role is the WhatsApp Re-link/QR pairing UI (Fix 10). |
+| loading | E3 plugin icons: any plugin's icon while loading (revised 2026-08-11 — was raster-WhatsApp-only) | ✅ resolved (explicit) | The `<img>` sits in a fixed `size-3.5`/`size-4` box (`object-contain`) for every plugin icon — real logo, embedded Lucide-derived SVG, or fallback alike — so no layout shift while the kernel-served bytes load, for the same reason regardless of which plugin owns the icon. |
+| error | E3 plugin icons: any plugin's icon fails to load (revised 2026-08-11 — was raster-WhatsApp-only) | ✅ resolved (explicit) | `alt=""` (decorative — the adjacent text label carries the name) on every plugin icon `<img>`, with an `onerror` handler that swaps the box to the `Puzzle` fallback — never a broken-image glyph, stray alt text, or an icon-less row. |
 | empty | E4 picker: nothing left to add (Fix 11) | ✅ resolved (explicit) | Unchanged copy/state: `All available sources are already in this webspace.` — plus per-group header visibility: Group 1's header/list doesn't render when `availableInstances` is empty; symmetrically Group 2's header/tiles don't render when `pluginTypes` is empty. |
 | populated | E4 picker: both groups populated | ✅ resolved (explicit) | Two visually distinct headed groups — plain instance rows vs. bordered catalog tiles — per Fix 11's full layout spec. |
 | partial | E4 picker: instance with neither `base_url` nor `path` set | ✅ resolved (explicit) | Falls back to `pluginTypeLabel(source.plugin)` — never renders a blank second line (Fix 11's explicit fallback). |
@@ -343,13 +376,18 @@ This is a polish/rework phase over already-shipped surfaces, not a new-flow phas
 
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|--------------|
-| shadcn-svelte official / `@lucide/svelte` | No new `shadcn-svelte` blocks this phase — `dropdown-menu`, `popover`, `dialog` wrapper files are edited in place (color-token swap only, Fix 8), not re-added. Six new icon imports (`Scan`, `NotebookText`, `Mail`, `MessageCircle`, `FlaskConical`, `Puzzle`) from the already-installed `@lucide/svelte` package — same package, same import pattern as every existing icon in the app, no new npm dependency | not required (official registry, already-installed dependency) |
+| shadcn-svelte official / `@lucide/svelte` | No new `shadcn-svelte` blocks this phase — `dropdown-menu`, `popover`, `dialog` wrapper files are edited in place (color-token swap only, Fix 8), not re-added. Revised 2026-08-11: the **frontend's** only new `@lucide/svelte` import is `Puzzle` (the fallback glyph) — same already-installed package, same import pattern as every existing icon in the app, no new npm dependency | not required (official registry, already-installed dependency) |
+| Plugin-embedded icon assets (not an npm/shadcn registry — static SVG/PNG bytes `go:embed`'d into each in-repo plugin binary, Fix 10) | Real logos: paperless-ngx (source: upstream `paperless-ngx/paperless-ngx` repo's `src-ui/src/assets/` SVG variants, repo license GPL-3.0, no separate brand-restriction policy found — executor confirms at embed time) and SilverBullet (source: upstream `silverbulletmd/silverbullet` repo, MIT-licensed, no known trademark restriction). Lucide-derived, baked-color SVGs: `Mail` (Proton), `MessageCircle` (Signal), `MessageSquare` (WhatsApp), `FlaskConical` (mock/mockstrict) — Lucide is ISC-licensed (permissive, MIT/BSD-equivalent), which permits redistribution and embedding modified copies (baked `stroke="#94a3b8"` instead of `currentColor`, see Fix 10) | provenance-recorded above per asset; not a shadcn/npm registry vetting gate, `shadcn view` not applicable — executor records the exact source file + commit/tag pulled for each real logo when the asset lands |
 
-No third-party registries declared for Phase 9. Registry vetting gate not triggered.
+No third-party `shadcn-svelte`/npm registries declared for Phase 9. The shadcn registry vetting gate (`shadcn view` + flagged-pattern scan) is not triggered — plugin-embedded icon assets are static image bytes with no executable code, a different provenance concern (licensing/trademark, addressed above), not a code-supply-chain one.
 
 ---
 
 ## Checker Sign-Off
+
+**Prior approval (superseded by the 2026-08-11 Fix 10 icon-contract revision below — re-verification required):** approved — gsd-ui-checker, 2026-08-11 (6/6 PASS, no recommendations); UI-consideration probe run and confirmed same day (64 applicable: 24 explicit, 1 backstop, 39 dismissed, 0 unresolved).
+
+**Revision (same day, 2026-08-11):** Fix 10 reworked from a frontend Lucide lookup table to plugin-provided icons via an additive `DescribeResponse.icon`/`icon_mime` contract change and a new kernel icon endpoint; Fix 1's static-asset note, the Color contract's identity-icon row, Fix 11's icon-sourcing bullets, the E3 UI-consideration rows, and the Registry Safety table were updated to match. Pending checker re-verification.
 
 - [x] Dimension 1 Copywriting: PASS
 - [x] Dimension 2 Visuals: PASS
@@ -358,4 +396,4 @@ No third-party registries declared for Phase 9. Registry vetting gate not trigge
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved — gsd-ui-checker, 2026-08-11 (6/6 PASS, no recommendations); UI-consideration probe run and confirmed same day (64 applicable: 24 explicit, 1 backstop, 39 dismissed, 0 unresolved)
+**Approval:** approved — gsd-ui-checker re-verification, 2026-08-11 (6/6 PASS after the Fix 10 plugin-provided-icon revision; fallback chain, licensing provenance, and cross-section consistency confirmed)
