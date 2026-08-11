@@ -251,6 +251,7 @@ Recent decisions affecting current work:
 
 - 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
 - 2026-08-05 — Centralize rendition theming (and sanitization) in the kernel content boundary (major, api; schedule with Phase 5 contract work or ecosystem milestone)
+- 2026-08-11 — Header branding: app icon, topos wordmark, and tagline (cosmetic, ui; intended as a quick task)
 
 ### Blockers/Concerns
 
