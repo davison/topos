@@ -567,6 +567,156 @@ describe('G-07-5 guard: ConnectionForm.svelte marks required fields with the DOM
 	});
 });
 
+// 09-07-PLAN.md Task 1 (09-UI-SPEC.md Fix 11, Group 1): instance rows gain a
+// leading PluginIcon and a location-bearing secondary line (base_url ->
+// path -> pluginTypeLabel fallback), replacing the raw plugin binary name
+// that made two same-type instances indistinguishable. House pattern:
+// comment-stripped source scan, no component mount.
+describe('Group 1 instance rows: leading icon and location line (09-07 Fix 11)', () => {
+	it('imports PluginIcon', () => {
+		expect(
+			stripped.includes("import PluginIcon from '$lib/components/PluginIcon.svelte';"),
+			'expected AddSourceModal.svelte to import PluginIcon for both the instance rows and the catalog tiles'
+		).toBe(true);
+	});
+
+	it('renders the "Add to this webspace" group header exactly once', () => {
+		const matches = stripped.match(/Add to this webspace/g) ?? [];
+		expect(matches.length, 'expected the Group 1 header copy to appear exactly once').toBe(1);
+	});
+
+	it('the group header and rows are gated on availableInstances.length so they hide when there are no available instances', () => {
+		const headerIndex = stripped.indexOf('Add to this webspace');
+		expect(headerIndex, 'expected to find the Group 1 header text').toBeGreaterThanOrEqual(0);
+		const before = stripped.slice(0, headerIndex);
+		const guardIndex = before.lastIndexOf('{#if availableInstances.length > 0}');
+		expect(
+			guardIndex,
+			'expected the Group 1 header to be preceded by an {#if availableInstances.length > 0} guard, so it never renders over zero instances'
+		).toBeGreaterThanOrEqual(0);
+	});
+
+	it('each instance row renders a leading PluginIcon at size-4', () => {
+		expect(
+			/<PluginIcon\s+plugin=\{source\.plugin\}\s+size="size-4[^"]*"/.test(stripped),
+			'expected each Group 1 row to render <PluginIcon plugin={source.plugin} size="size-4..." />'
+		).toBe(true);
+	});
+
+	it('the secondary line falls back base_url -> path -> pluginTypeLabel(source.plugin), never blank', () => {
+		expect(stripped.includes('source.base_url'), 'expected the location line to read source.base_url').toBe(
+			true
+		);
+		expect(stripped.includes('source.path'), 'expected the location line to fall back to source.path').toBe(
+			true
+		);
+		expect(
+			stripped.includes('pluginTypeLabel(source.plugin)'),
+			'expected the location line to fall back to pluginTypeLabel(source.plugin) when neither base_url nor path is set'
+		).toBe(true);
+	});
+
+	it('the secondary line carries truncate and a native title attribute', () => {
+		const idx = stripped.indexOf('pluginTypeLabel(source.plugin)');
+		expect(idx, 'expected to find the location fallback expression').toBeGreaterThanOrEqual(0);
+		const surrounding = stripped.slice(Math.max(0, idx - 400), idx + 400);
+		expect(
+			/truncate/.test(surrounding),
+			'expected the location line to carry a truncate class near the fallback expression'
+		).toBe(true);
+		expect(
+			/title=\{/.test(surrounding),
+			'expected the location line to carry a native title attribute near the fallback expression'
+		).toBe(true);
+	});
+
+	it('the popover widens to w-80', () => {
+		const popoverBlock = extractBetween(stripped, '<PopoverContent', '</PopoverContent>');
+		expect(/\bw-80\b/.test(popoverBlock), 'expected the picker PopoverContent to carry w-80').toBe(true);
+	});
+
+	it('Group 1 rows keep the existing selectExisting handler and its single call site unchanged', () => {
+		const calls = stripped.match(/selectExisting\(/g) ?? [];
+		expect(
+			calls.length,
+			'expected exactly two occurrences of selectExisting( — the function definition and its one call site'
+		).toBe(2);
+	});
+});
+
+// 09-07-PLAN.md Task 2 (09-UI-SPEC.md Fix 11, Group 2): still-uninstalled
+// plugin types render as bordered catalog tiles, deliberately heavier
+// chrome than Group 1's plain rows, retiring the "New {label}…" copy.
+describe('Group 2 catalog tiles: bordered chrome and honest fallback icon (09-07 Fix 11)', () => {
+	it('renders the "Install a new source" group header exactly once', () => {
+		const matches = stripped.match(/Install a new source/g) ?? [];
+		expect(matches.length, 'expected the Group 2 header copy to appear exactly once').toBe(1);
+	});
+
+	it('the group header and tiles are gated on pluginTypes.length so they hide when there are no plugin types', () => {
+		const headerIndex = stripped.indexOf('Install a new source');
+		expect(headerIndex, 'expected to find the Group 2 header text').toBeGreaterThanOrEqual(0);
+		const before = stripped.slice(0, headerIndex);
+		const guardIndex = before.lastIndexOf('{#if pluginTypes.length > 0}');
+		expect(
+			guardIndex,
+			'expected the Group 2 header to be preceded by an {#if pluginTypes.length > 0} guard, so it never renders over zero plugin types'
+		).toBeGreaterThanOrEqual(0);
+	});
+
+	it('retires the "New {label}…" copy', () => {
+		expect(
+			/New \{pluginTypeLabel\(plugin\)\}/.test(stripped),
+			'expected the "New {label}…" copy to be retired — the group header alone establishes these are installable'
+		).toBe(false);
+	});
+
+	it('exactly two hover:border-primary occurrences exist — the add-source trigger and the catalog tile share the resting/hover border pattern', () => {
+		const matches = stripped.match(/hover:border-primary/g) ?? [];
+		expect(
+			matches.length,
+			'expected hover:border-primary on both the "+" trigger button and the new catalog tile, nowhere else'
+		).toBe(2);
+	});
+
+	it('each catalog tile carries a resting neutral border, rounded corners and internal padding', () => {
+		const buttons = stripped.match(/<button[^>]*rounded-md border border-border p-2[^>]*>/g) ?? [];
+		expect(
+			buttons.length,
+			'expected the catalog tile button to carry rounded-md border border-border p-2 — heavier chrome than Group 1\'s plain rows'
+		).toBeGreaterThanOrEqual(1);
+	});
+
+	it('each tile renders PluginIcon keyed on the plugin type itself, not hardcoded empty or skipped', () => {
+		expect(
+			/<PluginIcon\s+plugin=\{plugin\}\s+size="size-4[^"]*"/.test(stripped),
+			'expected each Group 2 tile to route its icon through <PluginIcon plugin={plugin} .../>, the same component Group 1 uses, so the transition to a real icon is automatic once configured'
+		).toBe(true);
+	});
+
+	it('the divider between groups renders only when both groups have content', () => {
+		expect(
+			stripped.includes('availableInstances.length > 0 && pluginTypes.length > 0'),
+			'expected the divider to be gated on both groups having content'
+		).toBe(true);
+	});
+
+	it('the empty-picker copy is unchanged', () => {
+		expect(
+			stripped.includes('All available sources are already in this webspace.'),
+			'expected the empty-picker copy to remain unchanged'
+		).toBe(true);
+	});
+
+	it('selectPluginType handler and its single call site are unchanged', () => {
+		const calls = stripped.match(/selectPluginType\(/g) ?? [];
+		expect(
+			calls.length,
+			'expected exactly two occurrences of selectPluginType( — the function definition and its one call site'
+		).toBe(2);
+	});
+});
+
 describe('G-07-5 guard: EditSourceModal.svelte\'s Edit connection… guards submitConnection the same way', () => {
 	it('found non-empty comment-stripped EditSourceModal.svelte source', () => {
 		expect(editModalStripped.length).toBeGreaterThan(0);
