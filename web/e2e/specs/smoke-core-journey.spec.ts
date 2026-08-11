@@ -46,9 +46,9 @@ test.describe('smoke: core journey — stream renders, detail pane opens with co
 		await page.goto(`${kernel.baseURL}/w/smoke`);
 
 		// 1. The webspace switcher trigger renders the webspace name, and
-		// the document title follows the "{webspace} — webspaces" format.
+		// the document title follows the "{webspace} — topos" format.
 		await expect(page.getByRole('button', { name: 'smoke' })).toBeVisible();
-		await expect(page).toHaveTitle('smoke — webspaces');
+		await expect(page).toHaveTitle('smoke — topos');
 
 		// 2. Exactly eight rows — the mock corpus is four items and both
 		// instances contribute independently under the kernel's

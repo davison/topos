@@ -710,7 +710,7 @@
 </script>
 
 <svelte:head>
-	<title>{webspace} — webspaces</title>
+	<title>{webspace} — topos</title>
 </svelte:head>
 
 <div class="flex h-full min-h-0 flex-col">
