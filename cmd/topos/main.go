@@ -4,11 +4,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 
@@ -42,6 +46,21 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: topos <serve|sync>")
 }
+
+// shutdownSignals are the signals that must run the kernel's teardown
+// rather than kill it outright. Ctrl-C on `make dev` sends SIGINT;
+// `kill <pid>`, pkill and service-manager stops send SIGTERM. SIGKILL is
+// deliberately absent because it cannot be caught — see runServe.
+var shutdownSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
+
+// serverShutdownTimeout bounds how long the HTTP server is given to
+// finish in-flight requests before the kernel proceeds to tear the plugin
+// subprocesses down anyway. Reaping the subprocesses matters more than
+// letting a slow request finish: a missed request is retried by the UI, a
+// missed reap leaves a live orphan holding a source's store lock. No
+// handler streams (no SSE/websocket on this listener), so in practice
+// this completes in milliseconds and the timeout is a backstop only.
+const serverShutdownTimeout = 10 * time.Second
 
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "topos:", err)
@@ -102,7 +121,17 @@ func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Stor
 }
 
 func runSync() error {
-	ctx := context.Background()
+	// Same reachability requirement as runServe: `defer sup.Shutdown()`
+	// below is what kills the plugin subprocesses, and a signal that
+	// terminates the process outright never runs it. NotifyContext is
+	// enough here (unlike runServe, which must also drain a listener)
+	// because cancelling ctx is what unblocks RefreshAll. Aborting a sync
+	// mid-flight does NOT strand its sync_runs row: the coordinator
+	// finalises on a detached context (kernel/syncer/coordinator.go,
+	// context.WithoutCancel) precisely so a cancellation cannot destroy
+	// the record of work that already happened.
+	ctx, stop := signal.NotifyContext(context.Background(), shutdownSignals...)
+	defer stop()
 	logger := setupLogger()
 
 	cfgStore, store, err := setup(ctx, logger)
@@ -197,8 +226,70 @@ func runServe() error {
 		logger.Warn("kernel HTTP listener is not bound to loopback — this exposes the API beyond this machine", "listen", listen)
 	}
 
+	// The kernel MUST reach the deferred teardown above on every ordinary
+	// exit path, which is why this is no longer a bare
+	// `return http.ListenAndServe(...)`.
+	//
+	// hashicorp/go-plugin subprocesses do not die with their parent: the
+	// plugin side explicitly swallows SIGINT ("Eat the interrupts",
+	// go-plugin server.go) and has no parent-death watchdog, so a child
+	// only exits when this process kills it. With no signal handler
+	// installed, SIGINT/SIGTERM terminated the kernel with the Go
+	// runtime's default disposition — and Go does not run deferred
+	// functions on signal death, so `defer sup.Shutdown()` and
+	// `defer linkStore.Shutdown()` above were unreachable and every
+	// plugin subprocess was left alive, reparented to init.
+	//
+	// This was masked on the most-travelled path: `make dev`'s
+	// `trap 'kill 0' INT TERM` turns Ctrl-C into a process-group SIGTERM,
+	// which go-plugin does NOT swallow, so the children happened to die on
+	// their own signal rather than by any cleanup here. Every other exit
+	// path (bare `topos serve` + Ctrl-C, `kill <pid>`, a service-manager
+	// stop) orphaned them.
+	//
+	// SIGKILL, a panic and an OOM-kill remain uncoverable — nothing
+	// in-process can catch them. Those paths still orphan by design.
+	srv := &http.Server{Addr: listen, Handler: router}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, shutdownSignals...)
+	defer signal.Stop(sigCh)
+
+	serveErr := make(chan error, 1)
+	go func() {
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		serveErr <- err
+	}()
+
 	logger.Info("topos serving", "listen", listen)
-	return http.ListenAndServe(listen, router)
+
+	select {
+	case err := <-serveErr:
+		// The listener failed on its own (port in use, bind refused).
+		// Returning the error preserves the existing contract `make dev`'s
+		// startup guard relies on: a kernel that cannot listen exits non-zero.
+		return err
+
+	case sig := <-sigCh:
+		// Restore default disposition immediately, so a SECOND Ctrl-C from
+		// an operator who thinks the kernel has hung kills it outright
+		// instead of being swallowed by this handler.
+		signal.Reset(shutdownSignals...)
+		logger.Info("shutdown signal received, terminating plugin subprocesses", "signal", sig.String())
+
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), serverShutdownTimeout)
+		defer cancelShutdown()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			// Never return here: an HTTP server that would not drain must
+			// not stop the plugin teardown below, which is the whole point
+			// of catching the signal.
+			logger.Warn("HTTP server did not shut down cleanly, continuing to plugin teardown", "error", err.Error())
+		}
+		return nil
+	}
 }
 
 // isLoopback reports whether listen (a host:port string) binds only to the
