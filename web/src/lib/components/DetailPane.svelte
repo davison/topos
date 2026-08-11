@@ -202,8 +202,23 @@
 			<iframe title={item.title} src={contentUrl(item.id, searchQuery)} class="h-full w-full"></iframe>
 		</div>
 	{:else if bodyVariant === 'media'}
-		<div class="flex min-h-0 flex-1 flex-col gap-6">
-			<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
+		<!-- 09-UI-SPEC.md Fix 9: the preview box is bounded and aspect-locked
+		     (width-capped at 384px, height derived from a 3:4 portrait
+		     ratio) instead of fixed-height/width-free, applied uniformly to
+		     both the PDF iframe and the img fallback.
+		     When there is extracted text to show, the box floats left inside
+		     this scroll container (which already establishes the
+		     block-formatting context a float needs via its own
+		     overflow-y-auto — no clearfix required) and the text renders as a
+		     plain flowing block beside and below it. With no text, the box is
+		     not floated and centres itself instead, since there is nothing to
+		     wrap around. -->
+		<div class="min-h-0 flex-1 overflow-y-auto">
+			<div
+				class="{content?.text
+					? 'float-left mr-6 mb-4'
+					: 'mx-auto'} w-full max-w-sm aspect-[3/4] overflow-hidden rounded-lg border border-border bg-card"
+			>
 				{#if content?.rendition?.mime_type === 'application/pdf'}
 					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
 				{:else}
@@ -211,7 +226,17 @@
 				{/if}
 			</div>
 			{#if content?.text}
-				{@render loadedTextBlock()}
+				<!-- Plain flowing block, not the shared loadedTextBlock snippet
+				     (that snippet's flex-1/min-h-0 sizing is for the text-only
+				     branch, where text alone occupies the pane's remaining
+				     height). Typography classes are kept byte-identical to
+				     loadedTextBlock's so the shared-typography property holds
+				     across both surfaces that show extracted text. -->
+				<div class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
+					{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
+						<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+					{/each}
+				</div>
 			{/if}
 		</div>
 	{:else if bodyVariant === 'text'}
