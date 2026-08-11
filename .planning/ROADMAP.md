@@ -569,13 +569,13 @@ Plans:
   4. The "+" menu is reworked: instances display their configured URL/directory rather than the plugin name, and adding a NEW source type is presented as picking from a plugin catalog, visually separated from configuring another instance of an installed plugin
   5. Playwright specs cover the browser-drivable changes per the standing Phase 07.1 rule
 
-**Plans:** 7 plans
+**Plans:** 1/7 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — Tracer: plugin-provided icons end to end — additive proto contract, kernel icon endpoint, PluginIcon fallback chain, one plugin, browser-verified
+- [x] 09-01-PLAN.md — Tracer: plugin-provided icons end to end — additive proto contract, kernel icon endpoint, PluginIcon fallback chain, one plugin, browser-verified
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
