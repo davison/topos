@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 12/12 plans executed (10/12 executed — G-08-1, G-08-3 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-4 open, plans 08-11/08-12 created)
+**Plans:** 15 plans (12/15 executed — G-08-1, G-08-3, G-08-4 closed; gap closure in progress — `08-VERIFICATION.md` G-08-5 open, plans 08-13/08-14/08-15 created)
 
 Plans:
 **Wave 1**
@@ -474,6 +474,12 @@ Plans:
 - [x] 08-11-PLAN.md — Plugin half: a named `connecting` health state that is also the Go zero value, and a bounded serve-mode wait on `*events.Connected` so the go-plugin handshake means ready
 - [x] 08-12-PLAN.md — Kernel + fixture half: the scheduler retries a generation's first refresh instead of pinning an errored run for 15 minutes, and `plugins/mock` gains an opt-in launch-readiness window so the failure class finally has a gate
 
+**Gap closure — Wave 7** *(08-VERIFICATION.md G-08-5, a regression introduced by Wave 6's own fix: the plugin's new 15s blocking login wait runs inside the supervisor's resume closure while it holds the mutex every source's item-fetch/health-probe/refresh route resolves through, freezing every other source at the exact moment a re-link completes; also 08-REVIEW.md's never-fixed WR-01/WR-02/IN-01. Two parallel fix plans, then a real-device gate)*
+
+- [ ] 08-13-PLAN.md — Kernel half: the supervisor's reader path leaves the mutation lock, `pluginhost.Host` becomes internally synchronised, and a slow-launch mock fixture gives criterion 4's "every other source is unaffected" clause its first hermetic gate
+- [ ] 08-14-PLAN.md — Plugin half: the serve-mode login wait leaves the synchronous launch path onto its own goroutine (WR-01), the login waiter's handler is retired on both dial outcomes (WR-02), and three doc comments the change would falsify are corrected
+- [ ] 08-15-PLAN.md — Final gate: every repository gate re-run after both fixes, then the real-device re-link a human must watch with a second source open beside it — also discharging the real-device item carried forward from the previous verification cycle
+
 Notes:
 
 - Deliberately last. WhatsApp has no official personal-use API and the linked-device route can be de-linked or banned without warning; sequencing it after every other source means v1 is already useful if this plugin has to be dropped or shipped as best-effort.
@@ -496,7 +502,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. Source Instances & Per-Type Matching | 5/5 | Complete    | 2026-08-06 |
 | 6. UI — Scalable Source Surface | 8/8 | Complete    | 2026-08-07 |
 | 7. Webspace Builder UI | 16/16 | Complete    | 2026-08-09 |
-| 8. WhatsApp Conversations (Managed Risk) | 12/12 | In Progress|  |
+| 8. WhatsApp Conversations (Managed Risk) | 12/15 | In Progress|  |
 
 ## Requirement Coverage
 
