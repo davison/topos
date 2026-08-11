@@ -6,6 +6,7 @@
 	import OpenInSource from '$lib/components/OpenInSource.svelte';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { detailPaneState, detailBodyVariant, formatItemDate, highlightText } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
@@ -24,12 +25,14 @@
 		item,
 		displayName,
 		sourceReachable,
-		searchQuery
+		searchQuery,
+		onback
 	}: {
 		item: StreamItem;
 		displayName: string;
 		sourceReachable: boolean;
 		searchQuery: string;
+		onback: () => void;
 	} = $props();
 
 	let content: ItemContent | null = $state(null);
@@ -81,184 +84,214 @@
 	});
 </script>
 
-<div class="flex h-full min-h-0 flex-col gap-6">
-	<!-- Stage one: instant metadata, synchronous — never waits on a network call. -->
-	<header class="flex shrink-0 flex-col gap-2">
-		<!-- UI-09 (G-06-1): the title is FTS-indexed alongside preview/body
-		     (kernel/index/schema.go), so a title-only match is a routine
-		     search outcome — the header must highlight it exactly like the
-		     body does below, through the same shared .search-highlight
-		     class (app.css), or the user gets no visible explanation for
-		     why the item surfaced. -->
-		<h2 class="text-[20px] leading-[1.2] font-semibold text-foreground">
+<div class="flex h-full min-h-0 flex-col">
+	<!-- Slim takeover bar (D-04, 09.1-01-PLAN.md Task 2): the only chrome
+	     visible while the mobile takeover is up — a back control, the
+	     item title, and an icon-only open-in-source control, in that
+	     order. Hidden at md and above, where the header below already
+	     carries this information via the h2/OpenInSource pair. -->
+	<div
+		class="md:hidden sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4"
+	>
+		<Button
+			variant="ghost"
+			class="size-11 shrink-0 rounded-md"
+			aria-label="Back to stream"
+			onclick={onback}
+		>
+			<ArrowLeft class="size-5" />
+		</Button>
+		<!-- Same highlightText segments and search-highlight class the h2
+		     below uses — one highlighting mechanism, not two. -->
+		<p class="min-w-0 flex-1 truncate text-[16px] leading-[1.2] font-semibold text-foreground">
 			{#each highlightText(item.title, searchQuery) as segment, i (i)}
 				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
 			{/each}
-		</h2>
-		{#if item.group_label}
-			<p class="truncate text-[14px] leading-[1.4] text-muted-foreground" title={item.group_label}>
-				{item.group_label}
-			</p>
-		{/if}
-		<div class="flex flex-wrap items-center gap-2 text-[14px] text-muted-foreground">
-			<span>{formatItemDate(item.timestamp_unix)}</span>
-			{#each item.labels as label (label)}
-				<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
-			{/each}
-		</div>
-		<OpenInSource link={item.link} {displayName} />
-	</header>
+		</p>
+		<OpenInSource link={item.link} {displayName} iconOnly />
+	</div>
 
-	<!-- The one physical rendering of loaded extracted text — shared by
-	     the media branch (below a fixed-height preview box) and the
-	     text-only branch (alone, taking the pane's full remaining
-	     height), so the typography can never drift between the two.
-	     UI-09: each segment comes from highlightText (format.ts), the
-	     client half of the shared kernel/client term-derivation rule —
-	     matched segments carry the .search-highlight class (declared once,
-	     globally, in app.css — shared with the title above and with
-	     StreamRow.svelte's title/snippet), unmatched segments carry no
-	     class. Highlighting changes colour
-	     only, never size or weight: highlighted text still inherits this
-	     block's own type role. Segment text is rendered through Svelte's
-	     default text binding — never via a raw-HTML directive — so no
-	     escaping is needed here: highlightText itself never returns
-	     markup. -->
-	{#snippet loadedTextBlock()}
-		<div
-			class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
-		>
-			{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
-				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
-			{/each}
-		</div>
-	{/snippet}
-
-	<!-- Stage two: live-fetched preview + extracted text, or one of the
-	     three failure states below — never a blank pane (D-10). -->
-	{#if loadingContent}
-		<div class="flex min-h-0 flex-1 flex-col gap-6">
-			<Skeleton class="h-72 w-full shrink-0 rounded-lg" />
-			<Skeleton class="w-full flex-1 rounded-lg" />
-		</div>
-	{:else if paneState === 'unreachable' || paneState === 'deleted'}
-		<!-- D-10: the source is unreachable, or the item is confirmed gone
-		     at the source — either way the item itself is still viewable,
-		     so this is a non-destructive alert layered over the cached
-		     preview (item.preview / item.thumbnail_url — already in
-		     memory from the stream, not a re-fetch), never a replacement
-		     for the pane. -->
-		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-			<Alert>
-				<AlertTriangle />
-				<AlertTitle>
-					{paneState === 'deleted' ? 'No longer available' : 'Source unreachable'}
-				</AlertTitle>
-				<AlertDescription>
-					{#if paneState === 'deleted'}
-						No longer available at {displayName} — showing the last synced version.
-					{:else}
-						This source is currently unreachable — showing the last synced version.
-					{/if}
-				</AlertDescription>
-			</Alert>
-			{#if item.thumbnail_url}
-				<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
-					<img src={item.thumbnail_url} alt={item.title} class="h-full w-full object-contain" />
-				</div>
-			{/if}
-			{#if item.preview}
-				<p class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
-					{item.preview}
+	<div class="flex min-h-0 flex-1 flex-col gap-6 max-md:p-4">
+		<!-- Stage one: instant metadata, synchronous — never waits on a network call. -->
+		<header class="flex shrink-0 flex-col gap-2">
+			<!-- UI-09 (G-06-1): the title is FTS-indexed alongside preview/body
+			     (kernel/index/schema.go), so a title-only match is a routine
+			     search outcome — the header must highlight it exactly like the
+			     body does below, through the same shared .search-highlight
+			     class (app.css), or the user gets no visible explanation for
+			     why the item surfaced. -->
+			<h2 class="max-md:hidden text-[20px] leading-[1.2] font-semibold text-foreground">
+				{#each highlightText(item.title, searchQuery) as segment, i (i)}
+					<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+				{/each}
+			</h2>
+			{#if item.group_label}
+				<p class="truncate text-[14px] leading-[1.4] text-muted-foreground" title={item.group_label}>
+					{item.group_label}
 				</p>
 			{/if}
-		</div>
-	{:else if paneState === 'error'}
-		<Alert variant="destructive">
-			<AlertTitle>Couldn't load this item</AlertTitle>
-			<AlertDescription>
-				{displayName} didn't respond. It may be offline — try again, or open it directly in
-				{displayName}.
-			</AlertDescription>
-			<AlertAction>
-				<Button variant="outline" size="sm" onclick={() => loadContent(item.id)}>Retry</Button>
-			</AlertAction>
-		</Alert>
-	{:else if bodyVariant === 'html'}
-		<!-- Rendered markdown (SilverBullet, D-04) or a sanitized HTML
-		     email rendition (Proton, 03-09) IS the item's content, not a
-		     preview thumbnail alongside separate extracted text — unlike
-		     the media branch below, it occupies the pane's full remaining
-		     body (min-h-0 flex-1), never the small fixed-height preview
-		     box. Content still scrolls inside the iframe's own document
-		     and never pushes this pane's own layout (UI-SPEC). The
-		     sanitized HTML is served through the kernel's own hardened,
-		     sandboxed rendition route and rendered inside this iframe —
-		     never injected into the SPA document via Svelte's raw-HTML
-		     directive, which would discard the sandbox boundary this
-		     iframe provides for free (RESEARCH.md's explicit
-		     anti-pattern). -->
-		<div class="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-			<iframe title={item.title} src={contentUrl(item.id, searchQuery)} class="h-full w-full"></iframe>
-		</div>
-	{:else if bodyVariant === 'media'}
-		<!-- 09-UI-SPEC.md Fix 9: the preview box is bounded and aspect-locked
-		     (width-capped at 384px, height derived from a 3:4 portrait
-		     ratio) instead of fixed-height/width-free, applied uniformly to
-		     both the PDF iframe and the img fallback.
-		     When there is extracted text to show, the box floats left inside
-		     this scroll container (which already establishes the
-		     block-formatting context a float needs via its own
-		     overflow-y-auto — no clearfix required) and the text renders as a
-		     plain flowing block beside and below it. With no text, the box is
-		     not floated and centres itself instead, since there is nothing to
-		     wrap around. -->
-		<div class="min-h-0 flex-1 overflow-y-auto">
+			<div class="flex flex-wrap items-center gap-2 text-[14px] text-muted-foreground">
+				<span>{formatItemDate(item.timestamp_unix)}</span>
+				{#each item.labels as label (label)}
+					<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
+				{/each}
+			</div>
+			<div class="max-md:hidden">
+				<OpenInSource link={item.link} {displayName} />
+			</div>
+		</header>
+
+		<!-- The one physical rendering of loaded extracted text — shared by
+		     the media branch (below a fixed-height preview box) and the
+		     text-only branch (alone, taking the pane's full remaining
+		     height), so the typography can never drift between the two.
+		     UI-09: each segment comes from highlightText (format.ts), the
+		     client half of the shared kernel/client term-derivation rule —
+		     matched segments carry the .search-highlight class (declared once,
+		     globally, in app.css — shared with the title above and with
+		     StreamRow.svelte's title/snippet), unmatched segments carry no
+		     class. Highlighting changes colour
+		     only, never size or weight: highlighted text still inherits this
+		     block's own type role. Segment text is rendered through Svelte's
+		     default text binding — never via a raw-HTML directive — so no
+		     escaping is needed here: highlightText itself never returns
+		     markup. -->
+		{#snippet loadedTextBlock()}
 			<div
-				class="{content?.text
-					? 'float-left mr-6 mb-4'
-					: 'mx-auto'} w-full max-w-sm aspect-[3/4] overflow-hidden rounded-lg border border-border bg-card"
+				class="min-h-0 flex-1 overflow-y-auto text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground"
 			>
-				{#if content?.rendition?.mime_type === 'application/pdf'}
-					<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
-				{:else}
-					<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
+				{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
+					<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+				{/each}
+			</div>
+		{/snippet}
+
+		<!-- Stage two: live-fetched preview + extracted text, or one of the
+		     three failure states below — never a blank pane (D-10). -->
+		{#if loadingContent}
+			<div class="flex min-h-0 flex-1 flex-col gap-6">
+				<Skeleton class="h-72 w-full shrink-0 rounded-lg" />
+				<Skeleton class="w-full flex-1 rounded-lg" />
+			</div>
+		{:else if paneState === 'unreachable' || paneState === 'deleted'}
+			<!-- D-10: the source is unreachable, or the item is confirmed gone
+			     at the source — either way the item itself is still viewable,
+			     so this is a non-destructive alert layered over the cached
+			     preview (item.preview / item.thumbnail_url — already in
+			     memory from the stream, not a re-fetch), never a replacement
+			     for the pane. -->
+			<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+				<Alert>
+					<AlertTriangle />
+					<AlertTitle>
+						{paneState === 'deleted' ? 'No longer available' : 'Source unreachable'}
+					</AlertTitle>
+					<AlertDescription>
+						{#if paneState === 'deleted'}
+							No longer available at {displayName} — showing the last synced version.
+						{:else}
+							This source is currently unreachable — showing the last synced version.
+						{/if}
+					</AlertDescription>
+				</Alert>
+				{#if item.thumbnail_url}
+					<div class="h-72 shrink-0 overflow-hidden rounded-lg border border-border bg-card">
+						<img src={item.thumbnail_url} alt={item.title} class="h-full w-full object-contain" />
+					</div>
+				{/if}
+				{#if item.preview}
+					<p class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
+						{item.preview}
+					</p>
 				{/if}
 			</div>
-			{#if content?.text}
-				<!-- Plain flowing block, not the shared loadedTextBlock snippet
-				     (that snippet's flex-1/min-h-0 sizing is for the text-only
-				     branch, where text alone occupies the pane's remaining
-				     height). Typography classes are kept byte-identical to
-				     loadedTextBlock's so the shared-typography property holds
-				     across both surfaces that show extracted text. -->
-				<div class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
-					{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
-						<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
-					{/each}
+		{:else if paneState === 'error'}
+			<Alert variant="destructive">
+				<AlertTitle>Couldn't load this item</AlertTitle>
+				<AlertDescription>
+					{displayName} didn't respond. It may be offline — try again, or open it directly in
+					{displayName}.
+				</AlertDescription>
+				<AlertAction>
+					<Button variant="outline" size="sm" onclick={() => loadContent(item.id)}>Retry</Button>
+				</AlertAction>
+			</Alert>
+		{:else if bodyVariant === 'html'}
+			<!-- Rendered markdown (SilverBullet, D-04) or a sanitized HTML
+			     email rendition (Proton, 03-09) IS the item's content, not a
+			     preview thumbnail alongside separate extracted text — unlike
+			     the media branch below, it occupies the pane's full remaining
+			     body (min-h-0 flex-1), never the small fixed-height preview
+			     box. Content still scrolls inside the iframe's own document
+			     and never pushes this pane's own layout (UI-SPEC). The
+			     sanitized HTML is served through the kernel's own hardened,
+			     sandboxed rendition route and rendered inside this iframe —
+			     never injected into the SPA document via Svelte's raw-HTML
+			     directive, which would discard the sandbox boundary this
+			     iframe provides for free (RESEARCH.md's explicit
+			     anti-pattern). -->
+			<div class="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+				<iframe title={item.title} src={contentUrl(item.id, searchQuery)} class="h-full w-full"></iframe>
+			</div>
+		{:else if bodyVariant === 'media'}
+			<!-- 09-UI-SPEC.md Fix 9: the preview box is bounded and aspect-locked
+			     (width-capped at 384px, height derived from a 3:4 portrait
+			     ratio) instead of fixed-height/width-free, applied uniformly to
+			     both the PDF iframe and the img fallback.
+			     When there is extracted text to show, the box floats left inside
+			     this scroll container (which already establishes the
+			     block-formatting context a float needs via its own
+			     overflow-y-auto — no clearfix required) and the text renders as a
+			     plain flowing block beside and below it. With no text, the box is
+			     not floated and centres itself instead, since there is nothing to
+			     wrap around. -->
+			<div class="min-h-0 flex-1 overflow-y-auto">
+				<div
+					class="{content?.text
+						? 'float-left mr-6 mb-4'
+						: 'mx-auto'} w-full max-w-sm aspect-[3/4] overflow-hidden rounded-lg border border-border bg-card"
+				>
+					{#if content?.rendition?.mime_type === 'application/pdf'}
+						<iframe title={item.title} src={contentUrl(item.id)} class="h-full w-full"></iframe>
+					{:else}
+						<img src={contentUrl(item.id)} alt={item.title} class="h-full w-full object-contain" />
+					{/if}
 				</div>
-			{/if}
-		</div>
-	{:else if bodyVariant === 'text'}
-		<!-- Text is the whole content — no rendition was offered for this
-		     item (03-09: a Proton email whose plugin declined to emit one
-		     because the plain-text part was already renderable), so the
-		     text block takes the pane's full remaining height, with no
-		     fixed-height preview box announcing an absent preview above
-		     it. Renders the SAME loadedTextBlock snippet the media branch
-		     uses above, so the typography can never drift between the two
-		     surfaces that show extracted text. -->
-		{@render loadedTextBlock()}
-	{:else}
-		<!-- Nothing at all to show — reuses the placeholder icon and copy
-		     verbatim from the former media-branch placeholder case
-		     (03-UI-SPEC.md Copywriting Contract: this phase's detail-pane
-		     copy is unchanged from Phase 1/2). Given the pane's remaining
-		     body rather than a fixed-height box, matching the other
-		     branches. -->
-		<div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-			<FileText class="size-10" />
-			<p class="text-[14px]">No preview available</p>
-		</div>
-	{/if}
+				{#if content?.text}
+					<!-- Plain flowing block, not the shared loadedTextBlock snippet
+					     (that snippet's flex-1/min-h-0 sizing is for the text-only
+					     branch, where text alone occupies the pane's remaining
+					     height). Typography classes are kept byte-identical to
+					     loadedTextBlock's so the shared-typography property holds
+					     across both surfaces that show extracted text. -->
+					<div class="text-[16px] leading-[1.5] whitespace-pre-wrap text-foreground">
+						{#each highlightText(content?.text ?? '', searchQuery) as segment, i (i)}
+							<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else if bodyVariant === 'text'}
+			<!-- Text is the whole content — no rendition was offered for this
+			     item (03-09: a Proton email whose plugin declined to emit one
+			     because the plain-text part was already renderable), so the
+			     text block takes the pane's full remaining height, with no
+			     fixed-height preview box announcing an absent preview above
+			     it. Renders the SAME loadedTextBlock snippet the media branch
+			     uses above, so the typography can never drift between the two
+			     surfaces that show extracted text. -->
+			{@render loadedTextBlock()}
+		{:else}
+			<!-- Nothing at all to show — reuses the placeholder icon and copy
+			     verbatim from the former media-branch placeholder case
+			     (03-UI-SPEC.md Copywriting Contract: this phase's detail-pane
+			     copy is unchanged from Phase 1/2). Given the pane's remaining
+			     body rather than a fixed-height box, matching the other
+			     branches. -->
+			<div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+				<FileText class="size-10" />
+				<p class="text-[14px]">No preview available</p>
+			</div>
+		{/if}
+	</div>
 </div>
