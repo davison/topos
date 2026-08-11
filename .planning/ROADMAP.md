@@ -432,7 +432,7 @@ Notes:
   3. The plugin persists its own message store, so conversations captured while it was running stay browsable regardless of what the WhatsApp desktop app retains
   4. De-link, ban, or session expiry surfaces as an explicit plugin-health error in the UI while previously captured messages remain browsable and every other source is unaffected
 
-**Plans:** 10/10 plans executed (G-08-1 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-3 open)
+**Plans:** 12 plans (10/12 executed — G-08-1, G-08-3 and `08-REVIEW.md` CR-01/WR-01/IN-01 closed; gap closure in progress — `08-UAT.md` G-08-4 open, plans 08-11/08-12 created)
 
 Plans:
 **Wave 1**
@@ -468,6 +468,11 @@ Plans:
 
 - [x] 08-09-PLAN.md — Kernel lifecycle half: suspend/resume becomes a generation change so a re-linked source still syncs, background syncs become cancellable, link-session contexts detached
 - [x] 08-10-PLAN.md — Presentation half: a per-source sync failure degrades its webspace instead of faking an outage, and a webspace's sync status is scoped to the sources that feed it
+
+**Gap closure — Wave 6** *(08-UAT.md G-08-4: immediately after a real-device pairing the plugin still reported "Not linked" — an AND-gate of a plugin health-state defect and a missing kernel launch-readiness gate, planned as two parallel plans)*
+
+- [ ] 08-11-PLAN.md — Plugin half: a named `connecting` health state that is also the Go zero value, and a bounded serve-mode wait on `*events.Connected` so the go-plugin handshake means ready
+- [ ] 08-12-PLAN.md — Kernel + fixture half: the scheduler retries a generation's first refresh instead of pinning an errored run for 15 minutes, and `plugins/mock` gains an opt-in launch-readiness window so the failure class finally has a gate
 
 Notes:
 
