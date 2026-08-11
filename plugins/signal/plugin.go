@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,10 @@ const (
 	// pluginName identifies this plugin in Item.Provenance's "plugin" key
 	// and in this process's own log lines.
 	pluginName = "topos-plugin-signal"
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-02-PLAN.md Task 2, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
@@ -33,6 +38,22 @@ const (
 // is its conversations (group names, or a 1:1's nickname/system-contact
 // name per D-06).
 var matchVocabulary = []string{"conversations"}
+
+// iconSVG is this plugin's identity icon — a Lucide MessageCircle glyph
+// with its stroke color baked to the literal --muted-foreground hex (see
+// assets/icon.svg's own provenance comment). Deliberately a different
+// bubble shape from WhatsApp's MessageSquare glyph so the two chat
+// sources stay tellable apart by icon alone. Returned verbatim from
+// Describe's Icon field; the kernel caches it at that call site and
+// serves it at GET /api/plugins/topos-plugin-signal/icon.
+//
+// Source-Project: @lucide/svelte (lucide-icons/lucide)
+// Source-File:    dist/icons/message-circle.svelte
+// Source-Version: @lucide/svelte v1.27.0
+// Source-License: ISC
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL
 // content variant — a Signal digest has no image rendition, ever.
@@ -84,6 +105,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

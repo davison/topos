@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"strings"
 	"time"
 
@@ -41,7 +42,27 @@ const (
 	// placeholder rather than an omitted key (mirrors plugins/mock's own
 	// sourceSystem constant).
 	sourceSystem = "mockstrict://in-memory"
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-02-PLAN.md Task 2, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
+
+// iconSVG is this plugin's identity icon — a Lucide FlaskConical glyph
+// with its stroke color baked to the literal --muted-foreground hex (see
+// assets/icon.svg's own provenance comment), matching plugins/mock's own
+// glyph since both are developer fixtures, never a real user-facing
+// source. Returned verbatim from Describe's Icon field; the kernel
+// caches it at that call site and serves it at
+// GET /api/plugins/topos-plugin-mockstrict/icon.
+//
+// Source-Project: @lucide/svelte (lucide-icons/lucide)
+// Source-File:    dist/icons/flask-conical.svelte
+// Source-Version: @lucide/svelte v1.27.0
+// Source-License: ISC
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // matchVocabulary is deliberately "tags", NOT the field name
 // plugins/mock declares: the two fixture plugins must never declare the
@@ -159,6 +180,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

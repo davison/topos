@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -26,12 +27,30 @@ const (
 	// noSubjectPlaceholder is used as Title when a message's ENVELOPE
 	// carries an empty Subject.
 	noSubjectPlaceholder = "(no subject)"
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-02-PLAN.md Task 2, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
 
 // matchVocabulary is the field-name vocabulary this plugin declares and
 // reads from MatchRequest.match_fields — proton's own native categorization
 // is its IMAP mailbox/label leaf names.
 var matchVocabulary = []string{"folders"}
+
+// iconSVG is this plugin's identity icon — a Lucide Mail glyph with its
+// stroke color baked to the literal --muted-foreground hex (see
+// assets/icon.svg's own provenance comment). Returned verbatim from
+// Describe's Icon field; the kernel caches it at that call site and
+// serves it at GET /api/plugins/topos-plugin-proton/icon.
+//
+// Source-Project: @lucide/svelte (lucide-icons/lucide)
+// Source-File:    dist/icons/mail.svelte
+// Source-Version: @lucide/svelte v1.27.0
+// Source-License: ISC
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // noThumbnailReason is the fixed unavailable_reason for the THUMBNAIL
 // content variant — an email has no image rendition, ever.
@@ -126,6 +145,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 
