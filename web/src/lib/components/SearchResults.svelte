@@ -72,6 +72,7 @@
 				stale={staleSources.has(result.source)}
 				sourceDisplayName={sourcesByInstance.get(result.source)?.display_name ??
 					result.source_display_name}
+				plugin={sourcesByInstance.get(result.source)?.plugin ?? ''}
 				snippet={result.snippet}
 				searchQuery={query}
 			/>

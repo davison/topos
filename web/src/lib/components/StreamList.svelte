@@ -93,6 +93,7 @@
 				stale={staleSources.has(item.source)}
 				sourceDisplayName={sourcesByInstance.get(item.source)?.display_name ??
 					item.source_display_name}
+				plugin={sourcesByInstance.get(item.source)?.plugin ?? ''}
 			/>
 		{/each}
 	</div>

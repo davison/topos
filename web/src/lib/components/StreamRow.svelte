@@ -7,6 +7,7 @@
 		TooltipTrigger
 	} from '$lib/components/ui/tooltip/index.js';
 	import Thumbnail from './Thumbnail.svelte';
+	import PluginIcon from './PluginIcon.svelte';
 	import { formatItemDate, parseSnippet, highlightText } from '$lib/format';
 	import { cn } from '$lib/utils.js';
 	import type { StreamItem } from '$lib/api';
@@ -32,6 +33,7 @@
 		onselect,
 		stale = false,
 		sourceDisplayName = '',
+		plugin = '',
 		snippet,
 		searchQuery = ''
 	}: {
@@ -40,6 +42,17 @@
 		onselect: () => void;
 		stale?: boolean;
 		sourceDisplayName?: string;
+		// plugin (09-02-PLAN.md Task 4 checkpoint follow-up): the item's
+		// source instance's configured plugin binary name (e.g.
+		// "topos-plugin-paperless"), resolved by the caller from
+		// sourcesByInstance — the same map sourceDisplayName above already
+		// resolves from. Renders this row's own plugin identity icon so a
+		// mixed, cross-source stream/search-results pane stays scannable by
+		// source at a glance, without opening the detail pane. Defaults to
+		// '' (PluginIcon's own Puzzle fallback) for any caller that hasn't
+		// threaded this prop, and for a historic item whose source instance
+		// has since been removed from config (absent from sourcesByInstance).
+		plugin?: string;
 		snippet?: string;
 		searchQuery?: string;
 	} = $props();
@@ -89,6 +102,17 @@
 		<div
 			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground"
 		>
+			<!-- Source identity icon (09-02-PLAN.md Task 4 checkpoint
+			     follow-up, additive metadata alongside the leading
+			     Thumbnail — never a replacement for it): reuses PluginIcon's
+			     existing kernel-served fallback chain and decorative
+			     alt="" unchanged, at the same size-3.5 the chip uses. A
+			     native title gives the source name on hover without a
+			     second Tooltip primitive per row. Rendered first so it
+			     reads as this row's own source marker, ahead of sender/date. -->
+			<span class="shrink-0" title={sourceDisplayName || undefined}>
+				<PluginIcon {plugin} size="size-3.5" />
+			</span>
 			<!-- Sender (item.group_label — "chat thread / mail conversation"
 			     in the wire contract): plain text, no "From" prefix, never
 			     the accent color, omitted entirely when empty so paperless
