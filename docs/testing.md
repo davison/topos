@@ -187,6 +187,36 @@ plugin set would ship a fixture plugin into every real install's plugin
 directory, where the kernel would discover and offer it in the
 operator's own "+ New …" picker.
 
+### `WEBSPACES_MOCK_READY_AFTER_MS` — the mock's launch-readiness fixture
+
+`topos-plugin-mock` also carries an opt-in launch-readiness window
+(`plugins/mock/readiness.go`), closing 08-UAT.md gap G-08-4's fixture gap:
+until this existed, the mock's `Match`/`Health` were unconditionally
+ready, so no fixture in this repo could express "the relaunched plugin is
+not ready yet" — the exact shape a real plugin subprocess can present in
+the window between completing the go-plugin handshake and being able to
+actually serve a sync.
+
+- Set `WEBSPACES_MOCK_READY_AFTER_MS=<milliseconds>` on the **kernel**
+  process — `kernel/pluginhost/host.go`'s `launch()` builds every plugin
+  subprocess's environment from `os.Environ()`, so the kernel's own
+  environment (including this variable, set via `t.Setenv` in a Go test
+  before booting a supervisor) is inherited whole by the subprocess.
+- Off by default (absent, empty, or `"0"`): the mock behaves
+  byte-identically to a build with no readiness window at all. This means
+  it is invisible to `make e2e` (which never sets the variable) and to
+  any real installation.
+- While the window has not elapsed, `Match` returns a `codes.Unavailable`
+  error and `Health` reports `Reachable: false`; `Describe` is
+  deliberately never gated by it, since `kernel/pluginhost.launch` calls
+  `Describe` immediately after the handshake and treats any error there
+  as a launch failure.
+- Exercised by `kernel/supervisor/readiness_test.go`'s
+  `TestBoot_FirstRefreshSurvivesAPluginLaunchReadinessWindow`, which
+  drives a real mock subprocess through a 700ms window and proves the
+  scheduler's bounded first-refresh retry (`kernel/syncer/scheduler.go`)
+  survives it.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
@@ -247,6 +277,15 @@ paperless-ngx/SilverBullet/Proton instance is now a manual UAT activity,
 not an automated gate. There was no CI at all before this phase; now
 every push and pull request to `main` runs the full portable gate
 automatically.
+
+**2026-08-11**: closing 08-UAT.md gap G-08-4, the scheduler's bounded
+first-refresh retry (`kernel/syncer/scheduler.go`) and the mock plugin's
+opt-in launch-readiness fixture (`WEBSPACES_MOCK_READY_AFTER_MS`, above)
+landed together — a plugin subprocess that completes its handshake before
+it can actually serve `Match` no longer pins a source on an errored sync
+run for the default 15-minute sync interval, and this failure class now
+has a hermetic gate over a real plugin subprocess
+(`kernel/supervisor/readiness_test.go`).
 
 ## Standing rule
 
