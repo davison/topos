@@ -8,7 +8,7 @@ status: planning
 stopped_at: Phase 09 complete (UAT 2/2, threats_open 0), ready to plan Phase 10
 last_updated: "2026-08-11T18:47:39.856Z"
 last_activity: 2026-08-11
-last_activity_desc: Quick task 260811-r5d completed (exclude topos-plugin-mockstrict from picker catalog); Phase 10 still ready to plan
+last_activity_desc: Quick task 260811-rqc completed (header branding lockup, human-verified live); Phase 10 still ready to plan
 progress:
   total_phases: 11
   completed_phases: 10
@@ -253,7 +253,6 @@ Recent decisions affecting current work:
 
 - 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
 - 2026-08-05 — Centralize rendition theming (and sanitization) in the kernel content boundary (major, api; schedule with Phase 5 contract work or ecosystem milestone)
-- 2026-08-11 — Header branding: app icon, topos wordmark, and tagline (cosmetic, ui; intended as a quick task)
 
 ### Blockers/Concerns
 
@@ -273,6 +272,7 @@ Recent decisions affecting current work:
 | 260806-f1 | (fast) refresh README: 8-phase roadmap, five-plugin layout, seven workspace modules | 2026-08-06 | cd8ba20 | — |
 | 260806-f2 | (fast) expose Vite dev server (:5173) to the tailscale network via make dev | 2026-08-06 | 54d30b4 | — |
 | 260811-r5d | exclude topos-plugin-mockstrict from the picker catalog (kernel exclusion + e2e injection helper + docs correction) | 2026-08-11 | 160853a | [260811-r5d-exclude-topos-plugin-mockstrict-from-the](./quick/260811-r5d-exclude-topos-plugin-mockstrict-from-the/) |
+| 260811-rqc | header branding lockup: app icon + topos wordmark + tagline, top-right of header, muted (human-verified live) | 2026-08-11 | 55e133e | [260811-rqc-header-branding-app-icon-topos-wordmark-](./quick/260811-rqc-header-branding-app-icon-topos-wordmark-/) |
 
 ## Deferred Items
 
@@ -284,6 +284,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T18:53:27.083Z
-Stopped at: Quick task 260811-r5d completed (exclude topos-plugin-mockstrict from picker catalog); Phase 09 complete, ready to plan Phase 10
+Last session: 2026-08-11T19:20:00Z
+Stopped at: Quick tasks 260811-r5d and 260811-rqc completed; Phase 09 complete, ready to plan Phase 10
 Resume file: None
