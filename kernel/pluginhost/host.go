@@ -40,6 +40,44 @@ var ErrItemNotFound = errors.New("pluginhost: item not found")
 // or any other transport-level failure calling the plugin).
 var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
+// MaxIconBytes is the size ceiling enforced on DescribeResponse.icon at
+// capture time (09-01-PLAN.md Task 2, T-09-03): an icon larger than this
+// is dropped — never truncated — and never fails the launch.
+const MaxIconBytes = 65536
+
+// allowedIconMIME is the kernel-side mime allowlist enforced on
+// DescribeResponse.icon_mime at capture time (T-09-02): a plugin cannot
+// choose the Content-Type the kernel later serves outside this set. A mime
+// not in this set, or an empty mime paired with non-empty icon bytes, has
+// its icon dropped and treated identically to "no icon declared."
+var allowedIconMIME = map[string]bool{
+	"image/svg+xml": true,
+	"image/png":     true,
+}
+
+// captureIcon validates a Describe response's icon/icon_mime fields against
+// MaxIconBytes and allowedIconMIME, returning ok=false whenever the icon is
+// absent or fails validation — every failure is treated as "this plugin
+// declared no icon," never as a launch failure (09-01-PLAN.md Task 2).
+func captureIcon(desc *toposv1.DescribeResponse) (iconBytes []byte, iconMIME string, ok bool) {
+	b := desc.GetIcon()
+	m := desc.GetIconMime()
+
+	if len(b) == 0 {
+		return nil, "", false
+	}
+	if len(b) > MaxIconBytes {
+		return nil, "", false
+	}
+	if m == "" {
+		return nil, "", false
+	}
+	if !allowedIconMIME[m] {
+		return nil, "", false
+	}
+	return b, m, true
+}
+
 // Plugin is one launched, handshaken source plugin subprocess.
 type Plugin struct {
 	name            string // config key under [sources.<name>] — THE instance identity (D-08)
@@ -47,6 +85,13 @@ type Plugin struct {
 	pluginName      string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
 	displayName     string // resolved instance display name (config display_name, or name if unset) — D-09
 	matchVocabulary []string
+	// iconBytes/iconMIME are captured from the same Describe call launch()
+	// already makes (no new RPC), validated by captureIcon. Both are the
+	// zero value when the plugin declared no icon, declared one that
+	// failed validation, or was built against the pre-Phase-9 contract
+	// (09-01-PLAN.md Task 2).
+	iconBytes []byte
+	iconMIME  string
 	// src is the config.Source this instance was launched with — Reconcile
 	// (07-02-PLAN.md Task 1, D-06/D-07) compares a currently-configured
 	// instance's config.Source against this value to decide whether the
@@ -115,6 +160,17 @@ func (p *Plugin) Health(ctx context.Context) (*toposv1.HealthResponse, error) {
 // Kill terminates the plugin subprocess.
 func (p *Plugin) Kill() {
 	p.client.Kill()
+}
+
+// Icon returns this plugin instance's validated icon bytes and mime,
+// captured from its own Describe response (09-01-PLAN.md Task 2). ok is
+// false when the plugin declared no icon, declared one that failed
+// captureIcon's validation, or was built against the pre-Phase-9 contract.
+func (p *Plugin) Icon() ([]byte, string, bool) {
+	if len(p.iconBytes) == 0 || p.iconMIME == "" {
+		return nil, "", false
+	}
+	return p.iconBytes, p.iconMIME, true
 }
 
 // Host owns the lifecycle of every launched plugin subprocess.
@@ -467,12 +523,16 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		instanceDisplayName = name
 	}
 
+	iconBytes, iconMIME, _ := captureIcon(desc)
+
 	return &Plugin{
 		name:            name,
 		sourceType:      desc.GetSourceType(),
 		pluginName:      desc.GetDisplayName(),
 		displayName:     instanceDisplayName,
 		matchVocabulary: desc.GetMatchVocabulary(),
+		iconBytes:       iconBytes,
+		iconMIME:        iconMIME,
 		src:             src,
 		client:          client,
 		impl:            impl,
@@ -485,6 +545,28 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 // mid-iteration.
 func (h *Host) Plugins() []*Plugin {
 	return h.snapshot()
+}
+
+// PluginIcon resolves a plugin BINARY's icon (src.Plugin, e.g.
+// "topos-plugin-mock") — never an instance name — over every currently
+// launched instance, returning the first one that has a validated icon
+// (09-01-PLAN.md Task 2, 09-UI-SPEC.md Fix 10). Two instances of the same
+// binary have byte-identical icons (both came from the same Describe
+// implementation), so "first launched instance with an icon" is
+// equivalent to "this binary's icon." ok is false when no launched
+// instance of binary has one — an undescribed plugin type (never
+// launched), or every launch attempt so far predates a successful
+// Describe.
+func (h *Host) PluginIcon(binary string) (iconBytes []byte, iconMIME string, ok bool) {
+	for _, p := range h.snapshot() {
+		if p.src.Plugin != binary {
+			continue
+		}
+		if b, m, iok := p.Icon(); iok {
+			return b, m, true
+		}
+	}
+	return nil, "", false
 }
 
 // DescribeInfo is the three Describe-derived facts the "+" chip picker's

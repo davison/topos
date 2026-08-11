@@ -737,6 +737,52 @@ plugin_describe_failed` when the trial launch or the `Describe` call
 itself fails (e.g. a malformed `base_url` scheme) — carrying the kernel's
 own error text so the modal can show it beside its "Save anyway" fallback.
 
+### `GET /api/plugins/{plugin}/icon`
+
+A plugin **binary**'s own declared identity icon (`09-01-PLAN.md` Task 2,
+`09-UI-SPEC.md` Fix 10) — keyed by `{plugin}` = the plugin binary name
+(`source.plugin`, e.g. `topos-plugin-paperless`; already present on every
+`/api/sources` row), never by `source_type` or an instance name. This is a
+deliberate `promote`: `source_type`, like the icon itself, is only learned
+once a plugin binary has actually been launched and `Describe`d — a
+per-instance route (`/api/sources/{name}/icon`) would have implied the
+icon is per-instance data when it is not (two instances of one binary have
+byte-identical icons).
+
+```
+$ curl -s -D- http://127.0.0.1:7777/api/plugins/topos-plugin-mock/icon -o /dev/null
+HTTP/1.1 200 OK
+Content-Type: image/svg+xml
+Cache-Control: public, max-age=31536000, immutable
+ETag: "…"
+X-Content-Type-Options: nosniff
+Content-Disposition: inline
+Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox
+```
+
+The bytes and mime come straight from the plugin's own `Describe` response
+(`DescribeResponse.icon`/`icon_mime`), captured at the same launch-time
+`Describe` call the kernel already makes — this route issues **no new
+RPC** and reaches no plugin at request time. `Cache-Control` is
+long-lived and `immutable`: icon bytes are static for a given binary
+build. A conditional request whose `If-None-Match` matches the current
+`ETag` gets `304` with no body.
+
+The kernel enforces its own mime allowlist (`image/svg+xml` or
+`image/png`) and a 64KB size ceiling at capture time — a plugin cannot
+choose the served `Content-Type` outside that set, and an oversized icon
+is dropped, never truncated, and never fails the plugin's launch.
+
+**`404 icon_unavailable` is the routine, expected case for any plugin
+binary the kernel has never successfully `Describe`d** — no configured
+instance of it has ever launched, every launch attempt so far failed
+before reaching `Describe`, or it's a pre-Phase-9 binary that never set
+these fields. This is never a client-visible error state: the SPA's
+`PluginIcon.svelte` always falls back to a generic glyph in this case. A
+`{plugin}` value containing a path separator or a `..` segment also 404s,
+before the lookup (an exact-match over an in-memory map, never the
+filesystem) is even attempted.
+
 ### `POST /api/config/whatsapp-link`, `GET /api/config/whatsapp-link/{session}`, `DELETE /api/config/whatsapp-link/{session}`
 
 The in-app WhatsApp QR-pairing surface (`D-01`, `08-03-PLAN.md`): starts,

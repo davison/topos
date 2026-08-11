@@ -1,0 +1,15 @@
+<!--
+Provenance (09-01-PLAN.md Task 2, T-09-05):
+  source project: @lucide/svelte (lucide-icons/lucide)
+  source file:    dist/icons/flask-conical.svelte ("FlaskConical" glyph)
+  version:        @lucide/svelte v1.27.0
+  license:        ISC
+
+Derived from Lucide's FlaskConical glyph. The stroke color is baked as the
+literal hex #94a3b8 (--muted-foreground) instead of the upstream
+stroke="currentColor" — an <img>-loaded SVG renders in its own opaque
+context and cannot inherit a page CSS color (09-UI-SPEC.md Fix 10, "Baked
+color, not currentColor"). ISC is a permissive license that allows
+redistributing this modified copy.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#94a3b8" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>

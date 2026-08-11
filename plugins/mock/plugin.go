@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"strings"
 	"time"
 
@@ -31,7 +32,20 @@ const (
 	// documented as required on every item, so this is a fixed
 	// placeholder rather than an omitted key.
 	sourceSystem = "mock://in-memory"
+
+	// iconMIME is the declared mime for iconSVG below, returned verbatim
+	// from Describe (09-01-PLAN.md Task 2, 09-UI-SPEC.md Fix 10).
+	iconMIME = "image/svg+xml"
 )
+
+// iconSVG is the mock plugin's identity icon — a Lucide FlaskConical glyph
+// with its stroke color baked to the literal --muted-foreground hex (see
+// assets/icon.svg's own provenance comment). Returned verbatim from
+// Describe's Icon field; the kernel caches it at that call site and serves
+// it at GET /api/plugins/topos-plugin-mock/icon.
+//
+//go:embed assets/icon.svg
+var iconSVG []byte
 
 // matchVocabulary is the field-name vocabulary this plugin declares in its
 // Describe response and reads from MatchRequest.match_fields. "labels" is
@@ -206,6 +220,8 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		DisplayName:     displayName,
 		ContractVersion: contractVersion,
 		MatchVocabulary: matchVocabulary,
+		Icon:            iconSVG,
+		IconMime:        iconMIME,
 	}, nil
 }
 

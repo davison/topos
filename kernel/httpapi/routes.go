@@ -66,11 +66,15 @@ const schemaVersion = 1
 // that spawns a discovered plugin binary in machine-readable link mode
 // OUTSIDE the go-plugin gRPC handshake — not a SourcePlugin RPC, so the
 // locked four-RPC contract (docs/plugin-contract.md) is unaffected by its
-// existence. Router's second return value is the constructed
-// *linkSessionStore backing those routes — callers (cmd/topos/main.go)
-// must call its Shutdown() on kernel shutdown so a live link subprocess
-// is never orphaned holding a source's store lock.
-func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, suspender Suspender, pluginsDir string, logger hclog.Logger) (chi.Router, *linkSessionStore) {
+// existence. icons (09-01-PLAN.md Task 2, 09-UI-SPEC.md Fix 10) feeds the
+// new plugin-icon route registered below (kernel/httpapi/pluginicon.go): a
+// read-only, additive route serving each plugin binary's own
+// Describe-declared identity icon, cached at launch time — no new RPC, no
+// plugin call at request time. Router's second return value is the
+// constructed *linkSessionStore backing those routes — callers
+// (cmd/topos/main.go) must call its Shutdown() on kernel shutdown so a
+// live link subprocess is never orphaned holding a source's store lock.
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, suspender Suspender, icons PluginIconProvider, pluginsDir string, logger hclog.Logger) (chi.Router, *linkSessionStore) {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
@@ -96,6 +100,10 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// sequencing — see kernel/httpapi/config.go.
 	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
 	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, logger))
+	// The plugin-icon route (09-01-PLAN.md Task 2, 09-UI-SPEC.md Fix 10):
+	// the plugin BINARY's own declared identity icon, cached at its
+	// launch-time Describe call — see kernel/httpapi/pluginicon.go.
+	r.Get("/api/plugins/{plugin}/icon", PluginIconHandler(icons))
 	// POST/GET/DELETE /api/config/whatsapp-link (D-01, 08-03-PLAN.md
 	// Task 3): start, poll, and cancel an in-app QR pairing session — see
 	// kernel/httpapi/whatsapplink.go. A mutating, human-only surface (the

@@ -245,6 +245,16 @@ func (s *Supervisor) ProbeSources(ctx context.Context) []pluginhost.SourceHealth
 	return s.Host().ProbeSources(ctx)
 }
 
+// PluginIcon satisfies kernel/httpapi.PluginIconProvider (09-01-PLAN.md
+// Task 2), delegating to the current plugin host resolved fresh via
+// Host() — the same "never a pointer captured once" discipline Fetch and
+// ProbeSources above already follow, for the identical reason: Reconcile
+// mutates the SAME *pluginhost.Host in place, so this stays correct across
+// a config apply with no extra care needed here.
+func (s *Supervisor) PluginIcon(binary string) ([]byte, string, bool) {
+	return s.Host().PluginIcon(binary)
+}
+
 // Refresh satisfies kernel/httpapi.Refresher by delegating to the CURRENT
 // coordinator, resolved fresh via Coordinator() on every call. This is
 // load-bearing, not defensive style: Apply replaces s.coord with a brand

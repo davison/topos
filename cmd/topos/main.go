@@ -206,8 +206,9 @@ func runServe() error {
 	}
 	defer sup.Shutdown()
 
-	// sup itself satisfies Fetcher/HealthProber/Refresher/Applier/Suspender
-	// (delegating to its CURRENT host/coordinator on every call) — never
+	// sup itself satisfies Fetcher/HealthProber/Refresher/Applier/Suspender/
+	// PluginIconProvider (09-01-PLAN.md Task 2) (delegating to its CURRENT
+	// host/coordinator on every call) — never
 	// sup.Host()/sup.Coordinator() called once here, which would freeze
 	// Router's refresher in particular at the coordinator Apply later
 	// replaces wholesale (see Supervisor.Refresh's doc comment). pdir and
@@ -218,7 +219,7 @@ func runServe() error {
 	// subprocess on kernel shutdown so none is ever left orphaned holding
 	// a source's store lock, the same guarantee sup.Shutdown() already
 	// gives every pluginhost-launched subprocess.
-	router, linkStore := httpapi.Router(store, cfgStore, sup, sup, sup, sup, sup, pdir, logger)
+	router, linkStore := httpapi.Router(store, cfgStore, sup, sup, sup, sup, sup, sup, pdir, logger)
 	defer linkStore.Shutdown()
 
 	listen := cfg.Server.Listen
