@@ -6,9 +6,9 @@ current_phase: 10
 current_phase_name: Docs and Release Readiness
 status: planning
 stopped_at: Phase 09 complete (UAT 2/2, threats_open 0), ready to plan Phase 10
-last_updated: "2026-08-11T18:23:53.209Z"
+last_updated: "2026-08-11T18:47:39.856Z"
 last_activity: 2026-08-11
-last_activity_desc: Phase 09 verified and marked complete
+last_activity_desc: Quick task 260811-r5d completed (exclude topos-plugin-mockstrict from picker catalog); Phase 10 still ready to plan
 progress:
   total_phases: 11
   completed_phases: 10
@@ -126,6 +126,7 @@ Progress: [████████████████████] 83/83 p
 - Phase 9 added: UI Polish and Source Management Rework — TODO.md v1.0 web/plugin items: 8 small UI fixes, PDF previewer sizing, per-plugin icons (decided over badges), WhatsApp Topos branding, and the "+"-menu source/instance redesign (added 2026-08-11, pre-1.0 polish before milestone close)
 - Phase 10 added: Docs and Release Readiness — TODO.md v1.0 docs items: new-user README + screenshots, CONTRIBUTING.md split, SECURITY.md, docs/plugins with _template.md (added 2026-08-11)
 - Kernel plugin-subprocess reaping bug (TODO.md) routed to /gsd-debug rather than a phase (2026-08-11)
+- Phase 10 edited: edited fields: goal, requirements, success_criteria — added GitHub-milestone sync (no GSD-native mechanism; own gh api process) and GHA publishing workflow (change-gated nightlies + release artifacts)
 
 ### Decisions
 
@@ -244,6 +245,7 @@ Recent decisions affecting current work:
 - [Phase 09]: XML-comment gotcha — a literal `--` inside an SVG's comment body silently fails Chromium's strict `<img>` SVG parse with no console error naming the file; icon falls back to Puzzle with zero diagnostics
 - [Phase 09]: Stale-plugin-binary staleness risk documented in config.example.toml + README — a personal `[plugins] dir` absolute path pointing outside the checkout serves old binaries (all icons 404) while sources stay healthy
 - [Phase 09]: e2e fixture kernels can now receive explicit env vars via `FixtureConfigSpec.env`, layered under (never over) the hermetic PATH/HOME/XDG allowlist
+- [Quick 260811-r5d]: kernel/pluginhost.ExcludedPluginBinaries now excludes topos-plugin-mockstrict alongside topos-plugin-mock; DiscoverAllBinaries/DescribePluginHandler stay unfiltered so configured instances are unaffected
 
 ### Pending Todos
 
@@ -270,6 +272,7 @@ Recent decisions affecting current work:
 | 260805-o5d | harden make dev: plugins rebuilt as prerequisite, fail loudly on port squat/dead kernel | 2026-08-05 | 6d0e6a8 | [260805-o5d-harden-make-dev-rebuild-plugin-binaries-](./quick/260805-o5d-harden-make-dev-rebuild-plugin-binaries-/) |
 | 260806-f1 | (fast) refresh README: 8-phase roadmap, five-plugin layout, seven workspace modules | 2026-08-06 | cd8ba20 | — |
 | 260806-f2 | (fast) expose Vite dev server (:5173) to the tailscale network via make dev | 2026-08-06 | 54d30b4 | — |
+| 260811-r5d | exclude topos-plugin-mockstrict from the picker catalog (kernel exclusion + e2e injection helper + docs correction) | 2026-08-11 | 160853a | [260811-r5d-exclude-topos-plugin-mockstrict-from-the](./quick/260811-r5d-exclude-topos-plugin-mockstrict-from-the/) |
 
 ## Deferred Items
 
@@ -281,6 +284,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T18:25:00Z
-Stopped at: Phase 09 complete, ready to plan Phase 10
+Last session: 2026-08-11T18:53:27.083Z
+Stopped at: Quick task 260811-r5d completed (exclude topos-plugin-mockstrict from picker catalog); Phase 09 complete, ready to plan Phase 10
 Resume file: None
