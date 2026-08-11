@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: "09.1"
+current_phase: 09.1
 current_phase_name: 1.0 Release UX Essentials
 status: planning
 stopped_at: Phase 09.1 inserted (responsive mobile layout + first-run bootstrap), ready to plan
-last_updated: "2026-08-11T21:41:17.110Z"
+last_updated: "2026-08-11T21:42:31.568Z"
 last_activity: 2026-08-11
 last_activity_desc: Quick task 260811-rqc completed (header branding lockup, human-verified live); Phase 10 still ready to plan
 progress:
@@ -274,6 +274,7 @@ Recent decisions affecting current work:
 | 260806-f2 | (fast) expose Vite dev server (:5173) to the tailscale network via make dev | 2026-08-06 | 54d30b4 | — |
 | 260811-r5d | exclude topos-plugin-mockstrict from the picker catalog (kernel exclusion + e2e injection helper + docs correction) | 2026-08-11 | 160853a | [260811-r5d-exclude-topos-plugin-mockstrict-from-the](./quick/260811-r5d-exclude-topos-plugin-mockstrict-from-the/) |
 | 260811-rqc | header branding lockup: app icon + topos wordmark + tagline, top-right of header, muted (human-verified live) | 2026-08-11 | 55e133e | [260811-rqc-header-branding-app-icon-topos-wordmark-](./quick/260811-rqc-header-branding-app-icon-topos-wordmark-/) |
+| 11 | (fast) fix webspace page title: '{webspace} — topos' replaces pre-rename '— webspaces' (+ smoke e2e assertion) | 2026-08-11 | ce9f985 | — |
 
 ## Deferred Items
 
