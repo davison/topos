@@ -87,13 +87,15 @@ func TestDiscoverBinaries_MissingDirectoryReturnsEmptyNilError(t *testing.T) {
 // (web/e2e/fixtures/plugin-binaries.ts) populates its temp plugins
 // directory this way, and a naive os.DirEntry.Type().IsRegular() check
 // (which reflects an Lstat, never following the link) would silently
-// exclude it.
+// exclude it. The fixture name is deliberately a NON-excluded binary
+// (topos-plugin-silverbullet, not topos-plugin-mockstrict) so this test
+// proves symlink following rather than accidentally proving exclusion.
 func TestDiscoverBinaries_SymlinkedRegularFileIsDiscovered(t *testing.T) {
 	realDir := t.TempDir()
-	writeFixtureFile(t, realDir, "topos-plugin-mockstrict")
+	writeFixtureFile(t, realDir, "topos-plugin-silverbullet")
 
 	dir := t.TempDir()
-	if err := os.Symlink(filepath.Join(realDir, "topos-plugin-mockstrict"), filepath.Join(dir, "topos-plugin-mockstrict")); err != nil {
+	if err := os.Symlink(filepath.Join(realDir, "topos-plugin-silverbullet"), filepath.Join(dir, "topos-plugin-silverbullet")); err != nil {
 		t.Fatalf("symlink fixture: %v", err)
 	}
 
@@ -101,8 +103,8 @@ func TestDiscoverBinaries_SymlinkedRegularFileIsDiscovered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverBinaries: %v", err)
 	}
-	if len(got) != 1 || got[0] != "topos-plugin-mockstrict" {
-		t.Fatalf("expected exactly [\"topos-plugin-mockstrict\"], got %v", got)
+	if len(got) != 1 || got[0] != "topos-plugin-silverbullet" {
+		t.Fatalf("expected exactly [\"topos-plugin-silverbullet\"], got %v", got)
 	}
 }
 
@@ -146,6 +148,60 @@ func TestDiscoverBinaries_SymlinkToDirectoryIsExcluded(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected an empty slice (symlink-to-directory excluded), got %v", got)
+	}
+}
+
+// TestDiscoverBinaries_ExcludesMockstrictBinary proves the mockstrict
+// harness-fixture binary is never offered even though it is discovered by
+// the identical naming convention every real plugin uses — the sibling
+// of TestDiscoverBinaries_ExcludesMockBinary above.
+// plugins/mockstrict exists purely as browser-harness fixture
+// infrastructure (introduced by 07.1-02) and is never a real source.
+func TestDiscoverBinaries_ExcludesMockstrictBinary(t *testing.T) {
+	dir := t.TempDir()
+	writeFixtureFile(t, dir, "topos-plugin-mockstrict")
+	writeFixtureFile(t, dir, "topos-plugin-paperless")
+
+	got, err := DiscoverBinaries(dir)
+	if err != nil {
+		t.Fatalf("DiscoverBinaries: %v", err)
+	}
+	for _, name := range got {
+		if name == "topos-plugin-mockstrict" {
+			t.Fatalf("expected topos-plugin-mockstrict to be excluded, got %v", got)
+		}
+	}
+	if len(got) != 1 || got[0] != "topos-plugin-paperless" {
+		t.Fatalf("expected exactly [\"topos-plugin-paperless\"], got %v", got)
+	}
+}
+
+// TestDiscoverAllBinaries_IncludesMockstrictBinary proves the unfiltered
+// listing must still report topos-plugin-mockstrict alongside every other
+// real binary, sorted — this is the direct regression gate for the bug
+// 07.1-04 discovered live: a shared filtered result made
+// POST /api/config/describe-plugin 404 for an already-configured mock
+// instance, breaking the picker's one-step existing-instance add flow.
+// Widening ExcludedPluginBinaries is exactly the class of change that
+// re-breaks it, so this test must keep passing after mockstrict is added
+// to the exclusion table.
+func TestDiscoverAllBinaries_IncludesMockstrictBinary(t *testing.T) {
+	dir := t.TempDir()
+	writeFixtureFile(t, dir, "topos-plugin-mockstrict")
+	writeFixtureFile(t, dir, "topos-plugin-paperless")
+
+	got, err := DiscoverAllBinaries(dir)
+	if err != nil {
+		t.Fatalf("DiscoverAllBinaries: %v", err)
+	}
+	want := []string{"topos-plugin-mockstrict", "topos-plugin-paperless"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected sorted, unfiltered %v, got %v", want, got)
+		}
 	}
 }
 

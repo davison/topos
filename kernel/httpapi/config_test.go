@@ -797,10 +797,14 @@ func newPluginTypesTestRouter(pluginsDir string) http.Handler {
 // TestPluginTypesHandler_ReturnsSortedMockFreeList proves GET
 // /api/config/plugin-types surfaces exactly the discovered, non-excluded
 // binaries, sorted — the same guarantee kernel/pluginhost.DiscoverBinaries
-// itself pins, exercised here through the real HTTP route.
+// itself pins, exercised here through the real HTTP route. Both fixture
+// binaries excluded from the picker catalog (mock and mockstrict, the
+// browser-harness fixture plugin — quick task 260811-r5d) are written
+// alongside real plugin types to pin the guarantee at the HTTP boundary
+// the SPA actually consumes, not only at the package boundary.
 func TestPluginTypesHandler_ReturnsSortedMockFreeList(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"topos-plugin-silverbullet", "topos-plugin-mock", "topos-plugin-paperless"} {
+	for _, name := range []string{"topos-plugin-silverbullet", "topos-plugin-mock", "topos-plugin-mockstrict", "topos-plugin-paperless"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o755); err != nil {
 			t.Fatalf("write fixture %s: %v", name, err)
 		}

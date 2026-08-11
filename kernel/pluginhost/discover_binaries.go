@@ -26,8 +26,23 @@ const PluginBinaryPrefix = "topos-plugin-"
 // with no corresponding real data anywhere. It is still discoverable by
 // DiscoverBinaries' own return value filtering, not hidden from the
 // directory listing itself — only excluded from what the UI surfaces.
+//
+// "topos-plugin-mockstrict" (quick task 260811-r5d) is excluded for the
+// identical reason and joined the map after it reached a live operator's
+// picker: plugins/mockstrict exists purely as browser-harness fixture
+// infrastructure introduced by 07.1-02 and is never a real source. The
+// exposure path was that `make e2e` builds topos-plugin-mockstrict into
+// bin/plugins/ — the same directory `make build`/`make dev` populate and
+// a real `[plugins] dir` config value can point at — so any developer who
+// has ever run the harness has the binary sitting in their real plugin
+// directory, and DiscoverBinaries offered it exactly like a real plugin
+// type. As with mock, this is a catalog-listing policy only:
+// DiscoverAllBinaries below is deliberately untouched, so an
+// already-configured topos-plugin-mockstrict instance still describes,
+// syncs, renders and remains editable.
 var ExcludedPluginBinaries = map[string]bool{
-	"topos-plugin-mock": true,
+	"topos-plugin-mock":       true,
+	"topos-plugin-mockstrict": true,
 }
 
 // DiscoverBinaries lists pluginsDir for regular files whose name carries
