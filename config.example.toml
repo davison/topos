@@ -73,13 +73,29 @@ path = "~/.local/share/topos/index.db"
 
 [plugins]
 # dir: where the kernel looks for plugin binaries at startup. A relative
-# path is resolved relative to the running "webspaces" executable's own
+# path is resolved relative to the running "topos" executable's own
 # directory, not the current working directory — so "make build"'s
 # bin/topos and bin/plugins/ layout works regardless of where you run
 # the binary from.
 # Default: "plugins" if omitted.
 # Validation: none at config-load time; a missing binary for a configured
-# source fails at "webspaces sync"/"webspaces serve" startup, by name.
+# source fails at "topos sync"/"topos serve" startup, by name.
+#
+# Staleness warning if you override this to an ABSOLUTE path (e.g.
+# pointing at a different checkout's bin/plugins/ so you don't have to
+# rebuild in every worktree): `make dev`/`make build`'s plugin rebuild
+# only ever writes into THIS checkout's own bin/plugins/ — an absolute
+# `dir` elsewhere is never touched by that rebuild, so the kernel can
+# silently serve plugin binaries built from a DIFFERENT (possibly older)
+# commit than the one you're actually running. This is invisible for
+# most RPCs (Match/Health/Fetch keep working against whatever contract
+# that older binary implements) but shows up as a plugin-declared
+# feature quietly missing — e.g. every source chip falling back to the
+# generic Puzzle icon because an old binary's Describe response predates
+# the icon fields (09-02-PLAN.md). If you use an absolute dir here,
+# either point it at THIS checkout's own bin/plugins/, or re-run
+# `make plugins`/`make build` in whichever checkout it actually names
+# before expecting a plugin-side code change to take effect.
 dir = "plugins"
 
 [sync]

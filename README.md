@@ -156,7 +156,12 @@ does that.
 signal plugin, via `make plugins`) before starting the kernel, so a
 plugin source edit always takes effect — this is why `make dev` needs
 system sqlcipher, the same prerequisite `make signal`/`make build`
-already have.
+already have. This guarantee holds only for your config's default,
+relative `[plugins] dir` — if your `config.toml` overrides it to an
+**absolute** path (e.g. one pointing at a different checkout), that
+rebuild never touches the binaries the kernel actually loads, and a
+plugin-side code change (including a plugin's declared icon) can go
+silently stale. See `config.example.toml`'s `[plugins] dir` comment.
 
 It also refuses to start when `127.0.0.1:7777` is already in use,
 naming the process already holding it and that process's PID, and it
