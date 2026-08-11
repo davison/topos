@@ -88,22 +88,31 @@
 		unknown: 'bg-muted-foreground'
 	};
 
-	// Copywriting Contract (06-UI-SPEC.md): the four Phase 2 tooltip
-	// branches carried forward verbatim (D-04, no rewording), plus one new
-	// branch this phase adds — while `source.syncing` is true the tooltip
-	// reads "{display_name} — syncing…", checked before the four
-	// last-known-state branches since a source can be mid-sync regardless
-	// of its last recorded outcome. The old inline "Syncing…" text label
-	// (SourceHealthChip.svelte) is retired; the spinning refresh icon is
-	// now the sole in-place syncing indicator, kept compact at scale.
+	// Copywriting Contract (06-UI-SPEC.md, revised 09-UI-SPEC.md Fix 3): the
+	// four Phase 2 tooltip branches carried forward verbatim (D-04, no
+	// rewording), plus one new branch this phase adds — while
+	// `source.syncing` is true the tooltip reads "{display_name} —
+	// syncing…", checked before the four last-known-state branches since a
+	// source can be mid-sync regardless of its last recorded outcome. The
+	// old inline "Syncing…" text label (SourceHealthChip.svelte) is
+	// retired; the spinning refresh icon is now the sole in-place syncing
+	// indicator, kept compact at scale.
+	//
+	// Fix 3: `formatRelativeTime` (Intl.RelativeTimeFormat, numeric:
+	// 'auto') already returns a complete phrase — "5 minutes ago" for a
+	// numeric delta, but also "yesterday", "last week" and "now" for its
+	// special-cased deltas. The success/warning branches use `${relative}`
+	// verbatim with NO appended word — appending " ago" was wrong in every
+	// case, not just the numeric-delta ones ("synced yesterday ago" was a
+	// latent instance of the identical bug).
 	let tooltipText = $derived.by(() => {
 		if (source.syncing) return `${source.display_name} — syncing…`;
 		const relative = formatRelativeTime(source.last_sync_unix);
 		switch (tone) {
 			case 'success':
-				return `${source.display_name} — synced ${relative} ago`;
+				return `${source.display_name} — synced ${relative}`;
 			case 'warning':
-				return `${source.display_name} — last error ${relative} ago: ${source.last_error}`;
+				return `${source.display_name} — last error ${relative}: ${source.last_error}`;
 			case 'destructive':
 				return `${source.display_name} — unreachable since ${relative}`;
 			default:
