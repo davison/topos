@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 10
-current_phase_name: docs-and-release-readiness
-status: executing
+status: completed
 stopped_at: Phase 9.1 UI-SPEC approved
-last_updated: "2026-08-12T10:17:12.440Z"
+last_updated: "2026-08-12T13:07:10.578Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 09.1 complete, transitioned to Phase 10
 progress:
   total_phases: 12
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 92
-  completed_plans: 87
+  completed_plans: 92
+current_phase_name: docs-and-release-readiness
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 
 ## Current Position
 
-Phase: 10 (docs-and-release-readiness) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 10
-Last activity: 2026-08-12 — Phase 10 execution started
+Phase: 10
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-08-12 — Phase 10 complete
 
 Progress: [████████████████████] 83/83 plans (100%)
 
@@ -38,7 +38,7 @@ Progress: [████████████████████] 83/83 p
 
 **Velocity:**
 
-- Total plans completed: 87
+- Total plans completed: 92
 - Average duration: —
 - Total execution time: —
 
@@ -57,6 +57,7 @@ Progress: [████████████████████] 83/83 p
 | 08 | 15 | - | - |
 | 09 | 7 | - | - |
 | 09.1 | 4 | - | - |
+| 10 | 5 | - | - |
 
 **Recent Trend:**
 
@@ -258,6 +259,9 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- 🔴 [Phase 10, URGENT] UF-10-01 (10-SECURITY.md): `docs/ss/1.png` and `2.png` contain real personal data (operator's real name, real insurance policy document, real vendor email) — live on the PUBLIC repo (commit 0379bbb on origin/main, embedded in README landing page). Needs replacement screenshots with mock/redacted data PLUS history rewrite or blob purge; in-tree deletion alone is insufficient.
+- ⚠️ [Pre-existing, surfaced during Phase 10] Flaky CI: `kernel/httpapi` `TestExecLinkSpawner_StreamsLinesInOrderAndExitsClean` + `_KillTerminatesLongRunningSubprocess` fail intermittently on GitHub runners (subprocess yields no lines / kill doesn't terminate), pass locally. Route to `/gsd-debug "flaky ExecLinkSpawner tests in kernel/httpapi on CI"`.
+- ⚠️ [Phase 10, advisory] 10-REVIEW.md warnings open: web/README.md non-link references, duplicated release-asset lists across workflows, test-portable CGO_ENABLED scoping. Fix via `/gsd-code-review 10 --fix`.
 - ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix`.
 - ⚠️ [Phase 8, ongoing operational risk] WhatsApp linked-device route can still be de-linked or banned by Meta at any time; plugin degrades honestly (named health states, captured rows survive) but there is no recovery beyond re-linking.
 
@@ -287,6 +291,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-11T22:55:50.351Z
-Stopped at: Phase 9.1 UI-SPEC approved
-Resume file: /home/darren/projects/davison/topos/.planning/phases/09.1-1-0-release-ux-essentials-responsive-narrow-viewport-layout/09.1-UI-SPEC.md
+Last session: 2026-08-12
+Stopped at: Phase 10 complete — milestone v1.0 100% complete, ready for /gsd-complete-milestone (resolve UF-10-01 screenshot exposure first)
+Resume file: None

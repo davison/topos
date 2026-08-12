@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Webspace Builder UI** - Configure plugin instances and webspaces from the UI; saved searches become permanent webspace filters (completed 2026-08-09)
 - [x] **Phase 8: WhatsApp Conversations (Managed Risk)** - Linked-device WhatsApp history in the stream, degrading gracefully on de-link or ban (completed 2026-08-11)
 - [x] **Phase 9: UI Polish and Source Management Rework** - v1.0 polish backlog from TODO.md: small UI fixes, PDF previewer sizing, per-plugin icons, and the source/instance "+"-menu redesign (completed 2026-08-11)
-- [ ] **Phase 10: Docs and Release Readiness** - New-user README with screenshots, CONTRIBUTING.md split, SECURITY.md, and per-plugin docs from a shared template
+- [x] **Phase 10: Docs and Release Readiness** - New-user README with screenshots, CONTRIBUTING.md split, SECURITY.md, and per-plugin docs from a shared template (completed 2026-08-12)
 
 ## Phase Details
 
@@ -618,7 +618,7 @@ Plans:
   5. GitHub repo milestones stay in sync with .planning/ milestones — GSD has no native mechanism (verified against gsd-tools/workflows 2026-08-11), so the repo carries its own: milestones created/closed via `gh api` at milestone boundaries, with the process (or script) documented
   6. A GitHub Actions publishing workflow exists: nightly builds run only when code has changed since the last nightly, and releases attach the built kernel + plugin binaries as GitHub release artifacts
 
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 

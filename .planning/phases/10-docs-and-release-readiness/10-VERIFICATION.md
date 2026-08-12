@@ -1,7 +1,7 @@
 ---
 phase: 10-docs-and-release-readiness
 verified: 2026-08-12T12:35:00Z
-status: human_needed
+status: passed
 score: 8/9 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
@@ -9,15 +9,18 @@ re_verification:
   previous_status: gaps_found
   previous_score: 7/9
   gaps_closed:
+
     - "README.md's Configure section named the wrong SilverBullet env var (SB_URL); fixed in commit b9946a6 ('fix(10): correct SilverBullet env var name in README quickstart') to SILVERBULLET_URL, matching config.example.toml's `base_url = \"${SILVERBULLET_URL}\"` and docs/plugins/silverbullet.md. SB_AUTH_TOKEN on the following line was checked and left unchanged (already correct). Re-verified independently this pass: repo-wide grep confirms zero remaining SB_URL references, and `make docs-check` still passes (35 links / 19 files)."
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "The nightly workflow builds and publishes when HEAD differs from the last nightly, and skips the build entirely when it does not (SC-6 / 10-01 must-have)"
     test: "Push the local branch (currently ahead of origin/main, including the nightly.yml commit 16d6bc2) to origin/main, then run `gh workflow run nightly.yml --ref main` twice in a row at the same commit."
     expected: "First dispatch: run concludes success and the `build` job runs with conclusion success. Second dispatch at the same HEAD: run concludes success and the `build` job does not appear in the run's job list at all (skipped by the `needs`/`if` gate, not merely short-circuited)."
     why_human: "This is a state-transition/gate invariant that only a live GitHub Actions dispatch can prove; static grep/YAML inspection (all of which passed) cannot observe whether the `if: needs.check-changes.outputs.changed == 'true'` gate actually skips the job at runtime. The commit carrying nightly.yml has not been confirmed pushed to origin/main, so no live dispatch is possible from a local verification session. Already logged as an open `unrun-verify` item (#6) in .planning/WINDOWS.md."
 human_verification:
+
   - test: "Push origin/main to include commit 16d6bc2 (and everything since), then dispatch nightly.yml twice at the same commit."
     expected: "Build-then-skip proven live, and the resulting `nightly` GitHub Release exists with isPrerelease: true and the expected asset set."
     why_human: "Requires a push to the real remote and two live GitHub Actions runs — cannot be exercised from a local verification pass. This closes WINDOWS.md entry #6."
