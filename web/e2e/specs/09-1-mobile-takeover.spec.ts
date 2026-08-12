@@ -10,15 +10,27 @@ import { mockInstances, webspacesWithKeywords, type FixtureConfigSpec } from '..
 const WEBSPACE = 'mobile-takeover';
 const INSTANCE_DISPLAY_NAME = 'Mock 01';
 
-// TWO mock instances (eight fixed items total, every one tagged "demo" —
-// see plugins/mock/plugin.go's mockItems) — checkpoint fix (issue 2):
-// the header-auto-collapse feature reclaims real layout height when it
-// collapses, which a single instance's four items are no longer
-// guaranteed to overflow once that height is reclaimed (case 4's own
-// scroll-preservation assertion needs a genuine, persistent overflow to
-// prove anything). A webspace matching on the shared "demo" keyword
-// picks up all eight without an explicit per-instance match block.
-const sources = mockInstances(2);
+// FOUR mock instances (16 fixed items total, every one tagged "demo" — see
+// plugins/mock/plugin.go's mockItems) — checkpoint fix (issue 2): the
+// header-auto-collapse feature reclaims real layout height when it
+// collapses, which fewer items are no longer guaranteed to overflow once
+// that height is reclaimed (case 4's own scroll-preservation assertion
+// needs a genuine, persistent overflow to prove anything). A webspace
+// matching on the shared "demo" keyword picks up all sixteen without an
+// explicit per-instance match block.
+//
+// 09.1-03-PLAN.md deviation (Rule 3 — blocking, found live running this
+// file as this plan's own required regression check): bumped from TWO
+// instances (eight items) to FOUR (sixteen items) after 09.1-03 shipped
+// the compact 60px stream row below 768px (D-06). At 390x844 the original
+// eight items summed to 480px of content against a measured ~586px
+// scrollable area — no overflow at all, so case 4's own "the fixture
+// stream must be tall enough to scroll" guard failed outright (not a
+// flake — a real, reproducible zero). Desktop's unchanged 152px rows never
+// had this problem; only the max-md: 768px band did. Sixteen items (960px)
+// clears the measured area with comfortable margin, including once the
+// header-collapse feature (case 10) reclaims further height.
+const sources = mockInstances(4);
 const attachedIds = sources.map((s) => s.id);
 const configSpec: FixtureConfigSpec = {
 	sources,
