@@ -103,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-11 after Phase 9 completion (UAT 2/2 passed, all 7 plans executed, threats_open: 0)*
+*Last updated: 2026-08-12 after Phase 09.1 completion (responsive narrow-viewport layout + first-run config bootstrap; 4/4 plans executed, verification 44/44 passed, checkpoint approved on real-phone pass)*
