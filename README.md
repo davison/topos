@@ -107,7 +107,7 @@ environment, and a config file describing your webspaces.
    ```bash
    export PAPERLESS_URL="https://paperless.example.lan:8000"
    export PAPERLESS_TOKEN="<your paperless-ngx API token>"
-   export SB_URL="https://silverbullet.example.lan:3000"
+   export SILVERBULLET_URL="https://silverbullet.example.lan:3000"
    export SB_AUTH_TOKEN="<your SilverBullet auth token>"
    export PROTON_BRIDGE_ADDR="<lan-address:port of your Bridge forwarder>"
    export PROTON_BRIDGE_USER="<Bridge-generated username>"
