@@ -6,10 +6,16 @@
 // source text off disk instead, following the same pattern as
 // web/src/lib/components/date-format.test.ts.
 //
-// The invariant being guarded: the stream (list) pane must hold a fixed
-// width while the detail (reading) pane absorbs viewport width changes —
-// the inverse of the pre-fix layout, where the stream pane was flex-1 and
-// the detail pane was pinned at a fixed width.
+// The invariant being guarded is now THREE-BANDED (09.1-01-PLAN.md D-02,
+// widened by Task 3 per RESEARCH Pitfall 2 — the guard is updated as a
+// behaviour contract, not merely hoped to still pass):
+//   - below 768px: the stream pane stays invisible-but-full-width (its
+//     scroll box survives, D-01) while the detail pane becomes a
+//     full-viewport takeover (D-01/D-04);
+//   - 768-1024px: the stream pane holds a proportional clamped width and
+//     the detail pane sits beside it, sibling-flex, exactly as before;
+//   - 1024px and up: byte-identical to the pre-phase layout — the stream
+//     pane holds a fixed width and the detail pane absorbs the rest.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -104,6 +110,48 @@ describe('pane-layout source-scan guard', () => {
 		expect(
 			streamClass.includes('shrink-0'),
 			'the stream pane must carry shrink-0 alongside its fixed width so it never gets compressed by its flex sibling'
+		).toBe(true);
+	});
+});
+
+describe('pane-layout source-scan guard: three-band mobile takeover contract (D-02, 09.1-01-PLAN.md Task 3)', () => {
+	it('stream pane carries the 1024px-and-up fixed-width band, byte-identical to the pre-phase layout', () => {
+		const streamClass = findUniqueClassAttr('overflow-x-hidden');
+		expect(
+			streamClass.includes('lg:w-[480px]'),
+			'the stream pane must carry lg:w-[480px] — the 1024px-and-above band is today\'s exact fixed width, and a future edit that drops the lg: band must fail here'
+		).toBe(true);
+	});
+
+	it('stream pane carries a proportional (never fixed) 768-1024px mid-band', () => {
+		const streamClass = findUniqueClassAttr('overflow-x-hidden');
+		expect(
+			streamClass.includes('md:w-[clamp('),
+			'the stream pane must carry a md:w-[clamp(...)] mid-band — the 768-1024px band is proportional, never the fixed 480px'
+		).toBe(true);
+	});
+
+	it('stream pane keeps its scroll box alive below 768px via invisible, never hidden', () => {
+		const streamClass = findUniqueClassAttr('overflow-x-hidden');
+		expect(
+			streamClass.includes('max-md:invisible'),
+			'the stream pane must carry max-md:invisible below 768px so its DOM node — and therefore its scroll offset (D-01) — survives while the takeover conceals it'
+		).toBe(true);
+		expect(
+			streamClass.includes('max-md:hidden'),
+			'the stream pane must NOT carry max-md:hidden — a display toggle destroys the scroll box D-01 requires preserved (planner_resolutions R1)'
+		).toBe(false);
+	});
+
+	it('detail pane overlays the full viewport below 768px and reverts to sibling-flex above it', () => {
+		const detailClass = findUniqueClassAttr('border-l');
+		expect(
+			detailClass.includes('fixed inset-0'),
+			'the detail pane must carry fixed inset-0 — below 768px it is a full-viewport takeover (D-01/D-04), not a sibling flex pane'
+		).toBe(true);
+		expect(
+			detailClass.includes('md:static'),
+			'the detail pane must carry md:static — at 768px and above it reverts to sibling-flex behaviour identical to the pre-phase layout'
 		).toBe(true);
 	});
 });

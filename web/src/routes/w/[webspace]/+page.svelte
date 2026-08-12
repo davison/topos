@@ -702,7 +702,20 @@
 		// replaceState (not a new history entry) so toggling a chip
 		// repeatedly doesn't fill the back-button history; keepFocus/
 		// noScroll so selecting a chip never steals focus or scrolls.
-		goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
+		//
+		// state: page.state (09.1-01-PLAN.md backstop truth) — SvelteKit's
+		// goto defaults an omitted `state` option to `{}`, which would
+		// silently replace the current history entry's itemOpen flag with
+		// nothing and close the mobile takeover as a side effect of
+		// toggling a filter chip. Threading the CURRENT page.state through
+		// keeps replaceState a pure URL-query update, exactly as its own
+		// comment above already claims.
+		goto(`${url.pathname}${url.search}`, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true,
+			state: page.state
+		});
 	}
 
 	function toggleFilter(name: string) {
