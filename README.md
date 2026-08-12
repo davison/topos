@@ -45,29 +45,6 @@ shipped shape. What's coming next:
   regenerating `sdk/gen` from `proto/topos/v1/plugin.proto`; not
   needed for a normal build.
 
-## Repository layout
-
-```
-cmd/topos/          kernel binary entrypoint (serve, sync)
-kernel/             config, index (SQLite), correlate (sync-time matching), syncer, httpapi, pluginhost, webui (embed)
-internal/audit/     repo-wide dependency-floor audit test
-proto/topos/v1/     the published plugin contract (source of truth)
-sdk/                the plugin-author-facing Go module (handshake, interfaces, generated stubs)
-plugins/            source plugins: paperless, silverbullet, proton, signal (cgo), mock (the PLUG-05 reference)
-web/                the SvelteKit SPA
-scripts/            guard scripts (dev-guard, signal-readonly-smoke, built-stylesheet assertions)
-docs/               published contracts: plugin-contract.md, api.md, testing.md
-```
-
-This is a **Go workspace** (`go.work`) with seven modules: the root
-kernel module, `sdk`, and one module per plugin (paperless, silverbullet,
-proton, signal, mock). That's deliberate, not incidental — the Signal
-plugin needs `cgo` (it dynamically links the system SQLCipher), and
-keeping every plugin in its own module means that requirement stays
-scoped to the one plugin that needs it. Building the kernel (or any other
-plugin) never requires a C toolchain. Don't collapse these into one
-module later without re-checking that isolation still holds.
-
 ## Configure
 
 topos needs two things from you: your paperless-ngx credentials in the
@@ -139,75 +116,6 @@ authentication on its HTTP API in v1 — that's the whole security boundary
 for now. Binding it to a LAN interface is a deliberate decision this
 project has not made; the server logs a warning at startup if it detects a
 non-loopback bind, but does not refuse to start.
-
-## Development loop
-
-```bash
-make dev
-```
-
-Runs the kernel (`go run ./cmd/topos serve`) and the SvelteKit dev
-server together; Vite proxies `/api` requests to `127.0.0.1:7777`, so
-edits to either side hot-reload independently. The kernel binary built
-this way never embeds a built SPA — only `make build`'s production build
-does that.
-
-`make dev` rebuilds every plugin binary (including the cgo-enabled
-signal plugin, via `make plugins`) before starting the kernel, so a
-plugin source edit always takes effect — this is why `make dev` needs
-system sqlcipher, the same prerequisite `make signal`/`make build`
-already have. This guarantee holds only for your config's default,
-relative `[plugins] dir` — if your `config.toml` overrides it to an
-**absolute** path (e.g. one pointing at a different checkout), that
-rebuild never touches the binaries the kernel actually loads, and a
-plugin-side code change (including a plugin's declared icon) can go
-silently stale. See `config.example.toml`'s `[plugins] dir` comment.
-
-It also refuses to start when `127.0.0.1:7777` is already in use,
-naming the process already holding it and that process's PID, and it
-will not start the Vite dev server against a kernel it did not itself
-just start — this is the failure mode the guard exists to prevent: a
-working-looking UI silently proxying to a stale kernel running old
-code. A kernel that dies during startup for any other reason (compile
-error, config error, bind failure) produces the same loud, non-zero
-failure instead of a half-started stack.
-
-`DEV_PORT`, `DEV_HOST`, and `DEV_READY_TIMEOUT` can be overridden on
-the `make` command line (e.g. `make dev DEV_PORT=9999`) if your
-`[server] listen` config uses a non-default address — `DEV_PORT` must
-stay in step with `web/vite.config.ts`'s hardcoded proxy target if you
-change it.
-
-## Testing
-
-```bash
-make test               # go build + go test across all workspace modules
-make e2e                # build + hermetic Playwright suite (Chromium) — the pre-ship gate
-make dev-check           # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
-```
-
-`make test` needs no network access or live credentials — every committed
-test (including the PLUG-02/AGENT-02 contract tests in `sdk/`,
-`plugins/paperless/`, and `kernel/httpapi/`) runs against fixtures and a
-temp SQLite file. `make e2e` is the pre-ship gate: it builds the shipped
-SPA and kernel, then drives a real Chromium against a hermetic kernel
-instance seeded from mock-shaped plugin fixtures — no network access, no
-live source credentials, and no `.env` file are needed. It runs Chromium
-by default; Firefox and WebKit are available on request
-(`make e2e E2E_PROJECT=firefox`) but are never part of the automated
-gate. Live-source verification (against your actual paperless-ngx,
-SilverBullet, or Proton instance) is a manual UAT activity now, not an
-automated one. `make dev-check` is different again: like `make test`, it
-needs no network access and no live credentials — it proves `make dev`'s
-port-guard and readiness-gate behaviour hermetically, using ephemeral
-ports it selects itself, so it's safe to run even while a real kernel is
-up on `127.0.0.1:7777`.
-
-CI runs this same gate — `make test-portable`, svelte-check, vitest, and
-`make e2e` — on every push and pull request to `main`. See
-`docs/testing.md` for the fuller map: every gate, how to run a single
-spec, the harness architecture, and the standing rule that future UI work
-extends this suite.
 
 ## Where to look next
 
