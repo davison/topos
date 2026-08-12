@@ -52,6 +52,7 @@ jobs:
           for a in $ASSETS; do PUBLISH="$PUBLISH bin/$a"; done
           gh release create "$GITHUB_REF_NAME" $PUBLISH bin/checksums.txt \
             --title "$GITHUB_REF_NAME" \
+            --notes "Signal support is not shipped as a prebuilt binary here — it dynamically links the system SQLCipher library, so a binary built on this runner's Ubuntu is not guaranteed to run on your distro. Build it locally against your own SQLCipher via \`make signal\` (see plugins/signal/README.md)." \
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

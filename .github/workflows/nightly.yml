@@ -1,0 +1,91 @@
+# Builds and publishes a moving "nightly" prerelease when — and only when
+# — HEAD has moved since the last nightly build. A cron trigger fires on
+# a timer regardless of repository activity; cron alone is NOT "only when
+# code has changed" — the check-changes job below is the mechanism that
+# actually satisfies that requirement, by comparing HEAD against the
+# moving `nightly` git tag and skipping the build job entirely (not just
+# short-circuiting a step inside it) when nothing changed.
+#
+# workflow_dispatch is load-bearing, not a convenience: it is the only
+# way to exercise the change gate without waiting a day.
+#
+# Every step below invokes an official actions/* action only, pinned to
+# its current major version (matching ci.yml's own convention), plus the
+# runner-preinstalled `gh` CLI for release creation and asset upload. No
+# repository secret is referenced anywhere in this file — the only
+# credential is the automatic GITHUB_TOKEN, scoped to contents: write at
+# the job level and nothing else.
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        run: |
+          if git rev-parse nightly >/dev/null 2>&1; then
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse nightly)" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check-changes
+    if: needs.check-changes.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: make build-portable
+
+      # Force-moves the "nightly" tag to HEAD, deletes any existing
+      # "nightly" release, then creates a fresh one over the same
+      # single asset-list shell variable release.yml uses, plus
+      # checksums.txt. Deleting before creating rather than updating in
+      # place, per the plan's own instruction. topos-plugin-mock is
+      # deliberately absent — see release.yml's identical comment.
+      - name: Force-move nightly tag and publish
+        run: |
+          ASSETS="topos plugins/topos-plugin-paperless plugins/topos-plugin-silverbullet plugins/topos-plugin-proton plugins/topos-plugin-whatsapp"
+          (cd bin && sha256sum $ASSETS > checksums.txt)
+          PUBLISH=""
+          for a in $ASSETS; do PUBLISH="$PUBLISH bin/$a"; done
+
+          gh release delete nightly --yes --cleanup-tag || true
+          git tag -f nightly
+          git push -f origin nightly
+
+          gh release create nightly $PUBLISH bin/checksums.txt \
+            --title "Nightly ($(date -u +%Y-%m-%d))" \
+            --notes "Automated nightly build from $(git rev-parse --short HEAD). Signal support is not shipped as a prebuilt binary here — it dynamically links the system SQLCipher library, so a binary built on this runner's Ubuntu is not guaranteed to run on your distro. Build it locally against your own SQLCipher via \`make signal\` (see plugins/signal/README.md)." \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
