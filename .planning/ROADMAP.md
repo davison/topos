@@ -591,13 +591,13 @@ Plans:
 **Goal:** The app works on a phone and survives a fresh install. Below 768px, opening a stream item becomes a full-viewport detail takeover with a back control and a browser history entry (superseding this entry's "stacks below" wording, per 09.1-CONTEXT.md D-01), stream and search rows collapse to a 60px compact form, and every hover-gated header affordance gains a touch equivalent — with layout at 1024px and above byte-identical to today. A missing `config.toml` stops being fatal: the kernel writes a canonical default and boots into the already-shipped "No webspaces yet" greeting.
 **Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, 09.1-BOOTSTRAP, 09.1-TOUCH (no REQUIREMENTS.md REQ-ID maps to this inserted phase — see 09.1-RESEARCH.md `<phase_requirements>`; 09.1-CONTEXT.md decision IDs plus two phase-local handles are the traceability keys)
 **Depends on:** Phase 9
-**Plans:** 4 plans
+**Plans:** 2/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 09.1-01-PLAN.md — Tracer: mobile detail takeover end-to-end (pane composition, shallow-routing history entry, slim detail bar, mobile e2e)
-- [ ] 09.1-02-PLAN.md — First-run bootstrap: write a canonical default config when none exists, never overwriting a broken one
+- [x] 09.1-01-PLAN.md — Tracer: mobile detail takeover end-to-end (pane composition, shallow-routing history entry, slim detail bar, mobile e2e)
+- [x] 09.1-02-PLAN.md — First-run bootstrap: write a canonical default config when none exists, never overwriting a broken one
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
