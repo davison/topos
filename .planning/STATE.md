@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 10
-status: completed
-stopped_at: Phase 9.1 UI-SPEC approved
-last_updated: "2026-08-12T13:07:10.578Z"
+status: Awaiting next milestone
+stopped_at: Phase 10 complete — milestone v1.0 100% complete, ready for /gsd-complete-milestone (resolve UF-10-01 screenshot exposure first)
+last_updated: "2026-08-12T13:29:05.202Z"
 last_activity: 2026-08-12
 last_activity_desc: Phase 09.1 complete, transitioned to Phase 10
 progress:
@@ -13,6 +12,7 @@ progress:
   completed_phases: 12
   total_plans: 92
   completed_plans: 92
+current_phase: 10
 current_phase_name: docs-and-release-readiness
 ---
 
@@ -27,12 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-11)
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-12 — Phase 10 complete
-
-Progress: [████████████████████] 83/83 plans (100%)
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-12 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -288,10 +286,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| todo | signal-schema-version-verify-and-accept-tooling (minor, tooling) | pending | v1.0 close, 2026-08-12 |
 
 ## Session Continuity
 
 Last session: 2026-08-12
 Stopped at: Phase 10 complete — milestone v1.0 100% complete, ready for /gsd-complete-milestone (resolve UF-10-01 screenshot exposure first)
 Resume file: None
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

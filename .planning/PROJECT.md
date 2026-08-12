@@ -8,6 +8,20 @@ topos is a locally-run service that pulls together related information from disp
 
 Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
 
+## Current State
+
+**v1.0 MVP shipped 2026-08-12** — 12 phases (10 planned + 2 inserted), 92 plans, 187 tasks, 798 commits in 17 days (2026-07-27 → 2026-08-12).
+
+- All five sources live: paperless-ngx, SilverBullet, Proton/IMAP, Signal, WhatsApp — each a separate go-plugin subprocess behind the published `topos.v1` gRPC contract (contract generation "topos.v2")
+- ~42k LOC hand-written Go (kernel + 5 plugins + mock/mockstrict), ~25k LOC Svelte 5/TypeScript SPA, hermetic Playwright e2e suite (42 tests) gating CI alongside Go tests/svelte-check/vitest
+- Webspaces are built and edited entirely from the UI (hot-apply config writes); works on mobile widths; first run bootstraps a default config
+- Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
+- Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
+
+## Next Milestone Goals
+
+Not yet defined — run `/gsd-new-milestone`. Leading candidate direction: the plugin-ecosystem backlog (out-of-repo plugins, distribution, certification), now unblocked by Phase 5's contract stabilization.
+
 ## Requirements
 
 ### Validated
@@ -31,10 +45,18 @@ Open one webspace and instantly see and grok all related information across ever
 
 - ✓ WhatsApp plugin (SRC-03) — whatsmeow linked device with its own persistent message store (session + captured messages, both plugin-owned; source stores never touched), one-time QR link via terminal CLI *and* in-app QR panel (kernel link-session endpoint suspends the running instance so link mode gets the store lock), live group-subject/push-name sync (history sync alone carries neither — found by the plan's mandatory real-device spike), conversation-day digests matching group names and saved 1:1 contact names, five named health states that degrade honestly without ever emptying the stream (verified live: `401 logged out from another device`, captured rows survive), wa.me/web.whatsapp.com deep links (no `whatsapp://` handler exists on Linux), read-only + egress AST guards, hermetic Playwright coverage — Phase 8 (verified 5/5 after three gap-closure waves ending in G-08-5's supervisor lock split — a slow plugin relaunch can no longer freeze other sources' routes — confirmed by a human real-device re-link with a second source staying responsive throughout)
 
+- ✓ Webspaces defined in a config map matching each source's *native* categorization (IMAP folders/labels, chat group and contact names, paperless-ngx tags, SilverBullet tags/pages) — v1.0 (Phases 1–4 proved keyword matching; Phase 5 upgraded to per-instance typed match blocks with keywords as fallback; Phase 8 closed the last source)
+- ✓ Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item — v1.0 (built out across Phases 1–9.1, including mobile layout and first-run bootstrap)
+
 ### Active
 
-- [ ] Define webspaces in a config map: each webspace matches against the *native* categorization of each source (IMAP folders/labels, chat group names, paperless-ngx tags, SilverBullet tags/pages, directory names) *(Phases 1–4 proved keyword matching for all four shipped sources; Phase 5 upgraded the shape to per-instance typed match blocks with keywords as fallback; Phase 8 closed the last source — WhatsApp matches on group names and saved contact names)*
-- [ ] Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item *(Phases 3–4: email body preview, in-webspace search, and Signal chat-thread preview shipped; Phase 6 closed the 04-UAT follow-up; Phase 8 shipped WhatsApp digests + chat transcript through the Phase 4 renderer)*
+*(none — v1.0 shipped all 31 requirements; define the next milestone's requirements via `/gsd-new-milestone`)*
+
+Known candidates for v1.x:
+- Plugin ecosystem: out-of-repo plugins, pull-by-URL distribution, dev guide, certification (backlog Phase 999.1)
+- Flaky CI: `ExecLinkSpawner` subprocess tests intermittent on GitHub runners (route to `/gsd-debug`)
+- Advisory review items: 10-REVIEW.md warnings, 06-REVIEW.md WR-01 case-fold highlight offsets
+- Centralized rendition theming/sanitization follow-up (pending todo, majority landed in Phase 5's kernel boundary)
 
 ### Out of Scope
 
@@ -66,7 +88,7 @@ Open one webspace and instantly see and grok all related information across ever
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Build greenfield rather than extend Timelinize/Onyx/Dogsheep | None do identifier-correlated cross-source views; correlation is the core, not a bolt-on | — Pending |
+| Build greenfield rather than extend Timelinize/Onyx/Dogsheep | None do identifier-correlated cross-source views; correlation is the core, not a bolt-on | v1.0: ✓ Good — five sources correlated in 17 days; no adopted-codebase constraints fought |
 | Kernel + UI with per-source plugins | New sources addable later, including by third parties; mirrors proven connector architectures | Phase 1: shipped — go-plugin/gRPC contract documented and pinned by RPC-allowlist + read-only AST tests |
 | Config-mapped keyword correlation for v1; AI inference later | Deterministic, no false positives; magic can layer on top once the plumbing works | Phase 1: works — webspace keyword matched against paperless-ngx tags with per-item rejection on contract violations |
 | Hybrid data model (local metadata/preview index, live fetch on open) | Fast browsing and uniform search without full duplication or staleness of content | Phase 1: validated — instant metadata from index, live preview fill via plugin Fetch |
@@ -105,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-12 after Phase 10 completion (docs and release readiness; 5/5 plans executed, verification passed after one-word gap fix, UAT 1/1 passed with live nightly change-gate proof, security audit 27/27 threats closed — final phase of milestone v1.0)*
+*Last updated: 2026-08-12 after v1.0 milestone*
