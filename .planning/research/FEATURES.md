@@ -1,222 +1,211 @@
 # Feature Research
 
-**Domain:** Local-first, single-user, view-only personal data aggregation ("unified topic view" over email, chat, documents, notes)
-**Researched:** 2026-07-27
-**Confidence:** MEDIUM (web search only, no MCP research providers configured for this environment; findings cross-checked across 2+ independent sources per claim where possible — see Sources)
+**Domain:** Plugin trust UX, filesystem/cloud document sources, manual curation over automated rules, and PWA installability — for a local-first, single-user personal data aggregator (topos v1.1.0 "Plugin Ecosystem")
+**Researched:** 2026-08-12
+**Confidence:** MEDIUM (built-in WebSearch only — the project's `research-plan`/`classify-confidence`/`research-store` seam commands are not registered in this environment's installed `gsd-tools`, same gap noted in the v1.0 research cycle. Every claim below is cross-checked across 2+ independent sources where the topic allowed it; single-source claims are flagged inline.)
+
+**Scope note:** This file covers only the five NEW v1.1.0 features. topos's five source plugins, kernel+plugin architecture, hybrid data model, stream/detail UI, webspace builder, and agent permissions are already built (v1.0) and are explicitly out of scope for re-research — see `.planning/PROJECT.md`.
 
 ## Feature Landscape
 
-The closest comparable products fall into three families, none of which do exactly what Webspaces does:
+Four comparable-but-distinct ecosystems were surveyed, one per new feature area:
 
-- **Personal archive tools** (Timelinize, successor to mholt/timeliner): import everything into a local unified timeline, correlate people/places across sources via an "entity" model with multiple identifiers (email, phone, username), and expose Timeline/Map/Conversations/Gallery views. Closest analog to the identifier-correlation idea, but it **imports and owns a full copy of all content** rather than indexing metadata and fetching live.
-- **Personal data warehouse tools** (Dogsheep/Datasette): per-source `*-to-sqlite` importers dump each silo into its own SQLite table; `dogsheep-beta` layers one faceted full-text search index on top. No cross-source identifier correlation — it's "search everything," not "correlate by topic."
-- **Enterprise connector-search platforms** (Onyx/Danswer, and adjacent Khoj): 40+ connectors syncing metadata + content into a central index with incremental sync and access control, then a chat/RAG interface answers questions with citations back to source. Built for multi-user orgs; correlation is done implicitly by an LLM/embedding at query time, not by a deterministic per-topic keyword map.
-
-Webspaces' differentiator against all three: **deterministic, config-driven, per-topic correlation using each source's own native categorization** (IMAP folder/label, chat group name, paperless-ngx tag, SilverBullet tag), combined with a **hybrid index+live-fetch model** that avoids both the staleness/duplication of full-import tools and the "black box" feel of AI-inferred correlation.
+- **Plugin/extension trust UX** — VS Code Marketplace (publisher verification + first-install-from-third-party dialog), Obsidian community plugins (Restricted Mode + automated safety scorecard), Home Assistant HACS (default vs. custom repositories). All three converge on the same shape: a *binary* trusted/untrusted signal shown at install time, not a sandboxing mechanism — none of them actually contain what an installed extension/plugin can do once running.
+- **Folder-watching document sources** — sync-client literature (FreeFileSync, rsync, Dropbox-style clients) for rename/move detection patterns, applied to a *read-only, metadata-only* index rather than full bidirectional file sync (topos's problem is much narrower).
+- **Google Drive as a read-only source** — Drive API v3 official docs: `files.export` (Workspace-native docs have no raw bytes — must be exported), `changes.list`/`getStartPageToken` (incremental sync), `supportsAllDrives`/`includeItemsFromAllDrives` (Shared Drives are opt-in, not automatic).
+- **Manual override over automatic rules** — Gmail filters vs. Inbox "importance" overrides, iTunes/Plex smart playlists, Google Photos Memories manual hide. No single reference app documents a clean "exception list survives re-evaluation" pattern publicly, but the shape recurs informally (openHAB's "rule exception for manual override" community pattern is the closest explicit analog) and is corroborated by how Gmail explicitly warns users that its own logic can override filter-driven label placement — the anti-pattern topos must avoid.
+- **PWA installability for a localhost-served personal tool** — MDN/web.dev secure-context and installability docs. The single most consequential finding: **`localhost`/`127.0.0.1` is treated as a secure context, but a LAN IP address is not** — this directly constrains what "installable on mobile" can mean for topos as currently deployed (see Anti-Features and Dependencies below).
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist. Missing these = product feels incomplete.
+Features users assume exist. Missing these = product feels incomplete or unsafe.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Webspace config (keyword → native category map per source) | It's the entire mechanism of the product; without it there's no correlation, just a generic multi-source browser | MEDIUM | Config file or config UI; must map to each plugin's native taxonomy concept (folder, group, tag, directory) — this is inherently plugin-specific, not one generic field |
-| Cross-source chronological stream per webspace | Core Value in PROJECT.md is "open one webspace, see everything" — a feed is the minimum viable expression of that | MEDIUM | Needs a common sortable timestamp across heterogeneous item types (email date, message timestamp, doc created/modified, note last-edited) |
-| Per-source filter within the stream | Every unified-view product surveyed (Onyx, unified inbox tools) offers this; without it a busy webspace becomes noise | LOW | Filter chips/toggles over the already-indexed metadata; no new data needed |
-| Inline preview per content type | "See without leaving" is the whole value prop; a feed of bare titles with no preview forces users back into the source anyway | MEDIUM-HIGH | Each content type needs its own renderer: email body (sanitized HTML/plaintext), chat thread excerpt, note markdown render, document thumbnail/first-page. Highest per-plugin surface area item. |
-| "Open in source" deep link on every item | Explicit PROJECT.md requirement; also the safety valve that lets the product stay view-only — without it, view-only becomes a dead end | MEDIUM | Capability varies sharply by source — see Deep-Link Mechanics below. Must be treated as a per-plugin contract obligation, not a generic feature. |
-| Sync status / freshness indicator (last synced, per source) | Every reviewed connector platform (Onyx, DataHub-style sync UIs) surfaces this; users of a personal tool with flaky home-network sources (LAN bridge, desktop DB reads) will distrust results with no visible freshness signal | LOW-MEDIUM | Minimum: last-synced timestamp + idle/syncing/error state per plugin, non-blocking indicator, hover for exact time. See UI Pattern below. |
-| Plugin/connector list with health status | With 5 plugins from day one (IMAP, Signal, WhatsApp, paperless-ngx, SilverBullet), the user needs to see "what's connected and is it working" without reading logs | LOW-MEDIUM | Simple admin/settings screen: plugin name, enabled/disabled, last sync, last error. Does not need per-plugin credential UI if config stays file-based for v1. |
-| Read-only guarantee (no accidental mutation) | Explicit constraint in PROJECT.md ("Plugins must never mutate source data stores"); a single accidental write to the Signal/WhatsApp DB could corrupt the user's real chat history | MEDIUM (as a design discipline, not a UI feature) | Enforced at the plugin contract level (e.g., open source DBs read-only / copy-then-read for SQLCipher DBs) rather than in the UI |
-| Search within a webspace | Once a webspace has more than a handful of items, browse-only stops scaling; every comparable product (Dogsheep-beta, Onyx, unified inboxes) treats in-scope search as baseline | MEDIUM | Can run over the local metadata/preview index (titles, snippets, tags) without needing full-text of live content |
+| Trust warning shown at add-time for any non-trusted plugin | VS Code (since 1.97) shows a confirm-you-trust-this-publisher dialog on first install from a third-party publisher; Obsidian ships Restricted Mode ON by default specifically so a user has to make an affirmative "I trust this" decision before any community plugin runs | LOW-MEDIUM | topos's own `docs/plugin-contract.md` already states the intended policy in prose ("only run plugin binaries you built yourself or whose source you trust") — this feature is turning that existing prose warning into an enforced, user-facing UI gate at the point a plugin is added |
+| Persistent, visible trust marking (not just a one-time dialog) | VS Code's blue-checkmark publisher badge and HACS's default-vs-custom-repository distinction are both *always visible*, not one-time — a user revisiting the source list later still needs to see which sources are unverified | LOW | Extends the existing per-source chip/health-chip UI (v1.0) with a trust indicator; no new architecture, just a new badge state |
+| Trust determination based on build provenance, not self-declaration | VS Code's Marketplace signs every published extension and verifies the signature on install specifically so publisher identity can't be spoofed; a plugin that merely *claims* to be built from `davison/topos` is not evidence | MEDIUM | "Trusted" must be computed from something structural (e.g., checksum/signature against a manifest of official release builds, or binaries placed by the kernel's own build/release pipeline vs. binaries dropped into an external plugins directory by any other means) — this is the one piece of the trust feature that isn't "just UI" |
+| Filesystem plugin: common document file types recognized (markdown, plain text, PDF, common office formats) | Every folder-watching tool (Hazel, sync clients, Paperless-ngx's own consumption folder) filters by file type/extension rather than treating every byte in a directory as a document | LOW-MEDIUM | Extension/MIME-sniff allowlist, consistent with the existing plugin contract's declared `ContentShape` model (v1.0) — no new kernel concept needed, just a new plugin's classification logic |
+| Filesystem plugin: optional recursive subfolder scanning | PROJECT.md's stated target ("docs in a folder, optional subfolders") matches how every folder-watcher in the space works — flat-only is the surprising, unwanted default | LOW | Config-level toggle per source instance, same shape as existing per-instance config (KERN-06) |
+| Filesystem plugin: renames/moves don't orphan index rows or break "why is this here" provenance | Sync-client literature is unanimous that naive path-based re-scan treats a rename as delete+create, which for topos means a real item disappearing and reappearing as "new" with lost per-item state (see per-item include/exclude below) — this becomes a *correctness* bug once per-item marks exist, not just a UX nicety | MEDIUM-HIGH | Full content-hash rename detection (FreeFileSync's approach) is expensive at scale; topos's index is metadata-only so a cheaper identity (stable OS inode/file ID where the filesystem provides one, else path-as-identity with a documented "moving a file = the item is treated as new" limitation) is the pragmatic scope — flag as a design decision, not assume the expensive approach |
+| Google Drive plugin: folder-scoped, not whole-Drive | PROJECT.md's stated target mirrors the filesystem plugin ("docs-in-a-folder"); Drive API v3's `files.list` easily supports a `'<folderId>' in parents` scope query, so this is a query-shape decision, not a missing-capability problem | LOW | OAuth consent should request a scope no broader than necessary — see `drive.readonly` vs `drive.file` tradeoff in Dependencies |
+| Google Drive plugin: Workspace-native docs (Google Docs/Sheets/Slides) exported to a renderable format | These files have no raw byte content in Drive at all — `files.get`'s `alt=media` download only works for uploaded binary files; native Docs/Sheets/Slides *must* go through `files.export` to a target MIME type (PDF/plain text/DOCX/etc.) | MEDIUM | This is a hard API constraint, not a design choice — the plugin's `Fetch`/preview path needs a native-vs-uploaded branch. Export is also capped (10MB per Google's docs) which matters for large native docs |
+| Google Drive plugin: incremental sync via `changes.list`, not a full folder re-list every sync | Every Drive API integration guide treats `changes.list` + `getStartPageToken`/`pageToken` as the standard sync loop; polling `files.list` from scratch each time wastes quota and can't cheaply distinguish "still there" from "removed" | MEDIUM | Requires persisting a `pageToken` per source instance across syncs — new small piece of plugin-owned state, same shape as WhatsApp's plugin-owned session store (v1.0 precedent) |
+| Per-item include/exclude visible directly on stream rows | PROJECT.md names this "the final tier of the filter hierarchy" sitting below webspace keyword rules and per-instance match blocks — users expect the finest-grained control to be reachable at the point of the item itself, not buried in a settings screen, mirroring how email clients let you act on a message inline rather than only via a filter-editing screen | LOW-MEDIUM | UI-level addition to the existing stream row/detail pane; the hard part is the backend semantics below, not the affordance itself |
+| Manual exclude/include always wins over automatic match rules, deterministically and permanently until changed | This is the load-bearing requirement of the whole feature — every reference system with a curation-over-rules layer (Gmail's own docs on *not* letting Gmail's importance heuristic override a user's explicit filter, iTunes smart playlists allowing a manually-added track to persist even after it stops matching criteria) treats "explicit user action" as higher-precedence and durable, not a one-time nudge that gets silently reverted on the next automatic pass | MEDIUM-HIGH | Needs new persisted per-item state, keyed by a stable (source instance, source item ID) pair — not a DB row ID — so it survives full index rebuilds (the KERN-06 schema-version-gated rebuild precedent already exists and must be extended to preserve this new state across a rebuild) |
+| Manual marks visually distinguishable from automatic membership | "Why is this here" provenance already exists in topos v1.0 (surfaces the matched keyword/native field); a manually-included or manually-excluded item needs its own provenance state ("kept despite no match" / "excluded despite matching") so the existing trust-building UI pattern extends cleanly rather than becoming ambiguous | LOW | Reuses the existing provenance UI slot with a new value, not a new UI surface |
+| PWA: valid manifest + registered service worker so an install prompt/affordance appears | Baseline Chromium/Chrome-family install criteria (manifest with name/icons/display:standalone + HTTPS-or-localhost + registered SW) — without all three, no `beforeinstallprompt` fires and there's no "Install" affordance at all | LOW-MEDIUM | Piggybacks on the existing kernel static-asset-serving pattern (Phase 9's icon route precedent) |
+| PWA: app-shell caching so reload/launch is fast and doesn't flash-of-unstyled-content | Standard PWA installability expectation once a service worker exists at all — cache-first for the built SPA's JS/CSS/icons is the conventional minimum SW strategy | LOW | Cache the static SPA bundle only, not API data — see Anti-Features for why full offline data caching is explicitly wrong for this app |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set the product apart. Not required, but valuable.
+Features that set topos's plugin-ecosystem features apart. Not required, but valuable given the existing product's emphasis on deterministic, inspectable behavior.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Native-taxonomy keyword correlation (vs. full-text/semantic search) | Deterministic and explainable — "this item is in the webspace because it's tagged/foldered/grouped X," not "the AI thinks it's related." Zero false positives by construction. This is the one thing none of Timelinize/Dogsheep/Onyx/Khoj do. | MEDIUM | Requires each plugin to expose its native categorization primitive as a first-class, queryable field — a real constraint on the plugin contract, not just a UI nicety |
-| Hybrid local index + live fetch (no full content mirroring) | Avoids Timelinize/Dogsheep's tradeoff (own a stale, ever-growing copy of everything) and Onyx's tradeoff (full re-index pipeline, access-control sync) while still being fast to browse | HIGH | The index must carry enough metadata/preview to render the stream and preview pane without a live fetch, but defer full content to open-in-source or an on-demand live fetch; getting the "how much to cache" boundary right is the hardest design decision in the project |
-| "Why is this here" provenance on every item | Shows the exact matched keyword + native field (folder/tag/group name) that pulled the item into the webspace — turns the correlation model from implicit to inspectable, which builds trust that full-text/AI tools don't get for free | LOW-MEDIUM | Cheap once the correlation match is computed — just surface the match reason already known at index time |
-| Honest, source-appropriate deep-link fidelity | Rather than a single generic "open" button, each plugin declares what precision it can offer (exact document, exact page/message where possible, or best-effort "open the conversation, here's the timestamp to look for") — see Deep-Link Mechanics below | MEDIUM | Sets accurate user expectations instead of the false promise of parity that a generic "open in source" implies |
-| Cross-webspace search | Search across *all* configured webspaces at once, not just the one currently open — useful once a user has several active topics and isn't sure which webspace something landed in | MEDIUM | Depends on Search-within-a-webspace and a shared index across webspaces; natural v1.x extension, not required for MVP |
-| Documented, stable plugin contract for third-party plugins | Explicit PROJECT.md goal ("addable later, including by other people"); mirrors how Timelinize/Dogsheep/Onyx are all architected as kernel+connectors, validating the shape, but none of them publish a contract aimed at a *personal-tool* third-party audience the way this project intends | HIGH | The contract itself (sync interface, native-category exposure, deep-link builder, preview renderer registration) is a deliverable, not just internal plumbing |
+| Trust badge carries build provenance detail (which commit/release built this binary), not just a trusted/untrusted flag | VS Code and HACS both stop at a binary signal; topos's own architecture (release pipeline already produces attestable static binaries — v1.0 Phase 10 decision to keep every published artifact `CGO_ENABLED=0` and reproducible) makes a *richer* trust signal cheap to add later and consistent with the project's existing "inspectable, not magic" design philosophy (the same reasoning that drove native-taxonomy correlation over black-box matching in v1.0) | MEDIUM | Natural v1.x follow-on once the binary trusted/untrusted flag ships; don't build both at once |
+| Explicit UI distinction between "excluded by manual override" and "never matched any rule" | None of the surveyed reference apps (Photos Memories, smart playlists) surface this distinction cleanly — a manually-excluded item and a never-matched item look identical to the user in every system reviewed. Making the distinction visible directly serves topos's existing "why is this here" trust-building pattern | LOW | Cheap once the per-item state model exists (see Table Stakes) — this is a UI label choice, not new plumbing |
+| Bulk include/exclude ("exclude everything from this folder/sender/group") | One-by-one curation fatigue is a known failure mode wherever manual override exists without a bulk path (implicit in why smart-playlist/email-filter systems all eventually grow rule-editing UIs); topos already has the underlying match primitives (per-instance match blocks, KERN-07) that a "promote this exclusion to a rule" action could target | MEDIUM-HIGH | Explicitly defer past MVP — this blurs the boundary between the per-item tier and the match-block tier of the filter hierarchy and needs its own design pass, not a v1.1.0 add-on |
+| Same PWA install experience usable from a phone over the LAN, not just the desktop machine itself | Nothing in the surveyed PWA ecosystem treats "install a personal server's app from another device on the same network" as a solved, common case — most PWA guidance assumes a public HTTPS-hosted app. topos already crosses this boundary for the *browser* UI (v1.0 "works on mobile widths"); extending true installability to a LAN client is a differentiator specific to a local-first tool | HIGH | Blocked on a non-trivial dependency — see Dependencies and Anti-Features. Realistic v1.1.0 scope is desktop-only true installability; LAN/mobile installability needs local HTTPS (self-signed CA trusted on the phone, or a tool like `mkcert`/Tailscale-style overlay) which is a meaningfully bigger, separate piece of work |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems.
+Features that seem good but create problems given topos's existing architecture and constraints.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|------------------|-------------|
-| Write/reply/edit in any source (compose email, reply to chat, edit note) | "While I'm looking at it, let me just reply" is a natural UX pull once content is visible | Explicitly out of scope in PROJECT.md; also multiplies the plugin contract's surface area and risk (mutation of chat DBs is exactly what's forbidden) enormously for marginal convenience | Deep link into the real source app for any action beyond viewing |
-| AI/agent-inferred, semantic, or context-relative correlation in v1 | Khoj/Onyx both do this and it looks more "magic"; tempting to leapfrog the keyword map | Explicitly deferred in PROJECT.md; undermines the deterministic, no-false-positive value of v1, and couples a correctness-critical MVP to LLM behavior before the plumbing is proven | Ship the configured keyword map first; layer AI-assisted/context-relative search on top once matching, indexing, and deep-linking are solid |
-| Full content mirroring / permanent local copy of everything (Timelinize/Dogsheep style) | Feels safer ("my data, all in one place") and enables full-text search without live fetches | Directly conflicts with the chosen hybrid model; grows storage unboundedly, goes stale, and duplicates data that's already reachable live over LAN/local DB; for chat DBs in particular, re-copying full history is unnecessary risk for zero benefit | Metadata + preview in the local index; full content fetched live on open (already the chosen design) |
-| Multi-user support / access control / roles | Onyx's admin/curator/basic model looks like "table stakes" because it's the most visible enterprise product studied | This is a single-user personal tool per PROJECT.md; role/permission machinery is pure overhead with no user to serve | None needed — skip entirely |
-| Full chat-client UI parity (bubbles, reactions, read receipts, media grid) inside the preview pane | The chat data is right there in the DB, so "just render it properly" feels achievable | Re-implements Signal/WhatsApp's own UI, which PROJECT.md explicitly excludes ("replicating source-app features"); also chases a moving target as those apps evolve | Lightweight thread excerpt (last N messages, sender, timestamp) sufficient to identify the item; full fidelity stays in the real app via deep link |
-| A single generic "deep link" abstraction presented identically for every source | Simpler mental model, simpler UI component | Sources are not equally addressable — paperless-ngx and SilverBullet support exact-item deep links, chat apps (Signal/WhatsApp) only support opening a conversation, not jumping to one message (confirmed: `sgnl://` / `signal.me` and `wa.me` / `whatsapp://send` both open a chat with a contact, no message-level target exists) — presenting false parity misleads the user | Per-plugin-declared deep-link fidelity (exact item / exact-with-anchor / conversation-only-plus-manual-locate), rendered with a visibly different affordance where fidelity is lower |
-| Unify multiple accounts of the *same* content type (e.g., merge several email inboxes into one) | This is what commercial "unified inbox" products (Canary Mail, Mailbird) actually do, and it's easy to conflate with this project's goal | Solves a different problem (account consolidation) than topic/keyword correlation across *different* content types; not a stated need in PROJECT.md and would dilute the webspace concept | If multiple accounts per source type are ever needed, treat each as a separate plugin instance feeding the same webspace correlation, not a new feature |
+| Sandboxing/capability restriction for untrusted plugins (process isolation, syscall filtering, network allowlisting per plugin) | "Untrusted" naturally suggests "should be contained," and WASM-style sandboxing is the obvious-sounding fix | topos's v1.0 stack research already rejected Extism/WASM as the plugin mechanism specifically because two existing plugins (Signal's cgo/SQLCipher linkage, WhatsApp's long-lived stateful WebSocket) need capabilities WASM restricts; `hashicorp/go-plugin` is explicitly "a transport, not a sandbox" per `docs/plugin-contract.md`. Building real containment now would be a second, much larger architecture change disguised as a UX feature, and the existing docs already tell users installing a plugin binary is equivalent to installing the kernel itself — a v1.1.0 feature that pretends otherwise sends a false safety signal | Warning + persistent trust marking + (differentiator) build-provenance detail — an honest, VS-Code/Obsidian-shaped signal, not a technical guarantee that doesn't exist |
+| Content-hash-based rename/move detection across the whole watched tree (the FreeFileSync/rsync-delta approach) | "Detect renames properly" sounds like the correct, complete solution | Requires hashing every file's content on every sync pass (or maintaining a persistent hash database) purely to preserve identity for a *metadata-only preview index* — expensive for a feature whose downside (a moved file's item briefly looking "new") is cosmetic, not data-lossy, as long as the file's content itself is never duplicated into the index (already true per the v1.0 hybrid data model) | Cheaper identity: OS-provided stable file ID/inode where available, else path-as-identity with a documented limitation that a move outside the plugin's control is treated as remove+add |
+| Two-way sync / write-back to Google Drive or the filesystem (edit a doc from topos) | Natural extension once a source is "connected," and users of full sync clients expect bidirectionality | Directly contradicts an existing, explicit out-of-scope decision in PROJECT.md ("Write/edit functionality in any source — view-only by design") — this isn't a new anti-feature discovered in research, it's a restatement of a standing constraint that a Drive/filesystem source makes newly tempting to violate | Read-only fetch + "open in source" deep link (Drive: open the file's `webViewLink`; filesystem: open the OS file manager or default app at the path), same shape as every existing plugin |
+| Full offline data caching in the browser (IndexedDB mirror of the stream/search index) so the PWA "works offline" | "Offline-first" is the default mental model for PWAs, and service workers are strongly associated with offline data access | topos's backend *is* the local kernel process — there is no meaningful "offline" state distinct from "the kernel isn't running," and a browser-side data mirror would duplicate the kernel's own local index for zero benefit while adding real staleness/sync-conflict surface area topos's hybrid data model was specifically designed to avoid (v1.0 architecture decision: index is metadata/preview only, full content fetched live) | Service worker caches the static SPA shell (JS/CSS/icons) only, for fast reload; API calls stay network-first with no offline fallback — matches the "offline-first vs. local-first are not the same thing" distinction found in research |
+| A generalized plugin marketplace/registry (search, ratings, one-click install by name) | The natural end-state once "third-party plugins" exists, and VS Code Marketplace/HACS are the visible role models | Explicitly deferred in PROJECT.md's own scope note for this milestone ("distribution, dev guide, and certification deferred") — this milestone is load + trust marking only, for a single user manually placing binaries they already know about (their own Google Drive plugin, built to dogfood the mechanism) | Plugins directory + trust marking only; a registry is a plausible, separate future milestone once there's more than one real third-party plugin author |
+| PWA installable from a phone over the LAN in this milestone, treated as equivalent to desktop install | It's in the stated milestone target ("installs on desktop and mobile") and looks like a checkbox feature | Research finding: service workers (and therefore PWA installability) require a secure context, and **a LAN IP address does not qualify** — only `localhost`/`127.0.0.1` get a browser exception to the HTTPS requirement. A phone reaching the desktop kernel over the LAN is, by definition, not hitting `localhost`, so out-of-the-box mobile install will silently fail service-worker registration even with a perfect manifest | Scope "mobile" realistically: either (a) desktop-only true installability for v1.1.0 with mobile tracked as a differentiator needing local HTTPS, or (b) budget the local-HTTPS work (self-signed cert trusted on the phone, or equivalent) as part of this feature rather than discovering the gap during UAT |
 
 ## Feature Dependencies
 
 ```
-Webspace config (keyword -> native category map)
-    └──requires──> Plugin contract exposing native categorization per source
+[Untrusted plugin warning + persistent marking]
+    └──requires──> [Trust-determination mechanism]
+                       (checksum/signature against known-official builds,
+                        or origin-of-binary tracking — not self-declaration)
 
-Cross-source stream
-    └──requires──> Webspace config
-    └──requires──> At least one connected plugin
-    └──requires──> Hybrid local index (metadata + preview)
+[Google Drive plugin, built out-of-repo]
+    └──requires──> [External plugin loading feature]
+                       (the milestone's own stated purpose: Drive dogfoods
+                        the external-plugin path — build it against the
+                        already-published topos.v1 contract, no kernel change needed)
+    └──requires──> [OAuth read-only Drive scope decision]
+                       (drive.readonly vs. narrower drive.file — affects
+                        what consent screen the user sees and what folders
+                        are visible to the plugin)
 
-Inline preview per content type
-    └──requires──> Content-type-specific renderer per plugin
-    └──enhances──> Cross-source stream
+[Filesystem plugin: rename/move handling]
+    └──requires──> [Per-item include/exclude persistence]
+                       (a naive rename = delete+create would silently drop
+                        a user's manual mark on a moved file — the identity
+                        scheme chosen for renames directly determines
+                        whether per-item state survives a move)
 
-"Open in source" deep link
-    └──requires──> Plugin-declared deep-link builder (per-item, fidelity-aware)
-    └──conflicts with──> treating deep-link fidelity as uniform across sources
+[Per-item include/exclude]
+    └──requires──> [New kernel-owned persisted item state]
+                       (PROJECT.md already flags this as "the kernel's
+                        first user-owned data beyond config" — this is not
+                        a config-file change like KERN-06/07, it needs its
+                        own durable store keyed by (source instance, source
+                        item ID), independent of the index's DB row IDs so
+                        it survives the existing schema-version-gated
+                        index rebuild)
+    └──interacts-with──> [Per-instance match blocks (KERN-07) + webspace
+                           keyword fallback]
+                       (precedence must be defined: manual mark beats both
+                        automatic tiers, in both directions — include
+                        overrides a non-match, exclude overrides a match)
 
-Search within a webspace
-    └──requires──> Hybrid local index
-    └──enhances──> Cross-source stream (turns browse into browse+search)
+[PWA installability, full desktop+mobile scope]
+    └──requires──> [Local HTTPS for LAN access]
+                       (mobile install over LAN IP fails the secure-context
+                        check that desktop's localhost access passes for
+                        free — this is the one feature in this milestone
+                        with a hard, unavoidable platform-level dependency
+                        not solvable by application code alone)
 
-Cross-webspace search (v1.x/v2)
-    └──requires──> Search within a webspace
-    └──requires──> Shared index across all configured webspaces
-
-Sync status / freshness indicator
-    └──requires──> Plugin reports last-sync timestamp + error state to kernel
-
-Plugin/connector management UI
-    └──requires──> Plugin discovery/registration mechanism in kernel
-    └──enhances──> Sync status indicator (surfaces it per plugin)
-
-"Why is this here" provenance
-    └──requires──> Correlation match reason captured at index time (cheap add-on to Webspace config matching)
-
-AI/agent-inferred correlation (v2)
-    └──requires──> Webspace config + hybrid index + deep-link mechanics all proven in v1
-    └──conflicts with──> shipping deterministic keyword matching as the trusted v1 baseline
+[PWA app-shell caching] ──reuses──> [Existing static-asset-serving pattern]
+                       (same kernel route shape as the v1.0 plugin-icon
+                        MIME-allowlisted serving route)
 ```
 
 ### Dependency Notes
 
-- **Cross-source stream requires the hybrid local index, not just plugin connectivity:** browsing needs to be fast and uniform across heterogeneous sources (a LAN paperless call is not the same latency as a local Signal DB read); the index is what makes the stream feel like one product instead of five slow round-trips.
-- **Deep link requires a per-plugin fidelity-aware builder, not a generic URL field:** paperless-ngx and SilverBullet can target an exact item; IMAP can target an exact message only if the destination mail client supports a Message-ID URI scheme (inconsistent across clients); Signal/WhatsApp can only open the conversation. This must be modeled explicitly in the plugin contract (e.g., a `deepLinkFidelity: exact | anchored | conversation` field) so the UI can render an honest affordance rather than a broken promise.
-- **Sync status enhances trust but isn't required for the very first vertical slice:** a single-plugin walking skeleton can ship without it, but it becomes necessary the moment more than one plugin exists and any of them can silently fail (LAN bridge down, Signal DB locked, etc.) — which is true from the second MVP plugin onward.
-- **AI/agent-inferred correlation conflicts with the v1 trust model:** PROJECT.md is explicit that this is deferred; introducing it early would blur the "deterministic, explainable, no false positives" guarantee that's the actual differentiator of v1.
+- **Untrusted plugin warning requires a trust-determination mechanism:** a warning dialog is trivial UI; deciding *what makes a plugin trusted* is the real work, and it must be structural (build provenance) rather than a checkbox the plugin author ticks, or the whole feature is theater.
+- **Google Drive plugin requires the external plugin loading feature to exist first (or in lockstep):** this is explicit in PROJECT.md's own framing — Drive isn't just "another source," it's the mechanism's proof case. Sequencing them in the same phase, or Drive strictly after external loading, both work; Drive before external loading does not (there'd be nothing to dogfood).
+- **Filesystem rename/move handling requires per-item include/exclude to already have a durable identity scheme, or vice versa:** whichever ships first constrains the other's design. Recommend deciding the stable-identity approach (source instance + source item ID) once, and having both features consume it, rather than each inventing its own key.
+- **Per-item state must survive the existing index rebuild mechanism:** KERN-06 already established a precedent (schema-version-gated rebuild preserves index data across plugin/schema changes) — the new per-item store needs the same durability discipline or a rebuild silently wipes user curation.
+- **PWA's mobile-install ambition requires local HTTPS, which requires its own design decision** (self-signed CA the user trusts once on their phone vs. an overlay-network approach vs. scoping mobile out for this milestone) — this is the one dependency in this feature set that isn't solvable by application code alone and should be explicitly resolved during phase discussion, not discovered mid-build.
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v1.1.0)
 
-Minimum viable product — matches PROJECT.md's "Active" requirements almost exactly.
+Minimum viable slice of each of the five target features — matches PROJECT.md's stated scope exactly.
 
-- [ ] Webspace config map (keyword ↔ native categorization per source) — the mechanism itself
-- [ ] Kernel + plugin architecture with a documented contract — needed from day one since 5 plugins ship at once
-- [ ] Email (IMAP via Proton Bridge), Signal, WhatsApp, paperless-ngx, SilverBullet plugins — the user's actual silos
-- [ ] Hybrid data model (index metadata/preview locally, fetch full content live on open) — core architectural bet, must be validated early
-- [ ] Web UI: cross-source stream + detail pane, filterable by source, inline preview per content type, "open in source" deep link on every item — the smallest complete expression of Core Value
+- [ ] Untrusted plugin warning at add-time, with a structural (not self-declared) trust determination, and a persistent trust badge — no sandboxing
+- [ ] Filesystem plugin: single configured folder, optional recursive subfolders, common document types, path-as-identity rename handling (documented limitation accepted)
+- [ ] Google Drive plugin, built out-of-repo: single folder scope, OAuth read-only, Workspace-doc export to PDF/text, `changes.list` incremental sync — no Shared Drives
+- [ ] Per-item include/exclude: visible per-row action, persisted keyed by stable (source instance, source item ID), always wins over automatic match/keyword rules, visually distinguished from automatic membership
+- [ ] PWA installability: manifest + service worker + app-shell caching, true install on desktop (`localhost`); mobile/LAN install explicitly scoped as best-effort or deferred pending the local-HTTPS decision
 
 ### Add After Validation (v1.x)
 
-Features to add once core is working and the user has lived with it.
-
-- [ ] Search within a webspace — once webspaces have enough items that scrolling stops working
-- [ ] Sync status / freshness indicators per plugin — once more than one plugin exists and any can silently go stale (true almost immediately given 5 plugins)
-- [ ] Plugin management/health UI — once the user needs to diagnose "why isn't X showing up" without reading logs
-- [ ] "Why is this here" provenance display — cheap addition once correlation matching is stable
+- [ ] Trust badge carries build-provenance detail (commit/release, not just trusted/untrusted) — once the binary trust flag is proven useful
+- [ ] Bulk include/exclude actions — once single-item curation shows the one-by-one fatigue pattern in real use
+- [ ] Google Drive Shared Drives support (`supportsAllDrives`/`includeItemsFromAllDrives`) — once single-folder-in-My-Drive is validated
+- [ ] Mobile/LAN PWA install via local HTTPS — once the desktop-only install is shipped and the local-HTTPS approach is chosen deliberately, not rushed into this milestone
 
 ### Future Consideration (v2+)
 
-Features to defer until the deterministic v1 is proven.
-
-- [ ] Cross-webspace / global search — defer until multiple webspaces are in active daily use and "which webspace was that in" becomes a real friction point
-- [ ] AI/agent-inferred, context-relative correlation — explicitly deferred per PROJECT.md; layer on top of proven plumbing, not instead of it
-- [ ] Local filesystem / project-directory plugin — explicitly deferred per PROJECT.md
-- [ ] Additional third-party plugins via the published contract — depends on the contract itself being stable and documented, which is a v1 deliverable but the plugins built against it are naturally later
+- [ ] Plugin marketplace/registry (search, distribution, dev guide, certification) — explicitly deferred in PROJECT.md
+- [ ] Plugin sandboxing/process isolation — would require revisiting the `hashicorp/go-plugin` architecture decision itself, not a v1.1.0-scale change
+- [ ] OneDrive plugin — explicitly deferred in PROJECT.md
+- [ ] "Promote a manual exclusion to a rule" bulk-to-match-block escalation — genuinely new filter-hierarchy design work, not a curation feature
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Webspace config map | HIGH | MEDIUM | P1 |
-| Kernel + plugin contract | HIGH | HIGH | P1 |
-| Cross-source stream + detail pane | HIGH | MEDIUM | P1 |
-| Inline preview per content type | HIGH | HIGH | P1 |
-| Open-in-source deep link | HIGH | MEDIUM | P1 |
-| Hybrid index + live fetch | HIGH | HIGH | P1 |
-| Search within a webspace | MEDIUM-HIGH | MEDIUM | P2 |
-| Sync status / freshness indicator | MEDIUM | LOW-MEDIUM | P2 |
-| Plugin management/health UI | MEDIUM | LOW-MEDIUM | P2 |
-| "Why is this here" provenance | MEDIUM | LOW | P2 |
-| Cross-webspace search | MEDIUM | MEDIUM | P3 |
-| AI/agent-inferred correlation | HIGH (long-term) | HIGH | P3 |
-| Filesystem/project-directory plugin | MEDIUM | MEDIUM | P3 |
+| Untrusted plugin warning + trust marking | HIGH (safety-critical once external loading exists) | MEDIUM | P1 |
+| Filesystem plugin (folder + subfolders, common types) | HIGH (explicitly the MVP-deferred source) | MEDIUM | P1 |
+| Google Drive plugin, out-of-repo | HIGH (proves the external-plugin mechanism end to end) | MEDIUM-HIGH | P1 |
+| Per-item include/exclude | HIGH (closes the filter hierarchy; first user-owned data) | MEDIUM-HIGH | P1 |
+| PWA installability (desktop) | MEDIUM | LOW-MEDIUM | P1 |
+| PWA installability (mobile/LAN) | MEDIUM | HIGH (external HTTPS dependency) | P2 |
+| Trust provenance detail (commit/build info) | MEDIUM | MEDIUM | P2 |
+| Bulk include/exclude | MEDIUM | MEDIUM-HIGH | P2 |
+| Google Drive Shared Drives | LOW-MEDIUM | MEDIUM | P3 |
+| Plugin marketplace/registry | LOW (no third-party authors yet) | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for launch
-- P2: Should have, add when possible
-- P3: Nice to have, future consideration
+- P1: Must have for v1.1.0 launch (matches PROJECT.md's Active requirements)
+- P2: Should have, add when a v1.x window opens
+- P3: Nice to have, future consideration (v2+ / explicitly deferred)
 
-## Deep-Link Mechanics Per Source (feeds the "Open in Source" feature)
+## Competitor / Reference-System Feature Analysis
 
-| Source | Best available fidelity | Mechanism | Confidence |
-|--------|--------------------------|-----------|------------|
-| paperless-ngx | Exact document | `https://<host>/documents/<id>/details` — stable numeric DB primary key, safe to persist at index time | MEDIUM |
-| SilverBullet | Exact page (and header anchor) | App is served as a web app; a page is directly reachable at `http://<host>:<port>/<PageName>` (URL-encoded); internal `[[page#header]]` link syntax confirms header-level anchors are addressable | MEDIUM |
-| IMAP email | Exact message, client-dependent | Requires a client-specific URI scheme plus percent-encoded `Message-ID` (e.g. iOS Mail `message:<id>`); the message must already be present/downloaded in that specific client; no universal cross-client scheme exists, and Proton's own webmail deep-link format was not independently verified in this pass (flagged as a gap) | LOW-MEDIUM |
-| Signal | Conversation only, not a specific message | `sgnl://` URI scheme (desktop) or `signal.me/#p/<phone>` open a chat with a contact; no public message-level deep-link target exists | MEDIUM |
-| WhatsApp | Conversation only, not a specific message | `wa.me/<number>` / `whatsapp://send?phone=` open a chat with a contact (falls back to WhatsApp Web/download page if not logged in); no message-level deep-link target exists | MEDIUM |
-
-**Design implication:** the plugin contract should carry an explicit deep-link fidelity level per item (exact / anchored / conversation-only) so the UI can render a different, honest affordance for chat items ("open conversation — look for message at [timestamp]") versus document/note items ("open exact item"). Treating all five sources as equally deep-linkable would overpromise on two of the five MVP plugins.
-
-## Sync Status / Freshness UI Pattern (feeds the sync indicator feature)
-
-Cross-domain research (data connector platforms, ingestion tooling, sync UX guides) converges on the same shape, applicable directly to Webspaces:
-
-- Per-source (not just global) status: idle / syncing / error — with plugin identity visible (which of the 5 sources)
-- Last-synced timestamp: relative display ("5 min ago") with exact time on hover
-- Non-blocking, low-emphasis placement (small badge/icon in a toolbar or per-plugin row in a settings screen), not a modal or banner for the normal case
-- Errors are the exception to "low emphasis" — they need a visibly distinct state and a retry affordance, since a silently-failed plugin (e.g., LAN bridge unreachable, Signal DB locked by the desktop app) is indistinguishable from "nothing new happened" without one
-
-## Competitor Feature Analysis
-
-| Feature | Timelinize | Onyx/Danswer | Dogsheep | Khoj | Our Approach |
-|---------|--------------|--------------|----------|------|--------------|
-| Cross-source correlation | Entity model: links same person across sources by shared identifier (email/phone/username) | Implicit via LLM retrieval over all indexed content; no explicit identifier linking | None — separate tables per source, unified only by a shared search index | Implicit via semantic/vector similarity | Deterministic, explicit: configured keyword matched against each source's *native* categorization (folder/tag/group) |
-| Content storage | Full local copy of everything (owns the data permanently) | Indexes content + metadata centrally; access-control synced | Full local copy per source (SQLite exports) | Vector index of documents; some full-text | Hybrid: metadata + preview only in local index; full content fetched live on open |
-| Search scope | Search within the unified timeline | Unified conversational search/chat across all 40+ connectors | Faceted search across all imported sources (`dogsheep-beta`) | Semantic search + chat over knowledge base | v1: search within a webspace; v1.x/v2: cross-webspace search |
-| Deep link back to source | Not a primary design goal (data is imported, timeline *is* the source of truth) | Citations link back to originals for verification | Not a focus — data already exported/owned locally | Some source citation in chat answers | First-class, per-item, fidelity-aware "open in source" — core requirement, not an afterthought |
-| Multi-user / access control | No (personal tool) | Yes — roles (admin/curator/basic), access-control sync | No (personal tool) | Supports both personal and enterprise/cloud modes | No — explicitly single-user by design |
-| Write-back to source | No | No (search/chat product, not an editor) | No | Chat can act as an agent in some configs | No — explicitly view-only by design |
-| Plugin/connector extensibility | Built-in data sources, not documented for third parties in the same way | Documented connector framework, 40+ built-in | Individual `*-to-sqlite` tools, loosely coupled, community-extensible | Some integration surface (Obsidian plugin, REST/MCP) | Documented plugin contract, explicit goal of third-party extensibility |
+| Feature Area | Reference System A | Reference System B | topos's Approach |
+|---------------|---------------------|---------------------|-------------------|
+| Plugin trust signal | VS Code: blue-checkmark verified-publisher badge + first-install confirm dialog + Marketplace-signed package verification | Obsidian: Restricted Mode default-on + automated safety scorecard per plugin version | Binary trusted (built from `davison/topos`) / untrusted marking + add-time warning; no automated scanning (out of scope — no marketplace to scan against yet) |
+| Third-party repo handling | Home Assistant HACS: default (vetted) repositories vs. user-added custom repositories, both listed together with no special containment | — | Same shape: configured plugins directory holds both trusted and untrusted binaries, distinguished only by badge/warning, not by capability |
+| Folder source rename detection | FreeFileSync/rsync-delta: content-hash based, requires a persisted hash database, expensive but exact | Simple path-watchers (Hazel-style): path is identity, a move is a new event | topos: path-as-identity (Hazel-style) — matches the metadata-only index's tolerance for occasional "looks new" cosmetic drift, avoids the hash-database cost FreeFileSync accepts for full bidirectional sync correctness topos doesn't need |
+| Cloud doc export | Google Drive API `files.export`: server-side conversion to PDF/DOCX/etc., required for all native Workspace docs, ~10MB cap | — | Same mechanism, no alternative exists — this is a hard API constraint, not a design choice |
+| Manual override durability | Gmail: explicit "Don't override filters" setting fights the mail client's own importance heuristic reverting filter placement (an anti-pattern to avoid) | iTunes smart playlists: a manually-added non-matching track persists until explicitly removed | topos: manual include/exclude is unconditionally durable and always wins, matching iTunes's model rather than Gmail's overridable-by-the-system model |
+| PWA install scope | Standard web.dev/MDN guidance: HTTPS-or-localhost + manifest + SW = installable, no distinction made for "personal LAN server" apps | — | topos must explicitly design around the localhost-vs-LAN-IP secure-context gap that generic PWA guidance doesn't address, because its deployment model (desktop-hosted, LAN-reachable) is exactly the edge case that guidance glosses over |
 
 ## Sources
 
-- [Timelinize homepage](https://timelinize.com/) — entity model, views
-- [Timelinize GitHub](https://github.com/timelinize/timelinize)
-- [Timelinize data sources docs](https://timelinize.com/docs/data-sources/media)
-- [Dogsheep GitHub org / homepage](https://dogsheep.github.io/)
-- [Simon Willison — Personal Data Warehouses](https://simonwillison.net/2020/Nov/14/personal-data-warehouses/)
-- [Talk Python To Me — Personal search engine with datasette and dogsheep](https://talkpython.fm/episodes/show/299/personal-search-engine-with-datasette-and-dogsheep)
-- [Onyx documentation — RAG and Search](https://docs.onyx.app/overview/core_features/internal_search)
-- [Onyx GitHub](https://github.com/onyx-dot-app/onyx)
-- [Khoj — Obsidian plugin listing](https://community.obsidian.md/plugins/khoj)
-- [Khoj explained — HoangYell](https://hoangyell.com/khoj-explained/)
-- [Canary Mail unified inbox](https://canarymail.io/features/unified-inbox)
-- [NSHipster — Message-ID and Mail.app Deep Linking](https://nshipster.com/message-id/)
-- [paperless-ngx REST API docs](https://docs.paperless-ngx.com/api/)
-- [paperless-ngx GitHub discussion — Easily get and locate documents by ID](https://github.com/paperless-ngx/paperless-ngx/discussions/8555)
-- [SilverBullet — Link documentation](https://silverbullet.md/Link)
-- [SilverBullet — Tags, Links, and Backlinks (DeepWiki)](https://deepwiki.com/silverbulletmd/silverbullet/6.4-tags-links-and-backlinks)
-- [Signal's newish URI scheme](https://shkspr.mobi/blog/2023/02/signals-newish-uri-scheme/)
-- [signal.me URLs — Signal Wiki](https://signal.miraheze.org/wiki/Signal.me_URLs)
-- [AppsFlyer — WhatsApp deep links](https://www.appsflyer.com/blog/deep-linking/whatsapp-deep-link/)
-- [DataHub — Sync Status docs](https://docs.datahub.com/docs/sync-status)
-- [Fivetran — connectors sync overview](https://fivetran.com/docs/core-concepts/syncoverview)
-- Note: Proton Mail webmail's own deep-link URL format for a specific message was not independently verified in this research pass (search unavailable) — flagged as an open gap for phase-specific research if/when the email plugin needs to deep-link into Proton's own webmail rather than a generic IMAP client.
+- [Extension Marketplace — VS Code docs](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace) — MEDIUM (official docs, cross-checked)
+- [Security and Trust in Visual Studio Marketplace — Microsoft for Developers blog](https://developer.microsoft.com/blog/security-and-trust-in-visual-studio-marketplace/) — MEDIUM (official vendor blog)
+- [Extension runtime security — VS Code docs](https://code.visualstudio.com/docs/configure/extensions/extension-runtime-security) — MEDIUM (official docs)
+- [Plugin security — obsidianmd/obsidian-help](https://github.com/obsidianmd/obsidian-help/blob/master/en/Extending%20Obsidian/Plugin%20security.md) — MEDIUM (official docs repo)
+- [Community plugins — Obsidian Help](https://obsidian.md/help/community-plugins) — MEDIUM (official docs)
+- [HACS Custom Repositories FAQ](https://www.hacs.xyz/docs/faq/custom_repositories/) — MEDIUM (official project docs)
+- [Detection of moved and renamed files — FreeFileSync Forum](https://freefilesync.org/forum/viewtopic.php?t=1822) — LOW-MEDIUM (community forum, single source for the hash-database mechanism claim)
+- [Detecting File Moves & Renames with Rsync — Lincoln Loop](https://lincolnloop.com/blog/detecting-file-moves-renames-rsync/) — LOW-MEDIUM (independent blog, corroborates rename-detection cost tradeoff)
+- [Export MIME types for Google Workspace documents — Google for Developers](https://developers.google.com/workspace/drive/api/guides/ref-export-formats) — HIGH (official API docs)
+- [Method: files.export — Google Drive API v3 Reference](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/export) — HIGH (official API reference)
+- [Implement shared drive support — Google Drive API guide](https://developers.google.com/workspace/drive/api/guides/enable-shareddrives) — HIGH (official API docs)
+- [Retrieve changes — Google Drive API guide](https://developers.google.com/workspace/drive/api/guides/manage-changes) — HIGH (official API docs)
+- [Gmail Override Filters — SysTools blog](https://www.systoolsgroup.com/updates/override-filters-in-gmail/) — LOW-MEDIUM (third-party explainer, not official Google docs, but consistent with Gmail's own documented "Don't override filters" setting)
+- [Create rules to filter your emails — Gmail Help](https://support.google.com/mail/answer/6579?hl=en) — HIGH (official docs)
+- [Plex Smart Playlists community/forum discussion](https://forums.plex.tv/t/ability-to-edit-change-smart-playlists/588757) — LOW (forum, weak single-source corroboration for smart-playlist manual-override framing — treat the iTunes/Plex claim as MEDIUM-confidence pattern inference, not a directly documented feature)
+- [Remove a photo from a featured memory — Google Photos Community](https://support.google.com/photos/community-guide/283381301/remove-a-photo-from-a-featured-memory?hl=en) — MEDIUM (official Google support community guide)
+- [Rule exception for manual override? — openHAB Community](https://community.openhab.org/t/rule-exception-for-manual-override/37206) — LOW-MEDIUM (community forum, best available explicit analog for "exception list overrides automatic rule re-evaluation")
+- [Web app manifest installability requirements — Chrome for Developers / Lighthouse](https://developer.chrome.com/docs/lighthouse/pwa/installable-manifest) — HIGH (official vendor docs)
+- [Installation prompt — web.dev](https://web.dev/learn/pwa/installation-prompt) — HIGH (official Google web.dev docs)
+- [Making PWAs installable — MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) — HIGH (MDN)
+- [Secure contexts — MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts) — HIGH (MDN, source for the localhost-only secure-context exception finding)
+- [Local-First Architecture for Progressive Web Apps — OpenReplay blog](https://blog.openreplay.com/local-first-pwa-architecture/) — MEDIUM (independent technical blog, source for the offline-first vs. local-first distinction)
+- topos internal: `docs/plugin-contract.md` (existing published plugin contract — HIGH, primary source, already establishes "installing a plugin is the same trust decision as installing the kernel" and "go-plugin is a transport, not a sandbox")
+- topos internal: `.planning/PROJECT.md` (milestone scope, existing architecture decisions, explicit out-of-scope items) — HIGH, primary source
 
 ---
-*Feature research for: local-first personal cross-source data aggregation ("Webspaces")*
-*Researched: 2026-07-27*
+*Feature research for: topos v1.1.0 "Plugin Ecosystem"*
+*Researched: 2026-08-12*

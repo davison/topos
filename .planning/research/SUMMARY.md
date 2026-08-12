@@ -1,222 +1,172 @@
-# Webspaces Research Summary
+# Project Research Summary
 
-**Project:** Webspaces (Local-first personal cross-source data aggregation)
-**Domain:** Desktop kernel + plugin architecture for unified search/browse across email, chat, documents, notes
-**Researched:** 2026-07-27
-**Overall Confidence:** MEDIUM-HIGH
+**Project:** topos v1.1.0 "Plugin Ecosystem"  
+**Domain:** Local-first personal data aggregator with external plugin loading, filesystem/cloud sources, per-item curation, and PWA installability  
+**Researched:** 2026-08-12  
+**Confidence:** HIGH (all recommendations grounded in codebase analysis, official API docs, and this project's own architecture precedents)
 
 ## Executive Summary
 
-Webspaces is a well-scoped local-first desktop tool that aggregates heterogeneous personal data sources (email, Signal/WhatsApp, paperless-ngx, SilverBullet) into a deterministic, keyword-driven unified view. The research validates the kernel + plugin architecture as the right approach — three independently-maintained systems (Timelinize, Onyx, Home Assistant) converge on this pattern. **Go is the mandatory choice** for the kernel due to `whatsmeow` being the only mature WhatsApp library; all other stack decisions follow naturally from this anchor.
+Topos v1.1.0 extends the existing Go-kernel + gRPC-subprocess architecture to support external, untrusted plugins while adding three new sources (filesystem, Google Drive) and per-item manual override. The research confirms the approach is architecturally sound but carries real security and UX precision requirements that must be designed and tested carefully.
 
-The hybrid data model (metadata + preview cached locally, full content fetched live on open) is the project's core architectural bet and must be validated early — it trades speed/low-duplication against staleness windows that the UI and backend must handle explicitly. The plugin contract design is the single most critical piece: it must be source-agnostic from day one (sketched against ≥2 structurally different sources before writing code), since third-party extensibility is an explicit goal per PROJECT.md.
+**Core finding:** Trust marking must be kernel-derived from file provenance (which directory the binary was found in), never from anything the plugin declares about itself. A boolean "trusted/untrusted" flag is defensible for v1.1.0 only if paired with a content-hash re-verification at every launch to prevent TOCTOU attacks.
 
-**Primary risk:** WhatsApp is the highest-uncertainty plugin — there is no official personal-use API, the official Desktop app doesn't store readable history, and the reverse-engineered workaround (`whatsmeow` linked-device protocol) is subject to ban/de-link without warning. This must be scoped as a known-risk plugin from the start with graceful degradation, not a solved problem. Secondary risks (Signal DB schema churn, Proton Bridge cert/LAN exposure, IMAP read-only safety) are all well-understood and mitigatable with deliberate care.
+**Architectural finding:** Five required features share zero hard-sequencing constraints except: external-loading phase must complete before GDrive can be meaningfully dogfooded. Everything else can run in parallel. Filesystem plugin (in-repo, trusted) should validate the external mechanism before GDrive's larger scope begins.
+
+**Risk finding:** Per-item manual include of an unmatched item is architecturally impossible under the current plugin contract (no "browse unmatched items" RPC). Must be scoped as either "include only reverses prior exclude" or "commit to a new contract RPC." Currently unresolved; must be a hard design decision before Phase 2b starts.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Kernel:** Go 1.23+ is the hard constraint — `whatsmeow` (the only viable WhatsApp library) is Go-only. Go also provides: native cgo access for Signal's SQLCipher, mature IMAP client (`go-imap` v1, stable and battle-tested), first-class concurrency for N long-lived source connections, and single static-binary deployment.
+**No new language/framework additions — all v1.1.0 work is additive.**
 
-**Storage:** SQLite via `modernc.org/sqlite` (pure Go, no cgo for kernel) with FTS5 for cross-source search. This keeps the kernel's binary a single portable executable — reserve cgo for the Signal plugin only.
+Core dependencies:
+- **Google Drive API** (`google.golang.org/api/drive/v3@v0.292.0`): Official Google client
+- **OAuth2 loopback** (`golang.org/x/oauth2@v0.36.0`): Desktop installed-app flow
+- **Keyring storage** (`github.com/zalando/go-keyring@v0.2.8`): Secret Service (same as Signal precedent)
+- **Binary provenance** (`debug/buildinfo` stdlib): Reads VCS metadata from any binary
+- **PWA tooling** (`vite-plugin-pwa@1.3.0`, `@vite-pwa/sveltekit@1.1.0`): Generates SW via existing go:embed
+- **Filesystem watching** (`github.com/fsnotify/fsnotify@v1.10.1`): Local-mount accelerator only; mandatory `filepath.WalkDir` for network mounts
 
-**Web UI:** SvelteKit with `@sveltejs/adapter-static` (SPA mode) embedded via `go:embed`. Stream + detail-pane UX (independent scroll, live-updating feed, virtualized lists) is easier to build with client-side state.
-
-**Plugin Architecture:** `hashicorp/go-plugin` (gRPC-over-subprocess) — each plugin is a separate executable. Isolates failures, enables third-party plugins, mirrors Terraform/Vault/Nomad/Home Assistant patterns.
-
-**Core integrations:** Email via `go-imap` v1 (v2 still beta) + Proton Bridge; Signal via `mutecomm/go-sqlcipher/v4` (read-only) + D-Bus keyring; WhatsApp via `go.mau.fi/whatsmeow` (linked-device session); paperless-ngx and SilverBullet via thin REST clients.
+**What NOT to use:** goreleaser/cosign (premature for v1.1.0); fsnotify alone (broken on NFS/SMB); radovskyb/watcher (redundant).
 
 ### Expected Features
 
-**Launch with (v1):**
-- Webspace config (keyword → native category map per source)
-- Kernel + plugin architecture with documented contract
-- Five plugins (email, Signal, WhatsApp, paperless-ngx, SilverBullet)
-- Hybrid data model (index metadata/preview, fetch full content live)
-- Web UI: stream + detail pane, source filter, inline preview, deep links
+All five P1 (table stakes):
+- **Trust marking:** Warning + persistent badge + kernel-derived provenance + content-hash verification
+- **Filesystem plugin:** Subfolders, document types, polling + optional fsnotify
+- **Google Drive plugin:** Incremental sync, Workspace-doc export, OAuth refresh-token rotation
+- **Per-item marks:** Exclude/include toggle, survives rebuilds, always beats match rules
+- **PWA install:** Desktop/localhost true install; mobile/LAN requires user's own HTTPS
 
-**Add soon after (v1.x):**
-- Search within a webspace, sync status indicators, plugin health UI, provenance display
+**Out of scope:** Sandboxing, full offline caching, marketplace, write-back
 
-**Defer (v2+):**
-- Cross-webspace search, AI correlation, write/reply/edit capability
-
-**Critical constraint:** Deep-link fidelity varies by source — exact links for docs/notes, conversation-only for Signal/WhatsApp, inconsistent for IMAP. Plugin contract must declare fidelity per item.
+**Unresolved:** Include-of-unmatched-items scope (new RPC vs. un-exclude-only).
 
 ### Architecture Approach
 
-**Pattern:** Kernel mediates between config-driven correlation engine and process-isolated plugins. Kernel owns: (1) correlating items to webspaces (keyword config matched at sync time, persisted in index), (2) per-plugin sync scheduling (coordinator pattern from Home Assistant), (3) read-only HTTP API. Plugins never write index directly.
+**Trust:** Directory-tier provenance (`[plugins] dir` = trusted, `[plugins] external_dir` = untrusted) + content-hash re-verification at every launch
 
-**Data flow:**
-- Sync: Scheduler → Plugin.enumerate() → Correlation Engine → Index Store
-- Browse: UI → Kernel HTTP API → Index Store (fast, precomputed)
-- Open detail: UI → Kernel → Plugin.fetchFull() → source (expensive, on-demand)
+**Marks:** Separate `item_marks` table (no FK to items, exempt from rebuild-drop list) — survives both resyncs and schema rebuilds
 
-**Key patterns:**
-1. **Hybrid local index + live fetch:** Metadata/preview cached, full content live. Opposite of Timelinize (which duplicates everything).
-2. **Config-declared correlation at sync time:** Deterministic, no AI in v1. Avoids query-time bottleneck.
-3. **Coordinator per plugin:** Dedupes concurrent refreshes, single source of truth for health tracking.
+**Filesystem plugin:** In-repo trusted, fits Signal's local-path pattern. Stat-diff polling (load-bearing) + optional fsnotify acceleration for local paths.
 
-**Critical build order (dependency-driven):**
-1. Normalized Item schema + Index Store
-2. Plugin Contract + Plugin Host skeleton (proven with mock plugin)
-3. Webspace Config + Correlation Engine
-4. Sync Scheduler (full flow end-to-end)
-5. HTTP API + minimal UI
-6. First real plugin: paperless-ngx or SilverBullet (low-risk REST)
-7. Email (IMAP) plugin
-8. Signal plugin (highest-risk: undocumented local DB)
-9. WhatsApp plugin (same risk class as Signal)
-10. Detail pane + deep-link wiring
+**Google Drive:** Separate repository, dogfoods external-plugin contract. Needs `config.Source.Extra` map prerequisite for arbitrary config keys.
 
-This front-loads kernel/contract validation behind mock, so real plugin risk doesn't corrupt core validation.
+**PWA:** Pure web/ change; kernel adds one MIME-type line. Design decision: desktop-only vs. add kernel HTTPS for mobile LAN.
 
 ### Critical Pitfalls (Top 5)
 
-1. **WhatsApp file-reader misconception (P1):** Official Desktop app is a thin mirror, not a durable store. **Avoid:** Treat plugin as active linked-device client running `whatsmeow`, persisting its own event stream. Consequence: plugin must support long-running session lifecycle.
-
-2. **WhatsApp account ban / device de-link (P2):** Reverse-engineered protocol violates ToS; device de-linking or account suspension reported in community (no official stats). **Avoid:** Accept as managed risk; use well-maintained library (whatsmeow actively updated mid-2026); isolate plugin so ban degrades gracefully; avoid bulk backfill scraping.
-
-3. **Signal key extraction method changes (P3):** Since 2024, Signal wraps key via Electron's `safeStorage` (GNOME Keyring/KWallet on Linux). Outdated plaintext-key guides fail on current installs. **Avoid:** Detect active `safeStorageBackend` in config.json; branch extraction by keyring type; fail with specific error; test against user's actual OS/DE.
-
-4. **Signal DB schema churn (P4):** Schema changes substantially across app updates with no stability guarantee; parsers fail silently on unknown versions. **Avoid:** Read DB schema version before parsing; fail loudly on unknown versions; keep parsing isolated so branches are additive.
-
-5. **Unsafe concurrent DB access (P5):** Signal/WhatsApp hold databases open while running; writing or triggering checkpoint risks corruption. SQLite itself had WAL-reset corruption bug (3.7.0–3.51.2, fixed March 2026). **Avoid:** Open read-only (SQLite URI `mode=ro`); pin SQLite ≥3.51.3; never VACUUM/checkpoint; use SQLite backup API for copy-then-read.
+1. **TOCTOU without re-verification** — Hash-pin binary at trust-time; re-verify at every launch or swapped binary inherits stale trust
+2. **Sync-replace wipes marks** — Must be separate table joined at read-time, never touched by `ReplaceWebspaceSourceItems`
+3. **Include of unmatched item impossible** — Scope decision: "un-exclude only" (no contract change) or new Browse RPC (bigger scope)
+4. **Marks orphaned on rename/move** — Use immutable stable IDs (inode/Drive file ID); add orphan-detection sweep
+5. **ServiceWorker fails on LAN without HTTPS** — Secure-context requirement blocks mobile install on plain HTTP LAN IP; scope v1.1.0 to desktop only
 
 ## Implications for Roadmap
 
-### Suggested Phase Structure
+### Phase 1: External Plugin Loading + Trust Marking
 
-**Phase 1: Kernel Core + Schema + Plugin Architecture**
-- Normalized Item schema, Plugin Contract (`.proto` for third-party reference), Plugin Host, Webspace Config loader, Correlation Engine, Sync Scheduler, HTTP API skeleton
-- **Rationale:** Dependency-driven — everything follows. De-risks architecture before real plugin complexity.
-- **Pitfalls avoided:** P10 (plugin API over-fit to email) — sketch contract against ≥2 sources before writing code; P11 (scope creep) — enforce read-only structurally at contract level
-- **Research needed:** MINIMAL — patterns established (Timelinize, Home Assistant, Onyx)
+**Rationale:** Only hard dependency; blocks GDrive. Validates filesystem plugin mechanism.
 
-**Phase 2: Mock Plugin + Full Kernel Validation**
-- Mock/fixture plugin, minimal UI (stream only), full sync cycle, sync status indicators
-- **Rationale:** Prove kernel end-to-end before real plugins introduce complexity
-- **Pitfalls avoided:** P9 (staleness handling) — surface explicitly in UI; P8 (Seen-flag mutation) — will be per-plugin in Phase 4+
-- **Research needed:** MINIMAL — sync status patterns well-documented
+**Delivers:** `external_dir` config + discovery, content-hash verification at every launch, trust badge UI, `config.Source.Extra` map (prerequisite for GDrive), launch timeout on trial-launch, path canonicalization
 
-**Phase 3: First Real Plugin (paperless-ngx or SilverBullet)**
-- Low-risk REST API, validate live-fetch + deep-link mechanics
-- **Rationale:** Lowest-risk well-documented source before Signal/WhatsApp complexity
-- **Research needed:** LOW — both APIs well-documented; validate exact deep-link URLs
+**Avoids:** Pitfalls 1, 9, 11 (TOCTOU, timeout hang, path confusion)
 
-**Phase 4: Email (IMAP) Plugin**
-- Folder/label categorization, Proton Bridge integration, label de-duplication
-- **Rationale:** More complex than Phase 3, far safer than Signal/WhatsApp
-- **Pitfalls avoided:** P6 (Bridge LAN exposure) — tunnel or pinned cert required; P7 (label duplication) — dedup by Message-ID; P8 (Seen-flag mutation) — use BODY.PEEK, add automated test
-- **Research needed:** MEDIUM — Proton Bridge cert pinning in Go IMAP; Proton webmail deep-link format (not verified in original research); recommend 1-day spike
+**Research flags:** None — standard security code review
 
-**Phase 5: Signal Plugin**
-- SQLCipher read-only access, keyring backend extraction, schema-version detection
-- **Rationale:** Highest-risk plugin; benefits from earlier patterns; requires dedicated research
-- **Pitfalls avoided:** P3 (keyring churn) — detect backend and branch; P4 (schema churn) — check version, fail loudly; P5 (unsafe access) — explicit mode=ro, verify SQLite ≥3.51.3
-- **Research needed:** MEDIUM-HIGH — Require 2-3 day spike: DB schema + keyring backend, hands-on testing on user's Arch setup, sqlcipher version stability
+---
 
-**Phase 6: WhatsApp Plugin**
-- Whatsmeow linked-device session, graceful error handling for ban/de-link
-- **Rationale:** Highest-uncertainty; benefits from Signal patterns; explicit managed-risk plugin
-- **Pitfalls avoided:** P1 (file-reader misconception) — active linked-device, not file reader; P2 (ban/de-link) — documented risk, graceful degradation
-- **Research needed:** HIGH — **This is highest-risk area.** Require 3-5 day spike: whatsmeow linking stability, ban-risk patterns, message backfill behavior on first link, event-stream persistence architecture, de-link/re-link recovery. **Do not proceed without answers.**
+### Phase 2a, 2b, 2c: Parallel Independent Phases
 
-**Phase 7: Detail Pane + Cross-Source Renderers + Deep-Link Wiring**
-- Source-specific renderers, deep-link affordances, provenance display
-- **Rationale:** UI layer on top of proven plugins
-- **Research needed:** MINIMAL — pattern straightforward once plugins work
+**Phase 2a: Filesystem Plugin**
+- **Rationale:** Validates local-path pattern (like Signal); independent of external loading
+- **Delivers:** Folder watching (polling + optional fsnotify), subfolders, document types, stable-ID choice
+- **Research flags:** Medium — if fsnotify acceleration in-scope, needs integration test on actual NFS/SMB mounts
 
-**Phase 8: Search + Cross-Webspace Features (v1.x/v2)**
-- Full-text search within webspace, cross-webspace search
-- **Rationale:** Defer to v1.x — valuable once items accumulate
-- **Research needed:** MINIMAL — FTS5 patterns canonical
+**Phase 2b: Per-Item Marks**
+- **Rationale:** Fully independent; must resolve include-scope in spec step
+- **Delivers:** `item_marks` schema (rebuild-exempt), exclude/include endpoints, UI toggle, resync-survival test
+- **Research flags:** High — Pitfall 3 scope decision must precede schema work
+
+**Phase 2c: PWA Installability**
+- **Rationale:** Fully independent; low technical risk but scope decision needed
+- **Delivers:** Manifest, ServiceWorker, MIME-type registration, explicit design decision on mobile/LAN scope
+- **Research flags:** Medium — secure-context gap must be explicit design decision before implementation
+
+---
+
+### Phase 3: Google Drive Plugin
+
+**Rationale:** Hard-depends on Phase 1. **CRITICAL GATE:** External-loading phase must be validated end-to-end against at least one real out-of-repo binary (filesystem plugin is the validation vehicle) before GDrive's larger OAuth/API work begins.
+
+**Delivers:** Separate repo, OAuth loopback-redirect + zalando/go-keyring token rotation, Drive API (folder-scoped, incremental sync via changes.list, Workspace-doc export), credential-distribution model decision (shared client vs. bring-your-own)
+
+**Avoids:** Pitfalls 10, Integration Gotchas (export/mime-type, quota)
+
+**Research flags:** High — credential distribution (shared verification burden + 7-day testing-mode re-auth vs. bring-your-own setup friction) needs decision spike before phase plan
 
 ### Phase Ordering Rationale
 
-1. Kernel first (Phase 1): Every subsequent phase depends on stable contract
-2. Mock validation (Phase 2): Proves plumbing before external systems
-3. Low-risk REST plugin first (Phase 3): Validates patterns with well-documented API
-4. Email (Phase 4): Introduces IMAP complexity, far safer than Signal/WhatsApp
-5. Signal (Phase 5): Requires research; benefits from earlier patterns
-6. WhatsApp (Phase 6): Highest-uncertainty; requires dedicated spike
-7. UI polish (Phase 7): Layered on proven plugins
-8. Search (Phase 8): Natural v1.x extension
-
-This minimizes architectural thrash, isolates integration risk, builds confidence incrementally.
+- **Hard constraint:** Phase 1 → Phase 3 only
+- **Parallelizable:** 2a, 2b, 2c fully independent
+- **Checkpoint:** Phase 1 validated against filesystem-plugin binary before Phase 3 substantial work
+- **Why:** Avoids Pitfall 12 (circular dependency); filesystem proves external mechanism before GDrive complexity; marks scope explicit before schema; PWA scope explicit before implementation
 
 ### Research Flags
 
-**MUST HAVE spike phases before planning:**
-- **Phase 4 (Email/IMAP):** Proton Bridge networking (tunnel vs rebind, cert pinning in Go IMAP). Consider 1-day spike.
-- **Phase 5 (Signal):** Signal Desktop DB schema + keyring extraction. Dedicate 2-3 days including hands-on testing on user's Arch setup, schema-version detection, sqlcipher stability.
-- **Phase 6 (WhatsApp):** **HIGHEST-RISK AREA.** Require 3-5 day spike: whatsmeow linking stability/ban-risk, message backfill behavior, event-stream persistence, de-link recovery. **Do not proceed on assumptions.**
+**Phases needing research during `/gsd-plan-phase`:**
+- **Phase 1:** Medium — binary hash verification + security review
+- **Phase 2a:** Medium→High — network-mount integration testing if fsnotify acceleration in-scope
+- **Phase 2b:** High — Pitfall 3 scope decision (unmatched include = new RPC?)
+- **Phase 2c:** Medium — LAN/mobile secure-context decision must be explicit in phase plan
+- **Phase 3:** High — credential distribution model spike before phase plan
 
-**Standard patterns (skip research-phase):**
-- **Phase 1 (Kernel):** Plugin patterns established (Terraform, Home Assistant)
-- **Phase 2 (Mock):** Standard SPA/API patterns
-- **Phase 3 (First REST):** APIs well-documented
-- **Phase 7 (Detail Pane):** Standard web UI components
-- **Phase 8 (Search):** FTS5 patterns canonical
+**Standard patterns (skip research):**
+- Trust marking grounded in Signal precedent; security review sufficient
+- Schema pattern mirrors webspace_items exactly
+- PWA: standard vite-plugin-pwa integration
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| **Stack** | HIGH | Go hard constraint validated; SQLite established; go-imap v1 stable; plugin architecture mirrors proven systems |
-| **Features** | MEDIUM | MVP clear from PROJECT.md; competitive features validated; deep-link fidelity per source confirmed; user priorities may shift with prototyping |
-| **Architecture** | MEDIUM-HIGH | Kernel + coordinator pattern verified across three independent systems (HIGH); hybrid model validated (HIGH); plugin contract design (HIGH confidence in pattern, MEDIUM in exact interface shape) |
-| **Pitfalls** | MEDIUM-HIGH | Signal/Proton/IMAP pitfalls (HIGH — official docs); WhatsApp pitfalls (MEDIUM — community consensus, no official Meta data); performance traps (MEDIUM-HIGH — cross-checked) |
+| Stack | HIGH | Versions cross-checked against go.mod/package.json; no conflicts |
+| Features | HIGH | Drawn from PROJECT.md; reference systems (VS Code, HACS, Gmail) validate |
+| Architecture | HIGH | Grounded in direct codebase analysis (pluginhost, index, config, SDK) |
+| Pitfalls | HIGH | Either confirmed from repo patterns (trust, sync-replace, rebuilds) or well-documented upstream (fsnotify on NFS, secure-context requirement) |
 
-**Overall:** MEDIUM-HIGH. Architecture and stack validated; highest uncertainty is WhatsApp (spike needed before Phase 6) and Signal/Proton specifics (spike needed before Phase 4/5). Core patterns proven; execution risk localized to plugin integration.
+**Overall: HIGH** — No architectural blockers, no technology surprises. Primary risk is **design precision** (trust hash-pinning, mark scope, GDrive credential distribution, PWA LAN scope), not technology selection.
 
-### Gaps to Address
+## Gaps to Address
 
-1. **WhatsApp local store access — HIGH priority:** No official API. Spike must answer: (1) Can whatsmeow link without bans? (2) History backfill quantity? (3) Linked-device session architecture? (4) Recovery strategy? **Do not proceed to Phase 6 without answers.**
+Must be resolved during phase planning, not implementation:
 
-2. **Signal Desktop keyring backend — MEDIUM priority:** Keyring churn documented; must test against user's actual Arch setup. Spike should verify schema-version detection and extraction before Phase 5.
-
-3. **Proton Bridge networking — MEDIUM priority:** Go IMAP client cert-pinning mechanism. Spike should confirm tunnel or cert-pinning/firewall is feasible before Phase 4.
-
-4. **Exact deep-link formats — MINOR priority:** Paperless `/documents/<id>/details` vs `/documents/<id>`, Proton Mail webmail format (not verified). Confirm during Phase 3/4 planning.
-
-5. **Hybrid index staleness handling — MEDIUM priority:** Phase 2 should prototype explicit "unavailable at source" UI states so Phase 3+ can verify error path.
+1. **Per-item include scope** (Pitfall 3) — Phase 2b spec/discuss: "un-exclude only" vs. "pull unmatched items" (needs new Browse RPC)
+2. **Filesystem `source_id` choice** (Pitfall 4) — Phase 2a: inode-based vs. path-based identity (tradeoff: rename stability vs. mount-boundary breakage)
+3. **GDrive credential distribution** (Pitfall 10) — Phase 3: shared client (Google verification burden, 7-day testing re-auth) vs. bring-your-own (user setup friction, matches project's credential pattern)
+4. **PWA mobile scope** (Pitfall 7) — Phase 2c: desktop/localhost only (documented limitation) vs. add kernel HTTPS for mobile LAN install
+5. **Mark orphan handling** (Pitfall 5) — Phase 2b: cascade-delete on item removal (simpler, loses transient data) vs. persistent-orphans-with-sweep (preserves data through temporary unavailability)
 
 ## Sources
 
-### Primary (HIGH confidence)
-- GitHub: timelinize/timelinize, Timelinize Wiki — Architecture pattern, Item/Entity schema, data-source contract
-- GitHub: onyx-dot-app/onyx — Connector load/poll patterns, sync state machine
-- Home Assistant Developer Docs: DataUpdateCoordinator — Coordinator pattern
-- GitHub: hashicorp/go-plugin — gRPC plugin lifecycle (used by Terraform/Vault/Nomad)
-- pkg.go.dev: go.mau.fi/whatsmeow — WhatsApp library, 300+ imports, actively maintained
-- GitHub: emersion/go-imap v1 — IMAP client, production-proven, v2 beta confirmed
-- SQLite official docs: FTS5 — Full-text search pattern
-- Paperless-ngx official docs: REST API — API contract, endpoints
-- SilverBullet official docs: HTTP API — Page serving, link handling
+### Primary (HIGH)
+- `/home/darren/projects/davison/topos/.planning/PROJECT.md` — v1.1.0 scope
+- `/home/darren/projects/davison/topos/docs/plugin-contract.md` — published contract
+- Codebase: `kernel/pluginhost/`, `kernel/index/`, `kernel/config/`, `cmd/topos/main.go`, `sdk/`, `internal/audit/`
+- Official: Google Drive API v3 docs, OAuth 2.0 installed-app flow, MDN PWA/ServiceWorker/Secure-Contexts
 
-### Secondary (MEDIUM confidence)
-- GitHub: flathub/org.signal.Signal issues #753/#754 — Signal keyring backend migration
-- Migrating Signal Desktop keyring backend — Inane Observations blog — Keyring extraction behavior
-- Timelinize Wiki: Data Sources & Develop — Component boundaries, plugin contract
-- Proton: Labels in Bridge — Official label duplication documentation
-- SQLite: How To Corrupt Database File — Official WAL corruption warnings
-- GitHub: wacli — Linked-device architecture reference
+### Secondary (MEDIUM-HIGH)
+- pkg.go.dev: fsnotify, zalando/go-keyring, debug/buildinfo
+- LWN.net + fsnotify upstream: NFS/SMB/CIFS notification gaps (kernel-level limitation)
+- Google Cloud + community (Nango, Unipile, CData): 7-day testing-mode refresh-token expiry
 
-### Tertiary (LOW confidence)
-- Community blog posts on Proton Bridge LAN rebinding (multiple sources, unofficial)
-- WhatsApp ban statistics (Wapisimo blog) — Anecdotal, no official Meta data
-- Unified-inbox architecture comparisons (community forums)
+### Tertiary (MEDIUM)
+- Reference systems: VS Code Marketplace, Obsidian plugins, HACS, Gmail filters
 
 ---
 
-**Research completed:** 2026-07-27
-**Ready for roadmap planning:** Yes (pending spike phases for WhatsApp, Signal, Proton Bridge)
-
-**Next steps for roadmap:**
-1. Initiate spike/research phase for WhatsApp before Phase 6 planning (3-5 days)
-2. Initiate spike/research phase for Signal keyring/DB before Phase 5 planning (2-3 days)
-3. Initiate spike/research phase for Proton Bridge before Phase 4 planning (1 day)
-4. Use phase suggestions (1-8 above) as roadmap starting point
-5. Run `/gsd-plan-phase` for each suggested phase
+*Research completed: 2026-08-12*  
+*Synthesized by: gsd-research-synthesizer*  
+*Ready for roadmap: YES*

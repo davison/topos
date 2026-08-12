@@ -1,289 +1,694 @@
-# Architecture Research
+# Architecture Research: v1.1.0 "Plugin Ecosystem" Integration
 
-**Domain:** Local-first personal cross-source data aggregation ("kernel + plugin" correlation service)
-**Researched:** 2026-07-27
-**Confidence:** MEDIUM-HIGH (component-boundary patterns HIGH — cross-checked against three independent shipped systems; Webspaces-specific specifics like exact paperless-ngx UI routes are MEDIUM)
+**Domain:** Integration of 5 new features into topos's existing Go-kernel +
+gRPC-plugin + SvelteKit-SPA architecture
+**Researched:** 2026-08-12
+**Confidence:** HIGH (grounded directly in the current codebase — `kernel/pluginhost`,
+`kernel/httpapi`, `kernel/index`, `kernel/config`, `internal/audit`,
+`docs/plugin-contract.md`, `docs/api.md` — not external ecosystem survey)
 
-> Note on tooling: this run's `gsd-tools query research-plan` / `classify-confidence` seams were not available in the installed gsd-tools version (`Unknown command: research-plan`). Research proceeded via direct `WebSearch`/`WebFetch` against primary sources (project wikis, official docs, GitHub READMEs). Confidence tiers below are assigned manually using the same hierarchy: official docs/source = HIGH, secondary community writeups = MEDIUM, single unverified blog = LOW.
+This file answers one question only: **how do the five v1.1.0 features
+attach to the architecture that already exists**, file by file, table by
+table. It is deliberately not a greenfield "standard architecture for this
+domain" document — topos already has a standard architecture; this is the
+integration diff against it.
 
-## Standard Architecture
-
-### System Overview
-
-Three independent, actively-maintained systems converge on the *same* shape for "pull heterogeneous personal/enterprise data into one place, browse from a single UI, defer mutation to the source": **Timelinize** (personal timeline archive, Go, single-user desktop), **Onyx/Danswer** (enterprise connector-based search, Python, multi-tenant server), and **Home Assistant** (device/service integration hub, Python, single-node). Webspaces sits architecturally closest to Timelinize (single-user, local-first, deep-link-back) but should borrow Onyx's connector *state-machine* (load vs. poll) and Home Assistant's *coordinator* pattern for the sync scheduler.
+## System Overview
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│                              Web UI (client)                          │
-│   Webspace picker → Stream (cross-source feed) → Detail pane          │
-│   "open in source" deep link · filter by source/type · search box     │
-└───────────────────────────┬─────────────────────────────────────────--┘
-                             │ HTTP (JSON) — kernel's own API, not plugin APIs
-┌───────────────────────────▼───────────────────────────────────────────┐
-│                              KERNEL                                   │
-│  ┌─────────────┐ ┌────────────────┐ ┌──────────────┐ ┌─────────────┐  │
-│  │  Webspace   │ │  Correlation   │ │     Sync     │ │  HTTP API   │  │
-│  │  Config     │ │    Engine      │ │  Scheduler   │ │  (for UI)   │  │
-│  │  (keyword   │ │  (match items  │ │ (per-plugin  │ │  read-only, │  │
-│  │  map)       │ │  → webspace)   │ │ refresh loop)│ │  paginated  │  │
-│  └──────┬──────┘ └───────┬────────┘ └──────┬───────┘ └──────┬──────┘  │
-│         └────────────────┴──────────────────┴────────────────         │
-│                                  │                                     │
-│                         ┌────────▼─────────┐                          │
-│                         │   Plugin Host    │  ← loads/manages plugins │
-│                         │  (registry +     │    via the Plugin        │
-│                         │   lifecycle)     │    Contract (below)      │
-│                         └────────┬─────────┘                          │
-│                                  │                                     │
-│                         ┌────────▼─────────┐                          │
-│                         │   Index Store    │  ← normalized Item rows  │
-│                         │ (metadata+       │    + sync cursors +      │
-│                         │  preview only)   │    webspace assignments  │
-│                         └──────────────────┘                          │
-└───────────────────────────┬─────────────────────────────────────────--┘
-                             │ Plugin Contract (discover → enumerate →
-                             │  metadata → live-fetch → deep-link)
-      ┌──────────────┬───────────────┬───────────────┬────────────────┐
-      ▼              ▼               ▼               ▼                ▼
-┌──────────┐  ┌─────────────┐ ┌─────────────┐ ┌──────────────┐ ┌─────────────┐
-│  Email   │  │   Signal    │ │  WhatsApp   │  │ paperless-ngx│ │ SilverBullet│
-│  plugin  │  │   plugin    │ │   plugin    │  │   plugin     │ │   plugin    │
-│ (IMAP,   │  │ (read-only  │ │ (read-only  │  │ (REST API,  │ │ (HTTP API,  │
-│  live)   │  │ local SQL-  │ │ local store,│  │  live LAN)   │ │  live LAN)  │
-│          │  │ Cipher DB)  │ │ live local) │  │              │ │             │
-└────┬─────┘  └──────┬──────┘ └──────┬──────┘  └──────┬───────┘ └──────┬──────┘
-     │               │               │                │                │
-     ▼               ▼               ▼                ▼                ▼
-Proton Bridge   Signal Desktop  WhatsApp local  paperless-ngx     SilverBullet
-(IMAP, LAN)     DB (same host)  store (same     REST API (LAN)   HTTP API (LAN)
-                                host)
+│  SvelteKit SPA (web/src) — embedded via kernel/webui go:embed          │
+│  ┌────────────────┐  ┌───────────────────┐  ┌───────────────────────┐ │
+│  │ AddSourceModal  │  │ StreamItem row     │  │ NEW: manifest.json /  │ │
+│  │  + trust badge  │  │  + mark toggle     │  │  service-worker.js    │ │
+│  │  (NEW)          │  │  (NEW)             │  │  (NEW, PWA)           │ │
+│  └────────┬────────┘  └─────────┬──────────┘  └───────────┬───────────┘ │
+└───────────┼─────────────────────┼──────────────────────────┼───────────┘
+            │ PUT /api/config     │ PUT /api/webspaces/{ws}   │ served as
+            │ GET plugin-types    │  /items/{id}/mark (NEW)   │ static assets
+            ▼                     ▼                            ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│  kernel/httpapi                                                        │
+│  ┌───────────────┐ ┌────────────────┐ ┌───────────────────────────┐  │
+│  │ config.go      │ │ stream.go /     │ │ NEW: marks.go              │  │
+│  │  +trust field  │ │ search.go       │ │  PUT/DELETE mark handler   │  │
+│  │  in plugin-    │ │  +mark-aware    │ │                             │  │
+│  │  types resp.   │ │  query          │ │                             │  │
+│  └───────┬────────┘ └────────┬────────┘ └──────────────┬──────────────┘ │
+└──────────┼───────────────────┼──────────────────────────┼──────────────┘
+           │                   │                            │
+           ▼                   ▼                            ▼
+┌────────────────────┐ ┌──────────────────┐  ┌────────────────────────┐
+│ kernel/pluginhost    │ │ kernel/index       │  │ kernel/index            │
+│  discover_binaries.go│ │  Store.StreamItems │  │  NEW: item_marks table  │
+│  +external_dir scan  │ │  (query reshaped)  │  │  (exempt from D-07      │
+│  +trust-by-origin     │ │                    │  │  rebuild-drop)          │
+└──────────┬───────────┘ └────────────────────┘  └─────────────────────────┘
+           │ launches subprocess over go-plugin/gRPC (topos.v1 proto, handshake v2)
+           ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│  Plugin subprocesses (native binaries, full OS access — no sandbox)    │
+│  ┌───────────┐┌────────────┐┌─────────┐┌────────┐┌──────────────────┐ │
+│  │ paperless ││silverbullet││ proton  ││ signal ││ whatsapp          │ │
+│  │(in-repo,  ││(in-repo,   ││(in-repo)││(cgo,   ││(in-repo)          │ │
+│  │ trusted)  ││ trusted)   ││trusted) ││trusted)││trusted)           │ │
+│  └───────────┘└────────────┘└─────────┘└────────┘└──────────────────┘ │
+│  ┌────────────────────────┐   ┌──────────────────────────────────────┐│
+│  │ NEW: filesystem          │   │ NEW: gdrive (built OUT-OF-REPO,       ││
+│  │ (in-repo, trusted,       │   │ separate git repo/module, imports     ││
+│  │  local-path source like  │   │ github.com/davison/topos/sdk,         ││
+│  │  plugins/signal)         │   │ dropped in external_dir → untrusted)  ││
+│  └────────────────────────┘   └──────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Responsibilities
+Every box labeled `NEW` is additive. Nothing in the existing RPC surface
+(`Describe`/`Match`/`Fetch`/`Health`), handshake, or `topos.v1` proto
+package changes — this milestone does not need a `topos.v3` contract
+generation. That is itself a load-bearing finding: it constrains *how*
+external loading and the filesystem/GDrive plugins can be built (they must
+work within the current `ProtocolVersion: 2` / `contract_version:
+"topos.v2"` contract, not extend it).
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| Webspace Config | Declarative map: webspace name → keyword → per-source native-category match rule (IMAP folder/label, chat group name, paperless-ngx tag, SilverBullet tag/page) | Single config file (YAML/TOML/JSON) hot-reloadable; validated against plugin-declared capabilities at load time |
-| Plugin Host | Discovers, registers, and manages plugin lifecycle (init with credentials, health check, teardown); enforces the Plugin Contract; isolates plugin failures | In-process registry keyed by plugin ID (Go/Node: interface implementations; if out-of-process, gRPC/JSON-RPC over stdio or Unix socket per plugin, à la Terraform/Home Assistant custom-component model) |
-| Sync Scheduler | Drives each plugin's enumerate step on an interval or manual trigger; tracks last-synced cursor per (plugin, webspace); backs off on error | Per-plugin async job/coroutine; analogous to HA's `DataUpdateCoordinator` (one coordinated poll shared by consumers) and Onyx's poll/load connector jobs |
-| Correlation Engine | Applies the webspace's keyword rule against each plugin's enumerated items; assigns matched items to the webspace; is the *only* place cross-source logic lives (v1: deterministic, no ranking/AI) | Pure function per (webspace, plugin, item-metadata) → boolean/webspace-id; runs at sync time, not query time, so the index already has webspace assignment persisted |
-| Index Store | Persists normalized `Item` rows (metadata + preview, not full content), sync cursors/state, webspace assignments | Single embedded DB (SQLite is the natural choice here — matches Timelinize's own choice for the same problem shape: local-first, single-writer, easy backup) |
-| HTTP API | Read-only, paginated API the Web UI consumes; never talks to plugin/source APIs directly — always goes through the kernel | REST or simple RPC; endpoints: list webspaces, stream items for a webspace (cursor-paginated, filterable by source/type/date), fetch single item detail (triggers live-fetch), trigger manual sync |
-| Web UI | Webspace picker, chronological cross-source stream, detail pane with inline preview, source filter, "open in source" deep link | SPA or server-rendered; talks only to kernel's HTTP API |
-| Plugins (one per source) | Implement the Plugin Contract: discover identifiers, enumerate items matching a keyword rule, return metadata/preview, live-fetch full content, produce a deep link | One package/module per source; some wrap a live remote API (email/paperless-ngx/SilverBullet), others read a local file/DB directly (Signal/WhatsApp) — see Plugin Contract below for why this distinction matters |
+## (a) Where trust marking lives — and why self-declared trust is a non-starter
 
-## Recommended Project Structure
+**The kernel is the only party that can assert trust, and it can only
+assert it from something structural, not from anything a plugin process
+says about itself.** This mirrors the existing discipline verbatim: `desc
+:= impl.Describe(...)` already documents "a plugin's identity is never
+trusted from its filename or its config key, only from what `Describe`
+reports" — but `Describe` itself is *plugin-authored output*. A malicious
+or just poorly-written external plugin can set `source_type: "paperless"`
+and `display_name: "paperless-ngx"` in its own `Describe` response with
+zero code changes to the kernel needed to make that lie succeed. Trust
+cannot be a `Describe` field for the same reason identity isn't allowed to
+be a caller-supplied field anywhere else in this contract.
 
-```
-webspaces/
-├── kernel/
-│   ├── config/                # webspace config loader + schema validation
-│   │   └── webspaces.yaml
-│   ├── correlate/              # correlation engine (pure matching logic)
-│   ├── sync/                   # scheduler, per-plugin job runner, backoff
-│   ├── store/                  # index store: schema, migrations, queries
-│   │   └── migrations/
-│   ├── plugins/                # plugin host: registry, contract types, lifecycle
-│   │   └── contract.go|.ts     # the interface every plugin implements
-│   └── api/                    # HTTP API for the UI (read-only, paginated)
-├── plugins/
-│   ├── email-imap/
-│   ├── signal/
-│   ├── whatsapp/
-│   ├── paperless-ngx/
-│   └── silverbullet/
-├── ui/
-│   ├── stream/                 # cross-source chronological feed
-│   ├── detail/                 # per-item detail pane, source-specific renderers
-│   └── webspace-picker/
-└── docs/
-    └── PLUGIN-CONTRACT.md      # the stable, documented contract (per constraint: third-party pluggability)
-```
+**Recommended mechanism: directory-tier provenance, computed at discovery
+time, never persisted as editable state.**
 
-### Structure Rationale
+- `[plugins] dir` (existing key, default `"plugins"`) keeps its current
+  meaning: the directory `make plugins`/`make build`/the release pipeline
+  populates with binaries built from this repository's own source tree.
+  Everything discovered here is **trusted**.
+- Add `[plugins] external_dir` (new key, e.g. default
+  `"~/.local/share/topos/external-plugins"`, empty/absent = feature
+  disabled — an operator who never sets this key sees no behavior change
+  at all). Everything discovered here is **untrusted**, unconditionally,
+  regardless of binary name — an external binary literally named
+  `topos-plugin-paperless` is still untrusted, because the trust signal is
+  "which directory did the kernel find this in," never the name.
+- `kernel/pluginhost/discover_binaries.go`'s `DiscoverAllBinaries` becomes
+  two calls (one per directory) whose results are tagged with an origin
+  enum (`OriginBundled` / `OriginExternal`) rather than merged into one
+  flat list. `DiscoverBinaries` (the UI-policy view already documented as
+  distinct from `DiscoverAllBinaries`'s security-relevant view) inherits
+  the same split.
+- Trust is **not** written into `config.toml`. If it were a `config.Source`
+  field (e.g. `trusted = true`), a hand-edit of the file — which the
+  project's own config philosophy explicitly supports as a first-class
+  path, not a UI-only one — could silently flip an untrusted plugin to
+  trusted with no warning ever shown again. Keeping trust as a live,
+  recomputed-at-launch fact (which directory does `src.Plugin` currently
+  resolve from) means the warning is honest every single time a plugin
+  from `external_dir` launches, including after a config hand-edit,
+  a `Reconcile` hot-apply, and a kernel restart — there is no persisted
+  "I already accepted this" flag to go stale or be copied between
+  machines.
+- `pluginhost.Plugin` gains an `Origin` field (parallel to the existing
+  `sourceType`/`pluginName`/`iconBytes` shape) set once at `launch()` from
+  which directory `binPath` resolved under, surfaced by `Host.Plugins()`/
+  `ProbeSources()` exactly like `Icon()` is today.
 
-- **kernel/plugins/contract.\*** is deliberately isolated from any individual plugin — it's the one file/package third-party plugin authors need to read. Keeping it out of any specific plugin's directory signals "this is the interface, not an implementation."
-- **plugins/** as siblings, each a self-contained package with its own credentials/config schema — mirrors Home Assistant's `custom_components/<domain>/` and Onyx's `backend/onyx/connectors/<name>/` layout. New sources are added by dropping in a new sibling directory, never by touching the kernel.
-- **kernel/store/** owns the *only* schema for normalized items — no plugin writes its own tables; this keeps the correlation engine source-agnostic.
-- **ui/detail/** has source-specific renderers (email body vs. chat thread vs. note vs. PDF preview) but they all consume the same normalized `Item` + a "detail payload" blob from live-fetch — rendering variance is presentation-layer only, not a kernel concern.
+**Why not a stronger mechanism (checksums, code-signing, a published
+trust list)?** PROJECT.md's milestone scope is explicit: *"load + trust
+marking only; distribution, dev guide, and certification deferred."*
+Directory-tier provenance is the correct **v1.1.0** answer because it is
+the only mechanism that requires zero new infrastructure (no signing key
+to manage, no checksum manifest to publish and keep in sync with release
+artifacts, no trust-list file to fetch) while still being **kernel-derived,
+not plugin-asserted** — it satisfies "kernel must determine provenance"
+honestly, at the cost of not being cryptographically strong (an operator
+who manually copies a binary from `external_dir` into `dir` defeats it —
+this is explicitly accepted, not hidden: see (c) below, and matches the
+already-published sentence in `docs/plugin-contract.md`, *"only run plugin
+binaries you built yourself or whose source you trust."*). Certification/
+signing is the natural v1.2+ layer once a real third-party plugin author
+shows up (same "reconsider when adoption pressure exists" pattern this
+project already used for `go-plugin` vs. plain HTTP/JSON).
 
-## Architectural Patterns
+**Rejected alternative: a hardcoded plugin-name allowlist** ("trusted
+names are paperless/silverbullet/proton/signal/whatsapp/filesystem").
+Directly contradicts D-05's already-established discipline — "the kernel
+holds no built-in table of known plugin types" — extended from match
+vocabulary to plugin *type* discovery in `discover_binaries.go`'s own doc
+comment. Don't reintroduce that table for trust.
 
-### Pattern 1: Hybrid local-index + live-fetch (borrowed from Timelinize's local-archive model, inverted)
+## (b) Source picker / config UI surfacing
 
-**What:** The Index Store never holds full content — only metadata + a short preview needed to render the stream and support search/filter. When a user opens an item's detail pane, the kernel calls the *same plugin's* live-fetch method to pull full content directly from the source at that moment.
-**When to use:** Whenever content is (a) large, (b) already durably stored at the source, and (c) subject to source-side edits/deletions you want reflected live (email read-state, chat edits, doc revisions). This is essentially the *opposite* of Timelinize (which duplicates everything into its own archive) and closer to Onyx's "index metadata, but the answer engine can also cite/open the live doc" — chosen deliberately per Webspaces' view-only, no-duplication requirement.
-**Trade-offs:** Pro: no storage bloat, no staleness of full content, respects "read-only, no mutation" constraint trivially (nothing is copied that could drift). Con: opening an item is only as fast as the slowest source (IMAP round-trip, LAN latency); requires every plugin to support two speeds of access (cheap enumerate, potentially expensive fetch); local-DB sources (Signal/WhatsApp) get this "for free" since re-reading a local SQLite file is fast — the two speeds effectively collapse to one for those two plugins.
+The two-section picker (`AddSourceModal.svelte`, Phase 9) already
+separates *configured instances* from an *install-a-plugin catalog* driven
+by `GET /api/config/plugin-types`. That response needs one additive field
+per entry:
 
-**Example (contract shape, Go/TS-flavored pseudocode):**
-```typescript
-interface SourcePlugin {
-  id(): string;                                   // stable plugin identifier
-  discoverIdentifiers(): Promise<Identifier[]>;    // e.g. IMAP folders, chat group names, tags
-  enumerate(rule: KeywordRule, since?: Cursor): Promise<ItemMetadata[]>; // cheap, batched
-  fetchFull(ref: ItemRef): Promise<ItemContent>;   // expensive, called only on open
-  deepLink(ref: ItemRef): string;                  // URL/URI back to the source app
-}
-```
-
-### Pattern 2: Config-declared correlation, resolved at sync time not query time (deterministic v1)
-
-**What:** Each webspace declares a keyword and, per source, how that keyword maps onto the source's *native* categorization (IMAP label name, chat group name, paperless-ngx tag, SilverBullet tag/page). The correlation engine evaluates this mapping once per sync cycle per plugin and writes the webspace assignment onto the Item row in the Index Store.
-**When to use:** V1 explicitly rejects AI/context-relative correlation (per PROJECT.md) — this pattern gives zero false positives and is trivially explainable/debuggable ("why is this here? because it's tagged X"). It is the deliberate seam where a v2 "AI-inferred correlation" layer can later be inserted, alongside (not replacing) the deterministic map.
-**Trade-offs:** Pro: fast reads (assignment precomputed), explainable, no runtime cost per query. Con: doesn't catch items that *should* semantically belong but aren't natively tagged/named that way — an explicit, accepted limitation per Out of Scope.
-
-### Pattern 3: Coordinator-per-plugin sync scheduling (borrowed from Home Assistant's DataUpdateCoordinator)
-
-**What:** One coordinator object per plugin instance owns polling cadence, dedupes concurrent refresh requests, and pushes updated state to the Index Store; downstream consumers (correlation engine, UI "last synced" indicator) subscribe rather than each polling independently.
-**When to use:** Prevents redundant API/DB calls when multiple webspaces reference the same plugin (e.g., three webspaces each need the email plugin's Inbox folder polled — one coordinator serves all three, not three separate pollers). Also gives one place to implement backoff/error surfacing per source.
-**Trade-offs:** Pro: single source of truth for "is this plugin healthy / when did it last sync," easy to expose in the UI. Con: a slow/misbehaving plugin's coordinator can lag all webspaces depending on it unless isolated per-plugin (which it is, by design — one coordinator per plugin, not global).
-
-## Data Flow
-
-### Sync Flow (background, scheduled)
-
-```
-Sync Scheduler (interval tick, per plugin)
-    ↓
-Plugin Host invokes plugin.enumerate(keywordRule, sinceCursor)
-    ↓
-Plugin talks to its source:
-    - live remote sources (IMAP, paperless-ngx, SilverBullet): network call over LAN
-    - local sources (Signal, WhatsApp): direct read of local DB/store on same host
-    ↓
-Plugin returns ItemMetadata[] (normalized shape, see Normalized Item Schema)
-    ↓
-Correlation Engine matches metadata against webspace keyword rules
-    ↓
-Index Store: upsert Item rows (metadata + preview + webspace assignment + cursor)
-    ↓
-UI "last synced" indicator updates (kernel exposes coordinator state via HTTP API)
+```json
+{ "schema_version": 2, "plugin_types": [
+  { "binary": "topos-plugin-paperless", "trusted": true },
+  { "binary": "topos-plugin-gdrive", "trusted": false }
+]}
 ```
 
-### Request Flow (user opens the UI)
+(bumping `plugin-types`' own `schema_version`, not the plugin
+contract's — this is a kernel HTTP API change, orthogonal to the
+`topos.v1`/`topos.v2` proto/handshake versioning discussed above).
+
+UI touchpoints, extending existing components rather than adding new ones:
+
+- **Catalog list (`AddSourceModal.svelte`'s "New `<plugin type>`…" rows):**
+  an untrusted entry gets a visible badge (e.g. an amber "Untrusted"
+  pill next to the plugin's icon — reuse `PluginIcon.svelte`, which
+  already falls back gracefully when no icon is available, since an
+  external plugin's self-declared icon is exactly as untrustworthy as its
+  self-declared identity — same MIME-allowlist/64 KiB-cap capture path
+  already enforced in `pluginhost.captureIcon` covers it either way, no
+  new work needed there).
+- **Add-flow confirmation:** before `POST /api/config/describe-plugin`'s
+  result is accepted into the two-step modal's step 2, an untrusted trial
+  launch shows an interstitial warning — reuse the existing `Alert`/
+  `AlertDescription` component already imported into `AddSourceModal.svelte`
+  — with text drawn directly from `docs/plugin-contract.md`'s own
+  established language: *"This plugin was not built from the
+  `davison/topos` repository. A plugin binary has the same access to this
+  machine as topos itself — only continue if you trust its source."* This
+  is a confirm-to-proceed step, not a hard block (the milestone's "load +
+  trust marking" scope implies untrusted plugins are loadable, just
+  clearly labeled — a hard block would make the GDrive dogfooding goal
+  itself impossible without a separate unblock mechanism).
+- **`ManageSourcesModal.svelte` / per-instance chip:** an already-configured
+  instance launched from `external_dir` keeps showing the same badge
+  persistently (not just at add-time) — consistent with "recomputed at
+  launch, never a one-time-accepted flag" from (a). `SourceChip.svelte`'s
+  existing per-source tooltip (health/diagnostic) gains one more line for
+  this.
+- **`GET /api/sources`** (existing per-instance health endpoint) gains the
+  same `trusted` boolean per row, sourced from `pluginhost.SourceHealth`
+  (parallel to how `Plugin` field already threads through for icon
+  lookups) — this is what powers the persistent chip badge above.
+
+## (c) Read-only / egress AST guarantees do not, and cannot, extend to external plugins — replace with honest labeling + the structural RPC boundary
+
+Verified directly: `internal/audit`'s two guard tests
+(`TestNoForeignEgressOutsideSanctionedClient`,
+`TestNoModuleDeclaresAKnownVulnerablePin`) both `filepath.WalkDir(repoRoot,
+...)` where `repoRoot = "../.."` — **a filesystem walk of this repository's
+own source tree.** An external plugin's source code, by construction, does
+not live in this tree (it may not even be Go, per the contract's own "or,
+if the source plugin's language support ever expands, a separate binary
+speaking the same gRPC contract" clause) and the kernel never has access
+to it at build time or runtime — only the compiled binary. There is no
+version of these AST scans that can run against a binary you don't have
+source for. This is not a gap to close this milestone; it is a structural
+boundary to document honestly, in three layers:
+
+1. **What still holds, unconditionally, for every plugin regardless of
+   trust:** the `SourcePlugin` gRPC service exposes exactly four RPCs —
+   `Describe`, `Match`, `Fetch`, `Health` — none of which can write. This
+   is enforced by `sdk/contract_test.go`'s RPC-allowlist test, which *is*
+   still a real guarantee for an external plugin, because it constrains
+   what the **kernel can ask any plugin to do**, not what the plugin's own
+   process does independently. An external plugin cannot be sent a write
+   RPC by this kernel, ever, no matter how untrusted — that boundary is
+   contract-shaped, not trust-shaped, and doesn't weaken here.
+2. **What stops holding the moment a plugin is external:** whether the
+   plugin's *own implementation* only issues read (`GET`) HTTP calls to
+   its source system, whether it logs a credential, whether it talks to
+   any host beyond its declared source — all of that is exactly what
+   `outbound_hosts_test.go`'s AST scan currently proves for the five
+   in-repo plugins, and none of it is provable for a binary from
+   `external_dir`. `docs/plugin-contract.md` already states this
+   precisely for the general "no containment" case ("`hashicorp/go-plugin`
+   is a transport, not a sandbox... Installing a third-party plugin is
+   therefore the same trust decision as installing the kernel binary
+   itself") — this milestone's job is to make that existing sentence
+   *actionable* in the UI (the badge/warning in (b)) rather than only
+   readable in a markdown file a user may never open.
+3. **What replaces the AST guarantee for an external plugin, concretely:**
+   nothing mechanical does. The mitigation stack is (i) the RPC-boundary
+   guarantee in point 1, which is real and unconditional; (ii) honest,
+   persistent UI labeling from (b), so the trust decision is visible every
+   time, not just at add-time; (iii) documentation — extend
+   `docs/plugin-contract.md`'s existing "no containment" section with an
+   explicit pointer to this milestone's `external_dir` mechanism once it
+   ships, so the contract document and the shipped behavior describe the
+   same thing; (iv) explicitly **not** attempting process sandboxing
+   (seccomp/namespaces/restricted env) this milestone — that would be a
+   materially larger scope change (the same WASM-vs-subprocess trade-off
+   this project already rejected for the in-repo case in PROJECT.md's
+   "What NOT to Use" table, now revisited for a case where sandboxing
+   would actually earn its keep, but is still out of this milestone's
+   explicitly deferred scope alongside "distribution, dev guide, and
+   certification").
+
+## (d) Filesystem plugin — fits the existing local-path pattern exactly
+
+`plugins/signal` is already this contract's reference implementation of
+"a local-path source, no network endpoint at all" — `docs/plugin-
+contract.md` names it explicitly as the shape to follow. The filesystem
+plugin is a structurally simpler instance of the *same* shape (no cgo, no
+SQLCipher, no keyring unwrap step):
+
+- **Config:** `{"path": "/home/user/Documents/project-x"}` via the
+  existing `Source.Path` field and `WEBSPACES_SOURCE_CONFIG`'s existing
+  `"path"` key — no `config.Source` struct change needed. "Optionally
+  subfolders" (from the milestone scope) is a plugin-side recursion flag —
+  either a second config key (would need one new `Source` field, e.g.
+  `Recursive bool` — small, additive, `omitempty`-safe) or, more in
+  keeping with "the exact key set is source-specific" language already in
+  the contract, folded into a structured `path` value the plugin parses
+  itself. Recommend the dedicated boolean field: it is visible in
+  `config.example.toml` and the config UI's connection form without the
+  plugin inventing its own micro-syntax, and it's one line in
+  `kernel/pluginhost/host.go`'s existing fixed-key JSON marshal (see (e)
+  for why this fixed-key marshal itself needs to change anyway for GDrive).
+- **`Describe`:** `source_type: "filesystem"`, a `match_vocabulary` of
+  something like `["folders"]` (top-level subfolder names as the native
+  categorization — directly parallel to Proton's `["folders"]`) or
+  `["tags"]` if frontmatter-less plain files instead key on a
+  naming convention; this is a plugin-design decision for the phase that
+  builds it, not an architecture constraint.
+- **`Match` / sync-time indexing:** walks the configured path (respecting
+  the recursion flag), and for each file builds an `Item` with `title` =
+  filename, `labels` = the containing subfolder path segments,
+  `timestamp_unix` = file mtime, `preview` = a bounded text extract **only
+  for formats cheap to extract from without a heavyweight dependency**
+  (plain text/markdown read directly; anything else — PDF, docx — either
+  ships with no preview text in v1.1 or the phase adds a text-extraction
+  library, which is a scope decision, not an architecture one).
+  `deep_link`: a `file://` URI is the only "source system" a local file
+  has — declare `LINK_FIDELITY_EXACT` (it opens exactly this object, via
+  the OS's own file-URI handler) even though, unlike every other current
+  source, the "source system" here is the OS itself, not a remote app.
+- **`Fetch` / "what fetch-live means for a local file":** identical
+  *contractually* to every other plugin — `Fetch` is called only at
+  request time, re-reads the file from disk fresh on every call (no
+  caching layer, matching the hybrid model's "content fetched live from
+  source on open" exactly), and returns `text` for extractable formats or
+  `data`+`mime_type` for opaque binary formats (mirroring
+  `plugins/paperless`'s PDF/image `Fetch` path: binary renditions bypass
+  the kernel's HTML sanitize/wrap pipeline entirely — `content_shape` stays
+  `CONTENT_SHAPE_UNSPECIFIED`, correctly, since `mime_type` won't be
+  `"text/html"`). The only genuinely new wrinkle versus every existing
+  plugin: a *local* file can disappear or change between `Match`-time
+  indexing and `Fetch`-time open (a remote API call for a deleted
+  paperless document already returns 404 the same way) — the plugin
+  should map a missing file to `codes.NotFound` exactly like every other
+  plugin does for a deleted item, no new kernel-side handling required.
+- **Build wiring:** in-repo, trusted, joins the existing `plugins-
+  portable`/`plugins`/`build`/`build-portable` Makefile targets exactly
+  like `paperless`/`silverbullet`/`proton`/`whatsapp` (no cgo needed, so it
+  does **not** need `signal`'s special isolated target) — `mkdir -p
+  bin/plugins && go build -o bin/plugins/topos-plugin-filesystem
+  ./plugins/filesystem`, added to `go.work`'s `use` block.
+
+## (e) Google Drive plugin — out-of-repo module, dogfooding the external path end to end
+
+**Repo layout:** a **separate git repository** (not a subdirectory of
+`davison/topos`) — this is the entire point of "dogfoods the
+external-plugin mechanism end to end." Its own `go.mod`:
+
+```go
+module github.com/<author>/topos-plugin-gdrive
+
+go 1.25
+
+require github.com/davison/topos/sdk v0.x.y
+```
+
+`github.com/davison/topos/sdk` already resolves as a standalone Go module
+today — `sdk/go.mod`'s own module path is `github.com/davison/topos/sdk`,
+and it's a subdirectory-rooted module inside the public `davison/topos`
+repo, which Go's module resolution already supports without any change on
+the topos side (`go get github.com/davison/topos/sdk@<tag-or-commit>`
+works exactly as documented in `docs/plugin-contract.md`'s "Build your
+first plugin" walkthrough — that walkthrough's step 1 already says "or, if
+building outside this repo entirely — nothing about the contract requires
+your plugin to live in this repo"). **No new publishing infrastructure is
+required for this milestone** — the SDK is already externally consumable;
+the GDrive plugin is the first thing that actually proves it by consuming
+it that way. Recommend tagging `sdk/vX.Y.Z` releases going forward (Go
+module proxy resolution wants real semver tags on the module's own path
+prefix) as a small, cheap addition alongside this phase, not a
+prerequisite blocking it (an untagged `@latest`/pseudo-version works fine
+for dogfooding).
+
+**Contract dependency:** the GDrive plugin implements `sdk.SourcePlugin`'s
+four methods exactly like `plugins/mock` does, imports
+`toposv1 "github.com/davison/topos/sdk/gen/topos/v1"` for the generated
+proto types, and registers under handshake `sdk.Handshake` — **it consumes
+the same generated Go stubs the SDK module vendors, not the raw
+`.proto` file** (the SDK module is the documented "stable Go-native
+surface"; the `.proto` itself is the source of truth but an external Go
+plugin author, per the contract's own framing, works through the SDK, not
+`buf generate` themselves, unless they need a non-Go implementation).
+
+**OAuth token storage — this is a genuine new architectural surface, not
+just "give GDrive a token field":**
+
+- Google Drive OAuth2 needs more than the existing `Source.Token` bearer-
+  token field models: a client ID/secret (or a pre-authorized refresh
+  token), and critically, a **refresh token that the plugin itself must
+  persist and rotate** — unlike every current plugin (`paperless`/
+  `silverbullet`/`proton` all use a static, operator-supplied credential
+  that never changes at runtime), GDrive's live-usable credential
+  (the access token) expires hourly and is refreshed by the plugin process
+  itself using the refresh token. **This is new: it is the first plugin
+  whose runtime needs to persist its own state beyond what
+  `WEBSPACES_SOURCE_CONFIG` hands it at launch** — but there's already a
+  precedent for exactly this shape: `plugins/whatsapp` already owns a
+  persistent, plugin-side store for its session (explicitly "session +
+  captured messages, both plugin-owned; source stores never touched").
+  GDrive's refresh-token persistence should follow that same precedent —
+  a plugin-owned, plugin-managed file (e.g.
+  `~/.local/share/topos/gdrive/<instance>/token.json`), **not** a new
+  kernel-side secret store, and **not** re-submitting the rotated token
+  back to the kernel/config.toml on every refresh (config.toml's whole
+  design principle — "secrets stay environment-only as `${VAR}`
+  references" — assumes secrets are static and operator-managed; a token
+  that rotates hourly cannot live there without breaking that
+  principle). The one-time OAuth *authorization* flow (get an initial
+  refresh token) should follow WhatsApp's own in-app pairing precedent
+  loosely — but WhatsApp's flow is entirely plugin-owned via a
+  kernel-mediated link-session endpoint; GDrive's is a standard OAuth2
+  redirect/consent flow, which is a materially different UX shape (a
+  browser redirect to accounts.google.com, not a QR code) and is worth
+  scoping as its own design question in the phase that builds this, not
+  assumed to be "the same as WhatsApp."
+- **This surfaces a required kernel-side change that predates GDrive and
+  actually blocks it:** `kernel/pluginhost/host.go`'s `launch()` marshals
+  `WEBSPACES_SOURCE_CONFIG` from a **fixed, hardcoded set of `config.Source`
+  fields** (`base_url`, `token`, `api_version`, `ca_cert`, `username`,
+  `webmail_base_url`, `path`). An out-of-repo plugin the kernel has no
+  compile-time knowledge of (GDrive needing `client_id`/`client_secret`/
+  `folder_id`, or any future third-party plugin needing its own arbitrary
+  keys) has **no way to receive connection details the kernel doesn't
+  already know to marshal** — this directly contradicts the contract's own
+  claim that "a plugin defines and documents whatever keys it needs."
+  That claim is currently only true for the five keys already hardcoded.
+  **Fix required, and it belongs in the external-plugin-loading phase, not
+  the GDrive phase**: add a generic `Extra map[string]string` (or
+  similarly named) field to `config.Source`, merged into the
+  `WEBSPACES_SOURCE_CONFIG` JSON alongside the fixed keys, round-tripped
+  through TOML the same way `Match`/`Agent` blocks already are. Every
+  in-repo plugin keeps using the fixed named keys unchanged (no migration
+  needed); only a plugin needing keys the kernel doesn't model by name —
+  GDrive's `client_id`/`client_secret`/`folder_id` — reads them out of the
+  generic map instead. This is the actual load-bearing prerequisite for
+  "prove the external path... built out-of-repo against the published
+  contract" being true in more than name — without it, "the published
+  contract" silently means "the six fields topos happens to hardcode
+  today," not what `docs/plugin-contract.md` documents.
+- **Build wiring:** out-of-repo means no `go.work` entry, no Makefile
+  target in `davison/topos` at all — the GDrive plugin repo has its own
+  `go build -o topos-plugin-gdrive .`, and the *operator* copies the
+  resulting binary into `external_dir` from (a). This is exactly the path
+  the trust-marking mechanism needs to exist for before this plugin can be
+  meaningfully dogfooded — see Build Order, below.
+
+## (f) Per-item include/exclude — the kernel's first user-owned data, and the first schema exception to D-07
+
+**Schema:** a new table, additive to `kernel/index/schema.go`:
+
+```sql
+CREATE TABLE IF NOT EXISTS item_marks (
+  webspace_name TEXT NOT NULL,
+  item_id       TEXT NOT NULL,   -- global "{source}:{source_id}" id (docs/api.md's stable-ID scheme)
+  state         TEXT NOT NULL,   -- 'include' | 'exclude'
+  marked_unix   INTEGER NOT NULL,
+  PRIMARY KEY (webspace_name, item_id)
+);
+```
+
+Two deliberate departures from `webspace_items`'s existing shape, both
+necessary because this is user data, not synced/derived data:
+
+1. **No `REFERENCES items(id) ON DELETE CASCADE`, and no foreign-key
+   constraint against `items` at all.** `webspace_items` can safely
+   cascade-delete because it is 100% re-derivable from the next sync
+   (D-07's own stated rationale for every existing table). A mark is the
+   opposite — it must **outlive** the specific item row's own churn (a
+   resync that upserts the same `item_id` again, or a schema-version
+   rebuild that drops and recreates `items` entirely) and silently
+   re-attach the moment a matching `item_id` reappears. A hard FK would
+   force marks to be deleted and lost exactly when they're most likely to
+   matter (across a rebuild).
+2. **Excluded from `rebuildOnSchemaChange`'s `DROP TABLE IF EXISTS` list**
+   (currently: `items_fts`, `webspace_items`, `webspaces`, `sync_runs`,
+   `items`). This is the one line that actually makes the "user-owned
+   data beyond config" property real — everything else in that function
+   is intentionally destroyed and rebuilt from a fresh sync on a schema
+   bump (`schema.go`'s own doc comment: "every row here is re-derivable
+   from a fresh sync, so there is nothing worth migrating"). `item_marks`
+   is the first table for which that sentence is **false**, and the code
+   needs a comment saying so explicitly, at the exact point future
+   maintainers will be tempted to "clean up" the drop list. If `item_marks`
+   itself ever needs a genuinely breaking shape change later, it needs its
+   own additive-only discipline (`ALTER TABLE ... ADD COLUMN`, never a
+   blanket drop) — don't reuse the single global `PRAGMA user_version`
+   counter for both concerns, since it currently means "drop and
+   recreate," which is exactly what must never happen to this table.
+
+**Interaction with instance renaming (D-08):** no special-case code
+needed. Renaming a `[sources.<id>]` key already creates a brand-new
+instance identity whose items carry a different id prefix — old marks,
+keyed to the old prefix, simply stop matching anything and go inert,
+identical to how old sync history and old index rows already behave on a
+rename. Consistent with existing discipline, not a new edge case.
+
+**Filter application order — this is the one place the milestone
+description's "final tier of the filter hierarchy" needs to be made
+concrete, and it has a real SQL-shape decision buried in it:**
+
+The existing hierarchy is: per-instance typed `match` blocks → webspace
+`keywords` fallback (both resolved once, at *sync* time, into
+`webspace_items` rows) → the promoted-search `Filter` FTS-term stack
+(applied at *read* time, narrowing `StreamItems`/`Search`/the agent
+stream identically, per D-16's "the filtered view IS the webspace for
+every consumer" rule). Per-item marks are also a *read-time* concern (a
+mark doesn't change what `Match` returns or what's in the index — it
+changes what's **shown**), so they sit alongside the `Filter` stack in
+that same read-time layer, and must be applied in this precedence, outer
+to inner:
+
+1. **Per-source agent grants (`AGENT-01`) still dominate everything**,
+   unconditionally — an `exclude`/`include` mark on an item from a source
+   with `agent.read = false` must never let that item appear in an agent
+   stream. Marks operate *within* the set of sources already visible to
+   the calling context, never as a bypass of that boundary. (This needs
+   an explicit test: "include-marked item from an unread-granted source
+   is still absent from `/agent/v1` streams.")
+2. **Sync-time membership** (`webspace_items`, from match/keywords) is the
+   base set.
+3. **`exclude`** removes an item from that base set.
+4. **`include`** adds an item **not otherwise in the base set** back in —
+   and this is the concrete SQL wrinkle: `StreamItems`'s current query
+   (verified directly in `kernel/index/store.go`) is anchored
+   `FROM items JOIN webspace_items ON webspace_items.item_id = items.id
+   WHERE webspace_items.webspace_name = ?` — an item absent from
+   `webspace_items` is structurally invisible to this query no matter what
+   else is added. Supporting `include` for an item **outside** the synced
+   match set requires re-anchoring the query on `items` with a `LEFT JOIN
+   webspace_items` (or a `UNION`), which is a real, non-trivial rewrite of
+   the primary stream/search query shape — not a one-line `WHERE` addition
+   — and should be scoped and estimated as such in the phase plan, not
+   assumed to be "just add a join."
+5. **The promoted-search `Filter` stack** narrows on top of the result of
+   3–4, exactly as it narrows the current base set today.
+
+**Open question this research surfaces rather than resolves (needs a
+planning-time decision, not an architecture-time one): where does a user
+*find* an item to mark `include` if it's outside the webspace's current
+match set?** Every existing read surface (`GET .../stream`,
+`GET .../search`) is already scoped to `webspace_items` — there is no
+existing "browse everything this source synced, matched or not" view. Two
+honest resolutions, either of which is a reasonable phase-planning
+decision but the roadmap should pick one deliberately:
+
+- **(i) Narrow scope:** `include` is really "un-exclude" — a toggle that
+  only ever restores an item this same webspace previously excluded
+  (state transitions `unmarked → exclude → unmarked`, `include` never
+  needed as a distinct third state for an item that never matched at all).
+  This needs no new browse surface and is the cheaper, safer v1.1 scope.
+- **(ii) Full scope:** `include` genuinely means "pull in an item this
+  webspace's match config would never have selected," which requires a
+  new browse surface (e.g., "search this source's full synced index,
+  unscoped by webspace membership") before it's reachable at all — a
+  materially bigger feature than the milestone's one-line description
+  suggests.
+
+Given the milestone phrase "mark individual **stream entries**" (not "mark
+any item"), (i) reads as the more literal, lower-risk interpretation — flag
+this explicitly for `/gsd-new-milestone`'s requirements/roadmap step rather
+than let a phase plan silently assume the bigger scope.
+
+**API surface (additive, mirrors existing config-mutation patterns):**
 
 ```
-[User opens webspace]
-    ↓
-UI → kernel HTTP API: GET /webspaces/{id}/stream?cursor=&source=&type=
-    ↓
-Kernel → Index Store: paginated query, ordered by timestamp, filtered
-    ↓
-Kernel → UI: normalized Item[] (metadata + preview only — fast, no live-fetch)
-    ↓
-[User clicks an item]
-    ↓
-UI → kernel HTTP API: GET /items/{id}/detail
-    ↓
-Kernel → Plugin Host → plugin.fetchFull(ref) → source (live)
-    ↓
-Kernel → UI: full content payload + deepLink(ref)
-    ↓
-UI renders source-specific detail view + "Open in [source]" link (opens external app/browser)
+PUT /api/webspaces/{webspace}/items/{id}/mark   { "state": "exclude" }
+DELETE /api/webspaces/{webspace}/items/{id}/mark   (clears back to unmarked)
 ```
 
-### Key Data Flows
+Existing `GET .../stream` / `GET .../search` response items should carry
+their current mark state (`"mark": "exclude" | null`) so the SPA can render
+the toggle affordance without a second round-trip per row — this is the
+same "the response already carries what the UI needs to render" discipline
+already used for icons/health/fidelity elsewhere in the API.
 
-1. **Metadata sync (cheap, scheduled):** plugin → correlation engine → index store. Runs continuously in background; this is what makes the stream feel instant.
-2. **Full-content fetch (expensive, on-demand):** kernel → plugin → source, triggered only by user action (opening detail pane). Never cached beyond the current view — re-fetched each open, satisfying "no duplication, no staleness."
-3. **Deep-link resolution (cheap, computed):** plugin → kernel → UI, a pure function of the item's source-native identifier; no network call needed since it's just URL construction (though correctness depends on knowing each source's UI URL scheme — see Integration Points below, some sources like Signal/WhatsApp cannot deep-link to a specific message, only to the app/thread).
+**UI touchpoints:** a per-row action (menu entry or hover affordance on
+the stream row component under `web/src/routes/w/[webspace]/`) — "Exclude
+from this webspace" / "Include" toggle, optimistic-update against the
+already-loaded stream list, matching the existing pattern used for the
+per-chip refresh/menu actions in `SourceChip.svelte`.
 
-## Scaling Considerations
+## (g) PWA installability
 
-This is explicitly a single-user, single-machine, personal tool (Out of Scope: cloud/multi-user). "Scale" here means *data volume and source count*, not concurrent users.
+This is the most self-contained of the five features — it touches
+`web/static/`, `web/svelte.config.js`, and `kernel/webui/embed.go`'s
+existing `go:embed all:build` boundary, and nothing else in the kernel.
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| 5 sources, single mailbox+chats, months of history | Current design as-is: SQLite index, in-process plugins, synchronous per-plugin sync loop |
-| 5-15 sources (later filesystem/other plugins added), years of history | Index Store needs indexes on (webspace_id, timestamp) and (source, native_id) for dedup; sync scheduler needs per-plugin concurrency (don't block IMAP sync on a slow paperless-ngx call) |
-| Very large mailboxes/chat histories (10k+ items per source) | Cursor-based incremental enumerate (not full re-scan) becomes mandatory, not optional — mirrors Onyx's `PollConnector` (time-range incremental) vs `LoadConnector` (full bulk, only for first sync) distinction |
-
-### Scaling Priorities
-
-1. **First bottleneck:** full re-enumeration on every sync tick (re-scanning entire IMAP folders or chat DBs each cycle). Fix: every plugin must support an incremental mode keyed by a cursor (UIDVALIDITY/UID for IMAP, rowid/timestamp for local SQLite reads, `modified` timestamp for paperless-ngx/SilverBullet APIs) — do this from day one per plugin, not retrofitted later, since retrofitting a stateful cursor into a plugin contract after three plugins exist is exactly the kind of rewrite this research is meant to prevent.
-2. **Second bottleneck:** live-fetch latency for remote LAN sources when a user rapidly clicks through many items. Fix: kernel-side short-lived (session-only, not persisted) in-memory cache of the last N fetched items is acceptable and doesn't violate "no duplication into the index" since it never touches the Index Store.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Letting plugins write directly to a shared "documents" table with source-specific columns
-
-**What people do:** Add nullable columns to one big table per source's quirks (e.g., `email_subject`, `chat_sender`, `doc_tags`) as new plugins are added.
-**Why it's wrong:** Every new source plugin requires a kernel schema migration, defeating the "third-party can add a plugin later" constraint and coupling the kernel to source specifics it should never know about.
-**Instead:** One normalized `Item` schema (see below) with a `type`-discriminated `metadata` JSON blob for source-specific fields. The kernel only ever reads the normalized fields for stream/filter/correlate; source-specific fields are opaque to the kernel and only interpreted by the matching plugin and the UI's source-specific renderer.
-
-### Anti-Pattern 2: Correlation engine calling out to live plugin APIs at query time
-
-**What people do:** Compute "does this item match webspace X" on every UI request by asking the plugin live (e.g., re-checking IMAP folder membership on each page load).
-**Why it's wrong:** Makes the stream only as fast as the slowest, most-remote plugin; reintroduces exactly the "visit each app" latency problem this project exists to remove.
-**Instead:** Correlation is resolved once at sync time and persisted as a webspace assignment on the Item row (Pattern 2 above). Query time only ever reads the Index Store.
-
-### Anti-Pattern 3: Treating "local DB read" plugins (Signal/WhatsApp) the same as "remote API" plugins for locking/concurrency
-
-**What people do:** Assume all plugins are safe to poll concurrently and aggressively, since remote APIs tolerate it.
-**Why it's wrong:** Signal Desktop's `db.sqlite` is a live SQLCipher database the Signal Desktop app itself may hold open; concurrent/careless access risks lock contention or (worse, given the read-only constraint) accidental writes if the wrong driver/mode is used.
-**Instead:** Local-DB plugins must open in explicit read-only mode (e.g., SQLite URI `?mode=ro` / `immutable=1`, or copy-then-read from a snapshot if the driver doesn't support safe concurrent read-only access) and treat "source app might be running and holding the file" as a first-class condition, not an edge case. This is a plugin-contract-level requirement, not something to leave to each plugin author's discretion — the contract should document the expected access mode explicitly for file/DB-backed plugins.
-
-### Anti-Pattern 4: One-size-fits-all plugin capability assumption
-
-**What people do:** Design the plugin contract assuming every plugin can equally "enumerate by native category," "search full text," and "live-fetch cheaply."
-**Why it's wrong:** Signal/WhatsApp local reads are cheap for *both* enumerate and full-fetch (same DB), while IMAP/paperless-ngx/SilverBullet are cheap to enumerate (metadata endpoints) but comparatively expensive to full-fetch (body/attachment/page content) over LAN. Baking in one cost model breaks UI assumptions (e.g., prefetching full content "for free").
-**Instead:** Plugin contract should let each plugin declare capability/cost hints (e.g., `fetchCost: "local" | "remote"`), which the kernel/UI can use to decide things like prefetch-on-hover behavior.
-
-## Integration Points
-
-### External Services
-
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Proton Mail Bridge (IMAP) | Standard IMAP client (folders = Proton labels), live network calls, poll via UID/UIDVALIDITY cursor | Bridge binds to 127.0.0.1 by default and uses a self-signed cert — per PROJECT.md this must be reconfigured to listen on LAN or tunnelled; plugin must accept a custom/self-signed cert config, not assume public CA trust. No universal deep-link to open one specific message in a webmail client by Message-ID; deep link options are a `mailto:` (opens compose, not view) or a link into Proton webmail's search-by-subject/date if that's reachable — flag as a real limitation, not solved by architecture alone. |
-| Signal Desktop local DB | Direct SQLCipher-encrypted SQLite read, read-only mode, key sourced from local `config.json` (same as Signal Desktop app does) | No official read API. No deep-link scheme exists for jumping to a specific message; deep link is best-effort "open Signal Desktop" (app-level, not thread/message-level). This is the highest-uncertainty plugin (undocumented DB schema, subject to change on Signal Desktop upgrades) — flag for deeper phase-specific research and a schema-version detection/fallback in the plugin. |
-| WhatsApp local store | Local read of desktop/linked-device store (mechanism less standardized than Signal's; may require a library such as `whatsmeow`-style local session parsing) | Confirm concretely in a dedicated research/spike phase before committing to implementation — PROJECT.md itself flags this as the riskiest area. Same deep-link limitation as Signal (no message-level deep link). |
-| paperless-ngx REST API | `GET /api/documents/?tags__id=<tag>` (or similar filter) for enumerate, `GET /api/documents/<id>/` + `/metadata/` for full fetch, `GET /api/documents/<id>/preview/` for inline preview | Live LAN call, straightforward token-authenticated REST; UI deep link is the app's own document-detail SPA route (commonly `/documents/<id>/details` — verify exact route against the deployed version at implementation time, MEDIUM confidence here since it wasn't directly confirmed from source). |
-| SilverBullet HTTP API | `GET /index.json` for enumerate (full file listing + metadata, filter by tag client-side or via space-script query), `GET /.fs/<path>` for full page content | Live LAN call; deep link is simply `http://<silverbullet-host>/<page-name>` since SilverBullet serves pages directly by name — one of the cleanest deep-link stories of the five sources. |
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| UI ↔ Kernel HTTP API | HTTP/JSON, read-only, paginated | UI never talks to plugins or source systems directly — this boundary is what keeps "view-only, no mutation" enforceable in one place (the kernel simply never exposes a write endpoint). |
-| Kernel ↔ Plugin Host | In-process function calls (if plugins are compiled/linked in) or local IPC (Unix socket/stdio JSON-RPC) if plugins run as separate processes | Given "third parties can add plugins later" constraint, favor a process-isolation boundary (like Home Assistant's custom component loading, or a gRPC-per-plugin model) over tight in-process coupling, so a misbehaving/crashing plugin (most likely candidate: Signal/WhatsApp local DB parsing) cannot take down the kernel or other plugins. Trade-off: added serialization overhead is negligible at this data scale. |
-| Plugin Host ↔ Index Store | Plugins never write to the Index Store directly — they return data to the kernel, which normalizes and writes it | Preserves the single-schema-owner rule (Anti-Pattern 1) and lets the kernel enforce the read-only guarantee even if a plugin's internal logic is buggy. |
-| Correlation Engine ↔ Webspace Config | Config is read-only input to correlation; correlation never mutates config | Config changes (adding/editing a webspace) should trigger re-correlation of already-synced items, not just apply going forward — otherwise editing a webspace definition silently orphans historical matches. |
-| Sync Scheduler ↔ Plugin Host | Scheduler owns *when*; Plugin Host owns *how* | Scheduler should be source-agnostic (doesn't know IMAP from SQLite) — it only knows "this plugin's coordinator is due for a tick" and per-plugin backoff/error state. |
+- **Manifest:** `web/static/manifest.webmanifest` (or `manifest.json`) —
+  a static file `adapter-static` already copies into the build output
+  unchanged (same mechanism that already ships `web/static/robots.txt` and
+  `web/static/app-icon.png` today). Needs `name`, `short_name`, `start_url`
+  (`/`, or a specific webspace if one is remembered — v1.1 scope should
+  probably keep this simple: `/`), `display: "standalone"`, `icons` (an
+  array of sized PNGs — `web/static/app-icon.png` already exists at
+  1024×1024, source material for generating the standard PWA size set:
+  typically 192×192 and 512×512 minimum, plus a maskable variant is
+  recommended by current install-prompt heuristics), and `theme_color`/
+  `background_color` matching the SPA's existing theme tokens.
+- **ServiceWorker:** `web/src/service-worker.js` (SvelteKit's own
+  convention — `@sveltejs/kit` auto-detects this file and bundles it,
+  which works cleanly with `adapter-static`'s SPA-fallback mode already
+  configured) or a hand-rolled `web/static/service-worker.js` registered
+  manually from `+layout.svelte` if the SvelteKit-native path conflicts
+  with the existing `fallback: '200.html'` SPA-routing setup (verify
+  during implementation — this is the one integration risk in this
+  feature, not architectural, just needs a spike/verification step in the
+  phase that builds it).
+- **Cache strategy vs. the live API — this is the actual design decision,
+  not the manifest/SW plumbing:** topos's core value is "instant metadata
+  from index, live preview fill via plugin `Fetch`" — i.e., the app is
+  explicitly *not* meant to serve stale content confidently. The
+  ServiceWorker should:
+  - **Cache-first, long-TTL** for the SPA's own static assets (JS/CSS/
+    fonts/icons) — this is the standard, safe PWA shell-caching pattern
+    and matches how `GET /api/plugins/{plugin}/icon` already declares
+    itself (`Cache-Control: public, max-age=31536000, immutable`) — the
+    same "static, versioned by build" reasoning applies to the SPA bundle
+    itself.
+  - **Network-only (never cache) for every `/api/*` route.** Item content,
+    stream data, search results, and config are all either live-fetched
+    from a source plugin or reflect the current index/config state — this
+    project's entire hybrid-data-model argument ("fast browsing... without
+    staleness of content") is undermined if a ServiceWorker starts
+    silently serving a stale `GET /api/webspaces/{ws}/stream` response
+    while offline and calling it a feature. Recommend explicitly **not**
+    attempting an "offline stream" experience this milestone — installable
+    (a home-screen icon, a standalone window, works when the kernel is
+    reachable) is the stated scope; "usable with the kernel unreachable"
+    is a different, larger feature this milestone doesn't ask for. A
+    ServiceWorker that intercepts `/api/*` only to immediately
+    network-fetch (no cache fallback) keeps the installability win without
+    quietly promising offline reads the architecture (loopback-only, no
+    auth, single-user, always-needs-the-kernel-process) was never built to
+    honor.
+- **`kernel/webui/embed.go` needs no changes at all** — `manifest.webmanifest`
+  and `service-worker.js` land in `web/static/`/`web/src/`, `adapter-static`
+  copies/bundles them into `kernel/webui/build/` exactly like every other
+  static asset already does, and `//go:embed all:build` already picks up
+  anything present there. This feature is entirely a `web/` change from
+  the kernel's point of view.
+- **One kernel-side check worth adding, not structural but easy to miss:**
+  a ServiceWorker requires being served over a secure context — `https:`
+  or `localhost`/`127.0.0.1`. The kernel's existing default
+  (`listen = "127.0.0.1:7777"`) already satisfies this for the common
+  case; the existing startup warning for a non-loopback `listen` value
+  ("this exposes the API beyond this machine") is the natural place to
+  also note "and installability requires HTTPS at that point," since a
+  LAN-bound deployment without TLS would silently lose the PWA install
+  prompt with no error anywhere — worth a one-line addition to that
+  existing warning, not a new mechanism.
 
 ## Suggested Build Order
 
-Dependency-driven, not feature-driven — each step is unblocked by the one before it and produces something independently testable:
+Ordered by hard dependency, not by the milestone's own listed order
+(which groups external-plugin loading first, correctly, but the reasoning
+matters for sequencing the rest):
 
-1. **Normalized Item schema + Index Store** (no plugins needed yet). Design the schema first since every other component depends on its shape; validate it against all five sources' known metadata on paper before writing plugin code.
-2. **Plugin Contract (interface only) + Plugin Host skeleton**, proven with one trivial fake/mock plugin (e.g., a static-fixture plugin returning canned items). This lets the kernel's correlation, sync, and API layers be built and tested without depending on any real, flaky external system (IMAP/Signal/etc.) yet.
-3. **Webspace Config + Correlation Engine**, tested against the mock plugin. Correlation logic is pure and source-agnostic — get it right before real sources introduce noise.
-4. **Sync Scheduler (coordinator-per-plugin)**, still against the mock plugin, proving the incremental-cursor model end-to-end.
-5. **HTTP API (read-only) + minimal UI (stream only, no detail pane)**, against the mock plugin — proves the full request flow before any real source complexity.
-6. **First real plugin: paperless-ngx or SilverBullet** (pick whichever is lower-risk — both are simple authenticated REST/HTTP APIs over LAN with no local-file complications) to validate the live-fetch + deep-link parts of the contract against a real, well-documented system before tackling the two hard ones.
-7. **Email (IMAP) plugin** — introduces folder/label-based enumerate, UID cursor tracking, and the harder deep-link problem (no clean message-level deep link) — do this once the contract has already proven itself on an easier source.
-8. **Signal plugin** — the highest-risk plugin (undocumented local DB, encryption key handling, read-only access safety); tackle only after the contract, sync model, and read-only-access pattern (Anti-Pattern 3) are already proven elsewhere, so any local-DB-specific problems are isolated to this one component.
-9. **WhatsApp plugin** — same risk class as Signal, likely benefits from patterns/lessons learned building the Signal plugin (both are "read a live local store the source app also has open" problems); do last.
-10. **Detail pane with source-specific renderers + full deep-link wiring across all five sources** — layered on top once every plugin's `fetchFull`/`deepLink` are implemented; this is a UI-only step that doesn't block or get blocked by later plugin work.
+1. **External plugin loading + trust marking (a, b, c).** Nothing else in
+   this milestone can be *proven* without this landing first: the GDrive
+   plugin (e) has nowhere honest to be placed until `external_dir` and its
+   trust badge exist, and the milestone's own stated purpose for GDrive
+   ("dogfoods the external-plugin mechanism end to end") is meaningless
+   before this phase ships. This phase should also land the
+   `config.Source.Extra` generic-config-map fix identified in (e) — it's
+   logically part of "what does an external plugin need to actually be
+   configurable," not GDrive-specific, and landing it here means the
+   GDrive phase consumes a stable, already-tested mechanism rather than
+   co-developing it under time pressure in an out-of-repo module where
+   kernel-side test coverage doesn't reach.
+2. **Filesystem plugin (d).** No dependency on (1) at all — it's an
+   in-repo, trusted plugin using the existing local-path pattern
+   unchanged. Sequencing it second (not first) is a *value* decision, not
+   a dependency one: it's lower-risk, proves nothing new architecturally
+   (Signal already proved the local-path shape), and could equally run in
+   parallel with (1) if the team has capacity — call this out explicitly
+   as parallelizable in the roadmap rather than strictly serial.
+3. **Google Drive plugin, out-of-repo (e).** Hard-depends on (1)
+   (external loading must exist to load it at all; the `Extra` config map
+   must exist for it to receive OAuth credentials). Also benefits from (2)
+   existing first only insofar as (2) will have exercised the
+   local-path/no-network-endpoint-shaped parts of the contract that GDrive
+   partially shares (folder-of-documents framing) — not a hard dependency,
+   but useful prior art for whoever builds GDrive to reference.
+4. **Per-item include/exclude (f).** Fully independent of (1)/(2)/(3) —
+   it's a stream/index/UI feature with zero plugin-contract surface. Can
+   run in parallel with any of the above. The one internal dependency is
+   sequencing *within* this feature: the `item_marks` schema-exemption
+   change (excluding it from `rebuildOnSchemaChange`'s drop list) should
+   land and be tested in isolation before the query-anchor rewrite in
+   `StreamItems`/`Search` (the `include`-support re-anchor identified
+   above), since the rewrite is the riskier, more invasive change and
+   benefits from the schema/API/basic-exclude path already being solid
+   underneath it. Recommend splitting this into two phases or two
+   sub-plans: (4a) schema + `exclude` only [lower risk, ships value
+   alone] → (4b) `include` + the query re-anchor [higher risk, only
+   pursued once the open scope question above is resolved].
+5. **PWA installability (g).** Fully independent of everything else in
+   this milestone — pure `web/` + static-asset work with no kernel-side
+   coupling beyond the one-line HTTPS-warning addition. Can run anytime,
+   including first, if the team wants an early low-risk win, or last as a
+   wrap-up phase. No reason to gate it on anything above.
 
-This ordering front-loads the kernel/contract (steps 1-5) behind a mock plugin specifically so that plugin risk (steps 6-9, especially 8-9) is isolated and doesn't block or corrupt validation of the kernel itself — matching how Home Assistant, Onyx, and Timelinize all separate a stable core from a wide, independently-evolving set of source integrations.
+**Net dependency shape:** `(1) → (3)`; everything else — `(2)`, `(4)`,
+`(5)` — is independent of `(1)` and of each other, and independent of
+`(3)`. Only the external-plugin-loading → GDrive edge is a genuine hard
+sequencing constraint; the roadmap should feel free to interleave or
+parallelize the remaining four phases based on team capacity rather than
+treating the milestone's five bullet points as a strict list.
 
 ## Sources
 
-- [timelinize/timelinize (GitHub)](https://github.com/timelinize/timelinize) — HIGH
-- [Timelinize Wiki: Data Sources](https://github.com/timelinize/timelinize/wiki/Data-Sources) — HIGH (FileImporter `Recognize`/`FileImport` contract, checkpointed imports)
-- [Timelinize Wiki: Schema](https://github.com/timelinize/timelinize/wiki/Schema) — HIGH (Item/Entity/Relationship/attribute model, cross-source dedup via identifying attributes)
-- [Timelinize Wiki: Develop](https://github.com/timelinize/timelinize/wiki/Develop) — MEDIUM (build-only content, limited architecture detail)
-- [onyx-dot-app/onyx connectors README](https://github.com/onyx-dot-app/onyx/blob/main/backend/onyx/connectors/README.md) — HIGH (LoadConnector/PollConnector/SlimConnector contract)
-- [Onyx Documentation: Connectors](https://docs.onyx.app/overview/core_features/connectors) — MEDIUM
-- [Home Assistant Developer Docs: Devices and Services](https://developers.home-assistant.io/docs/architecture/devices-and-services/) — HIGH (integration/config-entry/entity-platform/registry boundaries)
-- [Home Assistant Developer Docs: Fetching Data (DataUpdateCoordinator)](https://developers.home-assistant.io/docs/integration_fetching_data/) — HIGH
-- [Home Assistant core: update_coordinator.py](https://github.com/home-assistant/core/blob/dev/homeassistant/helpers/update_coordinator.py) — HIGH (source of truth for coordinator pattern)
-- [Paperless-ngx REST API docs](https://docs.paperless-ngx.com/api/) — HIGH (`/api/documents/<id>/`, `/metadata/`, `/preview/` endpoints)
-- [SilverBullet HTTP API](https://silverbullet.md/HTTP%20API) — HIGH (`GET /.fs/*`, `GET /index.json`, page-by-name URL serving)
-- Signal Desktop local DB (SQLCipher, key in `config.json`, forked `better-sqlite3`) — MEDIUM (cross-referenced across multiple independent forensics/community writeups, no single official source since it's undocumented by Signal)
-- WhatsApp local store access — LOW (no authoritative source found in this pass; PROJECT.md itself correctly flags this as the riskiest, least-validated area — recommend a dedicated spike/research phase before committing to a design)
+- `/home/darren/projects/davison/topos/.planning/PROJECT.md` — HIGH (project's own source of truth)
+- `/home/darren/projects/davison/topos/docs/plugin-contract.md` — HIGH (published contract, read in full)
+- `/home/darren/projects/davison/topos/docs/api.md` (§§ plugin-types, describe-plugin, plugin icon, config) — HIGH (read directly)
+- `/home/darren/projects/davison/topos/kernel/pluginhost/{host.go,discover_binaries.go}` — HIGH (read directly, current discovery/launch/trust-adjacent code)
+- `/home/darren/projects/davison/topos/kernel/index/{schema.go,store.go}` — HIGH (read directly, current rebuild-on-schema-change and StreamItems query shape)
+- `/home/darren/projects/davison/topos/kernel/config/types.go` — HIGH (read directly, `Source` struct's current fixed-field shape)
+- `/home/darren/projects/davison/topos/kernel/httpapi/rendition.go`, `plugins/paperless/plugin.go` — HIGH (read directly, binary-vs-text/html rendition handling precedent for the filesystem plugin)
+- `/home/darren/projects/davison/topos/internal/audit/{outbound_hosts_test.go,module_pins_test.go}` — HIGH (read directly, confirms AST scan scope is `repoRoot` filesystem walk only)
+- `/home/darren/projects/davison/topos/web/src/lib/components/AddSourceModal.svelte`, `web/svelte.config.js`, `kernel/webui/embed.go`, `go.work`, `sdk/go.mod` — HIGH (read directly, current SPA/build/module-boundary shape)
 
 ---
-*Architecture research for: local-first personal cross-source data aggregation (kernel + plugin)*
-*Researched: 2026-07-27*
+*Architecture research for: topos v1.1.0 "Plugin Ecosystem" milestone integration*
+*Researched: 2026-08-12*

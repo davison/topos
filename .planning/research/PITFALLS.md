@@ -1,356 +1,387 @@
 # Pitfalls Research
 
-**Domain:** Local-first personal cross-source data aggregation (kernel + plugin architecture; email/chat/document/wiki correlation)
-**Researched:** 2026-07-27
-**Confidence:** MEDIUM-HIGH (source access patterns for Signal/Proton/SQLite are HIGH confidence, drawn from official repos and documented issues; WhatsApp ban mechanics and rates are MEDIUM/LOW confidence, drawn from secondary community sources with no official statistics)
+**Domain:** Adding external-plugin loading, a filesystem source, an out-of-repo Google Drive plugin, per-item include/exclude marks, and PWA installability to an existing Go-kernel + go-plugin(gRPC-subprocess) local-first app
+**Researched:** 2026-08-12
+**Confidence:** HIGH for pitfalls grounded directly in this repo's code/contract (cited by file); MEDIUM-HIGH for Google Drive OAuth/export specifics (current official docs + multiple corroborating sources); MEDIUM for fsnotify/network-filesystem behavior (well-documented upstream limitation, exact behavior varies by mount type/OS)
+
+This research is scoped entirely to **integration** pitfalls: mistakes specific to bolting these five features onto *this* system's existing architecture (`kernel/pluginhost`, `kernel/index`, `kernel/correlate`, the published `topos.v1`/`topos.v2` contract, the SvelteKit static SPA embedded via `go:embed`), not generic advice about plugin systems, OAuth, or PWAs in the abstract.
 
 ## Critical Pitfalls
 
-### Pitfall 1: Assuming the official WhatsApp Desktop app has a readable local message history
+### Pitfall 1: Trust marking with no integrity pinning is security theater (TOCTOU)
 
 **What goes wrong:**
-The plan (per PROJECT.md) says the WhatsApp plugin will "read WhatsApp desktop/linked-device local store on the same machine." The official WhatsApp Desktop/Web app is a *thin mirror* of the phone — it caches chat previews and recently viewed media locally but does not maintain a durable, decryptable full-history SQLite store the way the Android app's `msgstore.db` does. Building a plugin that tries to parse the official desktop app's local files will hit a wall: there's no persistent multi-year archive sitting on disk to read.
+`docs/plugin-contract.md` already states the honest baseline: "a plugin is a regular native binary launched as a subprocess with the full local OS access of the user who runs the kernel — `hashicorp/go-plugin` is a transport, not a sandbox." Today every plugin is implicitly trusted because it was built from this repo and lives in the one `[plugins] dir` (`kernel/pluginhost/host.go`'s `launch()` does `filepath.Join(pluginsDir, src.Plugin)` and only checks `os.Stat` for existence). If "trusted vs untrusted" is implemented as a boolean recorded once (e.g., "was this binary added via the in-repo catalog vs a user-browsed path") with no re-verification at every subsequent launch, the label is cosmetic: the file at that path can be swapped after the trust decision was made — by a careless `go build` overwriting the binary in place, a package manager update, or, in the worst case, something malicious with local write access — and the kernel will launch whatever is at that path under the old, stale "trusted" badge with no warning.
 
 **Why it happens:**
-The mental model "Signal Desktop has a local DB, so WhatsApp Desktop must too" is reasonable but wrong — WhatsApp's official desktop client and WhatsApp Web are companion/mirror clients by design, not full local replicas.
+"Trusted" reads as a property of *where the binary came from*, which is tempting to implement as a one-time provenance check (in-repo build vs external path) rather than a property of *what bytes are actually being executed right now*. The former is cheap to implement and satisfies the literal requirement ("mark untrusted with a warning when adding"); the latter requires storing and re-checking a content hash on every launch, which is easy to skip since v1.1.0 explicitly defers "distribution, dev guide, and certification."
 
 **How to avoid:**
-Treat the WhatsApp plugin as an *active linked-device client*, not a passive file reader. The realistic architecture (validated by existing prior art like `wacli`, which is built on `whatsmeow`) is: your plugin itself links as a WhatsApp companion device via the multi-device protocol, receives the live event stream, and persists messages into its *own* local SQLite store as they arrive — the plugin becomes the durable store, not a reader of one. This has real consequences for the plugin contract (long-running connection/session lifecycle, not just a periodic file scan) and for what "history" means (see Pitfall 8).
+- Record a content hash (e.g. SHA-256) of the binary at the moment it is marked trusted or added, store it alongside the source's config entry, and re-verify it against the on-disk file at every `launch()` call (Discover, Reconcile, and the trial-launch path in `DescribePluginType` all funnel through this one function today — one recheck point covers all three callers for free).
+- On mismatch, fail loud and by name (matching this codebase's existing discipline for config-load failures) rather than silently launching the changed binary — never auto-re-trust on a hash change.
+- Be explicit in the UI copy that "trusted" means "built from `davison/topos`," not "verified safe" or "sandboxed" — the existing plugin-contract doc's honesty about "not a sandbox" should carry through to the UI warning text, not get softened into implied security the mechanism doesn't provide.
 
 **Warning signs:**
-- Design docs or code describe the WhatsApp plugin as scanning a directory of existing WhatsApp Desktop files
-- No mention of a persistent linked-device *session* the plugin itself owns and reconnects
+- The trust flag lives only in config (a boolean/enum) with no accompanying hash field.
+- The "mark as trusted" UI flow doesn't re-run any check at the next kernel restart or hot-apply reconcile.
+- The warning copy for untrusted plugins reads as a one-time speed bump rather than a standing, re-shown fact about the source instance.
 
 **Phase to address:**
-WhatsApp plugin phase — must be scoped from the start as "run a whatsmeow-based linked device and build a local mirror," not "parse existing files."
+The external-plugin-loading phase — this is the phase's core deliverable, not a follow-on hardening pass.
 
 ---
 
-### Pitfall 2: WhatsApp account ban / device de-link from using an unofficial client
+### Pitfall 2: The existing sync-replace strategy silently wipes manual include/exclude marks
 
 **What goes wrong:**
-Any library speaking the WhatsApp multi-device protocol without Meta's official Business API (whatsmeow, Baileys, and everything built on them, including `wacli`) is, by WhatsApp's Terms of Service, an unauthorized client. Community reports (secondary sources, not official Meta statistics) describe device-linking being blocked for accounts that trip detection, and in the worst case account suspension. Because a webspace links as a *companion device* consuming one of WhatsApp's 4 extra device slots, a ban or forced de-link doesn't just break the plugin — it can disrupt the user's real phone-based WhatsApp use too.
+`kernel/index/store.go`'s `ReplaceWebspaceSourceItems` is the exact function every source's sync path calls to commit a `Match` result: inside one transaction it upserts `items` rows, then does `DELETE FROM webspace_items WHERE webspace_name = ? AND item_id IN (SELECT id FROM items WHERE source = ?)` followed by a fresh `INSERT` per currently-matched item. This delete-then-reinsert is deliberate and correct for its current job (a `webspace_items` row is a pure derived fact: "this item currently matches this webspace"). If a per-item include/exclude mark is implemented as a column on `webspace_items` (the natural-looking place, since the mark is scoped to one webspace) or is otherwise keyed to a row that this statement deletes, **every mark is destroyed on the very next sync of that source**, with no error, no test failure, and no visible symptom until a user notices their exclusions "un-excluded themselves."
 
 **Why it happens:**
-There is no officially sanctioned personal-use read API for WhatsApp; every non-Business-API integration is reverse-engineered against a protocol Meta can and does change without notice, and detection heuristics are opaque and can flag benign long-lived unofficial sessions.
+`webspace_items` looks like the right table for a webspace-scoped, item-scoped fact — that's exactly what it is for match membership. But the milestone's requirement explicitly calls include/exclude "the kernel's first user-owned data beyond config" (PROJECT.md) — a signal that it needs its own persistence lifecycle, independent of the derived, resync-driven `webspace_items` table, not a bolt-on column on a table this codebase already treats as fully disposable every sync.
 
 **How to avoid:**
-- Treat this as an accepted, disclosed risk to the user — not a solved problem. Document it explicitly as a tradeoff in PROJECT.md/Context (already partially captured).
-- Use a well-maintained library (whatsmeow, actively updated as of mid-2026) rather than an abandoned fork — protocol breakage is routine and unmaintained libraries stop working within months.
-- Isolate the WhatsApp plugin so a ban/de-link degrades gracefully (feed goes stale, rest of the system unaffected) rather than crashing the kernel.
-- Avoid behavior that increases detection risk: no bulk backfill scraping in tight loops, no automation that resembles bot/spam patterns, keep the session long-lived and stable rather than repeatedly relinking.
+- Store marks in a dedicated table keyed on `(webspace_name, item_id)` (or `(webspace_name, source, source_id)` if marks must survive an item being fully re-synced under an unchanged stable id — see Pitfall 3) that no sync path ever deletes wholesale.
+- Join marks into the read path (`StreamItems`, `Search`) rather than writing them into a table `ReplaceWebspaceSourceItems` owns.
+- Add a regression test that runs two consecutive syncs of the same source with a mark applied between them and asserts the mark survives — this is the one test this codebase doesn't have today and is exactly the shape of bug the existing delete-then-reinsert design invites.
 
 **Warning signs:**
-- Repeated forced logouts/relink prompts
-- WhatsApp requiring phone-side re-verification unexpectedly
-- Primary phone inactive >14 days (this alone logs out *all* linked devices, unrelated to detection — a real operational gotcha, not just a ban risk)
+- Any schema change that adds an `included`/`excluded` column to `webspace_items` or `items` rather than a new table.
+- No test exercises "mark, then resync, then read" as a sequence.
 
 **Phase to address:**
-WhatsApp plugin phase (build), plus a resilience/reconnection story in the kernel's plugin lifecycle (a plugin can go from healthy to permanently broken without warning, and the UI needs to reflect that rather than silently going stale).
+The include/exclude phase — should be the very first design question in that phase's plan, before any schema work starts.
 
 ---
 
-### Pitfall 3: Signal Desktop key-access method changes across OS keyring backends and Signal versions
+### Pitfall 3: Manually including an item Match() never returned is architecturally impossible today
 
 **What goes wrong:**
-Since 2024, Signal Desktop protects its SQLCipher key via Electron's `safeStorage` API. On Linux this defers to the freedesktop.org Secrets API — GNOME Keyring on GNOME, KWallet on KDE. The key in `config.json` is no longer plaintext (as it was on older Signal versions and is still sometimes described in outdated guides) — it's wrapped by whichever keyring backend was active when Signal last started. If the user's desktop environment changes, or the keyring daemon isn't running/unlocked, Signal Desktop itself can fail to start with "OS encryption keyring backend has changed" errors — and a third-party plugin trying to extract the key will fail the same way, silently, if it assumes a single fixed extraction method.
+The plugin contract's only way for an item to enter the index is `Match` — the kernel never asks a plugin "what else do you have," only "what matches these fields" (`docs/plugin-contract.md`, "Match" section: "Called only at sync time"). There is no `List`/`Browse` RPC. This means a user cannot "manually include" an item that no configured match rule ever surfaced, because the kernel has never seen it, has no title/preview/deep-link for it, and has no `source_id` to attach a mark to — the feature as commonly imagined ("pull in that one email even though it's not in a matched folder") requires either a new plugin RPC (a contract change touching every existing plugin) or a narrower definition where "include" only ever *reverses a prior exclude* on an item that did match at some point. If this ambiguity isn't resolved before implementation starts, a plan can accidentally scope "include" as symmetric with "exclude" and only discover the missing-RPC problem mid-phase.
 
 **Why it happens:**
-Most "how to decrypt Signal Desktop" writeups online predate the `safeStorage` migration and describe the old plaintext-key approach; building against that stale information breaks on any current Signal Desktop install on Linux.
+"Include/exclude" reads as a symmetric pair in the requirement text ("mark individual stream entries for inclusion/exclusion"), but the underlying data availability is asymmetric: exclude only needs to suppress an item already in the index; include (of something never matched) needs a browse capability the contract doesn't have.
 
 **How to avoid:**
-- Detect which keyring backend is active (read the `safeStorageBackend` field in `config.json`) before attempting extraction, and fail with a clear, specific error rather than a generic decrypt failure.
-- Require the appropriate keyring daemon (gnome-keyring or kwalletd, matching the desktop environment) be unlocked/running as a documented precondition for the Signal plugin, since the deployment target is the user's own Arch Linux desktop.
-- Do not hardcode assumptions from forensics blog posts written against Windows/older macOS plaintext-key behavior.
+- Resolve scope explicitly at requirements/design time: either (a) "include" is restricted to un-doing a previous "exclude" (symmetric only within items the source already surfaced at least once), or (b) commit to a contract change (a new bounded `List`/`Browse` RPC, itself a real design effort touching the SDK, every in-repo plugin, and the published contract doc) to support pulling in genuinely unmatched items.
+- If (a) is chosen (the lower-risk option given the milestone is already carrying four other features), state this limitation plainly in the UI copy so users don't file it as a bug when a truly-unmatched item can't be manually added.
 
 **Warning signs:**
-- Plugin works in initial dev testing but breaks after a Signal Desktop auto-update
-- Plugin works on GNOME but fails on KDE (or vice versa) if the dev machine and eventual real machine differ
+- A plan or spec for this phase describes "include" without naming which RPC supplies the item's metadata for something never matched.
+- UAT criteria assume a user can search/browse "everything in a source" from the include/exclude UI — that browse surface doesn't exist anywhere in the current API.
 
 **Phase to address:**
-Signal plugin phase — key-extraction code must branch on backend type, and the phase's acceptance criteria should include "works against the actual OS/DE combination the user runs," not just a dev sandbox.
+The include/exclude phase's spec/discuss step — this is a scope decision, not an implementation detail, and belongs before `/gsd-plan-phase`, not discovered during it.
 
 ---
 
-### Pitfall 4: Signal Desktop database schema evolves and silently breaks external parsers
+### Pitfall 4: Manual marks orphaned when an item's stable id changes on re-sync
 
 **What goes wrong:**
-Signal Desktop's SQLite schema has changed substantially across its lifetime (recipient-ID model changes, sms/mms table merges, column drops, trigger rewrites) and continues to change with app updates. A plugin hardcoded against today's schema will silently misparse or crash against tomorrow's Signal Desktop release — and unlike a web API, there's no version negotiation; the plugin discovers breakage only when Signal auto-updates.
+The stable id is `"{source}:{source_id}"` (`docs/api.md`, "The stable-ID scheme"), and `source_id` is entirely plugin-defined ("stable within your plugin" per `docs/plugin-contract.md`). For the new filesystem plugin in particular, the obvious `source_id` choice is a file path — but a rename, a move to a different watched subfolder, or a re-mount at a different point can all change that path even though the user experiences it as "the same file." A Google Drive plugin has a more stable option (Drive's own file `id`, not path), but a naive implementation keying on the file's *name* instead would hit the same problem on a Drive-side rename. Any of these changes silently orphans a mark: the exclude/include row for the old stable id sits in the marks table forever, unattached to anything the stream ever shows again, while the "same" file reappears unmarked under its new id.
 
 **Why it happens:**
-Signal Desktop is not a documented integration surface; its schema is an internal implementation detail with no stability guarantee, changed at Signal's discretion.
+Plugin authors reach for the most convenient locally-unique identifier (a path, a filename) without checking whether the source system offers a more durable one (an inode-independent Drive file ID, a content hash) — the contract doesn't mandate durability, only stability "within your plugin," which a path technically satisfies until the file moves.
 
 **How to avoid:**
-- Read and check the database's own internal schema/user_version before parsing, and fail loudly (not silently return wrong data) on an unrecognized version.
-- Keep the Signal parsing logic isolated behind a narrow internal interface so schema-version branches are additive, not a rewrite of the whole plugin.
-- Pin against a known-working Signal Desktop version range in documentation, and treat "Signal auto-updated" as a routine maintenance event, not an exceptional bug.
+- For the filesystem plugin, prefer a stable identifier that survives a rename/move within the watched root if the filesystem exposes one (e.g., an inode number combined with a fallback to path when inodes aren't comparable across the watched roots, such as across a network mount boundary) — document the actual choice and its failure mode explicitly, since perfect stability across a rename is not achievable on every filesystem.
+- For the Google Drive plugin, always key `source_id` on Drive's own immutable file `id`, never on `name`/`path` — this is a one-line decision to get right at plugin-build time and expensive to fix later once marks exist against the wrong key.
+- Add a periodic or sync-triggered sweep that reports (not silently deletes) marks whose `item_id` no longer resolves to any row in `items`, so orphaning is at least observable rather than invisible (see Pitfall 5 for why not deleting automatically also matters).
 
 **Warning signs:**
-- Plugin returns empty/garbled results with no error after a Signal Desktop update
-- Message counts or timestamps look subtly wrong rather than obviously erroring
+- The filesystem plugin's `source_id` is literally the file path.
+- No test moves/renames a watched file and asserts the item's stable id is unchanged (or, if it can't be, that the mark visibly migrates or reports as orphaned rather than vanishing).
 
 **Phase to address:**
-Signal plugin phase, with schema-version detection built in from day one rather than added reactively after the first breakage.
+Filesystem plugin phase (choice of `source_id`) and the include/exclude phase (orphan detection/handling) — a cross-phase dependency worth flagging explicitly if these two phases run in parallel.
 
 ---
 
-### Pitfall 5: Unsafe concurrent access to Signal's live, open SQLite database
+### Pitfall 5: Unbounded mark/tombstone growth with no GC story
 
 **What goes wrong:**
-Signal Desktop keeps its database open (typically in WAL mode) while running. Simple reading from a second connection while Signal is open is generally safe — WAL allows concurrent readers without blocking the writer — but any code path that triggers a write or a checkpoint from the reading side (e.g., a library that opens the file in default read-write mode and issues even an incidental write, or calls a checkpoint API) risks corruption. There is also a documented class of rare WAL-reset corruption bugs in SQLite itself (present in versions 3.7.0 through 3.51.2, fixed in 3.51.3, March 2026) that a project should not be shipping against unknowingly.
+Once marks live in their own table (Pitfall 2's fix), that table has no natural cap. A user who excludes items over months, across a filesystem source with thousands of documents or a Drive folder that gets reorganized, accumulates marks referencing items that have since been deleted from the source, renamed past recognition (Pitfall 4), or belong to a webspace the user later deletes. Nothing in this codebase's existing sync path (`DeleteSourceItems`/`DeleteSyncRuns` fire when a *source instance* is removed from config, not per-item) currently has a hook for "this individual item is gone, clean up anything keyed to it."
 
 **Why it happens:**
-Developers assume "open a SQLite file" is inherently safe regardless of connection mode, and don't realize their SQLite driver/version might default to read-write or attempt an automatic checkpoint.
+Marks are new, user-owned, long-lived state in a system whose only prior persistent, non-config data (`items`, `webspace_items`, `sync_runs`) is entirely sync-derived and already gets bulk-replaced or bulk-deleted at the source/webspace granularity — there's no existing per-item deletion path to hang mark cleanup off of, so it's easy to ship the "add a mark" path without also shipping the "the marked item is gone" path.
 
 **How to avoid:**
-- Open Signal's (and WhatsApp's, if applicable) database explicitly in read-only mode (e.g., SQLite's `mode=ro` URI, or the driver's read-only flag) — never rely on "we just don't call write methods."
-- Pin/verify the SQLite library version in use is ≥3.51.3 to avoid the known WAL-reset bug class.
-- Never attempt to `VACUUM`, checkpoint, or otherwise touch write-adjacent operations against a live source database.
-- Consider copying the DB file to a temp location before reading if the read-only guarantee can't be verified end-to-end (with the caveat that live-in-use files can be mid-write when copied — snapshot with appropriate care, e.g., via a filesystem-level exclusive lock check or the SQLite backup API rather than a raw `cp`).
+- Decide explicitly whether marks cascade-delete when their `item_id` foreign key's row is removed (simplest, but loses the mark if the item is only *temporarily* absent from a sync, e.g., a source outage) versus persisting as orphans with a periodic sweep/report (Pitfall 4's mitigation) that a user or a maintenance command can act on.
+- Whichever is chosen, write it down as an explicit behavior (with a test), not an implicit consequence of whatever SQL happens to be easiest.
 
 **Warning signs:**
-- Signal Desktop reports database errors or corruption shortly after the plugin runs
-- Read-only mode isn't explicitly configured in code — it's just assumed
+- No `ON DELETE CASCADE` (or explicit equivalent) on the marks table's foreign key, and no compensating sweep either — the "neither" state where marks just grow forever.
 
 **Phase to address:**
-Kernel/plugin-contract phase — read-only access should be a *contract-level guarantee* enforced once (e.g., a shared "open source DB read-only" helper all DB-backed plugins use), not left to each plugin author's discipline. Also re-verified in the Signal plugin phase specifically.
+Include/exclude phase — should be a stated design decision in that phase's plan, not left implicit in the schema.
 
 ---
 
-### Pitfall 6: Proton Mail Bridge's localhost-only design fights the LAN deployment plan
+### Pitfall 6: Rule-excluded vs user-excluded is a real UX distinction this milestone must define, not just render
 
 **What goes wrong:**
-Proton Mail Bridge is architected to bind only to `127.0.0.1` and issues a self-signed certificate scoped to that assumption — it is explicitly *not* designed to be reachable over a LAN. PROJECT.md's plan (bridge on a separate home server, reached over LAN from the desktop) requires fighting this design: rebinding the listener to the LAN interface or tunnelling, and then trusting/pinning a self-signed cert across a network hop it wasn't built for. Naively rebinding to `0.0.0.0` exposes full IMAP/SMTP access to the Proton account to anything on the LAN, gated only by the Bridge-generated password — a materially larger attack surface than Bridge's authors intended.
+A webspace already has three tiers of filtering before this feature: source-instance participation allowlist, per-instance typed match config, and the keyword fallback (`docs/plugin-contract.md`, "Match" section; PROJECT.md's D-01/D-04 decisions). Per-item include/exclude is explicitly "the final tier." Two failure modes are easy to ship by accident: (1) showing a manually-excluded item identically to one that simply never matched any rule (a user can't tell "I turned this off" from "this was never going to show up"), and (2) leaving undefined what happens when a manual **include** is applied to an item whose match configuration would otherwise exclude it — does the mark override the rule (requiring the item to have entered the index at all, which circles back to Pitfall 3), or is "include" only ever available for items already present?
 
 **Why it happens:**
-Bridge's self-signed cert and localhost bind are a deliberate security boundary (Proton assumes Bridge and mail client share a machine), not an oversight; treating it as "just another IMAP server to point at" skips that context.
+Filter tiers 1–3 are all *configuration*, evaluated once at sync time, invisible to the end user as separate layers — item-level marks are the first tier that's an end-user-facing, per-item toggle, and it's tempting to build the UI as a simple boolean switch without surfacing which of "rule" or "you" is the reason an item is (or isn't) visible.
 
 **How to avoid:**
-- Prefer tunnelling over raw LAN exposure: SSH port-forward or a WireGuard/VPN hop from desktop to the home server, so Bridge still only ever sees `127.0.0.1` traffic locally, with the tunnel providing the LAN traversal and its own auth.
-- If rebinding directly is chosen instead, pin the Bridge's self-signed certificate fingerprint in the plugin's IMAP client config (don't blindly accept-any-self-signed-cert), and restrict LAN reachability to the specific desktop via firewall rules — not open to the whole LAN.
-- Document the cert-pinning/tunnel requirement as a hard dependency in the email plugin phase, since it's infrastructure work outside the plugin code itself (bridge/server-side firewall changes).
+- Design the UI affordance to show provenance of exclusion/inclusion explicitly (e.g., "excluded by you" vs "not matched" as distinct, differently-styled states), not one generic hidden/shown boolean.
+- Resolve the override question (mark beats rule, or mark only applies within already-matched items) as part of the same scope decision as Pitfall 3, since they're the same underlying question from two angles.
 
 **Warning signs:**
-- IMAP client configured to accept-all-certificates ("disable TLS verification") — a red flag with no upstream trust anchor to fall back on
-- Bridge process listening on `0.0.0.0` with no additional network-layer restriction
+- UI mockups/specs show a single toggle with no visual distinction between "off by rule" and "off by mark."
 
 **Phase to address:**
-Email/IMAP plugin phase — the connection-setup step should explicitly require either a tunnel or a pinned-cert LAN config, and reject "insecure/no-verify" as an acceptable default.
+Include/exclude phase — spec/discuss step, alongside Pitfall 3.
 
 ---
 
-### Pitfall 7: Proton's label model produces duplicate messages across IMAP folders
+### Pitfall 7: ServiceWorker install silently fails over LAN/mobile access because it's not a secure context
 
 **What goes wrong:**
-Proton Mail's labels (non-exclusive, a message can have several) are exposed through Bridge as IMAP folders. A message with two labels appears as two distinct messages (in Inbox and in each label-folder) from a naive IMAP client's point of view. A correlation engine that treats "message present in folder X" as "one item" will double- (or triple-) count the same email across multiple webspaces/matches unless it de-duplicates.
+`cmd/topos/main.go`'s `isLoopback` helper already exists specifically because the kernel supports binding to a non-loopback address for LAN access, with "no LAN exposure ships without an explicit, logged warning" (T-01-01). The milestone's PWA requirement explicitly targets **both** desktop *and* mobile installability. A phone on the same LAN necessarily reaches the kernel over `http://<lan-ip>:<port>` — and the Service Worker API is only available in a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts): `https://`, or `http://localhost`/`http://127.0.0.1` specifically. `navigator.serviceWorker` is simply `undefined` (or registration silently no-ops) on a plain-HTTP LAN origin from a mobile browser — there is no error thrown, no console warning in most browsers, and no crash: the "Install app" prompt just never appears, and it will look exactly like a bug in the PWA manifest rather than a fundamental transport-security gate.
 
 **Why it happens:**
-IMAP's folder model assumes one message lives in one place; Proton's label model doesn't map cleanly onto that, and Bridge papers over the mismatch by literally duplicating the message across folder views rather than exposing a true many-to-many label mechanism over IMAP.
+Desktop-only testing (`http://localhost:PORT`) is already a secure context, so the feature will appear to work completely in the most obvious dev-loop test, and the gap only shows up when someone actually tries "install on my phone" against the LAN-bound kernel — exactly the scenario the requirement calls out by name.
 
 **How to avoid:**
-- De-duplicate by a stable identity (Message-ID header, or IMAP `X-GM`-style extension if available, or a hash of envelope+headers) before treating an item as a unique correlation match, regardless of how many folders/labels it appears under.
-- When multiple labels on one message both match different configured webspace keywords, surface it as one item associated with multiple webspaces — not duplicate stream entries.
+- Decide this explicitly, early, as a design question rather than discovering it in UAT: either (a) scope mobile PWA install to "only when reached via a trusted-cert HTTPS LAN endpoint" (requiring the kernel to terminate TLS with a self-signed or locally-trusted cert — real added scope), or (b) explicitly scope PWA installability to desktop/localhost only for this milestone and document that mobile install requires a secure-context workaround (e.g., a reverse proxy the user sets up themselves) rather than shipping it as a kernel feature.
+- Whichever is chosen, state it in the phase's success criteria in unambiguous terms ("installable on desktop via localhost; mobile requires HTTPS, out of scope this phase" or "kernel gains an HTTPS listen mode for LAN PWA install") — "installable on desktop and mobile" as currently phrased in PROJECT.md doesn't yet make this call.
 
 **Warning signs:**
-- Same email subject/timestamp appearing twice in a single webspace's stream
-- Item counts in a webspace roughly double the expected count for label-heavy accounts
+- The PWA phase's plan has no mention of the kernel's existing loopback-vs-LAN bind distinction.
+- Manual testing only ever happens against `localhost`.
 
 **Phase to address:**
-Email/IMAP plugin phase — dedup logic belongs in the plugin's ingestion path, before metadata reaches the shared index.
+The PWA phase — must be resolved before implementation, since it changes whether the kernel needs a TLS listen mode at all.
 
 ---
 
-### Pitfall 8: Read-only guarantee silently broken by naive IMAP fetch calls
+### Pitfall 8: Stale ServiceWorker cache serves an old UI against a new kernel API after upgrade
 
 **What goes wrong:**
-The project's core constraint is "plugins must never mutate source data." A common, easy-to-miss violation: fetching a message body with a plain `FETCH BODY[...]` IMAP command marks the message `\Seen` as a side effect defined by the IMAP protocol itself — even though no code path explicitly "wrote" anything. This silently changes read/unread state in the user's real mailbox (and in Proton Mail's own UI) just from previewing an email in a webspace.
+The SPA is built once (`web/svelte.config.js` uses `adapter-static`) and embedded into the Go binary via `go:embed` (`kernel/webui/embed.go`) — a kernel upgrade ships a brand-new binary with a brand-new UI bundle *and*, potentially, a changed HTTP API shape in the same release (this repo has already made several breaking-ish API additions across phases, e.g. new endpoints, new response fields). If a ServiceWorker precaches `index.html` and hashed JS/CSS assets aggressively (a common, easy default with generated SW tooling) and doesn't have an explicit update/activation strategy, a browser that already installed the PWA can keep serving the *previous* release's UI — built against the *previous* release's API contract — against the *new* kernel binary indefinitely, because the SW itself is what's stale, and by default browsers only re-check a SW script for byte-level changes on navigation, at most roughly once every 24 hours unless `Cache-Control` on `sw.js` forces more frequent checks. The result is a UI that renders but calls stale endpoints/shapes, degrading confusingly rather than failing loudly.
 
 **Why it happens:**
-Most IMAP client libraries default to the "mark as seen" fetch behavior because that matches typical mail-client UX; using `BODY.PEEK[...]` instead requires deliberate opt-in that's easy to miss when using a library's convenience wrappers.
+Precaching everything and calling it done is the fastest path to "PWA installable" checkbox-passing; the update lifecycle (`skipWaiting`, `clients.claim`, a visible "update available, refresh" affordance, and serving `sw.js` itself with `Cache-Control: no-cache`) is the part that's easy to skip because it only manifests after a *second* kernel release, past the point where the first release's UAT would catch it.
 
 **How to avoid:**
-- Audit every IMAP fetch call to confirm it uses `BODY.PEEK[]` (or the library's equivalent non-mutating accessor), never `BODY[]`.
-- Add an integration test that fetches an unread message through the plugin and asserts the source mailbox's `\Seen` flag is unchanged afterward.
-- Extend the same read-only audit mindset to any other flag-mutating IMAP verb (e.g., avoid `STORE` entirely; the plugin should have no code path capable of issuing it).
+- Serve `sw.js` (and any manifest referencing it) with `Cache-Control: no-cache` so the browser re-checks it on every load rather than trusting a stale copy for up to 24 hours.
+- Use a versioned/hashed precache manifest tied to the actual build (Vite's own content-hashed asset names already help here) so an old SW's cache references become 404s the SW's own activate handler can detect and purge, rather than silently serving from a cache that no longer matches any served asset.
+- Prefer a network-first (or stale-while-revalidate with a visible update prompt) strategy for `index.html` specifically — the one file most likely to reference a stale asset manifest if cached cache-first.
+- Extend the existing hermetic Playwright e2e suite (already this project's standing regression gate per CLAUDE.md) with a spec that installs a build, "upgrades" the served bundle, and asserts the client observes and applies the update rather than serving stale content — this is exactly the kind of UAT-drivable check the project's own testing conventions call for.
 
 **Warning signs:**
-- Emails in Proton Mail's own web UI show as read after only being viewed through a webspace
-- No automated test exists that specifically checks flag-preservation post-fetch
+- The SW registration code has no `updatefound`/`controllerchange` handling.
+- `sw.js` isn't explicitly served with cache-defeating headers.
 
 **Phase to address:**
-Email/IMAP plugin phase, with the read-only contract test added as a required verification step (see also the read-only-guarantee item in the "Looks Done But Isn't" checklist below).
+The PWA phase — the update-flow test should be part of that phase's definition of done, not deferred.
 
 ---
 
-### Pitfall 9: Hybrid index staleness — the index and the live source disagree
+### Pitfall 9: No launch timeout lets a hung external binary freeze the Add-Plugin flow
 
 **What goes wrong:**
-The chosen architecture (metadata/preview synced to a local index, full content fetched live on open) creates an inherent consistency gap: an item can be deleted, moved, relabeled, or renamed at the source after the index last synced. The "open in source" deep link then either 404s, opens the wrong item, or the live fetch silently fails — and if the UI doesn't handle this, the user loses trust in the whole system the first time a stream item turns out to be a ghost.
+`kernel/pluginhost/host.go`'s `launch()` — the single function every launch path (`Discover`, `Reconcile`, and `DescribePluginType`'s trial-launch used by the "+" add-source UI flow) goes through — constructs `goplugin.ClientConfig` with no `StartTimeout` override, so `hashicorp/go-plugin`'s default handshake timeout applies. That default is generous (on the order of a minute) and was a reasonable choice when every launched binary was built in-repo and known to behave. Once the UI accepts an arbitrary external binary path for a trial-launch describe call, a broken, malicious, or simply non-`go-plugin` executable (one that hangs waiting on stdin, or never emits the handshake line at all) can block that request for the full default timeout with the "Add Plugin" UI showing no useful progress — and because `DescribePluginType` is also reused by "Edit match settings…" on every already-configured instance (per its doc comment), a hang here isn't confined to first-add; it can recur on every edit of a misbehaving instance.
 
 **Why it happens:**
-Hybrid/local-index-plus-live-fetch designs are chosen precisely for speed and low duplication, but that tradeoff necessarily means the index is *not* the source of truth and can lag reality; teams often build the "happy path" (index matches source) and treat the mismatch case as an edge case rather than a first-class state.
+The current fleet of plugins is entirely first-party and well-behaved, so a generous or default timeout has simply never mattered; introducing untrusted external binaries changes the threat/failure model for the exact same code path without necessarily changing the code path itself.
 
 **How to avoid:**
-- Design the item detail view to explicitly handle and surface "no longer available at source" / "moved" states rather than assuming live fetch always succeeds.
-- Include a lightweight incremental re-sync per source (watermark/cursor-based, not full rescan) so staleness windows stay small rather than accumulating.
-- Decide per-source what "moved" detection looks like (e.g., IMAP UIDVALIDITY changes, paperless-ngx document ID no longer resolving, SilverBullet page renamed) and handle each explicitly rather than a single generic "fetch failed" catch-all.
+- Set an explicit, short `StartTimeout` on trial-launch specifically (the `describeOnly` launches), distinct from — and shorter than — whatever is acceptable for a real boot-time launch of an already-configured, presumably-working instance.
+- Surface a clear "this plugin failed to respond in time" UI state distinct from other launch failures, so a hang doesn't read as the UI itself being frozen.
 
 **Warning signs:**
-- Deep links that 404 with no explanit UI treatment
-- No re-sync cadence defined, or re-sync implemented as "delete and rebuild the whole index"
+- `goplugin.ClientConfig` in `launch()` has no `StartTimeout` field set.
+- Manual testing of "add a plugin" only ever tries binaries that behave correctly.
 
 **Phase to address:**
-Hybrid data model phase (index design) and Web UI phase (staleness states in the detail pane) both need to address this — it can't be fixed in the UI alone if the index doesn't track enough to detect staleness.
+The external-plugin-loading phase.
 
 ---
 
-### Pitfall 10: Plugin API designed around email/IMAP concepts, then broken by later sources
+### Pitfall 10: Google's OAuth model makes "just ship a client secret" a compounding, not one-time, problem
 
 **What goes wrong:**
-If the first plugin built is the IMAP/email one, it's tempting to bake IMAP-shaped concepts (folders, UIDs, flags) directly into the shared plugin contract. When the Signal, WhatsApp, paperless-ngx, and SilverBullet plugins are added, none of those map cleanly onto "folders and UIDs" — forcing either awkward shoehorning or a breaking rework of the contract exactly when the project's stated goal is "documented enough for third-party plugins."
+Google's own guidance for installed/desktop apps states plainly that such apps "cannot keep secrets" — the client secret is expected to be embedded and is not actually confidential (loopback-redirect flow, no PKCE-only substitute for the refresh-token grant on Google's implementation). That much is a known, accepted tradeoff, not a design flaw per se. What compounds it for an open-source, single-maintainer project specifically: **as long as the Google Cloud OAuth consent screen for that client stays in "Testing" publishing status (the default, and the only realistic status without a formal Google verification review — itself requiring a privacy policy, and for the sensitive Drive scopes this plugin needs, a security assessment), every issued refresh token expires after exactly 7 days**, forcing every user of the shipped Google Drive plugin to re-authenticate weekly, forever, unless the project's maintainer completes Google's app-verification process (a real, ongoing burden disproportionate to a personal local-first tool) or each user registers their own Google Cloud project and brings their own client id/secret. Separately, a client secret string committed to a public open-source repo — even one Google itself considers "not really secret" for this app type — routinely trips GitHub/GitGuardian-style automated secret scanners, generating recurring false-alarm noise for the project.
 
 **Why it happens:**
-Building against one concrete source first and only generalizing afterward is natural, but the contract that results is often accidentally over-fit to that first source's data model.
+"Add OAuth to the Drive plugin" reads as a single implementation task; the distribution model (one shared client for every user of the OSS repo, vs. bring-your-own-client) is a separate decision with very different maintenance and UX consequences that's easy to leave implicit until users start reporting weekly forced re-logins.
 
 **How to avoid:**
-- Design the plugin contract's core abstractions (item, timestamp, native-category/tag, preview, deep-link) source-agnostically from the start, informed by sketching all five MVP sources' data shapes before finalizing the interface — not just the first one implemented.
-- Keep source-specific concepts (IMAP UID, Signal conversation ID, WhatsApp JID, paperless-ngx document ID, SilverBullet page path) inside each plugin, exposed to the kernel only as an opaque per-source identifier plus the common fields.
-- Treat the plugin API as versioned from v1 (even if only one version exists) so a deliberate deprecation path exists once a second consumer (a third-party plugin) appears.
+- Decide explicitly, at design time, between (a) shipping one embedded client id/secret and living with either the 7-day forced-testing-mode re-auth cycle or the ongoing burden of Google app verification, or (b) requiring each user to create their own Google Cloud project and paste their own client id/secret into topos's config — more setup friction, but avoids both the verification burden and the shared-quota problem (see Pitfall 11), and matches this project's existing "user supplies their own credentials" pattern for every other source (paperless-ngx token, Proton Bridge password, SilverBullet token).
+- If (a) is chosen anyway, document the 7-day re-auth expectation explicitly in the plugin's README so it isn't reported as a bug.
+- Store the refresh token using the same discipline this codebase already applies to other plugin secrets (`docs/plugin-contract.md`'s "never log a credential" rule) — log presence/name only, never the token value.
 
 **Warning signs:**
-- Kernel/shared code has IMAP-specific types (e.g., `folder`, `uid`) leaking into interfaces meant to be source-agnostic
-- Adding the second (Signal) plugin requires touching the shared contract far more than the plugin implementation itself
+- The Drive plugin ships a single hardcoded client id/secret with no mention of re-auth cadence anywhere in its docs.
+- No test/manual-check exercises "what happens after the refresh token expires" (a real, not hypothetical, weekly event in testing-mode).
 
 **Phase to address:**
-Kernel + plugin architecture phase — sketch the contract against at least two structurally different sources (e.g., IMAP and Signal, or IMAP and paperless-ngx) before writing the first plugin, even though only the email plugin will be fully implemented that phase.
+The Google Drive plugin phase — this is a first design decision (credential distribution model), not an implementation detail to sort out mid-build. Given this plugin is explicitly built *out-of-repo* to dogfood the external mechanism, this decision also can't lean on this repo's own secret-scanning/CI to catch a leaked-looking string — it's the external plugin author's own repo's problem to get right, which is itself worth validating as part of the dogfooding exercise.
 
 ---
 
-### Pitfall 11: Scope creep toward replicating source-app functionality
+### Pitfall 11: Fixed single-plugins-directory assumption breaks when a source needs an out-of-repo binary path
 
 **What goes wrong:**
-"Out of Scope" explicitly excludes write/edit and replicating source-app features (composing email, replying to chats, editing notes). In practice, this boundary erodes gradually: a "quick reply" button feels natural once you're staring at a chat thread in the UI; "mark as read from here" feels convenient; "add a tag" feels like a small addition. Each one individually seems reasonable, but together they turn Webspaces from a safe, view-only aggregator into a second, partial, less-capable client for every source — which is both a huge maintenance burden (mirroring N source apps' write semantics) and a direct threat to the read-only safety guarantees this document's other pitfalls depend on.
+Today, `[sources.<name>].plugin` is a bare filename resolved via `filepath.Join(pluginsDir, src.Plugin)` against one kernel-wide `[plugins] dir` — there's exactly one trusted root, and every plugin's binary is assumed to live there. External-plugin loading needs *some* plugins to load from elsewhere (wherever the user built or downloaded the Google Drive plugin, say). The naive fix — let `src.Plugin` be an absolute path — reintroduces the classic path-traversal/confusable-path class of bug into a field that used to be a safe, bounded filename: a typo'd or copy-pasted path could resolve to a completely different binary than the one the user meant to trust, and there's no existing validation layer (this field has never needed one) to catch it.
 
 **Why it happens:**
-Once a rich preview UI exists, every "why can't I just also..." request looks like a small increment rather than a scope violation, because the UI is right there and the source's write API often technically exists.
+The single-directory model was a correct, minimal design for an all-in-repo plugin fleet; extending the same field to also carry "or an arbitrary external path" without adding new validation is the path of least resistance, but silently changes that field's trust properties.
 
 **How to avoid:**
-- Treat "view-only, deep-link out for anything else" as a hard architectural invariant enforced at the plugin-contract level (plugins literally have no write methods available to call), not just a product-scope decision that can be quietly overridden by a future feature request.
-- Any request that starts with "just let me quickly do X from within the webspace" should be redirected to "open in source" by design, and treated as validation that the deep-link UX needs to be fast/frictionless — not a signal to add write capability.
-- Re-review this boundary explicitly at each milestone transition (the project's own process already does a "Requirements/Out of Scope" review — make read-only-ness itself one of the audited items, not just individual features).
+- Keep the existing bare-filename-resolved-in-`pluginsDir` shape for trusted/in-repo plugins unchanged, and add a distinct, explicitly-named config shape for an external plugin's binary (e.g., a separate `external_path` key, absolute, resolved with symlinks followed and re-displayed to the user in full before they confirm "trust this"), rather than overloading the existing `plugin` field's semantics.
+- Whatever the shape, resolve and canonicalize the path once (`filepath.EvalSymlinks` + `filepath.Abs`) and show the *resolved* path in the trust-confirmation UI, not the as-typed one — this is the same "don't let a symlink or relative segment hide what's actually being trusted" discipline that generic path-validation advice already covers, applied to this specific new field.
 
 **Warning signs:**
-- Any plugin interface gains a method whose purpose is anything other than "read and return data"
-- UI design discussions include verbs like "reply," "edit," "compose," "archive," or "delete" attached to a webspace item
+- `src.Plugin` (or its replacement) accepts both a bare filename and an absolute path with no code branch distinguishing "resolve in the trusted plugins dir" from "resolve as given."
 
 **Phase to address:**
-Kernel + plugin architecture phase (enforce no-write capability structurally) and every subsequent phase as an ongoing review item, not a one-time gate.
+The external-plugin-loading phase.
+
+---
+
+### Pitfall 12: Milestone sequencing creates a real circular dependency between the GDrive and external-loading phases
+
+**What goes wrong:**
+PROJECT.md states the Google Drive plugin is "built out-of-repo against the published contract (dogfoods the external-plugin mechanism end to end)" — i.e., it is simultaneously (a) a feature that needs somewhere to load into, and (b) the validation exercise *for* that loading mechanism. If a roadmap schedules substantial Google Drive plugin work (OAuth flow, Drive API client, export handling) before the external-loading mechanism has landed and been exercised against *something*, that work has nowhere real to run and no way to prove the loading path actually works until both land together — and any bug found in the loading mechanism at that late point (e.g., the trust-marking UX, the timeout in Pitfall 9, the path-handling in Pitfall 11) now blocks the hardest, most novel feature in the milestone (a full desktop OAuth flow against a cloud API) rather than a cheap, already-understood one.
+
+**Why it happens:**
+Both features read as independent line items in a flat requirements list; the "dogfoods X" phrasing is the only signal of a real ordering dependency, and it's easy to schedule by apparent feature independence rather than by what validates what.
+
+**How to avoid:**
+- Sequence the filesystem plugin (in-repo/trusted, no OAuth, no network dependency, the milestone's simplest new source) either alongside or immediately before the external-loading mechanism — its binary is a safe, already-understood stand-in that can validate "does the kernel correctly launch and trust-mark a plugin binary" without also debugging OAuth at the same time. A copy of that same binary, or a second trivial mock-shaped plugin, built and pointed at from outside the repo is a cheap, low-risk first real exercise of the external-loading path before the Google Drive phase begins.
+- Only start substantial Google Drive plugin work once external-loading has been proven end-to-end against at least one real out-of-repo binary — treat "external loading works, demonstrated live" as a hard gate/checkpoint before the Drive phase, not an assumption carried forward from the requirement text.
+
+**Warning signs:**
+- A roadmap phase order that puts the Google Drive plugin's phase before (or concurrent with, sharing no completed checkpoint from) the external-plugin-loading phase.
+
+**Phase to address:**
+Roadmap creation itself — this is an ordering decision, not something a single phase's plan can fix after the fact.
 
 ---
 
 ## Technical Debt Patterns
 
+Shortcuts that seem reasonable but create long-term problems.
+
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|-----------------|------------------|
-| Store full email/chat bodies in the local index instead of preview + live fetch | Faster to build, no live-fetch error handling needed | Defeats the whole point of the hybrid model — duplicates sensitive content locally, drifts from source, larger attack surface for "data at rest" | Never for the MVP hybrid model; acceptable only as a throwaway prototype before the real architecture is built |
-| Poll paperless-ngx/SilverBullet on a fixed interval instead of event/webhook-driven sync | Much simpler than wiring webhooks | Wasted cycles, coarser staleness window | Acceptable indefinitely at single-user/personal scale — this is a reasonable permanent choice, not just an MVP shortcut |
-| Skip a schema-migration mechanism for the local index DB | Faster initial development | Any index schema change (e.g., adding a new source or field) requires a manual rebuild or breaks existing installs | Acceptable pre-v1 only; must exist before a second person besides the author runs this |
-| Copy Signal Desktop's DB file to a temp location instead of true read-only live access | Sidesteps needing to prove live read-only safety | Copy timing races with an in-use file can grab a torn/mid-write snapshot; adds disk I/O and staleness | Acceptable as an interim step only if paired with a verified consistent-snapshot method (e.g., SQLite backup API), never a raw `cp` while Signal is running |
-| Hardcode a single Proton Bridge / SilverBullet / paperless-ngx instance URL rather than configurable endpoints | One less config surface for a single-user MVP | Blocks any future second-instance or multi-environment use, and makes local dev/testing against a staging instance harder | Acceptable for v1 since this is explicitly a personal, single-user tool — revisit only if that constraint changes |
+| Recording "trusted" as a boolean with no binary hash | Faster to ship the marking UI | TOCTOU gap (Pitfall 1) — a swapped binary silently inherits stale trust | Never for a real release; borderline acceptable only for an explicitly-labeled "advisory only, not enforced" first cut, clearly communicated as such |
+| Watching only top-level configured folders, not recursively, for the filesystem plugin's first cut | Simpler `fsnotify` wiring, no manual recursive-watch-add bookkeeping | Contradicts the stated "optionally subfolders" requirement; users will report missing items from nested folders as bugs | Acceptable only if "subfolders" is explicitly deferred, not silently unimplemented |
+| Polling the filesystem instead of `fsnotify` for the initial release | Sidesteps every fsnotify network-mount/inotify-limit pitfall (see below) at a stroke | Higher latency for picking up changes, more CPU on large trees, but genuinely more portable across network mounts | A defensible default for a "docs in a folder" source where near-real-time isn't the point — worth seriously considering, not just falling back to as a last resort |
+| Skipping refresh-token proactive renewal for the Drive plugin (only refresh on 401) | Less OAuth-flow code to write initially | Every sync silently no-ops with a stale-looking "source unavailable" state for however long a background sync runs before a live request surfaces the 401 | Never — Health/Match are exactly the paths that need to surface an expired-grant state clearly, per this contract's existing `codes.Unavailable` convention |
+| Deferring marks-orphan cleanup (Pitfall 5) entirely for v1.1.0 | Less schema/GC design work this milestone | Slow, invisible table growth; harder to retrofit cleanup once real user data exists | Acceptable if explicitly logged as a known gap with a documented manual cleanup path, not silently absent |
 
 ## Integration Gotchas
 
+Common mistakes when connecting to external services/mechanisms specific to this milestone.
+
 | Integration | Common Mistake | Correct Approach |
 |-------------|-----------------|-------------------|
-| Proton Mail Bridge | Assuming standard IMAP `MOVE`/label semantics apply, or exposing Bridge on the open LAN with cert verification disabled | Treat Bridge's IMAP as read/browse-only from this project's side; use `BODY.PEEK[]`; reach it via tunnel or a pinned self-signed cert with restricted firewall rules, never "disable TLS verification" |
-| Signal Desktop DB | Assuming the key is plaintext in `config.json` (true only pre-2024 / non-Linux edge cases) | Detect the active `safeStorageBackend` and extract via the matching OS keyring (GNOME Keyring / KWallet), open the DB read-only, and version-check the schema before parsing |
-| WhatsApp | Assuming an existing local file store can just be read (see Pitfall 1) | Run an active whatsmeow-based linked-device session that persists its own event stream into your own store; expect limited initial backfill, not full history |
-| paperless-ngx REST API | Fetching all documents in one unpaginated call, or hitting `/api/selection_data/` for large result sets | Paginate through `/api/documents/`, filter server-side by tag/correspondent where possible, and load the tag list once to resolve tag IDs before any tag-based queries |
-| SilverBullet | Assuming the sync/plugin layer guarantees no conflicts across concurrent writers | SilverBullet creates a "conflicting copy" file rather than merging on concurrent edits — since Webspaces is read-only this mostly doesn't apply to *your* writes, but be aware reads may transiently see a conflict-copy artifact if the user edits from two clients at once |
+| Google Drive API `files.export` (Google Docs/Sheets/Slides) | Calling `files.get?alt=media` on a native Google Docs file (it has no binary content — `files.get` with `alt=media` fails for Google Workspace mime types) | Detect the Workspace `mimeType` (`application/vnd.google-apps.document` etc.) and call `files.export` with an explicit target mime type instead; handle the documented 10 MB export size ceiling (`exportSizeLimitExceeded`) as an expected, not exceptional, outcome for large docs — matches this contract's existing "available=false is normal" convention for `Fetch` |
+| Google Drive API quota | Assuming default per-project/per-user quotas never matter for "personal use" and polling on a tight interval across a large Drive | Treat quota errors (`userRateLimitExceeded`/`rateLimitExceeded`) the same way this contract already asks plugins to treat any transient source failure — `codes.Unavailable`, not a crash — and back off; don't assume "single user" means "no rate limiting ever matters," since Drive's per-100-second quotas are tight enough that a naive full-tree poll can trip them |
+| `fsnotify` on a configured folder that turns out to be a network mount (NFS/SMB/CIFS) | Assuming a missed-events bug report means the watcher code is broken | NFS/SMB/CIFS provide no kernel-level inotify hook on Linux — `fsnotify` will silently never fire for changes made on the remote side of such a mount; detect the mount type (or simply document the limitation) and fall back to periodic polling for non-local filesystems rather than treating this as a bug to debug forever |
+| `fsnotify` + a deep/large watched tree | Recursively adding a watch per subdirectory without checking `fs.inotify.max_user_watches` (a modest default on many Linux distros) | Either cap/document the supported tree depth and file count, surface a clear "too many files to watch, falling back to periodic scan" degraded state (matching this project's existing "degrade honestly, never silently" convention for Signal/WhatsApp), or raise the watch limit as a documented precondition the way the Signal plugin already documents its keyring-daemon precondition |
+| `fsnotify` + editors that write via temp-file-then-rename (vim, many others) | Reading the file the instant a `Write`/`Create` event fires, catching a half-written temp file or a moment mid-rename | Debounce on a short settle window and/or watch for the specific rename-into-place event sequence rather than reacting to the first raw event; treat a transient read failure as retry-worthy, not fatal |
+| go-plugin trial-launch of an external binary | Reusing the existing `launch()` timeout behavior unchanged (Pitfall 9) | Set an explicit, shorter `StartTimeout` for `describeOnly` launches specifically |
 
 ## Performance Traps
 
+Patterns that work at small scale but fail as usage grows.
+
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|-----------------|
-| Full re-scan of Signal/WhatsApp DB or IMAP mailbox on every sync tick | Sync time grows linearly with total historical volume, not with new items | Use an incremental cursor per source (SQLite `rowid`/timestamp watermark, IMAP `UIDNEXT`/`MODSEQ`, paperless-ngx `created` filter) | Noticeable once a source has a few thousand items; becomes a real problem past tens of thousands |
-| Eagerly fetching full body/attachments to build every stream preview | Sync/ingest slows down and network-fetches balloon even for items the user never opens | Generate lightweight previews at ingest time from headers/snippets only; fetch full content live, lazily, only when an item is opened | Breaks down once document/attachment-heavy sources (paperless-ngx especially) accumulate — full-content prefetch at ingest scales with total corpus size, not usage |
-| Full-text scanning every source for keyword correlation instead of using native tags/labels/folders | Correlation step becomes slow and produces false positives from incidental keyword mentions | Use each source's own native categorization (IMAP folder/label, chat group name, paperless-ngx tag, SilverBullet tag/page) as the match target, per the project's own deterministic v1 design — don't quietly upgrade to full-text search as a "quick win" | Any dataset large enough that full-text scanning becomes the ingest bottleneck; also breaks the "no false positives" guarantee the deterministic model promises |
+| Blocking initial full-directory scan on the filesystem plugin's first `Match` call | Kernel startup/first sync hangs noticeably; other sources' sync appears stalled if sync is serialized per source | Stream/paginate the initial scan, and confirm (this codebase already fixed exactly this class of bug for WhatsApp's supervisor lock, G-08-5) that a slow source's sync cannot block other sources' routes/health probes | A folder with thousands of files, or one on a slow network mount, on first configure |
+| Marks table with no index on `(webspace_name, item_id)` (or its chosen key) | `StreamItems`/`Search` read latency degrades as marks accumulate | Index the marks table on its join key from the start — this codebase already treats query-shape discipline seriously (`BuildMatchQuery`, FTS5 triggers) | Once a user has excluded more than a few hundred items across a long-lived webspace |
+| SW precache manifest growing unbounded across releases without cache eviction | Storage-quota pressure on mobile devices; slow install/update | Version the precache and explicitly purge caches not matching the current build id in the SW's `activate` handler | After several kernel releases with an installed PWA that never fully re-installs |
 
 ## Security Mistakes
 
+Domain-specific security issues beyond general web security.
+
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Storing Signal/WhatsApp session keys or derived secrets unencrypted in Webspaces' own config/index | Replicates the exact plaintext-key criticism leveled at pre-2024 Signal Desktop — any local-file-reading malware or other user on the machine gets full access | Rely on the OS keyring (same mechanism Signal itself now uses) or an equivalent encrypted-at-rest store for anything sensitive Webspaces itself persists |
-| Binding Proton Bridge to `0.0.0.0` for LAN reachability with only the Bridge password as a gate | Opens full IMAP/SMTP access to the Proton account to the whole LAN segment | Prefer an authenticated tunnel (SSH/WireGuard) over raw rebind; if rebinding, restrict via firewall to the specific desktop IP and pin the cert fingerprint |
-| Giving plugin code the same filesystem access level as the source apps themselves (e.g., full read-write handle to Signal's data directory) | A plugin bug could corrupt the live Signal/WhatsApp store even without intent to write | Open source databases via explicit read-only file handles/URIs at the point of access, and keep this enforced by the kernel's shared "open source DB" helper rather than plugin-author discipline |
-| Treating "read-only by convention" as sufficient instead of structurally enforced | A future contributor's plugin could add a write path without anyone noticing until damage is done | Make the plugin interface itself incapable of exposing write methods (no `save`/`update`/`delete` in the contract at all) |
+| Treating "trusted" as verified-safe in UI copy | Users make risk decisions based on a badge that only means "built from this repo," not "scanned" or "sandboxed" | Match the plugin contract doc's own honest framing ("not a sandbox") in every user-facing surface, not just the docs |
+| No content-hash re-check at launch (Pitfall 1) | A trusted-marked binary can be silently swapped between trust-time and every subsequent launch | Hash-pin at trust time, re-verify at every `launch()` call |
+| Logging the Drive OAuth refresh/access token, or the Signal/paperless-style secrets, in the external Drive plugin's own logging | A leaked local log file exposes a live credential; the existing in-repo contract rule ("never log a credential") isn't mechanically enforced on out-of-repo plugins the way the in-repo AST scan enforces read-only HTTP methods | Since the AST guard (`plugins/` scan for non-GET HTTP methods) explicitly does not extend to out-of-repo plugins per the contract doc, the Drive plugin's own test suite needs to carry an equivalent discipline itself — document this expectation in whatever "how to build an external plugin" guidance ships alongside this milestone |
+| Accepting an external plugin's absolute path with no canonicalization/display before the trust confirmation (Pitfall 11) | A symlink or relative-path trick could make the user believe they're trusting one binary while actually trusting another | Resolve symlinks and show the fully-resolved path at confirmation time |
+| Binding the kernel to a LAN address to support mobile PWA install without also adding TLS (Pitfall 7) | Widens the existing loopback-only default's attack surface for a feature (PWA) that doesn't actually work without HTTPS anyway | Don't expand LAN exposure as a side effect of chasing mobile PWA install unless HTTPS is part of the same design — the two are coupled, not independent asks |
 
 ## UX Pitfalls
 
+Common user experience mistakes in this domain.
+
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-------------------|
-| Silent staleness — deep link 404s or opens the wrong item with no explanation | User loses trust in the whole aggregation; looks broken/buggy | Explicit "no longer available at source" / "may have moved" state in the detail pane, distinct from a generic error |
-| Duplicate stream entries from Proton's multi-label model | Feed looks cluttered/buggy, undermines confidence in correlation quality | De-duplicate by stable message identity before display (see Pitfall 7) |
-| No visibility into why an item wasn't included in a webspace | Since v1 correlation is deterministic keyword-to-native-category matching (not full-text/AI), users may wonder why an obviously-related item is missing | Some lightweight transparency (e.g., "N items in source X don't have a matching label/tag") builds trust in the deliberate deterministic-only design, rather than looking like a bug |
+| Untrusted-plugin warning shown once at add-time only | User forgets/never learns a source they're actively using runs untrusted, unsandboxed code | Keep the untrusted state visibly, persistently indicated wherever that source appears (matching this project's existing per-source health-chip pattern) — not a one-time toast |
+| Generic "item hidden" state with no rule-vs-mark distinction (Pitfall 6) | Users can't tell whether to fix a match rule or just re-include the item | Distinct visual state for "excluded by you" vs "not matched" |
+| PWA install prompt that simply never appears on mobile with no explanation (Pitfall 7) | Reads as a broken feature rather than an expected secure-context limitation | Detect the insecure-context case and show an explicit in-app message explaining why install isn't available on this connection, rather than silence |
+| Drive plugin failing silently for a week once a refresh token expires (Pitfall 10) | Source looks "just stale" rather than "needs you to re-auth" | Surface the specific expired-grant state distinctly (this contract's `Health`/`codes.Unavailable` machinery already supports a named reason string) with a clear re-auth call to action |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Signal plugin:** Often verified only against one Signal Desktop version/keyring backend on the dev machine — verify against the actual production machine's OS/DE combo, and add explicit version/backend detection with a clear failure message rather than a silent parse failure.
-- [ ] **WhatsApp plugin:** Often claims "connected" after a successful link, without verifying how much history was actually backfilled — verify by checking the oldest available message timestamp immediately post-link, and surface that limit to the user rather than implying full history is present.
-- [ ] **Read-only guarantee (all DB-backed plugins):** Often "verified" by code review ("we don't call write methods") rather than by an actual test — verify with an automated test that attempts to detect any mutation (checksum/mtime of the source file, or an assertion the DB connection itself is read-only-mode).
-- [ ] **IMAP plugin:** Often verified by "email correctly displayed in the webspace," without checking source-side side effects — verify the source mailbox's `\Seen`/flag state is unchanged after a full sync-and-preview cycle.
-- [ ] **Plugin contract "stability for third parties":** Often verified only by the plugins the author themselves wrote — verify by building (even a throwaway) second/independent plugin purely against the frozen documented interface, not against internal knowledge of the kernel's implementation.
-- [ ] **Hybrid index staleness handling:** Often only tested on the happy path (index and source agree) — verify by manually deleting/renaming/relabeling a source item after indexing and confirming the UI degrades gracefully rather than erroring or showing wrong content.
+Things that appear complete but are missing critical pieces.
+
+- [ ] **External plugin loading:** Often missing a re-verification step at every launch, not just at add-time — verify a binary swapped after being trusted is caught, not silently re-launched.
+- [ ] **Filesystem plugin:** Often missing handling for files still being written (editor temp-file/rename patterns) — verify a large file mid-copy/mid-save doesn't get synced as garbage or a truncated read.
+- [ ] **Filesystem plugin:** Often missing behavior on a network-mounted watch root — verify changes made from a *different* machine writing to the same network share are actually picked up (they likely won't be via `fsnotify` alone — see Pitfall/Integration Gotcha above).
+- [ ] **Google Drive plugin:** Often missing the distinction between a Workspace-native file (needs `export`) and a regular uploaded file (needs `get?alt=media`) — verify both paths are tested, not just one.
+- [ ] **Google Drive plugin:** Often missing an explicit test/runbook for "refresh token has expired" — verify the plugin surfaces this as a named, actionable health state rather than a generic unreachable error.
+- [ ] **Include/exclude marks:** Often missing survival across a resync — verify a mark set before a sync is still present and correctly applied after that same item resyncs (Pitfall 2).
+- [ ] **Include/exclude marks:** Often missing a defined answer for "what happens to a mark when the source item disappears" — verify orphan behavior is a deliberate choice, not silent accumulation (Pitfall 5).
+- [ ] **PWA installability:** Often missing an update-flow test — verify that upgrading the kernel binary actually results in an already-installed client picking up the new UI/API contract within a bounded time, not indefinitely serving a stale cached build (Pitfall 8).
+- [ ] **PWA installability:** Often missing secure-context handling for the LAN/mobile case explicitly called for in scope — verify install is tested from an actual second device on the LAN, not only from `localhost` on the dev machine (Pitfall 7).
 
 ## Recovery Strategies
 
+When pitfalls occur despite prevention, how to recover.
+
 | Pitfall | Recovery Cost | Recovery Steps |
-|---------|----------------|------------------|
-| Signal DB unreadable after a Signal Desktop upgrade or keyring backend change | MEDIUM | Detect the specific failure (schema-version mismatch vs. keyring-backend mismatch) and surface it distinctly; maintain a small table of known schema versions/keyring formats and add a compatibility branch rather than a full rewrite |
-| WhatsApp linked device logged out or banned | MEDIUM | Re-link as a new device; because the plugin's own local store (built from the live event stream) is independent of the link status, prior history already ingested is not lost — only the gap since disconnection needs backfilling (and backfill may itself be limited, see Pitfall 1/8) |
-| Local hybrid index corrupted or out of sync | LOW | Since the index is explicitly a derived cache and not the source of truth, the correct recovery is a full rebuild from live sources — this is a designed-in safety net of the hybrid model, not an emergency procedure |
-| Proton Bridge certificate rotated or connection refused after a Bridge update | LOW | Re-pin the new certificate fingerprint and restart the email plugin's connection; treat Bridge updates as a routine, expected maintenance event |
-| IMAP `\Seen` flags found to have been mutated by a fetch bug | LOW-MEDIUM | Flags are typically recoverable manually (mark back as unread) since email `\Seen` state, unlike Signal/WhatsApp message content, isn't destructively lost — but treat any occurrence as a release-blocking regression given the read-only guarantee, not a minor bug |
+|---------|-----------------|------------------|
+| Marks wiped by sync-replace (Pitfall 2) | LOW if caught before release (schema not yet public); MEDIUM after release | Move marks to an independent table, backfill is impossible once wiped (data is gone) — communicate the loss to users if this ships and is later discovered, since there's no recovery of the actual prior mark state |
+| Trust marking without hash-pinning shipped (Pitfall 1) | MEDIUM | Add the hash field and re-verification in a follow-up phase; existing "trusted" entries need a one-time re-hash-and-confirm migration step so they don't silently become "trusted with no hash on file" forever |
+| PWA ships without secure-context handling and mobile install reports flood in (Pitfall 7) | LOW–MEDIUM | Ship the explicit in-app "install unavailable on this connection" messaging as a fast follow; the harder TLS-for-LAN option can stay a separate, later decision |
+| Google Drive plugin ships with one shared, testing-mode OAuth client and users hit 7-day expiry (Pitfall 10) | MEDIUM | Switch to a bring-your-own-client-id model in a follow-up release; existing users need to be walked through creating their own Google Cloud project once |
+| fsnotify silently misses network-mount changes and this is discovered post-release (Integration Gotcha) | LOW | Add a documented polling fallback mode, defaulted on for any watched root the plugin detects (or the user declares) as network-mounted |
 
 ## Pitfall-to-Phase Mapping
 
+How roadmap phases should address these pitfalls.
+
 | Pitfall | Prevention Phase | Verification |
 |---------|-------------------|----------------|
-| WhatsApp official-app-store misconception (P1) | WhatsApp plugin phase | Design doc explicitly describes an active whatsmeow-based linked-device session with its own persisted store, not a file reader |
-| WhatsApp ban/de-link risk (P2) | WhatsApp plugin phase | Plugin degrades gracefully on disconnect/ban; risk explicitly documented for the user |
-| Signal keyring backend churn (P3) | Signal plugin phase | Plugin detects `safeStorageBackend` and branches extraction accordingly; tested against the actual target machine's DE |
-| Signal schema churn (P4) | Signal plugin phase | Plugin checks DB schema/user_version before parsing; fails loudly and specifically on unknown versions |
-| Unsafe concurrent DB access (P5) | Kernel/plugin-contract phase (shared helper) + Signal plugin phase | Automated test confirms source DB opened read-only; no corruption after concurrent access with the live source app running |
-| Proton Bridge LAN exposure (P6) | Email/IMAP plugin phase | Connection setup requires tunnel or pinned-cert LAN config; "accept any cert" rejected as a valid configuration |
-| Proton label duplication (P7) | Email/IMAP plugin phase | Test with a multi-labeled message confirms single stream entry, not duplicates |
-| IMAP Seen-flag mutation (P8) | Email/IMAP plugin phase | Automated test: fetch unread message, confirm `\Seen` unchanged on source after |
-| Hybrid index staleness (P9) | Hybrid data model phase + Web UI phase | UI shows explicit "unavailable/moved" state for a manually-deleted/renamed source item |
-| Plugin API over-fit to email (P10) | Kernel + plugin architecture phase | Contract sketched against ≥2 structurally different sources before first plugin is implemented |
-| Scope creep toward write features (P11) | Kernel + plugin architecture phase, reviewed every milestone | Plugin interface has zero write-capable methods; milestone review explicitly re-confirms this |
+| Trust marking as security theater / TOCTOU (1) | External-plugin-loading phase | A test that swaps a trusted binary's bytes after trust is granted and asserts the kernel refuses/warns on next launch |
+| No launch timeout on external trial-launch (9) | External-plugin-loading phase | A test plugin that hangs before handshake, asserting the Add-Plugin flow fails fast with a named timeout, not a multi-second/minute hang |
+| Single-pluginsDir / path handling for external binaries (11) | External-plugin-loading phase | A test with a symlinked or relatively-specified external path asserting the resolved, canonical path is what's shown/trusted |
+| GDrive/external-loading sequencing (12) | Roadmap creation (phase ordering) | External-loading phase demonstrably validated against a real out-of-repo binary before the Google Drive phase begins substantial work |
+| fsnotify inert on network mounts / inotify limits / mid-write reads (Integration Gotchas) | Filesystem-plugin phase | Manual or automated test against an actual network-mounted folder and a large/deep directory tree, plus a test that edits a file via a temp-file-rename pattern mid-watch |
+| Google OAuth credential distribution + 7-day testing-mode expiry (10) | Google Drive plugin phase (design step, before implementation) | A documented, explicit decision on shared-client vs bring-your-own-client, recorded the way this project's existing Key Decisions table records tradeoffs |
+| Google Drive export/mime-type gotchas (Integration Gotchas) | Google Drive plugin phase | Tests against both a native Google Doc and a regular uploaded file type |
+| Marks wiped by sync-replace (2) | Include/exclude phase (schema design step) | Regression test: mark, resync, read — mark still applied |
+| Include of a never-matched item is impossible today (3) | Include/exclude phase (spec/discuss step, before planning) | Scope explicitly recorded before any schema/UI work starts |
+| Rule-excluded vs user-excluded UX ambiguity (6) | Include/exclude phase (spec/discuss step) | UI spec shows visually distinct states for each reason |
+| Mark orphaning on stable-id change (4) | Filesystem-plugin phase (source_id choice) + Include/exclude phase (orphan handling) | Test: rename/move a watched file, assert mark behavior is deliberate, not silent loss |
+| Unbounded mark/tombstone growth (5) | Include/exclude phase (schema design step) | Explicit cascade-or-sweep decision recorded and tested |
+| ServiceWorker secure-context gap on LAN/mobile (7) | PWA phase (design step, before implementation) | Install tested from a real second device over LAN, not just localhost |
+| Stale SW cache after kernel upgrade (8) | PWA phase | Playwright e2e spec simulating an upgrade and asserting the client observes/applies it |
 
 ## Sources
 
-- [Signal-Desktop keyring backend migration issues #753/#754 — flathub/org.signal.Signal](https://github.com/flathub/org.signal.Signal/issues/753) (HIGH — official app-packaging issue tracker)
-- [Migrating Signal Desktop keyring backend — Inane Observations](https://yingtongli.me/blog/2025/08/13/signal-secrets.html) (MEDIUM — independent technical writeup, corroborates GitHub issues)
-- [Signal Desktop database schema history — DeepWiki bepaald/signalbackup-tools](https://deepwiki.com/bepaald/signalbackup-tools) (MEDIUM-HIGH — derived from the actively-maintained signalbackup-tools project that tracks schema changes)
-- [Signal-Desktop GitHub issues on database errors after upgrades (#6597, #6639, #6970, #7029)](https://github.com/signalapp/Signal-Desktop/issues/7029) (HIGH — official repo)
-- [SQLite: How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html) (HIGH — official SQLite documentation)
-- [SQLite Write-Ahead Logging documentation](https://www.sqlite.org/wal.html) (HIGH — official)
-- [SQLite Forum: WAL-reset corruption bug discussion](https://sqlite.org/forum/info/d33843ff0dfdf9fd) (HIGH — official SQLite forum)
-- [Proton: Labels in Bridge](https://proton.me/support/labels-in-bridge) (HIGH — official Proton documentation)
-- [Proton Mail labels causing visual email duplication — eM Client forum](https://forum.emclient.com/t/proton-mail-labels-causing-visual-email-duplication/95637) (MEDIUM — corroborating third-party client bug reports)
-- [Fixing ProtonMail Bridge SSL errors with Let's Encrypt](https://lder.dev/posts/Fixing-ProtonMail-Bridge-SSL-errors-with-Lets-Encrypt/) (MEDIUM — independent writeup documenting the LAN/cert workaround pattern)
-- [Setting up ProtonMail Bridge on LAN server — vimoire](https://vimoire.com/blog/2025/setting_up_protonmail_bridge_on_lan_server) (MEDIUM)
-- [IMAP BODY.PEEK vs BODY discussion — pythontutorials.net](https://www.pythontutorials.net/blog/fetch-an-email-with-imaplib-but-do-not-mark-it-as-seen/) (MEDIUM — practical, consistent with IMAP RFC behavior)
-- [whatsmeow package documentation — pkg.go.dev](https://pkg.go.dev/go.mau.fi/whatsmeow) (HIGH — official library docs)
-- [wacli — WhatsApp CLI built on whatsmeow](https://github.com/openclaw/wacli) (MEDIUM-HIGH — actively maintained prior-art project demonstrating the exact linked-device-plus-local-store architecture)
-- [WhatsApp Help Center: About message history on linked devices](https://faq.whatsapp.com/653480766448040) (HIGH — official WhatsApp documentation)
-- [Where WhatsApp Data is Stored on PC](https://blog.usro.net/2024/10/where-whatsapp-data-is-stored-on-pc-a-guide-to-locating-your-chats-media-and-backups/) (MEDIUM — corroborates official-app cache-only behavior)
-- [WhatsApp Unofficial API Ban Risk — Wapisimo Blog](https://wapisimo.dev/blog/en/whatsapp-unofficial-api-ban-risk) (LOW-MEDIUM — vendor blog with anecdotal ban-rate claims, no official Meta data)
-- [Paperless-ngx REST API documentation](https://docs.paperless-ngx.com/api/) (HIGH — official docs)
-- [Paperless-ngx discussion: selection_data pagination performance #4054](https://github.com/paperless-ngx/paperless-ngx/discussions/4054) (HIGH — official repo discussion)
-- [SilverBullet: Sync documentation](https://silverbullet.md/Sync) (HIGH — official docs, describes conflicting-copy behavior)
+- `/home/darren/projects/davison/topos/docs/plugin-contract.md` — the published plugin contract (handshake, Describe/Match/Fetch/Health semantics, "not a sandbox" framing, stderr-capture discipline) — HIGH, primary source
+- `/home/darren/projects/davison/topos/kernel/pluginhost/host.go` — actual `launch()`/`Discover`/`Reconcile`/`DescribePluginType` implementation, confirms no `StartTimeout` override and the `filepath.Join(pluginsDir, src.Plugin)` resolution shape — HIGH, primary source
+- `/home/darren/projects/davison/topos/kernel/index/store.go` — `ReplaceWebspaceSourceItems`'s delete-then-reinsert transaction, confirming the sync-replace mechanism that would wipe marks stored on the wrong table — HIGH, primary source
+- `/home/darren/projects/davison/topos/cmd/topos/main.go` — `isLoopback` and the existing loopback-default/LAN-warning behavior — HIGH, primary source
+- `/home/darren/projects/davison/topos/.planning/PROJECT.md` — v1.1.0 milestone scope, requirement phrasing ("dogfoods the external-plugin mechanism," "final tier of the filter hierarchy," "first user-owned data beyond config") — HIGH, primary source
+- Google for Developers, "OAuth 2.0 for iOS & Desktop Apps" (developers.google.com/identity/protocols/oauth2/native-app) — installed apps "cannot keep secrets," loopback flow retained for desktop — HIGH
+- Google Cloud Platform Console Help / Google Developer forums discussion on desktop app client secrets — MEDIUM-HIGH, corroborating community/official mix
+- Multiple corroborating sources (Nango, Unipile, CData, Google's own support threads) on the 7-day refresh-token expiry for "Testing" publishing status apps — MEDIUM-HIGH, consistent across independent sources
+- Google Drive API v3 `files.export` reference (developers.google.com/workspace/drive/api/reference/rest/v3/files/export) and Google Issue Tracker entries on `exportSizeLimitExceeded` (10 MB ceiling) — HIGH, official docs plus corroborating issue reports
+- `fsnotify/fsnotify` GitHub repo and LWN.net ("Change notifications for network filesystems") — NFS/SMB/CIFS lack Linux-side inotify hooks; fanotify as a partial alternative — MEDIUM-HIGH, well-documented upstream limitation
+- MDN, "Secure Contexts" (developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) — ServiceWorker's secure-context requirement (HTTPS or localhost only) — HIGH, standard web-platform reference (not separately re-fetched this session; established web-platform knowledge cross-checked against this project's own `isLoopback` code)
 
 ---
-*Pitfalls research for: local-first personal cross-source data aggregation (Webspaces)*
-*Researched: 2026-07-27*
+*Pitfalls research for: topos v1.1.0 "Plugin Ecosystem" milestone*
+*Researched: 2026-08-12*
