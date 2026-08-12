@@ -71,23 +71,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PLUG-06 | — | Pending |
-| PLUG-07 | — | Pending |
-| PLUG-08 | — | Pending |
-| PLUG-09 | — | Pending |
-| SRC-04 | — | Pending |
-| SRC-05 | — | Pending |
-| SRC-06 | — | Pending |
-| KERN-09 | — | Pending |
-| KERN-10 | — | Pending |
-| UI-13 | — | Pending |
-| UI-14 | — | Pending |
+| PLUG-06 | Phase 11 | Pending |
+| PLUG-07 | Phase 11 | Pending |
+| PLUG-08 | Phase 11 | Pending |
+| PLUG-09 | Phase 11 | Pending |
+| SRC-04 | Phase 12 | Pending |
+| SRC-05 | Phase 14 | Pending |
+| SRC-06 | Phase 14 | Pending |
+| KERN-09 | Phase 13 | Pending |
+| KERN-10 | Phase 13 | Pending |
+| UI-13 | Phase 13 | Pending |
+| UI-14 | Phase 13 | Pending |
 
 **Coverage:**
 - v1.1.0 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️ (roadmap pending)
+- Mapped to phases: 11
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-12*
-*Last updated: 2026-08-12 after initial definition*
+*Last updated: 2026-08-12 after roadmap creation (Phases 11-14)*

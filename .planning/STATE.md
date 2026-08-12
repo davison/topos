@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Plugin Ecosystem
 status: planning
-last_updated: "2026-08-12T16:29:14.380Z"
+last_updated: "2026-08-12T20:15:00.000Z"
 last_activity: 2026-08-12
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-12 after v1.0 milestone)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Planning next milestone — run `/gsd-new-milestone`
+**Current focus:** v1.1.0 Plugin Ecosystem — roadmap set (Phases 11-14); next up Phase 11, External Plugins & the Trust Boundary
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 11 — External Plugins & the Trust Boundary (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-12 — Milestone v1.1.0 started
+Status: Roadmap complete, phase not yet planned
+Progress: [----------] 0% (0/4 phases)
+Last activity: 2026-08-12 — v1.1.0 roadmap created (Phases 11-14, 11/11 requirements mapped)
 
 ## Performance Metrics
 
@@ -115,7 +116,9 @@ Last activity: 2026-08-12 — Milestone v1.1.0 started
 
 ### Roadmap Evolution
 
-v1.0's evolution history (phase insertions 5–7, 07.1, 09.1; the WhatsApp shift to Phase 8; Phases 9–10 additions) is archived in `milestones/v1.0-ROADMAP.md` and summarized in MILESTONES.md. Fresh log starts with the next milestone.
+v1.0's evolution history (phase insertions 5–7, 07.1, 09.1; the WhatsApp shift to Phase 8; Phases 9–10 additions) is archived in `milestones/v1.0-ROADMAP.md` and summarized in MILESTONES.md.
+
+- 2026-08-12 — v1.1.0 roadmap created: 4 phases (11-14), numbering continued from v1.0's Phase 10. Coarse granularity compressed the research summary's five suggested phases into four — per-item marks and PWA merged into a single web-app phase (Phase 13) since both are independent, UI-surface work. One hard dependency only: Phase 11 (external loading) → Phase 14 (Google Drive). Phase 12's filesystem plugin binary carries the external-path rehearsal criterion, the research-recommended checkpoint before Phase 14's OAuth/API work.
 
 ### Decisions
 
@@ -164,9 +167,13 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-08-12
-Stopped at: Phase 10 complete — milestone v1.0 100% complete, ready for /gsd-complete-milestone (resolve UF-10-01 screenshot exposure first)
+Stopped at: v1.1.0 roadmap created — Phases 11-14 defined, all 11 requirements mapped, no phase planned yet
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan the first v1.1.0 phase with /gsd-plan-phase 11
+- Open design questions to settle during phase discuss/spec (from research/SUMMARY.md "Gaps to Address"):
+  - Phase 12: filesystem stable-ID choice (inode vs path)
+  - Phase 13: per-item include scope (un-exclude only vs a new Browse RPC) and mark-orphan handling; PWA mobile/LAN scope
+  - Phase 14: Google OAuth credential distribution (bring-your-own is the requirement's stated position — confirm at spec time)
