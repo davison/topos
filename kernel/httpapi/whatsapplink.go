@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -101,8 +102,13 @@ func (w *stderrLineLogger) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// flush emits any still-retained partial line. Call once, after
-// cmd.Wait() has returned (so no concurrent Write can race it).
+// flush emits any still-retained partial line. Call once, after cmd.Wait()
+// has returned. On the healthy path that means os/exec's stderr copy
+// goroutine has already finished, so nothing can Write concurrently; on the
+// linkSubprocessWaitDelay path Wait returns having force-closed the pipe
+// without waiting for that goroutine, so a final Write can still be in
+// flight — which is why w.mu guards this rather than the call-ordering
+// alone.
 func (w *stderrLineLogger) flush() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -125,6 +131,23 @@ func (w *stderrLineLogger) emitLocked(line []byte) {
 	w.logger.Info("whatsapp link subprocess diagnostic", "line", string(trimmed))
 }
 
+// linkSubprocessWaitDelay bounds how long cmd.Wait may stay blocked after
+// the link subprocess itself is gone. os/exec's Wait waits for the stderr
+// copy goroutine below to reach EOF, and that EOF requires EVERY holder of
+// the stderr pipe's write end to close it — including any process the
+// subprocess forked, which inherits that descriptor and is NOT killed by
+// exec.CommandContext (it signals one pid, and SysProcAttr is deliberately
+// nil here so link subprocesses share the kernel's process group; see
+// knowledge-base.md KB-004). Without this bound, killing a link session
+// whose subprocess had forked left Wait — and therefore linkSession.consume's
+// <-done — parked for the orphan's entire lifetime.
+//
+// One second is ~1000x the copy goroutine's observed drain time on a clean
+// exit, so it never elapses on the healthy path (where it would wrongly turn
+// a nil exit error into ErrWaitDelay), while still returning promptly enough
+// that a cancelled session's terminal event is not held up.
+const linkSubprocessWaitDelay = time.Second
+
 // newExecLinkSpawner returns the production linkSpawner: runs the
 // discovered plugin binary in machine-readable link mode
 // (plugins/whatsapp/link.go's runLinkJSON, Task 2 of this plan) as a raw
@@ -144,6 +167,7 @@ func newExecLinkSpawner(logger hclog.Logger) linkSpawner {
 		spawnCtx, cancel := context.WithCancel(ctx)
 
 		cmd := exec.CommandContext(spawnCtx, binPath, "-link-json", "-path", dataPath)
+		cmd.WaitDelay = linkSubprocessWaitDelay
 		// A nil Env means the child inherits this process's own
 		// environment — os/exec's documented behavior, and the correct
 		// one here, not an oversight (a prior version of this comment
@@ -159,23 +183,61 @@ func newExecLinkSpawner(logger hclog.Logger) linkSpawner {
 		stderrLogger := newStderrLineLogger(logger)
 		cmd.Stderr = stderrLogger
 
-		stdout, err := cmd.StdoutPipe()
+		// Deliberately NOT cmd.StdoutPipe(): os/exec owns the pipe it returns
+		// and closes it inside cmd.Wait() as soon as the child exits,
+		// which makes reading it from the goroutine below concurrently with
+		// the Wait goroutine the exact usage os/exec documents as incorrect —
+		// "it is thus incorrect to call Wait before all reads from the pipe
+		// have completed". When Wait won that race the scanner's first Read
+		// returned os.ErrClosed, Scan reported no lines at all, and a
+		// fast-exiting subprocess's events were destroyed wholesale (48% of
+		// iterations under a starved scheduler; the CI flake this comment
+		// exists because of). Handing cmd.Stdout an *os.File we own instead
+		// hands the child that descriptor directly: os/exec creates no pipe,
+		// starts no copy goroutine, and never closes our read end, so reads
+		// and Wait are simply independent (KB-004's "hand it an *os.File").
+		stdoutRead, stdoutWrite, err := os.Pipe()
 		if err != nil {
 			cancel()
 			return linkSpawnResult{}, fmt.Errorf("whatsapp link: stdout pipe: %w", err)
 		}
+		cmd.Stdout = stdoutWrite
 
 		if err := cmd.Start(); err != nil {
 			cancel()
+			stdoutRead.Close()
+			stdoutWrite.Close()
 			return linkSpawnResult{}, fmt.Errorf("whatsapp link: start subprocess: %w", err)
 		}
+		// The child holds its own descriptor for the write end now. This
+		// parent-side copy must be closed or the scanner below would never
+		// observe EOF, even after the subprocess exits.
+		stdoutWrite.Close()
 
 		lines := make(chan []byte)
 		done := make(chan error, 1)
+		scanDone := make(chan struct{})
+
+		// A subprocess's forked children inherit the stdout write end too, so
+		// after a kill the scanner can sit in a read that will never reach EOF
+		// while the orphan lives. Closing the read end on cancellation
+		// releases it, which is what makes lines close promptly on kill.
+		// Cancellation is the ONLY trigger: closing this on any success path
+		// (e.g. a tidy-looking cancel() after Wait returns) would truncate
+		// output still buffered in the pipe and reinstate the bug above.
+		go func() {
+			select {
+			case <-spawnCtx.Done():
+				stdoutRead.Close()
+			case <-scanDone:
+			}
+		}()
 
 		go func() {
 			defer close(lines)
-			scanner := bufio.NewScanner(stdout)
+			defer close(scanDone)
+			defer stdoutRead.Close()
+			scanner := bufio.NewScanner(stdoutRead)
 			// A rendered PNG data URI can comfortably exceed bufio.Scanner's
 			// 64 KiB default token limit — raise it well past any QR image
 			// this phase's fixed error-correction level and module count
@@ -193,9 +255,11 @@ func newExecLinkSpawner(logger hclog.Logger) linkSpawner {
 
 		go func() {
 			waitErr := cmd.Wait()
-			// cmd.Wait() has returned, so the stderr copy goroutine
-			// os/exec started for this non-*os.File cmd.Stderr has
-			// already finished — flush is race-free here.
+			// cmd.Wait() has returned, so the stderr copy goroutine os/exec
+			// started for this non-*os.File cmd.Stderr has finished — except
+			// on the linkSubprocessWaitDelay path, where Wait force-closes
+			// the pipe and returns without awaiting it. flush holds the same
+			// mutex Write does, so it is safe either way.
 			stderrLogger.flush()
 			done <- waitErr
 			close(done)

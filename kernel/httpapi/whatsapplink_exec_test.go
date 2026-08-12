@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -88,6 +89,31 @@ func drainLines(lines <-chan []byte) [][]byte {
 		got = append(got, line)
 	}
 	return got
+}
+
+// drainLinesWithin is drainLines with a deadline, so a spawner that never
+// closes lines fails the calling test with a clear message instead of
+// hanging until the whole package times out.
+func drainLinesWithin(t *testing.T, lines <-chan []byte, d time.Duration) [][]byte {
+	t.Helper()
+	drained := make(chan [][]byte, 1)
+	go func() { drained <- drainLines(lines) }()
+	select {
+	case got := <-drained:
+		return got
+	case <-time.After(d):
+		t.Fatalf("timed out after %v waiting for the lines channel to close", d)
+		return nil
+	}
+}
+
+// asStrings renders collected lines for comparison and failure messages.
+func asStrings(lines [][]byte) []string {
+	var out []string
+	for _, l := range lines {
+		out = append(out, string(l))
+	}
+	return out
 }
 
 // TestExecLinkSpawner_StreamsLinesInOrderAndExitsClean proves a fixture
@@ -291,5 +317,148 @@ func TestExecLinkSpawner_KillTerminatesLongRunningSubprocess(t *testing.T) {
 	case <-linesClosed:
 	case <-time.After(3 * time.Second):
 		t.Fatal("expected lines channel to close after kill")
+	}
+}
+
+// TestExecLinkSpawner_DeliversBufferedOutputWhenDrainedAfterSubprocessExit
+// is the deterministic regression guard for the CI flake in
+// .planning/debug/resolved/ci-flaky-test-portable.md (root cause 1): the
+// spawner used to read cmd.StdoutPipe() concurrently with cmd.Wait(), and
+// Wait closes that pipe the moment the child exits, so whenever Wait won
+// the race the scanner's first read failed with os.ErrClosed and every
+// event line was destroyed. In production that silently replaced a
+// fast-failing plugin's actionable error event with the generic "exited
+// unexpectedly before reporting an outcome".
+//
+// The sibling tests above can only catch that by losing a scheduler race
+// (~48% per iteration under a starved scheduler, near-never on an idle
+// developer machine — hence months of intermittent CI failures). This test
+// removes the race from the oracle instead: it waits for done, which proves
+// the subprocess has exited AND Wait has fully returned, and only then
+// reads a single line. Output buffered in a pipe stays readable after the
+// writer exits, so a spawner that owns its read end still yields all three
+// lines here; one that lets Wait close that pipe can physically yield no
+// more than the single line an unbuffered channel send holds in flight.
+func TestExecLinkSpawner_DeliversBufferedOutputWhenDrainedAfterSubprocessExit(t *testing.T) {
+	skipOnWindows(t)
+
+	script := "#!/bin/sh\n" +
+		"echo '{\"kind\":\"qr\"}'\n" +
+		"echo '{\"kind\":\"pairing_accepted\"}'\n" +
+		"echo '{\"kind\":\"paired\"}'\n" +
+		"exit 0\n"
+	binPath := writeShellFixture(t, script)
+
+	logger, _ := newTestHCLogSink()
+	spawner := newExecLinkSpawner(logger)
+	result, err := spawner(context.Background(), binPath, t.TempDir())
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	// Deliberately BEFORE reading any line: this is the whole point of the
+	// test. Once done yields, cmd.Wait has returned, so any pipe Wait owns
+	// is already closed.
+	select {
+	case doneErr := <-result.done:
+		if doneErr != nil {
+			t.Fatalf("expected nil done error, got %v", doneErr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for done")
+	}
+
+	got := asStrings(drainLinesWithin(t, result.lines, 10*time.Second))
+	want := []string{`{"kind":"qr"}`, `{"kind":"pairing_accepted"}`, `{"kind":"paired"}`}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("subprocess output was lost after it exited: got lines %v, want %v", got, want)
+	}
+}
+
+// TestExecLinkSpawner_KillYieldsDoneWhenSubprocessLeftAForkedChild is the
+// deterministic regression guard for root cause 2 of the same session.
+// exec.CommandContext's cancel signals exactly one pid, and SysProcAttr is
+// deliberately nil here (KB-004: link subprocesses share the kernel's
+// process group), so anything the subprocess forked survives the kill —
+// still holding the stderr pipe's write end it inherited. Because
+// cmd.Stderr is a non-*os.File, cmd.Wait waits for os/exec's stderr copy
+// goroutine to reach EOF, and that EOF cannot arrive while the orphan
+// lives: Wait, done, and therefore linkSession.consume's terminal error
+// event were all parked for the orphan's full lifetime.
+//
+// TestExecLinkSpawner_KillTerminatesLongRunningSubprocess above hits this
+// only when the shell wins the race to fork before the kill lands, which is
+// exactly why it failed on loaded CI runners and passed locally. This test
+// makes the orphan a precondition rather than an accident: the fixture
+// backgrounds a child and only then emits its readiness line, so by the
+// time kill is called the orphan provably exists.
+func TestExecLinkSpawner_KillYieldsDoneWhenSubprocessLeftAForkedChild(t *testing.T) {
+	skipOnWindows(t)
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "forked-child.pid")
+	// The backgrounded sleep outlives its parent by far more than this
+	// test's bounds, so a spawner that waits for it fails outright rather
+	// than passing slowly. The shell then parks in `wait`, a builtin — it
+	// forks no second process, so this fixture leaves exactly one reapable
+	// orphan (the pid recorded above) rather than an untracked one too.
+	script := fmt.Sprintf("#!/bin/sh\n"+
+		"sleep 30 &\n"+
+		"echo $! > %q\n"+
+		"echo '{\"kind\":\"qr\"}'\n"+
+		"wait\n", pidFile)
+	binPath := writeShellFixture(t, script)
+
+	// The forked child outlives the subprocess by design, so reap it here
+	// rather than leaving a stray process behind on every run.
+	t.Cleanup(func() {
+		raw, err := os.ReadFile(pidFile)
+		if err != nil {
+			return
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if err != nil {
+			return
+		}
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Kill()
+		}
+	})
+
+	logger, _ := newTestHCLogSink()
+	spawner := newExecLinkSpawner(logger)
+	result, err := spawner(context.Background(), binPath, t.TempDir())
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	// Readiness: this line is emitted only after the fork, so receiving it
+	// proves the orphan exists before the kill below. Without it this test
+	// would race the shell exactly as the older kill test does.
+	select {
+	case line, ok := <-result.lines:
+		if !ok {
+			t.Fatal("lines closed before the readiness event")
+		}
+		if string(line) != `{"kind":"qr"}` {
+			t.Fatalf("expected the readiness event, got %q", string(line))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the readiness event that proves the subprocess forked a child")
+	}
+
+	result.kill()
+
+	select {
+	case doneErr := <-result.done:
+		if doneErr == nil {
+			t.Fatal("expected a non-nil done error after kill")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("done did not yield within 3s of kill: cmd.Wait is blocked on a pipe the subprocess's forked child still holds open")
+	}
+
+	if lines := drainLinesWithin(t, result.lines, 3*time.Second); len(lines) != 0 {
+		t.Fatalf("expected no further lines after kill, got %v", asStrings(lines))
 	}
 }
