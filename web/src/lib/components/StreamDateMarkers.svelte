@@ -97,9 +97,16 @@
   area (pointer-events-auto below) opts back into interactivity, so the
   native thumb stays grabbable and the stream rows underneath stay
   clickable across the overlay's full span.
+
+  Below 768px (max-md:hidden, D-08): the lane is hidden entirely rather
+  than given a touch equivalent. The ruler is a hover-designed control
+  (tick hover/focus reveals a Tooltip) and D-08 declines to build a
+  touch affordance for it -- +page.svelte's own scroll region reclaims
+  this lane's 12px gutter (max-md:pr-0) in the same breakpoint, so no
+  width is wasted reserving a lane for a control that isn't rendered.
 -->
 <div
-	class="pointer-events-none absolute inset-y-0 right-[12px] w-[12px]"
+	class="pointer-events-none absolute inset-y-0 right-[12px] w-[12px] max-md:hidden"
 	aria-hidden={markers.length === 0}
 >
 	{#if markers.length > 0}

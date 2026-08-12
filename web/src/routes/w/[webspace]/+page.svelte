@@ -1046,12 +1046,18 @@
 			     between rows -- the ruler would composite against two
 			     different tones banding down its length, the same
 			     "two tones across its own width" defect this gap
-			     closure exists to fix. Do not reclaim this padding. -->
+			     closure exists to fix. Do not reclaim this padding at
+			     768px and above.
+
+			     max-md:pr-0 (D-08): below 768px the ruler itself is not
+			     rendered (StreamDateMarkers' own max-md:hidden) -- there
+			     is no lane left to clear, so the gutter is reclaimed for
+			     the compact row content instead of sitting idle. -->
 			<div
 				bind:this={streamScrollEl}
 				bind:clientHeight={streamScrollHeight}
 				onscroll={handleStreamScroll}
-				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-6 {selectedItem
+				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-6 max-md:pr-0 {selectedItem
 					? 'max-md:invisible max-md:flex-1 md:w-[clamp(240px,30vw,400px)] md:shrink-0 lg:w-[480px]'
 					: 'flex-1'}"
 			>

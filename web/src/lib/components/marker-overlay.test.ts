@@ -246,3 +246,32 @@ describe('marker-overlay guard — the stream scroll region reserves the gutter'
 		).toBe(true);
 	});
 });
+
+// D-08: below 768px the ruler is not rendered at all (a hover-designed
+// control with no touch equivalent), and the gutter its lane occupies is
+// reclaimed for the compact row content. Both halves of this reclamation
+// are asserted together — a hidden ruler with the gutter still reserved
+// wastes 12px on the narrowest screen; a reclaimed gutter with the ruler
+// still shown reintroduces the two-tone banding defect this file already
+// guards against above.
+describe('marker-overlay guard — the ruler hides and its gutter is reclaimed below 768px (D-08)', () => {
+	it("the overlay container in StreamDateMarkers.svelte carries max-md:hidden", () => {
+		expect(
+			overlaySource.includes('max-md:hidden'),
+			'expected the overlay container class list to include max-md:hidden — a ruler left visible below 768px occupies a 12px lane the compact row content has already been given, and offers a hover-only affordance a touchscreen cannot trigger'
+		).toBe(true);
+	});
+
+	it("+page.svelte's stream scroll region carries max-md:pr-0 in the same class attribute as its pr- utility", () => {
+		const classAttrs = [...routeSource.matchAll(/class="([^"]*)"/g)].map((m) => m[1]);
+		const gutterAttr = classAttrs.find((cls) => /\bpr-(\d+|\[\d+px\])\b/.test(cls));
+		expect(
+			gutterAttr,
+			'expected to find a class attribute in +page.svelte carrying a pr-<n> (or pr-[Npx]) utility'
+		).toBeDefined();
+		expect(
+			gutterAttr!.includes('max-md:pr-0'),
+			`expected the SAME class attribute that carries the stream scroll region's pr- utility to also carry max-md:pr-0, so the two halves of D-08's lane reclamation cannot drift apart (a hidden ruler with the gutter still reserved wastes 12px on the narrowest screen; a reclaimed gutter with the ruler still shown reintroduces the banding defect) — got "${gutterAttr}"`
+		).toBe(true);
+	});
+});
