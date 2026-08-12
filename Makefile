@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev plugins signal test-signal dev-check e2e
+.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -38,6 +38,35 @@ DEV_KERNEL_CMD ?= go run ./cmd/topos serve
 # tailscale one); vite.config.ts allowlists *.ts.net Host headers so the
 # MagicDNS name works too. Raw-IP access (100.x.y.z:5173) needs no allowlist.
 DEV_UI_CMD ?= npm --prefix web run dev -- --open --host
+
+# plugins-portable is the cgo-free sibling of "plugins" — it builds
+# exactly the five CGO_ENABLED=0 plugin binaries "plugins" builds
+# (paperless, silverbullet, proton, mock, whatsapp) and, unlike
+# "plugins", does NOT chain to the cgo "signal" target. It exists for
+# the same reason "test-portable" exists: a runner (or a developer's
+# machine) without the system sqlcipher package installed can still
+# produce a complete, real, operator-facing plugin set. The five names
+# are written HERE ONLY — build-portable below reaches them by
+# delegating to this target, never by naming them itself, so the two
+# variants cannot drift apart.
+plugins-portable:
+	mkdir -p bin/plugins
+	go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
+	go build -o bin/plugins/topos-plugin-silverbullet ./plugins/silverbullet
+	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
+	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
+	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
+
+# build-portable is the cgo-free sibling of "build" — it runs the same
+# SPA-build and kernel-build steps "build" runs, then delegates to
+# plugins-portable (above) instead of plugins, so the resulting
+# artifact set never requires a C toolchain or the system sqlcipher
+# package. This is the entry point CI's release/nightly workflows use.
+build-portable:
+	npm --prefix web ci
+	npm --prefix web run build
+	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
+	$(MAKE) plugins-portable
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
 # the kernel binary, and the plugin binaries — topos-plugin-paperless,
