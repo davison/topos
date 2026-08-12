@@ -500,33 +500,48 @@
 		  (unconstrained) width so visibleChipCount has real numbers to
 		  compute against — the visible row's own `overflow-hidden` clips a
 		  hidden chip's true width before it can ever be measured there.
+
+		  Checkpoint fix (09.1-01-PLAN.md, issue 1): both clones below are
+		  `position: absolute` with no `position: relative` ancestor
+		  anywhere in this app, so their containing block was the initial
+		  containing block, not this component — an ancestor's own
+		  `overflow-hidden` (e.g. one added directly to the <header> root)
+		  has NO clipping effect on them, confirmed live. This wrapper is
+		  BOTH `relative` (so it becomes their real containing block) AND
+		  `overflow-hidden h-0` (so their full natural, unclipped width —
+		  the whole point of a measurement clone — never contributes to
+		  document.documentElement.scrollWidth). Neither offsetWidth read
+		  below is affected: intrinsic sizing is computed independently of
+		  whether an ancestor visually clips the result.
 		-->
-		<div
-			class="invisible absolute flex items-center gap-2 whitespace-nowrap"
-			aria-hidden="true"
-			bind:this={measureEl}
-		>
-			{#each participatingSources as source (source.name)}
-				<SourceChip
-					{source}
-					selected={selectedSources.has(source.name)}
-					onfilter={() => {}}
-					onrefresh={() => {}}
-					onedit={() => {}}
-				/>
-			{/each}
+		<div class="relative h-0 overflow-hidden">
+			<div
+				class="invisible absolute flex items-center gap-2 whitespace-nowrap"
+				aria-hidden="true"
+				bind:this={measureEl}
+			>
+				{#each participatingSources as source (source.name)}
+					<SourceChip
+						{source}
+						selected={selectedSources.has(source.name)}
+						onfilter={() => {}}
+						onrefresh={() => {}}
+						onedit={() => {}}
+					/>
+				{/each}
+			</div>
+			<button
+				type="button"
+				tabindex="-1"
+				class="invisible absolute flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2.5"
+				aria-hidden="true"
+				bind:this={overflowTriggerMeasureEl}
+			>
+				<Ellipsis class="size-4" />
+				<span class="text-[14px] leading-[1.4]">+{participatingSources.length}</span>
+				<span class="size-2 shrink-0 rounded-full"></span>
+			</button>
 		</div>
-		<button
-			type="button"
-			tabindex="-1"
-			class="invisible absolute flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2.5"
-			aria-hidden="true"
-			bind:this={overflowTriggerMeasureEl}
-		>
-			<Ellipsis class="size-4" />
-			<span class="text-[14px] leading-[1.4]">+{participatingSources.length}</span>
-			<span class="size-2 shrink-0 rounded-full"></span>
-		</button>
 	{/if}
 
 	<!--

@@ -187,9 +187,41 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+
+	/*
+	 * overflow-x: hidden on BOTH html and body (09.1-01-PLAN.md checkpoint
+	 * fix, issue 1): required on the root element, not merely on body —
+	 * a CSS overflow declaration only clips a descendant's rendered box
+	 * when that descendant's containing block is the element it's set
+	 * on. Elements like WebspaceHeader.svelte's `measureEl` (an
+	 * intentionally unclipped `position: absolute` overflow-measurement
+	 * clone, needed to read chips' natural unconstrained widths) have NO
+	 * `position: relative` ancestor anywhere in this app, so their
+	 * containing block is the initial containing block — which maps to
+	 * the root element's box, not an arbitrary DOM ancestor further down
+	 * (confirmed live: `overflow-hidden` added directly to
+	 * WebspaceHeader's own `<header>` had zero clipping effect on
+	 * measureEl, exactly because header sits between measureEl and the
+	 * root in the DOM but is NOT its containing block). At narrow
+	 * viewports, a header with 2+ source chips already exceeds 100vw
+	 * before it visibly overflows the visible (clipped) chip row, and
+	 * that excess was leaking into document.documentElement.scrollWidth,
+	 * producing a page-wide horizontal scrollbar — invisible ("visibility:
+	 * hidden") empty space in the plain stream view, and, because the
+	 * mobile takeover's own `fixed inset-0` sizes itself against that same
+	 * (wrongly widened) layout viewport, real takeover content bleeding
+	 * into the same excess width. This single root-level declaration is
+	 * the general fix for the whole class of bug, not a `measureEl`-only
+	 * patch — any future off-screen/absolutely-positioned element with no
+	 * positioned ancestor is now contained the same way.
+	 */
+	html {
+		overflow-x: hidden;
+	}
 	body {
 		@apply bg-background text-foreground;
 		font-family: var(--font-sans);
+		overflow-x: hidden;
 	}
 
 	/*
