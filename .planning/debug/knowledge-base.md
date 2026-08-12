@@ -416,3 +416,214 @@ Cache these — they are not specific to this bug, and each one produced a confi
 - [ ] Is the regression test a **{signal} × {target}** matrix, or a single case on the path you
       happen to use? Mutation-check it against the unfixed binary — if every row fails, the matrix
       may be redundant; if some row passes, that row is why the bug looked intermittent.
+
+---
+
+## KB-005 — `os/exec` closes the pipe it handed you, underneath your reader
+
+**Discovered:** 2026-08-12 · [ci-flaky-test-portable](resolved/ci-flaky-test-portable.md) · fix `4c524a7`
+**Class:** subprocess I/O ownership · **Severity:** total, silent loss of a subprocess's output — ~48%/iteration under a starved scheduler
+
+### The pattern
+
+The obvious way to stream a subprocess's output while also collecting its exit status is the
+*documented-incorrect* way:
+
+```go
+stdout, _ := cmd.StdoutPipe()
+cmd.Start()
+go func() {                                  // reader
+    scanner := bufio.NewScanner(stdout)
+    for scanner.Scan() { lines <- scanner.Bytes() }
+}()
+go func() { done <- cmd.Wait() }()           // races the reader
+```
+
+`StdoutPipe`'s own doc says it outright: *"Wait will close the pipe after seeing the command exit,
+so it is incorrect to call Wait before all reads from the pipe have completed."* When the `Wait`
+goroutine wins, the reader's first `Read` returns `os.ErrClosed`, `Scan()` returns false without
+ever yielding a line, and the channel closes empty.
+
+What makes this so easy to ship is that **there is no correct ordering available**. "Finish all
+reads, then Wait" is exactly what streaming cannot promise — you don't know when output ends until
+you've hit EOF, and the whole point is to hand lines onward as they arrive. So the fix is not to
+sequence the two goroutines; it is to take the pipe out of os/exec's ownership:
+
+```go
+pr, pw, _ := os.Pipe()
+cmd.Stdout = pw                              // an *os.File: handed to the child as an fd
+cmd.Start()
+pw.Close()                                   // parent's copy — without this, no EOF, ever
+// read pr freely; Wait now has nothing to do with it
+```
+
+What `cmd.Stdout` is set to changes os/exec's behaviour completely, and only one row is safe to read
+concurrently with `Wait`:
+
+| `cmd.Stdout` is… | What os/exec does | Who closes your read end |
+|---|---|---|
+| an `*os.File` **you** own | passes the fd straight to the child — no pipe, no copy goroutine | **you do** — no interaction with `Wait` |
+| any other `io.Writer` | makes a pipe + copy goroutine; `Wait` blocks until the copy finishes | os/exec (see KB-006 for how that blocks) |
+| the `cmd.StdoutPipe()` return | makes a pipe, hands you the read end | **os/exec, inside `Wait`** — the trap |
+
+### The tell
+
+**Zero lines, not truncated lines.** A mid-stream truncation race yields partial data; this one
+yields *nothing at all*, because the close lands before the first `Read` rather than during. With a
+buffered hand-off you may instead see exactly one line — whatever a send could hold in flight. So
+"got `[]`, want 3 lines" or "got exactly 1" from a process that certainly wrote more is the
+signature, and an elapsed time of `0.00s` confirms nobody waited on anything.
+
+Then check `scanner.Err()`, which is the single observation that identifies this class:
+
+- `os.ErrClosed` (`"read |0: file already closed"`) → the pipe was closed under you. This.
+- `nil` / EOF → the child genuinely wrote nothing; go look at exec-side causes instead.
+
+In this session that one check is what separated "Wait closed the pipe" from "the fixture never
+ran" — 194/194 empty iterations reported `ErrClosed`, which killed the `ETXTBSY`/failed-exec
+hypothesis outright.
+
+### Why it hid
+
+The window is not a narrow instant — for a fast-exiting child it is *the entire run*, so this is
+less a race than a coin flip weighted by core count and load. A 12-core dev box almost never lost
+it; a 2-core loaded GitHub runner lost it constantly. Forced (`GOMAXPROCS=1`, `taskset -c 0`) it
+reproduced at 48.5%.
+
+More uncomfortably, **the codebase had already found this bug and not fixed it**. A comment at the
+adjacent stderr site named `cmd.StderrPipe()` read concurrently with `Wait` as *"the same
+incorrect-usage pattern already flagged on the stdout side"* — and declined to introduce a second
+instance of it. The stdout side it was pointing at still had the first one. This is KB-004's lesson
+in a new costume: prose that identifies a hazard is not a fix for that hazard. When you find a
+comment describing a bug elsewhere in the file, go and check that the bug described was actually
+removed.
+
+### Gate gap this exposed
+
+`go test -count=1` on a developer machine cannot see this class — same under-sampling that let
+KB-003 through. The gate that *did* catch it was CI, which is to say: the flake was the gate, and it
+was read as CI being unreliable rather than as CI reporting a real defect. Docs-only commits failing
+was treated as proof the failure was noise; it was actually proof the failure was **diff-independent
+and latent**, which is a much stronger signal than a failure correlated with a change.
+
+**Recurrence guard now in place:**
+`TestExecLinkSpawner_DeliversBufferedOutputWhenDrainedAfterSubprocessExit` — it drains *only after*
+the subprocess has fully exited, which converts the probabilistic race into a deterministic one
+(`Wait` is guaranteed to have had its chance first). Mutation-checked: fails 10/10 against the
+unfixed spawner with the predicted signature, passes with the fix.
+
+### Where to watch for it in this codebase
+
+- Any `StdoutPipe`/`StderrPipe` call site. After this fix there are **none** left in non-test code —
+  keep it that way; adding one back is the whole bug.
+- `kernel/pluginhost/host.go` builds an `exec.Cmd` but hands it to go-plugin, which owns the I/O
+  itself (and deliberately leaves `cmd.Stderr` unset for that reason). Don't "helpfully" attach
+  pipes to a command someone else is going to run.
+- Anywhere a test or tool wires `cmd.Stdout` to a `strings.Builder`/`bytes.Buffer` — that is the
+  middle row of the table above, and KB-004 already recorded it as a data race against the copier.
+
+### Checklist for review
+
+- [ ] Is `cmd.Wait()` reachable concurrently with any read of a pipe os/exec created? If yes, this
+      is the bug, regardless of how unlikely the window looks.
+- [ ] Is `cmd.Stdout`/`cmd.Stderr` an `*os.File`? If not, os/exec owns a pipe and a goroutine on
+      your behalf — know which row of the table you are in.
+- [ ] Own an `os.Pipe`? Is the **parent's** copy of the write end closed after `Start`? Forgetting
+      it means EOF never arrives and the reader hangs forever instead of failing fast.
+- [ ] Does a failing streaming test report *zero* items rather than partial ones? Check
+      `scanner.Err()`/read error for `os.ErrClosed` before assuming the producer wrote nothing.
+- [ ] Does a comment in this file describe a bug "already flagged elsewhere"? Go verify that
+      elsewhere was fixed.
+
+---
+
+## KB-006 — A forked grandchild inherits the pipe, so `Wait` outlives the process you killed
+
+**Discovered:** 2026-08-12 · [ci-flaky-test-portable](resolved/ci-flaky-test-portable.md) · fix `4c524a7`
+**Class:** process lifecycle / inherited descriptors · **Severity:** unbounded block on the cancel path, holding an exclusive resource
+
+### The pattern
+
+This is KB-005's mirror image, and the two must be read together: KB-005 is os/exec closing a pipe
+**too early**, KB-006 is a pipe that will not close **at all**. Both reduce to the same question —
+*who holds this file descriptor* — and fixing one does nothing for the other.
+
+Killing a subprocess does not close the pipes you gave it. Descriptors survive `fork`, so every
+process the child spawned holds its own copy of the write end. Meanwhile:
+
+- `exec.CommandContext`'s cancel signals **exactly one pid**, and `SysProcAttr` is deliberately nil
+  at this site so link subprocesses stay in the kernel's process group (KB-004).
+- When `cmd.Stderr` is a non-`*os.File`, `cmd.Wait` waits for os/exec's copy goroutine to reach EOF.
+- That EOF requires **every** holder of the write end to close it — including the orphan.
+
+So `Wait` blocks for the *orphan's* lifetime rather than the child's. Here that parked `Wait`,
+`done`, and `linkSession.consume`'s terminal event for a `sleep 30`'s full 30 seconds, while the
+orphan kept holding the whatsmeow store that T-08-07 requires be held exclusively. The kill
+"succeeded" and the session was still stuck.
+
+### The lever, and the two that were rejected
+
+| Lever | Effect | Verdict |
+|---|---|---|
+| `cmd.WaitDelay` | after the process is gone, force-close the pipes and return within a bound | **chosen** |
+| `SysProcAttr.Setpgid` + `kill(-pgid)` | kills the whole tree, orphan included | **rejected** — removes link subprocesses from the kernel's process group and regresses KB-004's signal-reaping fix |
+| `SysProcAttr.Pdeathsig` | child dies with parent | already rejected in KB-004 (parent-thread-scoped, and wrong layer) |
+
+**Choosing the delay is itself a hazard.** `WaitDelay` must never elapse on a *clean* exit, or it
+converts a nil exit error into `ErrWaitDelay` and you have traded a rare flake for a new one in
+whatever asserts a clean shutdown. 1s here is ~1000x the observed clean-exit drain and still 3x
+inside the test's 3s bound — verified by stability runs, not by argument.
+
+**And it invalidates an assumption you may have written down elsewhere.** "`Wait` returned,
+therefore os/exec's copy goroutine has finished, therefore nothing can be writing concurrently" is
+true *only* off the `WaitDelay` path. On it, `Wait` force-closes and returns without awaiting the
+copier, so a final `Write` can still be in flight. A `flush()` here carried exactly that reasoning
+in a comment; it was already mutex-guarded so it stayed correct, but its stated *justification* had
+become false. When you add `WaitDelay`, grep for any safety argument resting on "Wait has returned".
+
+### The tell
+
+Two failures in one CI run with **different elapsed-time signatures**: `0.00s` on a clean-exit test
+(KB-005) and exactly `3.00s` — the timeout bound, to the centisecond — on a kill test. An elapsed
+time equal to the bound means something waited out the clock rather than failing; an elapsed time of
+zero means nothing waited at all. *Those are not the same bug*, and treating them as one is how a
+single-cause fix ships and the gate stays flaky. Fixing only KB-005 would have left the kill failure
+in place and made the correct fix look like a failed one.
+
+### Gate gap this exposed
+
+No test covered "subprocess forks a child, **then** gets killed". The existing kill test ran
+`sleep 30` through `sh -c`, which produces a grandchild only when `/bin/sh` decides to fork — bash
+does, dash often `exec`s directly and doesn't. The coverage was therefore accidental and
+**shell-dependent**, which is also why it reproduced on the dev box (bash) and behaved differently
+in CI (dash). A fixture whose behaviour depends on which `/bin/sh` is installed is not a test of
+anything.
+
+**Recurrence guard now in place:**
+`TestExecLinkSpawner_KillYieldsDoneWhenSubprocessLeftAForkedChild` — forks the grandchild
+*deliberately* rather than hoping the shell obliges, and reaps it via a recorded pid (measured: 0
+stray processes across 5 runs). Mutation-checked at 10/10 against the unfixed spawner.
+
+### Where to watch for it in this codebase
+
+- Every spawn site that cancels or kills: `kernel/httpapi/whatsapplink.go` and
+  `kernel/pluginhost/host.go`, both intentionally `SysProcAttr`-nil per KB-004 — which means both
+  are structurally exposed to orphans by design, and must bound their waits instead.
+- Anywhere a reader is expected to see EOF *because* a process was killed. If anything could have
+  forked, close your own read end on cancellation rather than waiting for an EOF that has no
+  obligation to arrive. That watcher must exit when the read completes, or it becomes the per-spawn
+  goroutine leak KB-003 warns amplifies later flakes.
+
+### Checklist for review
+
+- [ ] Can the subprocess fork? (A shell, a wrapper script, anything spawning helpers — assume yes.)
+      Then `CommandContext`'s kill does not end the tree.
+- [ ] Is `cmd.WaitDelay` set at any spawn site that can be cancelled? Unset means "wait forever for
+      whoever inherited these fds".
+- [ ] Is the delay comfortably above the clean-exit drain **and** below any caller's timeout bound?
+      Both ends matter — too tight invents a new flake on the healthy path.
+- [ ] Does anything rely on "`Wait` returned, so the copiers are done"? `WaitDelay` breaks that.
+- [ ] On cancel, does the reader get released by closing your own descriptor, rather than by hoping
+      for EOF?
+- [ ] Two tests failing in one run — do their elapsed times tell the same story? A `0.00s` and a
+      `bound.00s` are two mechanisms, not one flaky package.
