@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-5: Adding a second Signal source via the UI's two-step \"New signal…\" flow fails at the Connect step — the trial-launch for describe cannot start the signal plugin subprocess."
 created: 2026-08-09T12:01:00Z
 updated: 2026-08-09T12:10:00Z

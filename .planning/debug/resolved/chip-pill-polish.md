@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-06-3b: Source chip (SourceChip.svelte) has three cosmetic/interaction defects from Phase 6 UAT round 2: dead vertical padding (non-clickable), square-ish hover highlight on refresh button inside pill chip, refresh icon stays visible after refresh click until user clicks elsewhere."
 created: 2026-08-07T00:00:00Z
 updated: 2026-08-07T00:00:00Z

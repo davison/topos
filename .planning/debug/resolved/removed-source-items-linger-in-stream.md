@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-7: Removing a source from a webspace (chip ⋮ menu → 'Remove from this webspace') removes the chip immediately, but the removed instance's items remain visible in the stream until a manual page refresh."
 created: 2026-08-09T00:00:00Z
 updated: 2026-08-09T00:00:00Z

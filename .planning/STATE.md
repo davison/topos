@@ -259,7 +259,7 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- 🔴 [Phase 10, URGENT] UF-10-01 (10-SECURITY.md): `docs/ss/1.png` and `2.png` contain real personal data (operator's real name, real insurance policy document, real vendor email) — live on the PUBLIC repo (commit 0379bbb on origin/main, embedded in README landing page). Needs replacement screenshots with mock/redacted data PLUS history rewrite or blob purge; in-tree deletion alone is insufficient.
+- ✅ [Phase 10, RESOLVED — risk accepted 2026-08-12] UF-10-01 (10-SECURITY.md): `docs/ss/1.png` and `2.png` show some of the operator's own personal data on the public repo. Operator reviewed the screenshots at creation time, confirms they were composed carefully and nothing of concern is exposed, and explicitly accepts the (permanent) exposure. No remediation planned; do not re-flag.
 - ⚠️ [Pre-existing, surfaced during Phase 10] Flaky CI: `kernel/httpapi` `TestExecLinkSpawner_StreamsLinesInOrderAndExitsClean` + `_KillTerminatesLongRunningSubprocess` fail intermittently on GitHub runners (subprocess yields no lines / kill doesn't terminate), pass locally. Route to `/gsd-debug "flaky ExecLinkSpawner tests in kernel/httpapi on CI"`.
 - ⚠️ [Phase 10, advisory] 10-REVIEW.md warnings open: web/README.md non-link references, duplicated release-asset lists across workflows, test-portable CGO_ENABLED scoping. Fix via `/gsd-code-review 10 --fix`.
 - ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix`.
@@ -275,6 +275,7 @@ Recent decisions affecting current work:
 | 260805-kt3 | narrow Proton deep-link search with sender+date criteria (live-approved) | 2026-08-05 | 1fb1fa6 | [260805-kt3-narrow-proton-deep-link-search-for-gener](./quick/260805-kt3-narrow-proton-deep-link-search-for-gener/) |
 | 260805-lry | accept Signal schema 1740 after live read-set verification (source recovered) | 2026-08-05 | 9f000c3 | [260805-lry-accept-signal-desktop-schema-version-174](./quick/260805-lry-accept-signal-desktop-schema-version-174/) |
 | 260805-o5d | harden make dev: plugins rebuilt as prerequisite, fail loudly on port squat/dead kernel | 2026-08-05 | 6d0e6a8 | [260805-o5d-harden-make-dev-rebuild-plugin-binaries-](./quick/260805-o5d-harden-make-dev-rebuild-plugin-binaries-/) |
+| 260806-0v2 | rename application webspaces → topos (contract spine, build surface, paths, live install; checkpoint closed 2026-08-12 via sustained live use) | 2026-08-06 | 21cf179, 1117b71 | [260806-0v2-rename-application-webspaces-to-topos-ac](./quick/260806-0v2-rename-application-webspaces-to-topos-ac/) |
 | 260806-f1 | (fast) refresh README: 8-phase roadmap, five-plugin layout, seven workspace modules | 2026-08-06 | cd8ba20 | — |
 | 260806-f2 | (fast) expose Vite dev server (:5173) to the tailscale network via make dev | 2026-08-06 | 54d30b4 | — |
 | 260811-r5d | exclude topos-plugin-mockstrict from the picker catalog (kernel exclusion + e2e injection helper + docs correction) | 2026-08-11 | 160853a | [260811-r5d-exclude-topos-plugin-mockstrict-from-the](./quick/260811-r5d-exclude-topos-plugin-mockstrict-from-the/) |

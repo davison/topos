@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "UAT gap G-04-1b (phase 04): after the G-04-1 fix, the Signal contact-form deep link sgnl://signal.me/#p/+<E164> is accepted by Signal Desktop (no error modal), but clicking 'Open in Signal' does NOT navigate to the contact's conversation — Signal stays on whatever conversation was last open."
 created: 2026-08-04T00:00:00Z
 updated: 2026-08-04T01:35:00Z

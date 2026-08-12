@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-08-3 (whatsapp-grpc-closing-fails-webspace): Right after successfully linking a WhatsApp source (real device, in-app QR pairing), opening a webspace failed entirely with 'Couldn't load this webspace / The topos service didn't respond — check that it's running, then retry.' Kernel logged: whatsapp: match against source \"whatsapp\": rpc error: code = Canceled desc = grpc: the client connection is closing"
 created: 2026-08-10T22:04:19+01:00
 updated: 2026-08-10T22:55:00+01:00

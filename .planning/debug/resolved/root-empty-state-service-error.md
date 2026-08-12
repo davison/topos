@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-4: With zero webspaces configured, the root page shows the service-unreachable error instead of the \"No webspaces yet\" empty state with a Create webspace CTA."
 created: 2026-08-09T00:00:00Z
 updated: 2026-08-09T00:05:00Z

@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-1: Immediately after creating a new webspace via the UI, the newly created /w/<name> page shows an error state instead of the empty stream; clicking Retry then correctly shows 'nothing here yet'."
 created: 2026-08-09T16:00:00Z
 updated: 2026-08-09T16:20:00Z

@@ -1,3 +1,9 @@
+---
+status: complete
+type: knowledge-base
+note: Permanent reference catalogue of defect classes, not a debug session — status set only so audit-open's scanner (open = status not in [resolved, complete]) doesn't flag it.
+---
+
 # Debug Knowledge Base
 
 Cross-session patterns worth remembering. Each entry records a defect *class* — not a

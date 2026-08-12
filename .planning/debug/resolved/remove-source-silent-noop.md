@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-6: Removing a source from a webspace via the chip menu's 'Remove from this webspace' is a silent no-op. Reported during UAT test 6."
 created: 2026-08-09T00:00:00Z
 updated: 2026-08-09T01:00:00Z

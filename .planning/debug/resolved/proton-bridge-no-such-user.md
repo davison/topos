@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Proton source unavailable (red dot); live IMAP LOGIN to Proton Mail Bridge returns 'no such user' even with correct account email and aliases. Previously written off since 03-01 as a credential-entry issue; user has now ruled that out."
 created: 2026-07-31T00:00:00Z
 updated: 2026-07-31T00:00:00Z

@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 08-whatsapp-conversations-managed-risk
 source: [08-VERIFICATION.md]
 started: 2026-08-11T00:35:00Z
-updated: 2026-08-10T23:56:13Z
+updated: 2026-08-12T00:00:00Z
 supersedes: previous 08-UAT.md cycle (3 tests, 2 passed, 1 issue → G-08-3, diagnosed in .planning/debug/whatsapp-grpc-closing-fails-webspace.md, closed in code by plans 08-09/08-10)
 ---
 
@@ -34,7 +34,8 @@ blocked: 0
 
 - gap_id: G-08-4   # next free id in this phase's gap history — G-08-1/G-08-3 are already claimed by executed gap-closure plans' frontmatter, so reusing the test-number formula (G-08-1) would make reconciliation instantly mark this new gap resolved
   truth: "Immediately after a successful real-device WhatsApp pairing, the running whatsapp source instance uses the fresh session: the source syncs (or reports a transient connecting state) rather than staying pinned on the pre-pairing 'Not linked' health error"
-  status: failed
+  status: resolved
+  resolution: "Closed by plans 08-13/08-14/08-15: healthStateConnecting added as the Go zero value (72ed516), serve mode registers a pairLoginWaiter and sets connecting before dialing (a539156/6daf391), Scheduler.firstRefresh bounded retry supersedes a Match landing in the login window (d959706), hermetic subprocess gate (71121cf); real-device re-link human-approved with four repository gates green in 08-15 (db5e0b6). Marked complete 2026-08-12 during v1.0 milestone close sweep."
   reason: "User reported: after login and opening the webspace: A source couldn't sync / Nothing to show here yet. Your other sources are unaffected — check the source chips above, then retry. / whatsapp: match against source \"whatsapp\": rpc error: code = Unavailable desc = whatsapp: Not linked — pair this device with WhatsApp to start syncing. Use this source's chip menu (\"Re-link…\") or run this plugin binary's -link flag."
   severity: major
   test: 1
@@ -59,5 +60,5 @@ blocked: 0
     - "Close the readiness race: reuse pairwait.go's pairLoginWaiter in startBackgroundClient (bounded wait for *events.Connected, fall through to connecting on timeout) so the go-plugin handshake genuinely means ready"
     - "Decide whether a Match failure in the connecting state should persist an errored sync_runs row at all, given the 15m interval pins the banner"
     - "Give plugins/mock an opt-in 'not ready for N ms after launch' mode so this failure class has a fixture"
-  debug_session: .planning/debug/whatsapp-paired-session-not-picked-up.md
+  debug_session: .planning/debug/resolved/whatsapp-paired-session-not-picked-up.md
   context: "G-08-3's presentation half is confirmed fixed (per-source StreamSyncDegraded, no fake outage). This gap is the kernel/plugin seam: the freshly paired session IS read correctly from the store — the instance just reports the wrong health state during its connect window and the kernel queries it before it is ready."

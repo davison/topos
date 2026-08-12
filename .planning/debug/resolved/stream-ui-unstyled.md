@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "UAT tests 2-4 (G-01-2): stream rows render completely unstyled in built SPA; DetailPane stacks below stream instead of beside it; Tailwind utility-class styling appears absent while hand-authored CSS works"
 created: 2026-07-28T10:30:00Z
 updated: 2026-07-28T10:50:00Z

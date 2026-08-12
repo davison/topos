@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "pass with caveat: the styling for the ticks is poor, when I first saw them I thought they were CSS artifacts from a broken stylesheet or a faulty page render"
 gap_id: G-06-6
 created: 2026-08-07T00:20:00Z

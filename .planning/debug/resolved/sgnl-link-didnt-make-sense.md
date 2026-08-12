@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "UAT Phase 04 Test 1: Clicking 'Open in Signal' on a 1:1 (E.164-bearing) conversation digest — Signal Desktop shows 'Something went wrong! Sorry, that sgnl:// link didn't make sense!'"
 created: 2026-08-04T00:00:00Z
 updated: 2026-08-04T00:30:00Z

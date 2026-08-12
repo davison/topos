@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-08-4 — after a successful real-device WhatsApp pairing, the running whatsapp source instance still answers Match with its pre-pairing 'Not linked' health error"
 created: 2026-08-11T00:50:00Z
 updated: 2026-08-11T01:40:00Z

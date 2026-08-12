@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "In the detail pane title, no search term highlight is shown. An amber highlight inside a mark element shows in the detail pane body. In the stream pane, the search term shows as <span class=\"font-semibold\"/> (barely visible)."
 created: 2026-08-07T00:00:00Z
 updated: 2026-08-07T00:20:00Z

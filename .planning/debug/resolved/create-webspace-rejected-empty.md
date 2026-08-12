@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-07-3: Creating a new webspace from the UI's create-webspace modal can never succeed — the kernel rejects the write."
 created: 2026-08-09T00:00:00Z
 updated: 2026-08-09T00:10:00Z

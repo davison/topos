@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "After linking using the QR code, phone shows successful link. WhatsApp modal in topos remains on screen with the refresh counter dwindling. No connection from the topos side after cancelling the dialog"
 created: 2026-08-10T00:00:00Z
 updated: 2026-08-10T00:00:00Z
