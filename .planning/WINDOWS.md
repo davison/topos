@@ -20,7 +20,7 @@ last_updated: 2026-08-12T10:28:54.358Z
 | 3 | 03 | unrun-verify | plugins/proton/plugin.go |  | Task 2 human-check not run: confirming in the real Proton web/mobile client that an email opened via webspaces still shows as unread was not performed live (blocked on the same Bridge credential issue as Proof 4). | open |  | 2026-07-31T02:27:44.466Z |  |
 | 4 | 05 | unrun-verify | .planning/phases/05-source-instances-per-type-matching/05-05-PLAN.md |  | Task 3's <human-check> (visual confirmation of two named instances in the UI and post-D-11 rendition pixel parity for email/markdown/chat) was substituted with equivalent curl/API checks against a live ephemeral kernel instance, not an actual human eyeballing the running web UI — a human should open make dev and confirm visually. | open |  | 2026-08-06T14:13:27.733Z |  |
 | 5 | 07 | deviation | kernel/supervisor/supervisor_test.go | 224 | TestApply_MidFlightSyncLeavesNoStrandedRunningRow has a pre-existing, intermittent (~1-in-6 under load) race between Coordinator.syncOne's detached sync_runs finalize write and the test's own read, reproducing identically on unmodified pre-07-09 code — unrelated to gaps[0], discovered during 07-09 verification, not fixed here because the plan prohibits editing this test's body. | open |  | 2026-08-08T19:09:03.587Z |  |
-| 6 | 10 | unrun-verify | .github/workflows/nightly.yml |  | Task 3 live-dispatch verification (two consecutive nightly workflow_dispatch runs proving build-then-skip) not run in this session — coordinator instructed no further pushes to origin/main after Task 1's real release run; nightly.yml is committed locally only on worktree-agent-aa4413156731f3f6e | open |  | 2026-08-12T10:28:54.358Z |  |
+| 6 | 10 | unrun-verify | .github/workflows/nightly.yml |  | Task 3 live-dispatch verification (two consecutive nightly workflow_dispatch runs proving build-then-skip) not run in this session — coordinator instructed no further pushes to origin/main after Task 1's real release run; nightly.yml is committed locally only on worktree-agent-aa4413156731f3f6e | resolved | Verified live during phase 10 UAT: main pushed, two nightly dispatches confirmed build-then-skip (user-confirmed pass) | 2026-08-12T10:28:54.358Z | 2026-08-12 |
 
 ````json
 [
@@ -91,10 +91,10 @@ last_updated: 2026-08-12T10:28:54.358Z
     "file": ".github/workflows/nightly.yml",
     "line": null,
     "description": "Task 3 live-dispatch verification (two consecutive nightly workflow_dispatch runs proving build-then-skip) not run in this session — coordinator instructed no further pushes to origin/main after Task 1's real release run; nightly.yml is committed locally only on worktree-agent-aa4413156731f3f6e",
-    "status": "open",
-    "reason": "",
+    "status": "resolved",
+    "reason": "Verified live during phase 10 UAT: main pushed, two nightly dispatches confirmed build-then-skip (user-confirmed pass)",
     "recorded_at": "2026-08-12T10:28:54.358Z",
-    "resolved_at": null
+    "resolved_at": "2026-08-12"
   }
 ]
 ````
