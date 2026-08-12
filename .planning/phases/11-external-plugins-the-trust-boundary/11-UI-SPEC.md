@@ -241,7 +241,7 @@ Six new elements, all additive to already-shipped components. None replace exist
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: **34 covered (explicit), 3 backstop, 0 unresolved** — across the six new elements (E1–E6). Every dismissal below carries a recorded reason.
+Applicable state considerations resolved: **37 covered (explicit), 3 backstop, 0 unresolved** — across the six new elements (E1–E6). Every dismissal below carries a recorded reason.
 
 ### Resolved — explicit
 
@@ -253,9 +253,12 @@ Applicable state considerations resolved: **34 covered (explicit), 3 backstop, 0
 | zero-one-many | E1 (form) — referenced `${VAR}` count | ✅ covered | Two copy branches: zero-vars vs. one-or-many (comma-joined list), per Copywriting Contract's two "E1 env disclosure" rows. |
 | long-text | E1 (form) — hash line | ✅ covered | `break-all` on the fixed-length (64 hex char) hash line — wraps within the dialog, never overflows. |
 | overflow | E1 (form) — many referenced vars | ✅ covered | Comma-joined list wraps naturally as body text within the scrollable `DialogContent`; no truncation needed at realistic counts. |
+| empty | E1 (form) — initial state | ✅ covered | Type-to-confirm input starts empty; `Add untrusted source` is `disabled` until the typed value exactly matches `binary_name` — no error shown, per E1's layout contract. |
+| partial | E1 (form) — partially typed confirm | ✅ covered | A partial or incorrect confirm value keeps the primary button `disabled` with no inline error — the disabled-until-exact-match contract is the entire validation surface. |
 | populated | E2 badge (static-content) | ✅ covered | Rendered at both declared scales (chip / picker-menu) whenever `tier === "external"`; absent otherwise — per E2's markup contract. |
 | populated | E3 label (static-content) | ✅ covered | `Untrusted` label rendered per-row (Group 1) / right-aligned in-tile (Group 2), per E3's layout spec. |
 | zero-one-many | E3 label — mixed trusted/untrusted rows in one picker list | ✅ covered | Label is a per-row conditional (keyed on that row's own plugin tier), never a group-level toggle — a picker with 0, 1, or many external-tier rows renders identically per-row regardless of how many others share its group. |
+| empty | E3 label | ✅ covered | Label is entirely absent (not a placeholder) for `tier !== "external"` rows — conditional render, the expected absence, mirroring E4/E5's empty-state rows. |
 | overflow | E3 picker list (list-collection) — many rows total | 🧪 backstop | Same `max-h-80 overflow-y-auto` popover cap Phase 9's own E4 backstop already flagged — adding a third-line label to Group 1 rows makes each row modestly taller; needs a visual check if the combined instance+catalog count grows well past today's ~6 plugin types. |
 | populated | E4 menu item + dialog (interactive-control) | ✅ covered | Item appears first in the menu only when the pin-mismatch signal is set; dialog renders the full hash-comparison block on open. |
 | empty | E4 menu item | ✅ covered | Item is entirely absent (not merely disabled) for any source with `tier !== "external"` or no pin mismatch — conditional render, not a placeholder state. |
