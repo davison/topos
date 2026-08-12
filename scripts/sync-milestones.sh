@@ -72,8 +72,16 @@ esac
 
 REPO="${TOPOS_REPO:-davison/topos}"
 
+# The GitHub milestones API accepts state values "open"/"closed", not the
+# action vocabulary "open"/"close" this script takes as $2 — map it here.
+# (The two coincide for "open", which is why only the close path ever 422s.)
+case "$ACTION" in
+  close) STATE="closed" ;;
+  *)     STATE="$ACTION" ;;
+esac
+
 echo "Repository: ${REPO}"
-echo "Operation: set milestone '${TITLE}' to state '${ACTION}'"
+echo "Operation: set milestone '${TITLE}' to state '${STATE}'"
 
 # Lookup-before-write: the idempotency mechanism. Looks across ALL
 # milestone states (open and closed) so re-running against an
@@ -85,11 +93,11 @@ existing_number=$(gh api "repos/${REPO}/milestones?state=all" \
 if [ -z "$existing_number" ]; then
   echo "No milestone titled '${TITLE}' found — creating it with state '${ACTION}'..."
   number=$(gh api --method POST "repos/${REPO}/milestones" \
-    -f title="${TITLE}" -f state="${ACTION}" --jq '.number')
-  echo "Created milestone '${TITLE}' as #${number}, state=${ACTION}"
+    -f title="${TITLE}" -f state="${STATE}" --jq '.number')
+  echo "Created milestone '${TITLE}' as #${number}, state=${STATE}"
 else
-  echo "Milestone '${TITLE}' already exists as #${existing_number} — reconciling state to '${ACTION}'..."
+  echo "Milestone '${TITLE}' already exists as #${existing_number} — reconciling state to '${STATE}'..."
   gh api --method PATCH "repos/${REPO}/milestones/${existing_number}" \
-    -f state="${ACTION}" >/dev/null
-  echo "Reconciled milestone '${TITLE}' (#${existing_number}), state=${ACTION}"
+    -f state="${STATE}" >/dev/null
+  echo "Reconciled milestone '${TITLE}' (#${existing_number}), state=${STATE}"
 fi
