@@ -63,7 +63,16 @@
   thumbnail, a one-line title, a clipped metadata strip (date + tag
   pills, .stream-row-meta) and a two-line preview clamp — never grows
   with tag count or preview length, so a long list scrolls at a
-  constant rhythm.
+  constant rhythm. 152px at 768px and above, byte-identical to before
+  this phase (D-05).
+
+  Below 768px (max-md:, D-05/D-06/D-07): a compact 60px, three-line
+  budget — 4px padding (p-1) + 16px title + 4px gap + 14px meta + 4px
+  gap + 14px snippet = 60px. No thumbnail, no tag pills (not part of
+  D-06's explicit composition); the meta line switches from the
+  desktop's flex-wrap badge-clip to a flex-nowrap single truncating
+  strip (RESEARCH Pitfall 4 — a different layout strategy, not a
+  smaller version of the desktop one).
 
   Accent color use: the 2px left border below is the ONLY accent
   (--primary/--ring, see app.css) mark in this row, applied only when
@@ -79,12 +88,14 @@
 	aria-pressed={selected}
 	data-item-id={item.id}
 	class={cn(
-		'stream-row-surface flex w-full items-start gap-4 overflow-hidden rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-card/80',
+		'stream-row-surface flex w-full items-start gap-4 overflow-hidden rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-card/80 max-md:h-[60px] max-md:gap-0 max-md:p-1',
 		'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
 		selected && 'border-l-primary border-l-2'
 	)}
 >
-	<Thumbnail {item} />
+	<div class="max-md:hidden">
+		<Thumbnail {item} />
+	</div>
 
 	<div class="min-w-0 flex-1">
 		<!-- One-line title, ellipsis-truncated (heading role: 20px/600/1.2).
@@ -92,15 +103,23 @@
 		     .search-highlight class as the detail-pane title and this
 		     row's own snippet below — a title-only match is a routine FTS
 		     outcome, so it must be visually explained here too. -->
-		<p class="truncate text-[20px] leading-[1.2] font-semibold text-foreground">
+		<p
+			class="truncate text-[20px] leading-[1.2] font-semibold text-foreground max-md:text-[16px] max-md:leading-none"
+		>
 			{#each highlightText(item.title, searchQuery) as segment, i (i)}
 				<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
 			{/each}
 		</p>
 
-		<!-- Clipped metadata strip: date + one Badge per tag (label role: 14px/400/1.4). -->
+		<!-- Clipped metadata strip: date + one Badge per tag (label role:
+		     14px/400/1.4) at desktop size. Below 768px (max-md:, D-07):
+		     switches from flex-wrap badge-clip to a flex-nowrap single
+		     truncating strip — icon, then one jointly-truncating
+		     name/group-label text unit, then date, then the stale dot
+		     last, so the dot is never the element that gets clipped
+		     (RESEARCH Pitfall 4 / planner_resolutions R2). -->
 		<div
-			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground"
+			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground max-md:mt-1 max-md:flex-nowrap max-md:gap-1.5 max-md:overflow-hidden max-md:leading-none"
 		>
 			<!-- Source identity icon (09-02-PLAN.md Task 4 checkpoint
 			     follow-up, additive metadata alongside the leading
@@ -113,14 +132,26 @@
 			<span class="shrink-0" title={sourceDisplayName || undefined}>
 				<PluginIcon {plugin} size="size-3.5" />
 			</span>
+			<!-- Compact-only (max-md:, D-07): the source display name,
+			     visible as TEXT here for the first time — today it exists
+			     only as the icon's hover `title`, useless on a touchscreen
+			     with no hover. Combined with the group label into ONE text
+			     node inside one truncating span so the two pieces degrade
+			     together (jointly truncate) rather than one vanishing while
+			     the other stays full-length (planner_resolutions R2). -->
+			<span class="hidden min-w-0 flex-1 truncate max-md:block">
+				{sourceDisplayName}{item.group_label ? ` · ${item.group_label}` : ''}
+			</span>
 			<!-- Sender (item.group_label — "chat thread / mail conversation"
 			     in the wire contract): plain text, no "From" prefix, never
 			     the accent color, omitted entirely when empty so paperless
 			     and SilverBullet rows (which never populate this field) are
 			     visually unchanged. Rendered as the FIRST entry, before the
-			     date, per 03-UI-SPEC.md's E3 resolution. -->
+			     date, per 03-UI-SPEC.md's E3 resolution. Hidden below
+			     768px — the combined span above carries the group label at
+			     compact size instead. -->
 			{#if item.group_label}
-				<span class="shrink-0">{item.group_label}</span>
+				<span class="shrink-0 max-md:hidden">{item.group_label}</span>
 			{/if}
 			<span class="shrink-0">{formatItemDate(item.timestamp_unix)}</span>
 			{#if stale}
@@ -144,9 +175,15 @@
 					</Tooltip>
 				</TooltipProvider>
 			{/if}
-			{#each item.labels as label (label)}
-				<Badge variant="secondary">{label}</Badge>
-			{/each}
+			<!-- Tag pills: not part of D-06's compact composition (thumbnail
+			     and tag pills are the two things dropped at compact size) —
+			     the full tag list stays visible in the detail pane,
+			     unchanged. Hidden as a group below 768px. -->
+			<span class="contents max-md:hidden">
+				{#each item.labels as label (label)}
+					<Badge variant="secondary">{label}</Badge>
+				{/each}
+			</span>
 		</div>
 
 		<!--
@@ -154,17 +191,27 @@
 		  when the preview is empty — a document with no OCR text degrades
 		  to title + metadata only, not an empty or zero-height block. The
 		  row keeps its fixed height regardless (.stream-row-surface).
+
+		  Below 768px (max-md:, D-06): single-line clamp at the compact
+		  14px/leading-none budget instead of the desktop two-line clamp.
+		  Both branches below move together (mt-1 line-clamp-1 text-[14px]
+		  leading-none) so a search-result row and a stream row never
+		  render at different heights (D-08).
 		-->
 		{#if snippet !== undefined}
 			{#if snippet}
-				<p class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground">
+				<p
+					class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground max-md:mt-1 max-md:line-clamp-1 max-md:text-[14px] max-md:leading-none"
+				>
 					{#each parseSnippet(snippet) as segment, i (i)}
 						<span class={segment.match ? 'search-highlight' : undefined}>{segment.text}</span>
 					{/each}
 				</p>
 			{/if}
 		{:else if item.preview}
-			<p class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground">
+			<p
+				class="mt-1 line-clamp-2 text-[16px] leading-[1.5] text-foreground max-md:mt-1 max-md:line-clamp-1 max-md:text-[14px] max-md:leading-none"
+			>
 				{item.preview}
 			</p>
 		{/if}
