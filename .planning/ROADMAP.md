@@ -618,15 +618,15 @@ Plans:
   5. GitHub repo milestones stay in sync with .planning/ milestones — GSD has no native mechanism (verified against gsd-tools/workflows 2026-08-11), so the repo carries its own: milestones created/closed via `gh api` at milestone boundaries, with the process (or script) documented
   6. A GitHub Actions publishing workflow exists: nightly builds run only when code has changed since the last nightly, and releases attach the built kernel + plugin binaries as GitHub release artifacts
 
-**Plans:** 5 plans
+**Plans:** 3/5 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Tracer: cgo-free build targets + tag-triggered release workflow proven end-to-end, Signal-artifact decision checkpoint, change-gated nightly workflow
-- [ ] 10-02-PLAN.md — docs/plugins/: `_template.md`, an index, and one operator page per real source plugin (paperless, silverbullet, proton, signal, whatsapp)
-- [ ] 10-03-PLAN.md — SECURITY.md with private vulnerability reporting enabled, web/ scaffold README replaced, docs/ss/ screenshot convention
+- [x] 10-01-PLAN.md — Tracer: cgo-free build targets + tag-triggered release workflow proven end-to-end, Signal-artifact decision checkpoint, change-gated nightly workflow
+- [x] 10-02-PLAN.md — docs/plugins/: `_template.md`, an index, and one operator page per real source plugin (paperless, silverbullet, proton, signal, whatsapp)
+- [x] 10-03-PLAN.md — SECURITY.md with private vulnerability reporting enabled, web/ scaffold README replaced, docs/ss/ screenshot convention
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
