@@ -1,4 +1,4 @@
-# <img alt="logo" src="./web/static/app-icon.png" style="max-width:50"/> topos
+# <img alt="logo" src="./web/static/app-icon.png" style="width:50px"/> topos
 
 topos pulls together related information from your disparate personal
 data silos — email, chats, document storage, notes, wikis — into per-topic
