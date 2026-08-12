@@ -448,6 +448,122 @@
 		response ? filterItemsBySource(response.items, selectedSources) : []
 	);
 
+	// Auto-collapsing header (checkpoint deviation, 09.1-01-PLAN.md issue
+	// 2, approved live during the human-verify checkpoint — not in the
+	// plan's original must_haves): below 1024px, WebspaceHeader collapses
+	// to a slim bar on scroll-down and re-inflates the instant scroll-up
+	// begins, the standard mobile pattern. Hooked to the STREAM's own
+	// scroll container (streamScrollEl, bound above) — this app has no
+	// window-level scrolling (the stream and detail panes each own an
+	// independent internal scroll region), so a window scroll listener
+	// would never fire. DetailPane's own internal scroll (the reading
+	// surface, at 768-1024px side-by-side) is a deliberately out-of-scope
+	// follow-up: DetailPane exposes no scroll-container ref today, and
+	// wiring one is a larger change than this checkpoint fix warrants —
+	// recorded in 09.1-01-SUMMARY.md, not silently dropped.
+	let headerCollapsed = $state(false);
+	// Plain `let`, not $state: written from inside handleStreamScroll on
+	// every scroll event, and must never itself be a reactive trigger —
+	// only headerCollapsed (derived FROM this comparison) is the signal
+	// WebspaceHeader reacts to.
+	let lastStreamScrollTop = 0;
+	// Below this scrollTop, the header always stays expanded — matches
+	// most mobile browser chrome's own behaviour (pull only starts
+	// collapsing after the content has genuinely scrolled away from the
+	// top) and avoids a jittery collapse from a 1-2px rubber-band bounce
+	// at rest.
+	const HEADER_COLLAPSE_SCROLL_THRESHOLD = 24;
+	// Matches WebspaceHeader's own max-lg:duration-200 collapse
+	// transition exactly.
+	const HEADER_COLLAPSE_TRANSITION_MS = 200;
+	// A re-entrancy guard, not merely a nicety: toggling headerCollapsed
+	// changes WebspaceHeader's rendered height, which changes <main>'s
+	// available height, which changes THIS SAME scroll container's own
+	// clientHeight mid-transition — confirmed live to fire spurious
+	// native 'scroll' events on this exact element as a pure reflow side
+	// effect (no user input at all), with scrollTop transiently snapping
+	// toward 0. Without this guard, that transient read straight into the
+	// "near top -> expand" rule below, re-expanding the header, growing
+	// clientHeight back, and repeating indefinitely — a self-triggering
+	// collapse/expand loop that also visibly corrupted the stream's own
+	// scroll position. Suppressing scroll handling for the duration of
+	// our OWN transition breaks the loop at its source; any genuine user
+	// scroll during that ~200ms window is simply picked up by the next
+	// event once the guard clears.
+	let suppressScrollHandling = false;
+	let suppressScrollHandlingTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function setHeaderCollapsed(next: boolean) {
+		if (headerCollapsed === next) return;
+		// Captured BEFORE the toggle: confirmed live that collapsing or
+		// expanding the header — which changes <main>'s (and therefore
+		// this SAME scroll container's) own clientHeight — makes the
+		// browser itself reset scrollTop to 0 as a direct consequence of
+		// that reflow, independent of any CSS transition (reproduced
+		// with the collapse transition removed entirely). This is not a
+		// bug our own scroll-direction logic can prevent by being more
+		// careful; it is the browser's own resize-driven scroll
+		// invalidation. Restoring the captured value after the reflow
+		// settles (below) is what actually preserves D-01's guarantee
+		// through a header collapse/expand, not merely through the
+		// takeover open/close this plan's Task 1 already covers.
+		const preToggleScrollTop = streamScrollEl?.scrollTop ?? 0;
+		headerCollapsed = next;
+		// Two nested rAFs: the first lets the browser complete the
+		// layout pass this class change triggers (and, per the above,
+		// its own scrollTop reset within that same pass); the second
+		// re-asserts our captured value AFTER that reset has already
+		// happened, so this write wins the race instead of being
+		// silently overwritten by it.
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (streamScrollEl) streamScrollEl.scrollTop = preToggleScrollTop;
+			});
+		});
+		suppressScrollHandling = true;
+		if (suppressScrollHandlingTimer !== null) clearTimeout(suppressScrollHandlingTimer);
+		suppressScrollHandlingTimer = setTimeout(() => {
+			suppressScrollHandling = false;
+			suppressScrollHandlingTimer = null;
+			if (streamScrollEl) {
+				// Never stay collapsed once the reclaimed space means
+				// there is nothing left to scroll — a short stream (few
+				// items) can legitimately fit entirely once the header
+				// shrinks, and with nothing left to scroll, no further
+				// 'scroll' event will EVER fire to correct a stuck
+				// collapsed state (confirmed live: without this check,
+				// collapsing could permanently pin the header collapsed
+				// the instant it made the stream fully fit). Collapsing
+				// exists to reveal more content, not to hide the header
+				// when there's no more content to reveal.
+				if (streamScrollEl.scrollHeight <= streamScrollEl.clientHeight) {
+					headerCollapsed = false;
+				}
+				// Re-baseline against wherever the reflow actually left
+				// the scroll position, so the FIRST post-guard event
+				// compares against reality rather than the
+				// pre-transition value.
+				lastStreamScrollTop = streamScrollEl.scrollTop;
+			}
+		}, HEADER_COLLAPSE_TRANSITION_MS);
+	}
+
+	function handleStreamScroll() {
+		if (!streamScrollEl || suppressScrollHandling) return;
+		const top = streamScrollEl.scrollTop;
+		if (top <= HEADER_COLLAPSE_SCROLL_THRESHOLD) {
+			setHeaderCollapsed(false);
+		} else if (top > lastStreamScrollTop) {
+			setHeaderCollapsed(true);
+		} else if (top < lastStreamScrollTop) {
+			// Re-inflate the instant an upward scroll begins — no
+			// threshold, no debounce, matching the user's own request
+			// ("re-inflate as soon as a scroll up event begins").
+			setHeaderCollapsed(false);
+		}
+		lastStreamScrollTop = top;
+	}
+
 	// quiet (07-16-PLAN.md Task 3, closing 07-UAT.md G-07-7's residual
 	// case): defaults to false for every existing call site below — the
 	// webspace-keyed effect, Retry, the save paths, the refresh handlers
@@ -766,6 +882,13 @@
 		searchState = 'idle';
 		searchResults = [];
 		filterError = null;
+		headerCollapsed = false;
+		lastStreamScrollTop = 0;
+		if (suppressScrollHandlingTimer !== null) {
+			clearTimeout(suppressScrollHandlingTimer);
+			suppressScrollHandlingTimer = null;
+		}
+		suppressScrollHandling = false;
 		writeLastWebspace(webspace);
 		load(gen);
 		loadSources();
@@ -812,6 +935,7 @@
 			envVars={configResponse?.env_vars ?? {}}
 			onsourceadded={handleSourceAdded}
 			onedit={handleChipEdit}
+			collapsed={headerCollapsed}
 		/>
 	</div>
 
@@ -926,6 +1050,7 @@
 			<div
 				bind:this={streamScrollEl}
 				bind:clientHeight={streamScrollHeight}
+				onscroll={handleStreamScroll}
 				class="h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pr-6 {selectedItem
 					? 'max-md:invisible max-md:flex-1 md:w-[clamp(240px,30vw,400px)] md:shrink-0 lg:w-[480px]'
 					: 'flex-1'}"

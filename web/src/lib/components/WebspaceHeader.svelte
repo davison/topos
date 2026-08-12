@@ -55,7 +55,8 @@
 		pluginTypes,
 		envVars,
 		onsourceadded,
-		onedit
+		onedit,
+		collapsed = false
 	}: {
 		webspace: string;
 		// webspaces backs the WebspaceSwitcher's menu list (D-10) — the
@@ -140,6 +141,15 @@
 		// invisible measurement clones, which keep a no-op handler so a
 		// measurement clone can never dispatch an edit.
 		onedit: (name: string, kind: 'connection' | 'match' | 'relink' | 'remove') => void;
+		// collapsed (checkpoint deviation, 09.1-01-PLAN.md issue 2): the
+		// caller's own scroll-driven decision, below 1024px only — the
+		// route owns the scroll listener (on the stream pane's own scroll
+		// container, never the window) since scroll direction is
+		// meaningless above 1024px, where this header never collapses.
+		// Every collapse effect below is itself scoped under `max-lg:`, so
+		// an unexpected `true` at desktop width is still a no-op — belt
+		// and braces alongside the caller's own width-gated listener.
+		collapsed?: boolean;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
@@ -326,7 +336,7 @@
 	let overflowTone = $derived(worstHealthTone(hiddenSources));
 </script>
 
-<header class="shrink-0 border-b border-border bg-card px-6 py-6">
+<header class="shrink-0 border-b border-border bg-card px-6 py-6 {collapsed ? 'max-lg:py-3' : ''}">
 	<!--
 	  D-10: the static <h1> title becomes a webspace switcher — same
 	  Display role (28px/600/1.2), same truncate+title treatment on the
@@ -395,9 +405,37 @@
 		</Alert>
 	{/if}
 
-	{#if showSourceRows}
-		<!--
-		  D-01: one merged chip per configured instance replaces Phase 2's
+	<!--
+	  Checkpoint fix (09.1-01-PLAN.md issue 2): everything below the
+	  switcher/branding row collapses away below 1024px while `collapsed`
+	  is true — the chip row, the search box, the saved-filter chips, and
+	  a filter write's own error alert. `overflow-hidden` on this wrapper
+	  is what actually prevents the collapsing content from being
+	  interactable/focusable while visually collapsed, not merely
+	  visually hidden.
+
+	  Deliberately an instant snap (no CSS transition on max-height/
+	  opacity), not a stylistic choice: collapsing/expanding changes
+	  <main>'s available height, which changes the stream pane's own
+	  clientHeight, which the browser responds to by resetting that same
+	  element's scrollTop — confirmed live, independent of whether the
+	  change is instant or animated. +page.svelte's setHeaderCollapsed
+	  restores the captured pre-toggle scrollTop across two animation
+	  frames immediately after the snap; an ACTIVE multi-frame CSS
+	  transition re-triggers that same browser reset on every intermediate
+	  frame, arriving after the one-shot restore and silently overwriting
+	  it (reproduced live: the stream settled tens of pixels away from
+	  where it was scrolled). A smoothly animated collapse is a real,
+	  worthwhile follow-up, but needs the restore to track the transition
+	  itself (e.g. a rAF loop bounded by `transitionend`), not a single
+	  fire-and-forget correction — out of scope for this checkpoint fix.
+	-->
+	<div
+		class="max-lg:overflow-hidden {collapsed ? 'max-lg:max-h-0 max-lg:opacity-0' : 'max-lg:max-h-[480px] max-lg:opacity-100'}"
+	>
+		{#if showSourceRows}
+			<!--
+			  D-01: one merged chip per configured instance replaces Phase 2's
 		  two rows. Chips render in config-declared instance order — never
 		  sorted or reordered by health state, so a chip's position stays a
 		  stable target across health changes. `flex-nowrap` plus the
@@ -577,9 +615,10 @@
 		</div>
 	{/if}
 
-	{#if filterError}
-		<Alert variant="destructive" class="mt-3">
-			<AlertDescription>{filterError}</AlertDescription>
-		</Alert>
-	{/if}
+		{#if filterError}
+			<Alert variant="destructive" class="mt-3">
+				<AlertDescription>{filterError}</AlertDescription>
+			</Alert>
+		{/if}
+	</div>
 </header>
