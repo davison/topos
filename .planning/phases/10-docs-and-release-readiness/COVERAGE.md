@@ -43,7 +43,7 @@ discovering an undecided matrix at seal time.
 
 | Capability | Decision | Reason |
 |---|---|---|
-| Enable private vulnerability reporting — `PUT /repos/{owner}/{repo}/private-vulnerability-reporting` | INTEGRATE | Success criterion 2 — `SECURITY.md` points at the "Report a vulnerability" button, which does not exist until this is enabled. |
+| Enable private vulnerability reporting — `PUT .../private-vulnerability-reporting` | INTEGRATE | Success criterion 2 — `SECURITY.md` points at the "Report a vulnerability" button, which does not exist until this is enabled. |
 | Read PVR state — `GET /repos/{owner}/{repo}/private-vulnerability-reporting` | INTEGRATE | Used as the verification assertion that the enable actually took effect. |
 | Disable PVR — `DELETE` on the same path | OPT-OUT | Nothing in this project ever wants the private disclosure channel turned off. |
 | Security advisories CRUD — `/repos/{owner}/{repo}/security-advisories` | OPT-OUT | Drafting an advisory is a response to a real report, not repo setup. Out of scope until there is a report to respond to. |
