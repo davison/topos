@@ -49,6 +49,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
 
+      # The cheapest gate in this job — plain relative-path resolution,
+      # no build, no network access — so it runs first and fails fast.
+      - run: make docs-check
+
       - run: npm --prefix web ci
 
       - run: npm --prefix web run check

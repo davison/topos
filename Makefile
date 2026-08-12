@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable
+.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -168,6 +168,14 @@ proto:
 			--proto_path=proto \
 			proto/topos/v1/plugin.proto; \
 	fi
+
+# docs-check guards every relative markdown link/image target across the
+# repository's maintained doc set (scripts/check-doc-links.sh) — needs no
+# network access and no credentials, since it deliberately does not
+# check external URLs. Fails loud, naming every broken target's file and
+# line, on a link that no longer resolves.
+docs-check:
+	./scripts/check-doc-links.sh
 
 # dev-check runs the hermetic behavioural guard for the `dev` recipe
 # above (scripts/dev-guard-smoke.sh): squatter on the dev port, kernel
