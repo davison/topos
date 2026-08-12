@@ -365,8 +365,16 @@
 		  measured chip row below (bind:this={rowEl}): nesting it inside
 		  that row would silently shrink visibleChipCount's
 		  available-width input with no visible error (T-rqc-02).
+
+		  09.1-04-PLAN.md Task 1: max-md:hidden below 768px. This is purely
+		  decorative and carries no affordance, which is why it is the one
+		  element this phase drops outright at narrow widths rather than
+		  relocating — the width it reclaims goes to the webspace switcher
+		  title. The chip overflow popover needs no narrow-width special
+		  case: the existing ResizeObserver-driven measurement is already
+		  width-driven at every width.
 		-->
-		<div class="flex shrink-0 items-center gap-2">
+		<div class="flex shrink-0 items-center gap-2 max-md:hidden">
 			<img src="/app-icon.png" alt="" class="size-10 shrink-0 rounded-md" />
 			<div class="flex flex-col text-muted-foreground">
 				<span class="text-[20px] leading-[1.2] font-semibold">topos</span>

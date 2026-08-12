@@ -187,4 +187,30 @@ describe('reveal scoping: hover and keyboard focus only, never a mouse-click pin
 			"found a focus-within-scoped reveal on the trigger Button — focus-within also matches the persistent focus a mouse click leaves on the button, pinning the icon visible until the user clicks elsewhere (this IS G-06-3b's third defect)"
 		).toBe(false);
 	});
+
+	// 09.1-04-PLAN.md Task 1 (planner_resolutions R1, RESEARCH Pitfall 2):
+	// below 768px there is no hover and no keyboard focus to reveal the
+	// trigger from at all — a touchscreen can never produce either event.
+	// A trigger left at opacity-0 below 768px strands every touch user on
+	// an invisible control, silently removing the chip menu. This is the
+	// exact "nothing may silently disappear" constraint CONTEXT.md sets
+	// for narrow-width header adaptation.
+	it('the trigger Button is always visible below 768px, because touch has no hover/keyboard-focus event to reveal from', () => {
+		expect(
+			triggerButtonBlock.includes('max-md:opacity-100'),
+			'expected the trigger Button to carry max-md:opacity-100 — below 768px there is no hover and no keyboard focus to reveal from, so a trigger left at opacity-0 strands every touch user on an invisible control and silently removes the chip menu'
+		).toBe(true);
+	});
+});
+
+// 09.1-04-PLAN.md Task 1 (planner_resolutions R2, RESEARCH Pitfall 2):
+// chip health detail is otherwise unreachable without hover, so the filter
+// button must carry a native title attribute as the touch degrade.
+describe('touch health detail: the filter button carries a native title', () => {
+	it('the filter button block carries a title= binding', () => {
+		expect(
+			/\btitle=/.test(filterButtonBlock),
+			'expected the filter button to carry a title= binding — health detail is otherwise unreachable without hover, and a native title is the long-press-accessible touch degrade'
+		).toBe(true);
+	});
 });

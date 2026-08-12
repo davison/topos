@@ -156,6 +156,7 @@
 						aria-pressed={selected}
 						onclick={() => onfilter(source.name)}
 						class="flex max-w-48 items-center gap-1.5 self-stretch rounded-full pr-1.5 pl-2.5"
+						title={tooltipText}
 					>
 						<span
 							class={cn(
@@ -166,6 +167,15 @@
 							aria-hidden="true"
 						></span>
 						<PluginIcon plugin={source.plugin} size="size-3.5 shrink-0" />
+						<!--
+						  R2: two nested title attributes, deliberately. The outer
+						  button's title={tooltipText} is the touch degrade for
+						  health detail (unreachable without hover below 768px);
+						  this inner span's title={source.display_name} is a
+						  different affordance — a legible name on hover when
+						  truncation clips it. They serve different purposes and
+						  neither should absorb the other's text.
+						-->
 						<span
 							class={cn(
 								'truncate text-[14px] leading-[1.4]',
@@ -188,7 +198,7 @@
 					variant="ghost"
 					size="icon"
 					class={cn(
-						'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+						'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 max-md:opacity-100',
 						selected &&
 							'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
 					)}
