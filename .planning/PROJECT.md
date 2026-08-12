@@ -18,9 +18,18 @@ Open one webspace and instantly see and grok all related information across ever
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
 
-## Next Milestone Goals
+## Current Milestone: v1.1.0 Plugin Ecosystem
 
-Not yet defined — run `/gsd-new-milestone`. Leading candidate direction: the plugin-ecosystem backlog (out-of-repo plugins, distribution, certification), now unblocked by Phase 5's contract stabilization.
+**Goal:** Open topos to third-party plugins behind an explicit trust boundary, prove the external path by building a new source out-of-repo, and give users finer control over what lands in a webspace.
+
+**Target features:**
+- External plugin support — kernel loads out-of-repo plugin binaries; trusted = built from the `davison/topos` repo, everything else marked untrusted with a warning when adding (load + trust marking only; distribution, dev guide, and certification deferred)
+- Local/network filesystem plugin — docs in a folder, optionally subfolders; built in-repo as a trusted plugin (the MVP-deferred source)
+- Google Drive plugin — docs-in-a-folder over the Drive API; deliberately built *out-of-repo* against the published contract to dogfood the external-plugin mechanism end to end (OneDrive deferred)
+- Per-item include/exclude — mark individual stream entries in or out of a webspace; the final tier of the filter-config hierarchy, and the kernel's first user-owned data beyond config
+- PWA installability — ServiceWorker + manifest/assets so the app installs on desktop and mobile
+
+**Key context:** Milestone version labels are full semver from now on (`v1.1.0`) so the GSD completion tag directly triggers `release.yml` — no companion tag at close. IMAP-vanilla refactor deferred. Carried-over minor items ride along only when a phase touches their area.
 
 ## Requirements
 
@@ -50,13 +59,13 @@ Not yet defined — run `/gsd-new-milestone`. Leading candidate direction: the p
 
 ### Active
 
-*(none — v1.0 shipped all 31 requirements; define the next milestone's requirements via `/gsd-new-milestone`)*
+- [ ] Kernel loads out-of-repo plugin binaries, marked untrusted with a user-facing warning when adding (trusted = built from the `davison/topos` repo)
+- [ ] Local/network filesystem source plugin (docs in a folder, optional subfolders), in-repo/trusted
+- [ ] Google Drive source plugin, built out-of-repo against the published contract (dogfoods the external-plugin path)
+- [ ] User can mark individual stream entries for inclusion/exclusion in a webspace — final tier of the filter hierarchy
+- [ ] App is installable as a PWA on desktop and mobile (ServiceWorker + manifest/assets)
 
-Known candidates for v1.x:
-- Plugin ecosystem: out-of-repo plugins, pull-by-URL distribution, dev guide, certification (backlog Phase 999.1)
-- Flaky CI: `ExecLinkSpawner` subprocess tests intermittent on GitHub runners (route to `/gsd-debug`)
-- Advisory review items: 10-REVIEW.md warnings, 06-REVIEW.md WR-01 case-fold highlight offsets
-- Centralized rendition theming/sanitization follow-up (pending todo, majority landed in Phase 5's kernel boundary)
+Deferred candidates (not this milestone): IMAP-vanilla refactor with provider extensions; OneDrive plugin; pull-by-URL distribution, dev guide, certification. Advisory review items (10-REVIEW warnings, 06-REVIEW WR-01) and pending todos ride along only if a phase touches their area.
 
 ### Out of Scope
 
@@ -127,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-12 after v1.0 milestone*
+*Last updated: 2026-08-12 after v1.1.0 milestone start*
