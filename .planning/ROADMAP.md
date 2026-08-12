@@ -618,7 +618,7 @@ Plans:
   5. GitHub repo milestones stay in sync with .planning/ milestones — GSD has no native mechanism (verified against gsd-tools/workflows 2026-08-11), so the repo carries its own: milestones created/closed via `gh api` at milestone boundaries, with the process (or script) documented
   6. A GitHub Actions publishing workflow exists: nightly builds run only when code has changed since the last nightly, and releases attach the built kernel + plugin binaries as GitHub release artifacts
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 
@@ -634,4 +634,4 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 10-05-PLAN.md — New-user README rewrite + CONTRIBUTING.md split + repo-wide doc-link guard wired into `make docs-check` and CI
+- [x] 10-05-PLAN.md — New-user README rewrite + CONTRIBUTING.md split + repo-wide doc-link guard wired into `make docs-check` and CI
