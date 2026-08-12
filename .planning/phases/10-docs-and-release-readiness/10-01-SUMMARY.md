@@ -154,6 +154,16 @@ None - no external service configuration required. `gh auth status` was already 
 - **Open item before this worktree branch is integrated:** `.github/workflows/nightly.yml` and the Signal-exclusion edits to `.github/workflows/release.yml` are committed locally (`16d6bc2`) but not yet on `origin/main`. Once integrated, a human/orchestrator should dispatch `nightly.yml` twice at the same commit to complete Task 3's live change-gate proof (`gh workflow run nightly.yml --ref main`, twice, confirming the second run's job list omits `build`), and confirm the resulting `nightly` GitHub Release. This closes WINDOWS.md entry #6.
 - Task 1's own commit (`74239d2`) is already live on `origin/main` — the release workflow itself is real and does not need re-verification, only Task 3's nightly addition does.
 
+## Self-Check: PASSED
+
+- FOUND: `Makefile`
+- FOUND: `.github/workflows/release.yml`
+- FOUND: `.github/workflows/nightly.yml`
+- FOUND: `.planning/phases/10-docs-and-release-readiness/10-01-SUMMARY.md`
+- FOUND commit: `74239d2` (Task 1, pushed to origin/main)
+- FOUND commit: `16d6bc2` (Task 3, local-only)
+- FOUND commit: `c702ea0` (plan metadata — SUMMARY.md + WINDOWS.md)
+
 ---
 *Phase: 10-docs-and-release-readiness*
 *Completed: 2026-08-12*
