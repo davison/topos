@@ -11,7 +11,7 @@ Requirements for this milestone. Each maps to roadmap phases. REQ-ID numbering c
 ### Plugin Ecosystem
 
 - [ ] **PLUG-06**: Kernel discovers and launches plugin binaries from a configured external plugins directory, distinct from the trusted in-repo plugins directory
-- [ ] **PLUG-07**: Kernel derives a plugin's trusted/untrusted status from provenance (directory tier, content hash pinned at add-time and re-verified at every launch) — never from anything the plugin declares about itself
+- [x] **PLUG-07**: Kernel derives a plugin's trusted/untrusted status from provenance (directory tier, content hash pinned at add-time and re-verified at every launch) — never from anything the plugin declares about itself
 - [ ] **PLUG-08**: User sees an explicit warning when adding a source from an untrusted plugin, and a persistent untrusted badge wherever that source appears (picker, source chips)
 - [ ] **PLUG-09**: Plugin host passes arbitrary per-instance config keys through to plugins (generic extra-fields map), so external plugins can receive provider-specific settings without kernel changes
 
