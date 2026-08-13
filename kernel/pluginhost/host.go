@@ -39,6 +39,102 @@ var ErrItemNotFound = errors.New("pluginhost: item not found")
 // or any other transport-level failure calling the plugin).
 var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
+// ErrPinMismatch is returned by launch (wrapped inside *pinMismatchError,
+// which Discover/Reconcile extract via errors.As) when an external-tier
+// binary's recomputed SHA-256 does not equal its pinned value in
+// [plugins.pins] — including the "no pin recorded at all" case, which is
+// treated identically to a mismatch (the empty pinned value never matches a
+// real digest). T-11-07/PLUG-07/D-03: the refusal happens BEFORE
+// exec.Command is ever constructed, so a tampered or unpinned external
+// binary is never executed. Trusted-tier binaries never reach this check at
+// all (D-04) — see launch's own doc comment.
+var ErrPinMismatch = errors.New("pluginhost: external plugin binary does not match its pinned hash")
+
+// LaunchFailurePinMismatch is the one populated LaunchFailure.Reason value
+// this phase introduces — kept as a named constant (rather than an inline
+// string literal at every call site) so a future second failure-reason
+// class has an established place to add its own constant beside this one.
+const LaunchFailurePinMismatch = "pin_mismatch"
+
+// LaunchFailure is one instance's SOFT, per-instance launch failure —
+// currently only ever a pin mismatch (11-RESEARCH.md Pitfall 1, D-03):
+// unlike every other launch-failure class (missing/broken binary), which
+// still hard-fails the whole Discover/Reconcile call exactly as before this
+// phase, a pin mismatch is recorded here instead, so the instance is simply
+// absent from Host.Plugins() rather than taking down every other
+// configured source's boot or apply.
+type LaunchFailure struct {
+	Instance    string
+	Plugin      string
+	DisplayName string
+	Tier        Tier
+	Reason      string
+	PinnedHash  string
+	CurrentHash string
+	Message     string
+}
+
+// pinMismatchError carries the structured facts a caller (Discover,
+// Reconcile) needs to build a LaunchFailure record WITHOUT re-hashing the
+// binary a second time (the "small helper" this phase's action text calls
+// for) — launch computes the current hash exactly once, and this type
+// threads both hashes back out through the returned error rather than
+// forcing the caller to re-derive them from the error string.
+type pinMismatchError struct {
+	instance, plugin, displayName string
+	tier                          Tier
+	pinnedHash, currentHash       string
+}
+
+// Error names the instance, the binary, the pinned value (or "not pinned"
+// when absent) and the on-disk value — the fail-loudly-by-name convention
+// this package's matchconfig.go already establishes, extended here.
+func (e *pinMismatchError) Error() string {
+	pinnedDisplay := e.pinnedHash
+	if pinnedDisplay == "" {
+		pinnedDisplay = "not pinned"
+	}
+	return fmt.Sprintf(
+		"pluginhost: instance %q binary %q hash mismatch: pinned=%s current=%s",
+		e.instance, e.plugin, pinnedDisplay, e.currentHash,
+	)
+}
+
+// Unwrap makes errors.Is(err, ErrPinMismatch) true for every
+// *pinMismatchError, so a caller that only cares about the failure CLASS
+// (not its structured fields) can test for it with the plain sentinel.
+func (e *pinMismatchError) Unwrap() error { return ErrPinMismatch }
+
+// toLaunchFailure converts e into the exported LaunchFailure shape
+// Host.launchFailures stores, filling in the fixed Reason/message fields
+// this phase's one failure class always carries.
+func (e *pinMismatchError) toLaunchFailure() LaunchFailure {
+	return LaunchFailure{
+		Instance:    e.instance,
+		Plugin:      e.plugin,
+		DisplayName: e.displayName,
+		Tier:        e.tier,
+		Reason:      LaunchFailurePinMismatch,
+		PinnedHash:  e.pinnedHash,
+		CurrentHash: e.currentHash,
+		Message:     e.Error(),
+	}
+}
+
+// hashAndLookupPin computes path's current SHA-256 (via HashBinary) and
+// looks up binary's pinned value in pins in one call, so launch's pin-check
+// and the LaunchFailure record it may need to build never hash the same
+// file twice. pins may be nil (no [plugins.pins] table at all) — a nil map
+// read is the Go zero value "", which is exactly the "not pinned" case this
+// function's caller already treats identically to a mismatch.
+func hashAndLookupPin(path, binary string, pins map[string]string) (currentHash, pinnedHash string, err error) {
+	currentHash, err = HashBinary(path)
+	if err != nil {
+		return "", "", err
+	}
+	return currentHash, pins[binary], nil
+}
+
 // MaxIconBytes is the size ceiling enforced on DescribeResponse.icon at
 // capture time (09-01-PLAN.md Task 2, T-09-03): an icon larger than this
 // is dropped — never truncated — and never fails the launch.
@@ -204,6 +300,21 @@ type Host struct {
 	// this repo already holds for the call's whole duration.
 	mu      sync.RWMutex
 	plugins []*Plugin
+	// launchFailures holds one entry per instance CURRENTLY refused at
+	// launch by a soft failure class (today: pin mismatch only) — guarded
+	// by mu alongside plugins, since both are written together at the same
+	// commit points (Discover's construction, Reconcile's commit region).
+	// Rebuilt wholesale on every Reconcile call (never merged), which is
+	// what clears a stale entry the instant its pin is repaired or the
+	// instance is removed from config — see Reconcile's own doc comment.
+	launchFailures map[string]LaunchFailure
+	// raw is the latest raw (unexpanded) *config.Config Discover/Reconcile
+	// were called with — stored under mu alongside plugins/launchFailures
+	// because both pins ([plugins.pins]) and Task 2's env-reference
+	// allowlist are read from the RAW document, never the expanded one
+	// (D-05's secret-value discipline: raw never holds a resolved secret
+	// VALUE, only the ${VAR} reference).
+	raw *config.Config
 }
 
 // snapshot returns a defensive copy of the currently launched plugin set
@@ -225,12 +336,50 @@ func (h *Host) snapshot() []*Plugin {
 // resulting Host. Every launched plugin's Describe RPC is called
 // immediately to learn its source_type — the kernel never trusts a
 // plugin's identity from its filename (T-01-07).
-func Discover(ctx context.Context, dirs Dirs, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
-	h := &Host{dirs: dirs}
+//
+// raw is the RAW (unexpanded) config sources was derived from — Phase 11's
+// pin map ([plugins.pins]) and env-reference allowlist (Task 2) both come
+// from this document, never the expanded one. raw may be nil (no
+// call site outside this package's own tests should pass nil for a real
+// boot, but a nil raw degrades gracefully: no pins are ever known, so every
+// external-tier launch behaves as if unpinned — a mismatch, per D-01's
+// empty-pin-is-a-mismatch rule).
+//
+// Sources are launched in SORTED name order (deterministic run to run,
+// matching this package's established convention — see matchconfig.go) —
+// pure ordering, not a correctness requirement, since every source is
+// launched independently either way.
+//
+// A pin-mismatched external-tier source (ErrPinMismatch, T-11-07) is a
+// SOFT, per-instance failure (11-RESEARCH.md Pitfall 1, D-03): it is
+// recorded in the returned Host's LaunchFailures(), logged by name, and
+// Discover CONTINUES to the next source — it does not add the failed
+// instance to Host.Plugins(), but every OTHER configured source still
+// boots normally. Every other launch-failure class (missing/broken binary,
+// handshake failure) is untouched: it still kills every plugin already
+// launched by this call and returns a hard error, exactly as before this
+// phase (RESEARCH A3, decided at Task 1).
+func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
+	h := &Host{dirs: dirs, raw: raw, launchFailures: make(map[string]LaunchFailure)}
 
-	for name, src := range sources {
-		p, err := launch(ctx, dirs, name, src, logger, false)
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		src := sources[name]
+		p, err := launch(ctx, dirs, name, src, raw, logger, false)
 		if err != nil {
+			var pmErr *pinMismatchError
+			if errors.As(err, &pmErr) {
+				h.launchFailures[name] = pmErr.toLaunchFailure()
+				logger.Error("plugin launch refused: pinned binary hash mismatch (T-11-07)",
+					"instance", name, "plugin", src.Plugin,
+					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
+				continue
+			}
 			h.Shutdown()
 			return nil, fmt.Errorf("pluginhost: launch source %q: %w", name, err)
 		}
@@ -269,7 +418,30 @@ func Discover(ctx context.Context, dirs Dirs, sources map[string]config.Source, 
 // concurrent reader (Plugins/ProbeSources/Fetch/byInstance) kernel-wide,
 // contradicting phase success criterion 4's "every other source is
 // unaffected" — so it must never be done here again.
-func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, logger hclog.Logger) error {
+//
+// raw is the RAW (unexpanded) config sources was derived from — see
+// Discover's doc comment for why this is needed (pins, and Task 2's env
+// allowlist) and why a nil raw degrades gracefully rather than panicking.
+//
+// A pin-mismatched external-tier instance (T-11-07, D-03) is a SOFT,
+// per-instance failure exactly like Discover's: it is recorded, logged by
+// name, and this call does NOT abort — every other new/changed instance
+// still launches, every unchanged instance is left running untouched, and
+// Reconcile still returns nil. Every other launch-failure class (missing
+// binary, handshake failure) keeps T-07-11's existing hard-fail behavior
+// verbatim: it kills only what THIS call itself launched and returns an
+// error naming the offending instance, leaving the previously running set
+// fully intact (RESEARCH A3, decided at Task 1).
+//
+// Host.launchFailures is rebuilt WHOLESALE from this call's own toLaunch
+// loop (never merged with the previous round) — an instance no longer in
+// sources at all, or one that now launches successfully because its pin
+// was repaired, is simply absent from the new map, which is what clears a
+// stale "binary changed" state the instant the operator fixes it. An
+// instance still pin-mismatched is never "kept" (it never has a *Plugin in
+// h.plugins to keep — see the kept/toLaunch split below), so it is always
+// retried on every Reconcile call, exactly the retry a repaired pin needs.
+func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[string]config.Source, logger hclog.Logger) error {
 	h.mu.RLock()
 	existing := make(map[string]*Plugin, len(h.plugins))
 	for _, p := range h.plugins {
@@ -295,9 +467,18 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 	}
 
 	launched := make(map[string]*Plugin, len(toLaunch))
+	newFailures := make(map[string]LaunchFailure, len(toLaunch))
 	for _, name := range toLaunch {
-		p, err := launch(ctx, h.dirs, name, sources[name], logger, false)
+		p, err := launch(ctx, h.dirs, name, sources[name], raw, logger, false)
 		if err != nil {
+			var pmErr *pinMismatchError
+			if errors.As(err, &pmErr) {
+				newFailures[name] = pmErr.toLaunchFailure()
+				logger.Error("plugin launch refused: pinned binary hash mismatch (T-11-07)",
+					"instance", name, "plugin", sources[name].Plugin,
+					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
+				continue
+			}
 			for _, lp := range launched {
 				lp.Kill()
 			}
@@ -325,10 +506,28 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 			next = append(next, p)
 			continue
 		}
-		next = append(next, launched[name])
+		if p, ok := launched[name]; ok {
+			next = append(next, p)
+		}
 	}
 	h.plugins = next
+	h.raw = raw
+	h.launchFailures = newFailures
 	return nil
+}
+
+// LaunchFailures returns a defensive copy of every instance CURRENTLY
+// refused at launch by a soft failure class (today: pin mismatch only),
+// sorted by Instance for deterministic output.
+func (h *Host) LaunchFailures() []LaunchFailure {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]LaunchFailure, 0, len(h.launchFailures))
+	for _, lf := range h.launchFailures {
+		out = append(out, lf)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Instance < out[j].Instance })
+	return out
 }
 
 // stderrTailCap bounds stderrTail's retained byte count. Chosen in the low
@@ -430,10 +629,69 @@ func (t *stderrTail) lastLine() string {
 // that does not recognise the variable simply ignores it and launches
 // exactly as before — this is additive, never a behavior change for any
 // plugin type that hasn't opted in.
-func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
+//
+// raw is the RAW (unexpanded) config Discover/Reconcile were called with —
+// nil for DescribePluginType's trial-launch path, where the SUBMITTED src
+// itself already IS the raw form (nothing loaded it from disk). launch
+// resolves rawSrc, this instance's own raw config.Source, as raw.Sources[name]
+// when raw is non-nil and the name is present there, falling back to src
+// otherwise — this is what lets a real boot-time launch see the operator's
+// literal ${VAR} references (Task 2's env allowlist) while a trial launch
+// still works with no raw document to draw from at all.
+//
+// Pin verification (T-11-07, D-01/D-02/D-03/D-04): immediately after
+// ResolveBinary resolves an EXTERNAL-tier binary, and BEFORE exec.Command is
+// ever constructed, launch recomputes the binary's SHA-256 (HashBinary) and
+// compares it to raw.Plugins.Pins[src.Plugin]. A mismatch — including "no
+// pin recorded at all", which compares equal to the zero-value empty
+// string and therefore never matches a real 64-character digest — returns
+// a *pinMismatchError (wrapping ErrPinMismatch) and creates NO subprocess
+// at all. TierTrusted skips this entire block (D-04: a trusted-dir binary
+// is rebuilt constantly by `make build`/`make dev`, so pinning it would
+// false-alarm on every rebuild). describeOnly launches ALSO skip this
+// block deliberately (T-11-14, accepted risk, 11-PLAN.md threat register):
+// the add-source flow's trial launch is the ONLY way to learn an external
+// binary's identity (and therefore compute the hash an operator can choose
+// to pin) BEFORE any pin can exist for it — gating the trial launch on a
+// pin that cannot yet exist would make it structurally impossible to ever
+// add a first external source.
+func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
 	binPath, tier, err := ResolveBinary(dirs, src.Plugin, logger)
 	if err != nil {
 		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, err)
+	}
+
+	// The instance display name resolves from the operator's own config
+	// (D-09), falling back to the instance id itself when display_name is
+	// omitted — never from anything the plugin process asserts. Resolved
+	// here (before the pin check below, and well before Describe returns)
+	// so a pin-mismatch LaunchFailure record can carry it too — mirrors
+	// config.Config.DisplayNameFor without needing the whole *config.Config
+	// here, since launch already holds this instance's own config.Source.
+	instanceDisplayName := src.DisplayName
+	if instanceDisplayName == "" {
+		instanceDisplayName = name
+	}
+
+	if tier == TierExternal && !describeOnly {
+		var pins map[string]string
+		if raw != nil {
+			pins = raw.Plugins.Pins
+		}
+		currentHash, pinnedHash, hashErr := hashAndLookupPin(binPath, src.Plugin, pins)
+		if hashErr != nil {
+			return nil, fmt.Errorf("pluginhost: hash external plugin binary for instance %q: %w", name, hashErr)
+		}
+		if currentHash != pinnedHash {
+			return nil, &pinMismatchError{
+				instance:    name,
+				plugin:      src.Plugin,
+				displayName: instanceDisplayName,
+				tier:        tier,
+				pinnedHash:  pinnedHash,
+				currentHash: currentHash,
+			}
+		}
 	}
 
 	sourceConfig, err := json.Marshal(map[string]string{
@@ -507,13 +765,13 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 		return nil, fmt.Errorf("connect to plugin subprocess: %w", err)
 	}
 
-	raw, err := rpcClient.Dispense("source")
+	dispensed, err := rpcClient.Dispense("source")
 	if err != nil {
 		client.Kill()
 		return nil, fmt.Errorf("dispense source plugin: %w", err)
 	}
 
-	impl, ok := raw.(sdk.SourcePlugin)
+	impl, ok := dispensed.(sdk.SourcePlugin)
 	if !ok {
 		client.Kill()
 		return nil, fmt.Errorf("plugin %s does not implement sdk.SourcePlugin", name)
@@ -523,17 +781,6 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 	if err != nil {
 		client.Kill()
 		return nil, fmt.Errorf("describe plugin %s: %w", name, err)
-	}
-
-	// The instance display name resolves from the operator's own config
-	// (D-09), falling back to the instance id itself when display_name is
-	// omitted — never from anything the plugin process asserts. This
-	// mirrors config.Config.DisplayNameFor without needing the whole
-	// *config.Config here, since launch already holds this instance's own
-	// config.Source.
-	instanceDisplayName := src.DisplayName
-	if instanceDisplayName == "" {
-		instanceDisplayName = name
 	}
 
 	iconBytes, iconMIME, _ := captureIcon(desc)
@@ -627,7 +874,7 @@ type DescribeInfo struct {
 // stops the trial-launch from always losing that lock race against a real
 // running instance and failing before Describe is ever reached.
 func DescribePluginType(ctx context.Context, dirs Dirs, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
-	p, err := launch(ctx, dirs, "__trial__", src, logger, true)
+	p, err := launch(ctx, dirs, "__trial__", src, nil, logger, true)
 	if err != nil {
 		return DescribeInfo{}, fmt.Errorf("pluginhost: trial-launch for describe: %w", err)
 	}

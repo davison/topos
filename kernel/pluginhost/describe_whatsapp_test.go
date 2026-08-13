@@ -92,7 +92,7 @@ func TestDescribePluginType_WhatsApp_SucceedsWhileARealInstanceHoldsTheStoreLock
 	// long as this test's *Host is alive, standing in for "a WhatsApp
 	// source that is currently linked and running" (08-REVIEW.md CR-01's
 	// own framing of the normal, intended state this defect broke).
-	h, err := Discover(context.Background(), Dirs{Trusted: dir}, map[string]config.Source{
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, map[string]config.Source{
 		"whatsapp-test": src,
 	}, hclog.NewNullLogger())
 	if err != nil {

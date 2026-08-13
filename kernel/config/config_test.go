@@ -945,3 +945,64 @@ func TestApplyDefaults_NormalizesCollectionsWithoutChangingValidateVerdicts(t *t
 		})
 	}
 }
+
+// TestValidate_Pins is Phase 11's own load-time gate over [plugins.pins]
+// (D-01/D-02): a well-formed pin (a topos-plugin- prefixed key, a
+// 64-character lowercase hex value) validates cleanly; a too-short pin, an
+// uppercase-hex pin, and a non-plugin-shaped key are each rejected, naming
+// the offending key.
+func TestValidate_Pins(t *testing.T) {
+	validHash := strings.Repeat("a", 64)
+
+	t.Run("well-formed pin validates cleanly", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": validHash}},
+		}
+		if err := cfg.Validate(nil); err != nil {
+			t.Fatalf("expected a well-formed pin to validate cleanly, got: %v", err)
+		}
+	})
+
+	t.Run("63-character pin is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": validHash[:63]}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a 63-character pin to be rejected")
+		}
+		if !strings.Contains(err.Error(), "topos-plugin-example") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+
+	t.Run("uppercase-hex pin is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": strings.ToUpper(validHash)}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected an uppercase-hex pin to be rejected")
+		}
+		if !strings.Contains(err.Error(), "topos-plugin-example") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+
+	t.Run("non-plugin-shaped key is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"not-a-plugin-name": validHash}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a non-plugin-shaped key to be rejected")
+		}
+		if !strings.Contains(err.Error(), "not-a-plugin-name") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+}
