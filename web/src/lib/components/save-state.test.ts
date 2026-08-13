@@ -187,6 +187,7 @@ describe('no toast anywhere in web/src/lib/components/ — every component impor
 		'badge',
 		'button',
 		'card',
+		'checkbox',
 		'dialog',
 		'dropdown-menu',
 		'input',
