@@ -11,9 +11,9 @@ Requirements for this milestone. Each maps to roadmap phases. REQ-ID numbering c
 ### Plugin Ecosystem
 
 - [ ] **PLUG-06**: Kernel discovers and launches plugin binaries from a configured external plugins directory, distinct from the trusted in-repo plugins directory
-- [x] **PLUG-07**: Kernel derives a plugin's trusted/untrusted status from provenance (directory tier, content hash pinned at add-time and re-verified at every launch) — never from anything the plugin declares about itself
+- [ ] **PLUG-07**: Kernel derives a plugin's trusted/untrusted status from provenance (directory tier, content hash pinned at add-time and re-verified at every launch) — never from anything the plugin declares about itself
 - [ ] **PLUG-08**: User sees an explicit warning when adding a source from an untrusted plugin, and a persistent untrusted badge wherever that source appears (picker, source chips)
-- [x] **PLUG-09**: Plugin host passes arbitrary per-instance config keys through to plugins (generic extra-fields map), so external plugins can receive provider-specific settings without kernel changes
+- [ ] **PLUG-09**: Plugin host passes arbitrary per-instance config keys through to plugins (generic extra-fields map), so external plugins can receive provider-specific settings without kernel changes
 
 ### New Sources
 
@@ -72,9 +72,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PLUG-06 | Phase 11 | Pending |
-| PLUG-07 | Phase 11 | Complete |
+| PLUG-07 | Phase 11 | Gaps Found |
 | PLUG-08 | Phase 11 | Pending |
-| PLUG-09 | Phase 11 | Complete |
+| PLUG-09 | Phase 11 | Gaps Found |
 | SRC-04 | Phase 12 | Pending |
 | SRC-05 | Phase 14 | Pending |
 | SRC-06 | Phase 14 | Pending |
