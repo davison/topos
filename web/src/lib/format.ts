@@ -116,10 +116,31 @@ export type HealthTone = 'success' | 'warning' | 'destructive' | 'unknown';
  * no sync history to be "unreachable since" either.
  */
 export function healthTone(source: SourceStatus): HealthTone {
+	// Phase 11 (11-UI-SPEC.md E4, D-03): a source refused launch on a pin
+	// mismatch is destructive REGARDLESS of its sync history — checked
+	// first, ahead of the never-synced/unreachable/last-status branches,
+	// since a pin-mismatched instance never got a chance to sync at all
+	// and would otherwise wrongly fall into the neutral 'unknown' branch
+	// below. Extends the existing branch chain; never a parallel tone
+	// system.
+	if (source.launch_failure === 'pin_mismatch') return 'destructive';
 	if (source.last_status === '') return 'unknown';
 	if (!source.reachable) return 'destructive';
 	if (source.last_status === 'error') return 'warning';
 	return 'success';
+}
+
+/**
+ * Formats a hex hash (SHA-256 or otherwise) into its fixed, display-only
+ * short form: the first 12 characters plus an ellipsis (11-UI-SPEC.md E5's
+ * "short to look at, complete when copied/compared" rule, reused by E4's
+ * dialog). The empty string is returned unchanged — a caller with no pin to
+ * show renders its own "not pinned"-style copy rather than this helper
+ * guessing at it.
+ */
+export function shortHash(hash: string): string {
+	if (!hash) return '';
+	return `${hash.slice(0, 12)}…`;
 }
 
 /** Instance ids (SourceStatus.name) of every source currently mid-sync. */

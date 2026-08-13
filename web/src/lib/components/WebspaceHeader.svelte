@@ -146,7 +146,16 @@
 		// behaves identically to one in the row — but explicitly NOT to the
 		// invisible measurement clones, which keep a no-op handler so a
 		// measurement clone can never dispatch an edit.
-		onedit: (name: string, kind: 'connection' | 'match' | 'relink' | 'remove') => void;
+		//
+		// 11-06-PLAN.md Task 1 widens the kind union with 'trust-update'
+		// (E4) — this type annotation must stay in lockstep with
+		// SourceChip.svelte's own onedit prop type, since this component's
+		// onedit is a distinct, separately-typed prop passed straight
+		// through, not inferred from the child.
+		onedit: (
+			name: string,
+			kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+		) => void;
 		// collapsed (checkpoint deviation, 09.1-01-PLAN.md issue 2): the
 		// caller's own scroll-driven decision, below 1024px only — the
 		// route owns the scroll listener (on the stream pane's own scroll

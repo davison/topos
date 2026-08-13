@@ -25,6 +25,16 @@
 // adds — the Refresh now item's syncing-disabled guard and spin class — has
 // no prior assertion to update and is added fresh below.
 //
+// 11-06-PLAN.md Task 1 (11-UI-SPEC.md E4/E5) supersedes three more of these
+// counts, in place, per the same precedent: a conditional "Trust updated
+// binary…" item now precedes Refresh now in source order (menu-item label
+// set widens to six, six-first-is-trust-update), a conditional pinned-hash
+// footer (E5) adds a third static DropdownMenuSeparator and a second
+// aria-label to the file. These are static SOURCE scans — every count below
+// reflects markup as it exists in the file regardless of the {#if} runtime
+// guards wrapping the new regions, exactly like the pre-existing Re-link…
+// guard test already does.
+//
 // House pattern (matches source-chip-pill.test.ts / source-chip-selected.test.ts):
 // comment-stripped source scanning, `extractBetween` scoping, a
 // found-non-empty-source guard first, and one consequence-describing
@@ -108,9 +118,9 @@ describe('overflow trigger: aria-label reads "{name} actions" (Fix 5, no longer 
 		).toBe(true);
 	});
 
-	it('exactly one aria-label exists in the file — the refresh button that carried a second one is gone', () => {
+	it('exactly two aria-label attributes exist in the file — the overflow trigger and the E5 pinned-hash footer\'s copy button (11-06-PLAN.md Task 1)', () => {
 		const matches = strippedChip.match(/aria-label=/g) ?? [];
-		expect(matches.length).toBe(1);
+		expect(matches.length).toBe(2);
 	});
 });
 
@@ -139,10 +149,10 @@ describe('click handling: stopPropagation before the callback, filter button unt
 	});
 });
 
-describe('menu contents: Refresh now first, two separators, no delete-instance item', () => {
-	it('contains exactly two DropdownMenuSeparators (Fix 5 — one after Refresh now, one before Remove)', () => {
+describe('menu contents: Refresh now first, three separators, no delete-instance item', () => {
+	it('contains exactly three DropdownMenuSeparators (Fix 5\'s two, plus the E5 pinned-hash footer\'s own — 11-06-PLAN.md Task 1)', () => {
 		const separators = editMenuBlock.match(/<DropdownMenuSeparator/g) ?? [];
-		expect(separators.length).toBe(2);
+		expect(separators.length).toBe(3);
 	});
 
 	// Finds the index of the `>` that closes an opening JSX tag starting at
@@ -162,7 +172,7 @@ describe('menu contents: Refresh now first, two separators, no delete-instance i
 		return -1;
 	}
 
-	it('the menu item label set equals exactly the five expected labels, Refresh now first (Fix 5)', () => {
+	it('the menu item label set equals exactly the six expected labels, Trust updated binary… first (11-06-PLAN.md Task 1, E4)', () => {
 		const items = [...editMenuBlock.matchAll(/<DropdownMenuItem[\s\S]*?<\/DropdownMenuItem>/g)].map(
 			(m) => m[0]
 		);
@@ -177,8 +187,9 @@ describe('menu contents: Refresh now first, two separators, no delete-instance i
 		});
 		expect(
 			labels,
-			'expected the menu item label set to equal exactly [Refresh now, Edit connection…, Edit match settings…, Re-link…, Remove from this webspace], Refresh now first — proven by an ordered array, not merely membership'
+			'expected the menu item label set to equal exactly [Trust updated binary…, Refresh now, Edit connection…, Edit match settings…, Re-link…, Remove from this webspace], Trust updated binary… first — proven by an ordered array, not merely membership'
 		).toEqual([
+			'Trust updated binary…',
 			'Refresh now',
 			'Edit connection…',
 			'Edit match settings…',
@@ -190,28 +201,48 @@ describe('menu contents: Refresh now first, two separators, no delete-instance i
 
 // New behaviour Fix 5 adds — the removed standalone refresh button never had
 // a syncing guard; this menu item does.
+//
+// 11-06-PLAN.md Task 1 inserts a new, conditional "Trust updated binary…"
+// DropdownMenuItem AHEAD of Refresh now in source order — refreshItemBlock
+// below is therefore located by the "Refresh now" text itself and walked
+// backward to ITS OWN opening tag, rather than assuming Refresh now is the
+// menu's literal first <DropdownMenuItem> (that assumption is now false;
+// see the dedicated ordering test below).
 describe('Refresh now: disabled and spinning while syncing (Fix 5, new guard)', () => {
-	const refreshItemBlock = extractBetween(editMenuBlock, '<DropdownMenuItem', '</DropdownMenuItem>');
+	const refreshTextIdx = editMenuBlock.indexOf('Refresh now');
+	const refreshItemStart = editMenuBlock.lastIndexOf('<DropdownMenuItem', refreshTextIdx);
+	const refreshItemEnd = editMenuBlock.indexOf('</DropdownMenuItem>', refreshTextIdx);
+	const refreshItemBlock = editMenuBlock.slice(refreshItemStart, refreshItemEnd + '</DropdownMenuItem>'.length);
 
-	it('is the first DropdownMenuItem in the menu', () => {
+	it('is the first DropdownMenuItem in the menu OUTSIDE the conditional Trust updated binary… item (11-06-PLAN.md Task 1, E4)', () => {
 		const firstItemIndex = editMenuBlock.indexOf('<DropdownMenuItem');
 		const refreshTextIndex = editMenuBlock.indexOf('Refresh now');
 		expect(firstItemIndex, 'expected to find a DropdownMenuItem').toBeGreaterThanOrEqual(0);
 		expect(refreshTextIndex, 'expected to find "Refresh now"').toBeGreaterThanOrEqual(0);
+		// The static markup's literal first <DropdownMenuItem> is now the
+		// conditional Trust updated binary… item — present in source order
+		// regardless of the {#if isPinMismatch} runtime guard around it
+		// (E4: "the item appears first in the menu when the mismatch
+		// signal is set"). Refresh now is the first item OUTSIDE that
+		// guard, i.e. the second <DropdownMenuItem> in source order.
 		const firstItemBlock = editMenuBlock.slice(
 			firstItemIndex,
 			editMenuBlock.indexOf('</DropdownMenuItem>', firstItemIndex)
 		);
 		expect(
-			firstItemBlock.includes('Refresh now'),
-			'expected the first DropdownMenuItem in the menu to be Refresh now'
+			firstItemBlock.includes('Trust updated binary'),
+			'expected the menu\'s literal first DropdownMenuItem in source order to be the conditional Trust updated binary… item'
 		).toBe(true);
+		expect(
+			refreshTextIndex,
+			'expected Refresh now to appear after the Trust updated binary… item'
+		).toBeGreaterThan(firstItemIndex);
 	});
 
-	it('is disabled while source.syncing', () => {
+	it('is disabled while source.syncing OR isPinMismatch (11-06-PLAN.md Task 1 widens this guard — E4: there is nothing running to refresh)', () => {
 		expect(
-			refreshItemBlock.includes('disabled={source.syncing}'),
-			'expected the Refresh now item to be disabled={source.syncing} — refreshing something already mid-refresh is a no-op the removed standalone button never guarded against'
+			refreshItemBlock.includes('disabled={source.syncing || isPinMismatch}'),
+			'expected the Refresh now item to be disabled={source.syncing || isPinMismatch}'
 		).toBe(true);
 	});
 

@@ -37,7 +37,7 @@ import (
 //     plugin that declared an empty vocabulary — there is no field for the
 //     fallback to fan into (D-01 requires at least one).
 func ValidateMatchConfig(cfg *config.Config, h *Host) error {
-	return validateMatchConfig(cfg, h.Plugins())
+	return validateMatchConfig(cfg, h.Plugins(), launchFailedNames(h.LaunchFailures()))
 }
 
 // ValidateMatchConfigWithSuspended is ValidateMatchConfig's sibling for
@@ -64,7 +64,29 @@ func ValidateMatchConfigWithSuspended(cfg *config.Config, h *Host, suspended []*
 	all := make([]*Plugin, 0, len(h.Plugins())+len(suspended))
 	all = append(all, h.Plugins()...)
 	all = append(all, suspended...)
-	return validateMatchConfig(cfg, all)
+	return validateMatchConfig(cfg, all, launchFailedNames(h.LaunchFailures()))
+}
+
+// launchFailedNames extracts the Instance name of every CURRENTLY recorded
+// soft launch failure (today: pin mismatch only, T-11-07) into a lookup
+// set — validateMatchConfig's third participant class, alongside "has a
+// launched *Plugin" and "is suspended". Discovered live while writing
+// 11-06-PLAN.md Task 3's browser proof (11-02-SUMMARY.md's own "Issues
+// Encountered" flagged this exact gap as unresolved, deferred to "a later
+// plan... if it becomes user-visible" — it did): a pin-mismatched instance
+// is, by construction, ABSENT from Host.Plugins() (Reconcile never gives it
+// a live *Plugin, T-11-09's whole point), so without this exemption ANY
+// webspace naming it — via an explicit match block OR the keywords
+// fallback — would be rejected as "has no launched plugin", turning one
+// bad pin into a save-blocking error for every webspace that instance
+// participates in. That is exactly the "unrelated config save" T-11-33's
+// own threat register entry requires to keep succeeding.
+func launchFailedNames(failures []LaunchFailure) map[string]bool {
+	names := make(map[string]bool, len(failures))
+	for _, f := range failures {
+		names[f.Instance] = true
+	}
+	return names
 }
 
 // validateMatchConfig is ValidateMatchConfig/ValidateMatchConfigWithSuspended's
@@ -72,8 +94,12 @@ func ValidateMatchConfigWithSuspended(cfg *config.Config, h *Host, suspended []*
 // suspended variant can merge in entries a *Host itself has no way to
 // represent (Host's own plugins field is unexported and has no public
 // constructor beyond Discover/Reconcile, both of which perform a real
-// launch).
-func validateMatchConfig(cfg *config.Config, plugins []*Plugin) error {
+// launch). excused (T-11-33) names every instance currently refused at
+// launch by a soft failure class — skipped entirely by both vocabulary
+// checks below (no plugin to validate against, and its absence is already
+// a known, separately-reported fact via GET /api/sources, not a config
+// defect to reject a save over).
+func validateMatchConfig(cfg *config.Config, plugins []*Plugin, excused map[string]bool) error {
 	byInstance := make(map[string]*Plugin, len(plugins))
 	for _, p := range plugins {
 		byInstance[p.Name()] = p
@@ -88,10 +114,10 @@ func validateMatchConfig(cfg *config.Config, plugins []*Plugin) error {
 	for _, wsName := range webspaceNames {
 		ws := cfg.Webspaces[wsName]
 
-		if err := validateMatchBlockVocabulary(wsName, ws, byInstance); err != nil {
+		if err := validateMatchBlockVocabulary(wsName, ws, byInstance, excused); err != nil {
 			return err
 		}
-		if err := validateFallbackVocabulary(wsName, ws, cfg, byInstance); err != nil {
+		if err := validateFallbackVocabulary(wsName, ws, cfg, byInstance, excused); err != nil {
 			return err
 		}
 	}
@@ -101,8 +127,11 @@ func validateMatchConfig(cfg *config.Config, plugins []*Plugin) error {
 
 // validateMatchBlockVocabulary checks every explicit
 // [webspaces.<wsName>.match.<instance>] block against its instance's
-// launched plugin vocabulary.
-func validateMatchBlockVocabulary(wsName string, ws config.Webspace, byInstance map[string]*Plugin) error {
+// launched plugin vocabulary. An instance named in excused (T-11-33) is
+// skipped entirely — its own soft launch failure is already reported
+// separately (GET /api/sources), not a config defect this check should
+// reject the whole save over.
+func validateMatchBlockVocabulary(wsName string, ws config.Webspace, byInstance map[string]*Plugin, excused map[string]bool) error {
 	instances := make([]string, 0, len(ws.Match))
 	for instance := range ws.Match {
 		instances = append(instances, instance)
@@ -110,6 +139,9 @@ func validateMatchBlockVocabulary(wsName string, ws config.Webspace, byInstance 
 	sort.Strings(instances)
 
 	for _, instance := range instances {
+		if excused[instance] {
+			continue
+		}
 		p, ok := byInstance[instance]
 		if !ok {
 			return fmt.Errorf("config: webspace %q match block names source %q, which has no launched plugin", wsName, instance)
@@ -145,8 +177,10 @@ func validateMatchBlockVocabulary(wsName string, ws config.Webspace, byInstance 
 // validateFallbackVocabulary checks every participating instance that has
 // no explicit match block in ws (and therefore relies on ws.Keywords, D-01)
 // against its launched plugin's vocabulary: the plugin must exist and
-// declare at least one field for the fallback to land in.
-func validateFallbackVocabulary(wsName string, ws config.Webspace, cfg *config.Config, byInstance map[string]*Plugin) error {
+// declare at least one field for the fallback to land in. An instance named
+// in excused (T-11-33) is skipped entirely, mirroring
+// validateMatchBlockVocabulary's own exemption.
+func validateFallbackVocabulary(wsName string, ws config.Webspace, cfg *config.Config, byInstance map[string]*Plugin, excused map[string]bool) error {
 	if len(ws.Keywords) == 0 {
 		// An empty Keywords list here is now reachable two ways (D-20,
 		// 07-11-PLAN.md — the second is new as of this decision):
@@ -181,6 +215,9 @@ func validateFallbackVocabulary(wsName string, ws config.Webspace, cfg *config.C
 			continue
 		}
 		if _, hasBlock := ws.Match[instance]; hasBlock {
+			continue
+		}
+		if excused[instance] {
 			continue
 		}
 

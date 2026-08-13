@@ -75,15 +75,20 @@ func TestPinMismatch_BootSucceedsHealthySourceSyncsFailureRecorded(t *testing.T)
 	wrongPin := strings.Repeat("f", 64)
 
 	// The "demo" webspace's sources allowlist deliberately names only
-	// "healthy": pluginhost.ValidateMatchConfig (unchanged by this phase)
-	// still rejects a webspace whose keywords-fallback participation names
-	// an instance with no launched plugin — exactly the D-05 cross-check a
-	// SUSPENDED instance already needs its own ValidateMatchConfigWithSuspended
-	// exemption for (kernel/supervisor.SuspendInstance). Scoping "bad-pin"
-	// out of every webspace's participation here is this test's own
-	// fixture choice, not a claim that pin-mismatch/match-vocabulary
-	// interaction is solved — extending the suspended-instance exemption
-	// to a pin-mismatched one is out of this task's declared scope.
+	// "healthy" — this test's own scope is the boot/Apply soft-failure
+	// proof, not the match-vocabulary interaction. As of 11-06-PLAN.md
+	// Task 3, pluginhost.ValidateMatchConfig DOES excuse a pin-mismatched
+	// instance from its own match-vocabulary check (a third participant
+	// class alongside "launched" and "suspended" — see
+	// pluginhost.launchFailedNames and matchconfig_test.go's own
+	// TestValidateMatchConfig_PinMismatchedInstanceExcused* pair), closing
+	// the gap this comment previously flagged as unresolved. "bad-pin"
+	// stays out of "demo"'s participation here purely to keep THIS test
+	// focused on boot/Apply semantics rather than match-vocabulary
+	// interaction — the participating-instance case (a pin-mismatched
+	// instance named in a real webspace's match config, through a real
+	// browser session) is proved end to end by
+	// web/e2e/specs/11-binary-changed-repin.spec.ts.
 	cfgStore := newTestConfigStore(t, fmt.Sprintf(`
 [plugins.pins]
 "topos-plugin-mockext" = %q
@@ -157,6 +162,83 @@ sources = ["healthy"]
 	}
 	if failuresAfterApply[0].Instance != "bad-pin" {
 		t.Errorf("expected the surviving failure to still name %q, got %q", "bad-pin", failuresAfterApply[0].Instance)
+	}
+}
+
+// TestPinMismatch_BootSucceedsWithMismatchedInstanceParticipatingInWebspace
+// is TestPinMismatch_BootSucceedsHealthySourceSyncsFailureRecorded's own
+// sibling, proving the REAL scenario that test's fixture deliberately
+// scoped itself away from: a webspace whose keywords-fallback participation
+// NAMES the pin-mismatched instance must still boot successfully (11-06-
+// PLAN.md Task 3's checkpoint follow-up — a live walkthrough surfaced this
+// exact gap: NewSupervisor's own ValidateMatchConfig call used to reject
+// this config outright with "has no launched plugin", making the repin
+// flow this phase ships structurally unreachable after a real kernel
+// restart, since the mismatched instance's chip would never even boot into
+// view). Two assertions distinguish this from the fixture-scoped sibling:
+// NewSupervisor itself must return no error, AND the healthy instance's own
+// webspace must still be usable (participates via the SAME shared keywords
+// list, proving an unrelated source sharing webspace configuration with the
+// mismatched one is unaffected).
+func TestPinMismatch_BootSucceedsWithMismatchedInstanceParticipatingInWebspace(t *testing.T) {
+	trustedDir := buildMockPluginDir(t)
+	externalDir := buildRenamedMockPluginDir(t, "topos-plugin-mockext2")
+	idx := newTestIndex(t)
+	ctx := context.Background()
+
+	wrongPin := strings.Repeat("e", 64)
+
+	// Unlike TestPinMismatch_BootSucceedsHealthySourceSyncsFailureRecorded,
+	// "demo" participates in "house" via the SAME shared keywords fallback
+	// "healthy" relies on — the exact shape a real operator's config takes
+	// once they've added an external source to an existing webspace.
+	cfgStore := newTestConfigStore(t, fmt.Sprintf(`
+[plugins.pins]
+"topos-plugin-mockext2" = %q
+
+[sources.healthy]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[sources.demo]
+plugin = "topos-plugin-mockext2"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.house]
+keywords = ["demo"]
+`, wrongPin))
+
+	dirs := pluginhost.Dirs{Trusted: trustedDir, External: externalDir}
+	sup, err := NewSupervisor(ctx, idx, cfgStore, dirs, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("expected boot to succeed despite the participating pin-mismatched source, got: %v", err)
+	}
+	t.Cleanup(sup.Shutdown)
+
+	plugins := sup.Host().Plugins()
+	if len(plugins) != 1 {
+		t.Fatalf("expected exactly one launched instance (the healthy one), got %d: %+v", len(plugins), plugins)
+	}
+	if plugins[0].Name() != "healthy" {
+		t.Errorf("expected the one launched instance to be %q, got %q", "healthy", plugins[0].Name())
+	}
+
+	failures := sup.LaunchFailures()
+	if len(failures) != 1 {
+		t.Fatalf("expected exactly one launch failure, got %d: %+v", len(failures), failures)
+	}
+	if failures[0].Instance != "demo" {
+		t.Errorf("expected the launch failure to name instance %q, got %q", "demo", failures[0].Instance)
+	}
+
+	healths := sup.ProbeSources(ctx)
+	if len(healths) != 1 {
+		t.Fatalf("expected exactly one probed health (the healthy instance), got %d: %+v", len(healths), healths)
+	}
+	if !healths[0].Reachable {
+		t.Errorf("expected the healthy instance to be reachable despite sharing a webspace with the mismatched one, got: %+v", healths[0])
 	}
 }
 
