@@ -252,3 +252,8 @@ None - no external service configuration required. (Protobuf codegen tooling —
 ---
 *Phase: 11-external-plugins-the-trust-boundary*
 *Completed: 2026-08-13*
+
+## Self-Check: PASSED
+
+- Verified files exist: `kernel/pluginhost/binaryhash.go`, `kernel/config/envrefs.go`, `kernel/pluginhost/extras_test.go`, `kernel/supervisor/pinmismatch_test.go`
+- Verified commits exist in `git log --oneline --all`: `9091867`, `b70259b`, `a2d0c85`, `3f8d542`
