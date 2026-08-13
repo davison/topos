@@ -5,10 +5,10 @@ milestone_name: Plugin Ecosystem
 current_phase: 12
 current_phase_name: Filesystem Source
 status: planning
-stopped_at: Phase 11 UI-SPEC approved
+stopped_at: Phase 11 complete (UAT 37/37, threat-secure), ready to plan Phase 12
 last_updated: "2026-08-13T14:59:17.274Z"
 last_activity: 2026-08-13
-last_activity_desc: Phase 11 execution started
+last_activity_desc: Phase 11 complete - UAT passed, transitioned to Phase 12
 progress:
   total_phases: 4
   completed_phases: 1
@@ -21,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-12 after v1.0 milestone)
+See: .planning/PROJECT.md (updated 2026-08-13 after Phase 11 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 11 — external-plugins-the-trust-boundary
+**Current focus:** Phase 12 — Filesystem Source
 
 ## Current Position
 
 Phase: 12 — Filesystem Source
 Plan: Not started
 Status: Ready to plan
-Progress: [----------] 0% (0/4 phases)
+Progress: [██▌-------] 25% (1/4 phases)
 Last activity: 2026-08-13 — Phase 11 complete, transitioned to Phase 12
 
 ## Performance Metrics
@@ -127,7 +127,12 @@ v1.0's evolution history (phase insertions 5–7, 07.1, 09.1; the WhatsApp shift
 
 ### Decisions
 
-v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan decision detail in milestones/v1.0-phases/*/[0-9]*-SUMMARY.md. Fresh log starts with the next milestone.
+v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan decision detail in milestones/v1.0-phases/*/[0-9]*-SUMMARY.md.
+
+- [Phase 11] Trust tier derived solely from which directory a binary resolves from at launch; never from plugin self-description or config.
+- [Phase 11] External-tier launches gated on SHA-256 content pins recomputed from disk before every exec; pin mismatch is a soft per-instance failure (chip shows named cause, two-click re-pin; kernel boot and unrelated saves unaffected).
+- [Phase 11] Plugin subprocess environment built from an explicit allowlist + only the instance's own ${VAR} references — kernel environment never inherited wholesale.
+- [Phase 11] Source.Plugin confined to bare filenames end-to-end (ResolveBinary first-statement guard + config.Validate twin) after CR-01 gap closure.
 
 ### Pending Todos
 
@@ -171,13 +176,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-12T23:34:37.398Z
-Stopped at: Phase 11 UI-SPEC approved
-Resume file: /home/darren/projects/davison/topos/.planning/phases/11-external-plugins-the-trust-boundary/11-UI-SPEC.md
+Last session: 2026-08-13T16:17:27Z
+Stopped at: Phase 11 complete (verified 5/5, UAT 37/37 passed, threats_open 0), ready to plan Phase 12
+Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first v1.1.0 phase with /gsd-plan-phase 11
+- Plan Phase 12 with /gsd-discuss-phase 12 (or /gsd-plan-phase 12 directly)
 - Open design questions to settle during phase discuss/spec (from research/SUMMARY.md "Gaps to Address"):
   - Phase 12: filesystem stable-ID choice (inode vs path)
   - Phase 13: per-item include scope (un-exclude only vs a new Browse RPC) and mark-orphan handling; PWA mobile/LAN scope
