@@ -265,6 +265,43 @@ func TestItemContentHandler_SecurityHeadersOnAllowedMIME(t *testing.T) {
 	}
 }
 
+// TestItemContentHandler_TextPlainRenditionServed200 proves the
+// filesystem plugin's D-04 plain-text preview shape (12-RESEARCH.md
+// Pitfall 1, T-12-07) is now on the allowlist: GET /api/items/{id}/content
+// serves a text/plain rendition with 200 and the same hardened header set
+// every other rendition already gets, rather than 415
+// unsupported_rendition_type.
+func TestItemContentHandler_TextPlainRenditionServed200(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	seedTestItem(t, store, testItem())
+
+	body := []byte("plain text rendition body")
+	router := newTestItemRouter(store, &fakeFetcher{result: pluginhost.FetchResult{
+		Available: true, MimeType: "text/plain", SizeBytes: int64(len(body)),
+		Body: io.NopCloser(bytes.NewReader(body)),
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/items/paperless:42/content", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "text/plain" {
+		t.Errorf("unexpected Content-Type: %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Error("missing X-Content-Type-Options: nosniff")
+	}
+	if !strings.Contains(rec.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("expected a sandboxing CSP, got %q", rec.Header().Get("Content-Security-Policy"))
+	}
+	if rec.Body.String() != string(body) {
+		t.Error("response body does not match the fetched rendition bytes")
+	}
+}
+
 // TestItemContentHandler_TextHTMLRenditionServedWithSecurityHeaders proves
 // a text/html rendition is now sanitized, wrapped and themed by the kernel
 // (D-11) before being served: the plugin-supplied fragment must never

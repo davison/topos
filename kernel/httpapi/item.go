@@ -48,6 +48,14 @@ var allowedRenditionTypes = map[string]bool{
 	// this byte ever reaches the kernel, and the sandboxed iframe boundary
 	// is a second, independent layer on top of that (T-02-01).
 	"text/html": true,
+	// text/plain: added for Phase 12's filesystem source plugin, whose
+	// D-04 plain-text preview shape (12-RESEARCH.md Pitfall 1, T-12-07)
+	// serves a document's raw text bytes with no sanitize/wrap step —
+	// unlike text/html, there is no markup to strip, so this entry is
+	// safe by construction: the same hardened header set below (nosniff,
+	// sandboxed CSP) still applies, and the browser renders it as inert
+	// text under that CSP regardless of the file's own content.
+	"text/plain": true,
 }
 
 type rendition struct {

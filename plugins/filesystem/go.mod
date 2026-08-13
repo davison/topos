@@ -3,8 +3,10 @@ module github.com/davison/topos/plugins/filesystem
 go 1.25.0
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/davison/topos/sdk v0.0.0-20260812153850-89ef75c8960c
 	github.com/hashicorp/go-plugin v1.8.0
+	github.com/yuin/goldmark v1.8.5
 	google.golang.org/grpc v1.83.0
 )
 
