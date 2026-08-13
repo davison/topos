@@ -107,7 +107,7 @@ func TestMatch_TopLevelPDFYieldsExactFidelityAndEmptyPreview(t *testing.T) {
 		t.Fatalf("write fixture pdf: %v", err)
 	}
 
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 	resp, err := p.Match(t.Context(), &toposv1.MatchRequest{})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
@@ -144,7 +144,7 @@ func TestMatch_ExtensionOutsideDefaultAllowlistIsIgnored(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 	resp, err := p.Match(t.Context(), &toposv1.MatchRequest{})
 	if err != nil {
 		t.Fatalf("Match: %v", err)

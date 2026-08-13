@@ -141,6 +141,17 @@ type Source struct {
 	// kernel — the kernel never needs to open this path itself, only
 	// pass it through.
 	Path string `toml:"path,omitempty" json:"path,omitempty"`
+	// Recursive enables subfolder recursion for a filesystem source
+	// instance (SRC-04, 12-03-PLAN.md Task 1) — meaningful only for a
+	// local-path source that walks a tree (today, plugins/filesystem).
+	// The zero value (false, "this folder's own top level only") is the
+	// conservative default for a possibly-huge, unfamiliar tree; true
+	// walks every depth. omitempty exists so a canonical rewrite never
+	// starts emitting this key into every other source's block — a
+	// recursive key on a source whose plugin ignores it is inert, exactly
+	// like CACert already is for a source with no CA-pinning need. No
+	// validation rule accompanies it: false is always a legal value.
+	Recursive bool `toml:"recursive,omitempty" json:"recursive,omitempty"`
 	// Agent declares this source's per-plugin agent grants (AGENT-01,
 	// D-11): whether an automated caller through /agent/v1 may read this
 	// source's items at all, and whether it may hand actions off through

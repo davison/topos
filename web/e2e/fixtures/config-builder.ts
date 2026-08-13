@@ -17,6 +17,12 @@ export interface FixtureSourceSpec {
 	baseUrl?: string;
 	token?: string;
 	displayName?: string;
+	// recursive mirrors kernel/config.Source.Recursive (12-03-PLAN.md
+	// Task 1) — emitted into the source's TOML entry only when true,
+	// mirroring how extras below is emitted only when non-empty, so a
+	// fixture naming nothing here stays byte-identical to before this
+	// field existed.
+	recursive?: boolean;
 	agent?: { read?: boolean; handoff?: boolean };
 	// extras mirrors kernel/config.Source.Extras (D-12/D-13, Phase 11) —
 	// this instance's opaque per-plugin passthrough map. Emitted as the
@@ -188,6 +194,10 @@ function buildSourceEntry(src: FixtureSourceSpec): Record<string, unknown> {
 	}
 
 	if (src.displayName !== undefined) entry.display_name = src.displayName;
+	// recursive (12-03-PLAN.md Task 1): emitted only when true, mirroring
+	// extras' non-empty-only emission below — a fixture leaving it
+	// undefined (or explicitly false) writes no `recursive` key at all.
+	if (src.recursive === true) entry.recursive = true;
 	if (src.agent !== undefined) {
 		entry.agent = { read: src.agent.read ?? false, handoff: src.agent.handoff ?? false };
 	}

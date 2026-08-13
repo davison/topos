@@ -399,6 +399,49 @@ path = "~/.config/Signal"
 	}
 }
 
+// TestLoad_RecursiveTrueDecodesTrueOmittedDecodesFalse is the load-bearing
+// proof for 12-03-PLAN.md Task 1's typed boolean: a source block declaring
+// `recursive = true` decodes to the field set true, and a sibling block
+// omitting the key entirely decodes to false (Go's zero value) — no
+// special-case decoding needed.
+func TestLoad_RecursiveTrueDecodesTrueOmittedDecodesFalse(t *testing.T) {
+	path := writeTempConfig(t, `
+[sources.docs-nested]
+plugin = "topos-plugin-filesystem"
+path = "/mnt/docs-nested"
+recursive = true
+
+[sources.docs-flat]
+plugin = "topos-plugin-filesystem"
+path = "/mnt/docs-flat"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Sources["docs-nested"].Recursive {
+		t.Errorf("expected docs-nested.Recursive == true, got false")
+	}
+	if cfg.Sources["docs-flat"].Recursive {
+		t.Errorf("expected docs-flat.Recursive == false (key omitted), got true")
+	}
+}
+
+// TestLoad_PathAndRecursiveSourceValidatesCleanly proves Validate accepts a
+// source declaring only path plus the recursive key — no new
+// required-field interaction is introduced by Task 1's addition.
+func TestLoad_PathAndRecursiveSourceValidatesCleanly(t *testing.T) {
+	path := writeTempConfig(t, `
+[sources.docs-nested]
+plugin = "topos-plugin-filesystem"
+path = "/mnt/docs-nested"
+recursive = true
+`)
+	if _, err := Load(path); err != nil {
+		t.Fatalf("Load: expected a path+recursive source to validate cleanly, got: %v", err)
+	}
+}
+
 // TestLoad_SourceWithNeitherPathNorBaseURLTokenFailsNamingBothShapes
 // proves a source declaring none of path/base_url/token fails config
 // load with an error naming BOTH accepted shapes, not just the first

@@ -29,15 +29,19 @@ import (
 // Path is the configured source folder (kernel/config.Source.Path) — the
 // kernel deliberately stores it unexpanded (see that field's own doc
 // comment), so a leading "~" is expanded here, in the plugin subprocess,
-// exactly like plugins/signal/main.go already does. Extras carries this
-// instance's own config.Source.Extras verbatim (D-12/D-13) — the
-// include_glob/exclude_glob scope-override keys scope.go's newScope reads
+// exactly like plugins/signal/main.go already does. Recursive carries
+// config.Source.Recursive verbatim (12-03-PLAN.md Task 1) — walk.go's
+// walk (Task 2) is the sole consumer, deciding whether Match descends past
+// the root's own top level. Extras carries this instance's own
+// config.Source.Extras verbatim (D-12/D-13) — the include_glob/
+// exclude_glob scope-override keys scope.go's newScope reads
 // (12-02-PLAN.md Task 2); omitted entirely (nil map) when this source
 // declares no extras, exactly like kernel/pluginhost/host.go's
 // sourceConfigEnvelope.Extras.
 type sourceConfig struct {
-	Path   string            `json:"path"`
-	Extras map[string]string `json:"extras"`
+	Path      string            `json:"path"`
+	Recursive bool              `json:"recursive"`
+	Extras    map[string]string `json:"extras"`
 }
 
 func main() {
@@ -59,7 +63,7 @@ func main() {
 		fatal(fmt.Errorf("expand path: %w", err))
 	}
 
-	impl := NewSourcePlugin(root, cfg.Extras)
+	impl := NewSourcePlugin(root, cfg.Extras, cfg.Recursive)
 
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,

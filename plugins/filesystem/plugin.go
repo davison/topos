@@ -51,8 +51,9 @@ var iconSVG []byte
 // remains a later plan's work — this plan widens document scope and
 // preview shapes only, still walking the configured root's top level.
 type SourcePlugin struct {
-	root   string
-	extras map[string]string
+	root      string
+	extras    map[string]string
+	recursive bool
 }
 
 // NewSourcePlugin builds a SourcePlugin rooted at root — already expanded
@@ -61,9 +62,11 @@ type SourcePlugin struct {
 // silently. extras carries this instance's own config.Source.Extras
 // verbatim (D-12/D-13) — may be nil, a legitimate "no scope overrides
 // configured" state that newScope resolves to the default allowlist
-// alone.
-func NewSourcePlugin(root string, extras map[string]string) *SourcePlugin {
-	return &SourcePlugin{root: root, extras: extras}
+// alone. recursive carries config.Source.Recursive verbatim
+// (12-03-PLAN.md Task 1) — false means Match reads the root's own top
+// level only; true means every depth (Task 2's walk.go is the consumer).
+func NewSourcePlugin(root string, extras map[string]string, recursive bool) *SourcePlugin {
+	return &SourcePlugin{root: root, extras: extras, recursive: recursive}
 }
 
 // includeGlobKey and excludeGlobKey are the two extras keys this plugin

@@ -80,6 +80,78 @@ keywords = ["house-move"]
 	}
 }
 
+// TestStore_Save_RecursiveKeyOmittedWhenNeverDeclaredPreservedWhenTrue is
+// the load-bearing proof for 12-03-PLAN.md Task 1's omitempty discipline:
+// a canonical rewrite of a config whose sources never declared `recursive`
+// must not introduce the key into any source block, and a rewrite of a
+// source that DID declare it true must preserve it.
+func TestStore_Save_RecursiveKeyOmittedWhenNeverDeclaredPreservedWhenTrue(t *testing.T) {
+	path := writeTempConfig(t, `
+[sources.docs-flat]
+plugin = "topos-plugin-filesystem"
+path = "/mnt/docs-flat"
+
+[sources.docs-nested]
+plugin = "topos-plugin-filesystem"
+path = "/mnt/docs-nested"
+recursive = true
+
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	// Save a config that changes something UNRELATED to recursion (a
+	// webspace's filter) — the sources block, including each source's
+	// (absent or present) recursive key, is carried through untouched.
+	next := *s.Raw()
+	next.Webspaces = map[string]Webspace{
+		"house-move": {Keywords: []string{"house-move"}, Filter: []string{"boiler"}},
+	}
+	if err := s.Save(&next, s.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	onDisk, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config after save: %v", err)
+	}
+	doc := string(onDisk)
+
+	if !strings.Contains(doc, "recursive = true") {
+		t.Errorf("expected docs-nested's recursive = true to survive the canonical rewrite, got: %s", doc)
+	}
+
+	reopened, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore (reload): %v", err)
+	}
+	if !reopened.Raw().Sources["docs-nested"].Recursive {
+		t.Errorf("expected docs-nested.Recursive == true after reload, got false")
+	}
+	if reopened.Raw().Sources["docs-flat"].Recursive {
+		t.Errorf("expected docs-flat.Recursive == false after reload (key never declared), got true")
+	}
+
+	// docs-flat's own on-disk block must carry no recursive key at all —
+	// proving the canonical rewrite doesn't spuriously introduce the key
+	// into a block that never declared it.
+	flatBlockStart := strings.Index(doc, "[sources.docs-flat]")
+	if flatBlockStart == -1 {
+		t.Fatalf("expected a [sources.docs-flat] block, got: %s", doc)
+	}
+	flatBlock := doc[flatBlockStart:]
+	if nextBlockOffset := strings.Index(doc[flatBlockStart+1:], "[sources."); nextBlockOffset != -1 {
+		flatBlock = doc[flatBlockStart : flatBlockStart+1+nextBlockOffset]
+	}
+	if strings.Contains(flatBlock, "recursive") {
+		t.Errorf("expected no recursive key in docs-flat's block, got: %s", flatBlock)
+	}
+}
+
 // TestStore_Save_ClobberGuard_StaleHashRejectedFileUnchanged is the
 // load-bearing proof for D-03: a Save carrying a base_hash that no longer
 // matches the file's current on-disk hash must be rejected outright — no
