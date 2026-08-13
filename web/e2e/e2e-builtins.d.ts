@@ -14,6 +14,12 @@ declare namespace NodeJS {
 	interface Timeout {}
 }
 
+// Opaque handle type (Phase 11, 11-01-PLAN.md Task 3's hashPluginBinary):
+// node:fs.readFileSync's no-encoding overload returns this, and
+// node:crypto's Hash.update accepts it — callers never read fields off it
+// directly, only pass the raw bytes straight through to the hasher.
+interface Buffer {}
+
 declare var process: {
 	env: Record<string, string | undefined>;
 	platform: string;
@@ -44,6 +50,12 @@ declare module 'node:fs' {
 	export function rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
 	export function existsSync(path: string): boolean;
 	export function symlinkSync(target: string, path: string): void;
+	// Two overloads, matching node:fs's real shape: no encoding argument
+	// returns the raw bytes (Buffer) — hashPluginBinary's own read, since
+	// hashing a plugin binary's text-decoded bytes would corrupt them; an
+	// encoding argument returns a decoded string, every pre-existing
+	// caller's shape.
+	export function readFileSync(path: string): Buffer;
 	export function readFileSync(path: string, encoding: string): string;
 	export function writeFileSync(path: string, data: string, encoding?: string): void;
 	export function readdirSync(path: string): string[];
@@ -62,6 +74,18 @@ declare module 'node:os' {
 
 declare module 'node:url' {
 	export function fileURLToPath(url: string): string;
+}
+
+// hashPluginBinary's only dependency (Phase 11, 11-01-PLAN.md Task 3) —
+// narrowed to exactly the createHash('sha256').update(bytes).digest('hex')
+// chain that function uses, mirroring this file's own established
+// discipline.
+declare module 'node:crypto' {
+	interface Hash {
+		update(data: Buffer): Hash;
+		digest(encoding: string): string;
+	}
+	export function createHash(algorithm: string): Hash;
 }
 
 declare module 'node:net' {

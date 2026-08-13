@@ -3,7 +3,8 @@
 // plugin binaries into a fixture's own temp plugins directory — never a
 // directory copy or glob of bin/plugins (D-07: paperless, silverbullet,
 // proton and signal must never enter this hermetic harness; T-07.1-02).
-import { existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,16 +29,26 @@ function assertExists(path: string, label: string): void {
 
 /**
  * linkPluginBinaries creates destDir and symlinks exactly the binaries
- * named in `names` from PLUGIN_BIN_DIR into it — an explicitly passed,
- * closed set. Defaults to `['topos-plugin-mock']`, the only plugin this
- * phase's harness needs. Throws a loud error naming the missing path if
- * KERNEL_BIN or any requested binary does not exist.
+ * named in `names` from srcDir (defaults to PLUGIN_BIN_DIR) into it — an
+ * explicitly passed, closed set. Defaults to `['topos-plugin-mock']`, the
+ * only plugin most of this harness needs. Throws a loud error naming the
+ * missing path if KERNEL_BIN or any requested binary does not exist.
+ *
+ * srcDir (Phase 11, 11-01-PLAN.md Task 3) lets a caller link from a
+ * DIFFERENT build output directory than PLUGIN_BIN_DIR — the out-of-repo
+ * proof binary a later Phase 11 plan builds lives outside `bin/plugins`
+ * entirely, and this is the seam that lets a fixture populate a second,
+ * external plugins directory from it without duplicating this function.
  */
-export function linkPluginBinaries(destDir: string, names: string[] = ['topos-plugin-mock']): void {
+export function linkPluginBinaries(
+	destDir: string,
+	names: string[] = ['topos-plugin-mock'],
+	srcDir: string = PLUGIN_BIN_DIR
+): void {
 	assertExists(KERNEL_BIN, 'kernel binary (bin/topos)');
 	mkdirSync(destDir, { recursive: true });
 	for (const name of names) {
-		const src = join(PLUGIN_BIN_DIR, name);
+		const src = join(srcDir, name);
 		assertExists(src, `plugin binary "${name}"`);
 		const dest = join(destDir, name);
 		// force-remove any stale entry first — linkPluginBinaries may be
@@ -46,4 +57,20 @@ export function linkPluginBinaries(destDir: string, names: string[] = ['topos-pl
 		rmSync(dest, { force: true });
 		symlinkSync(src, dest);
 	}
+}
+
+/**
+ * hashPluginBinary returns the lowercase hex SHA-256 digest of the named
+ * binary's bytes, read from srcDir (defaults to PLUGIN_BIN_DIR) — via
+ * readFileSync, which follows the symlink linkPluginBinaries creates, so
+ * this hashes the identical bytes the kernel's own ResolveBinary/pin
+ * verification will hash at launch time (Phase 11, D-01/D-02). Used by
+ * config-builder.ts to write a fixture's `[plugins.pins]` table so an
+ * external-tier fixture source stays launchable once pin enforcement is
+ * turned on in a later Phase 11 plan.
+ */
+export function hashPluginBinary(name: string, srcDir: string = PLUGIN_BIN_DIR): string {
+	const path = join(srcDir, name);
+	assertExists(path, `plugin binary "${name}" (for hashing)`);
+	return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
