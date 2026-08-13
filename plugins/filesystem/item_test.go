@@ -107,7 +107,7 @@ func TestMatch_TopLevelPDFYieldsExactFidelityAndEmptyPreview(t *testing.T) {
 		t.Fatalf("write fixture pdf: %v", err)
 	}
 
-	p := NewSourcePlugin(root)
+	p := NewSourcePlugin(root, nil)
 	resp, err := p.Match(t.Context(), &toposv1.MatchRequest{})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
@@ -132,18 +132,24 @@ func TestMatch_TopLevelPDFYieldsExactFidelityAndEmptyPreview(t *testing.T) {
 	}
 }
 
-func TestMatch_NonPDFFilesAreIgnored(t *testing.T) {
+// TestMatch_ExtensionOutsideDefaultAllowlistIsIgnored supersedes the
+// 12-01 tracer's PDF-only "TestMatch_NonPDFFilesAreIgnored": 12-02-PLAN.md
+// Task 2 widens the default allowlist to markdown/plain-text/office/image
+// extensions (D-03), so a plain .txt file is now legitimately included —
+// only an extension genuinely outside classify.go's extensionTable stays
+// ignored with no extras configured.
+func TestMatch_ExtensionOutsideDefaultAllowlistIsIgnored(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("plain text"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "archive.zip"), []byte("not a document"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	p := NewSourcePlugin(root)
+	p := NewSourcePlugin(root, nil)
 	resp, err := p.Match(t.Context(), &toposv1.MatchRequest{})
 	if err != nil {
 		t.Fatalf("Match: %v", err)
 	}
 	if len(resp.GetItems()) != 0 {
-		t.Fatalf("expected 0 items for a non-PDF file, got %d", len(resp.GetItems()))
+		t.Fatalf("expected 0 items for an extension outside the default allowlist, got %d", len(resp.GetItems()))
 	}
 }

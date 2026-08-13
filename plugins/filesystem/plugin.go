@@ -45,22 +45,34 @@ var matchVocabulary = []string{"folders"}
 var iconSVG []byte
 
 // SourcePlugin implements sdk.SourcePlugin over a configured local/network
-// filesystem folder. 12-01-PLAN.md Task 2 (the phase's tracer slice)
-// implements only the thinnest complete path: top-level PDF files, no
-// recursion, no extras-driven scope widening/narrowing, no markdown/
-// plain-text/office preview shapes — all later plans' work, named
-// explicitly out of scope by this task's own action text.
+// filesystem folder: Match resolves each top-level file's scope and
+// preview-kind classification through scope.go/classify.go (D-03, D-04)
+// instead of the 12-01 tracer's inline ".pdf" test. Subfolder recursion
+// remains a later plan's work — this plan widens document scope and
+// preview shapes only, still walking the configured root's top level.
 type SourcePlugin struct {
-	root string
+	root   string
+	extras map[string]string
 }
 
 // NewSourcePlugin builds a SourcePlugin rooted at root — already expanded
 // (main.go's expandHome) and otherwise unvalidated; a root that does not
 // exist or is not readable surfaces honestly through Health/Match, never
-// silently.
-func NewSourcePlugin(root string) *SourcePlugin {
-	return &SourcePlugin{root: root}
+// silently. extras carries this instance's own config.Source.Extras
+// verbatim (D-12/D-13) — may be nil, a legitimate "no scope overrides
+// configured" state that newScope resolves to the default allowlist
+// alone.
+func NewSourcePlugin(root string, extras map[string]string) *SourcePlugin {
+	return &SourcePlugin{root: root, extras: extras}
 }
+
+// includeGlobKey and excludeGlobKey are the two extras keys this plugin
+// declares in Describe (D-03) and reads in Match via newScope — the exact
+// strings scope.go's newScope indexes into the extras map with.
+const (
+	includeGlobKey = "include_glob"
+	excludeGlobKey = "exclude_glob"
+)
 
 func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (*toposv1.DescribeResponse, error) {
 	return &toposv1.DescribeResponse{
@@ -70,15 +82,39 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		MatchVocabulary: matchVocabulary,
 		Icon:            iconSVG,
 		IconMime:        iconMIME,
+		// Extras (D-15, PLUG-09): declaring these two keys here is the only
+		// place they need to exist — Phase 11's declared-fields editor
+		// renders them generically from this response, no new UI code.
+		Extras: []*toposv1.ExtrasField{
+			{
+				Key:         includeGlobKey,
+				Label:       "Include glob (comma-separated)",
+				Required:    false,
+				Secret:      false,
+				Placeholder: "**/*.pdf,**/*.md",
+			},
+			{
+				Key:         excludeGlobKey,
+				Label:       "Exclude glob (comma-separated)",
+				Required:    false,
+				Secret:      false,
+				Placeholder: "**/node_modules/**",
+			},
+		},
 	}, nil
 }
 
 // Match reads the configured root's TOP LEVEL ONLY (os.ReadDir, never
-// filepath.WalkDir — recursion is a later plan's work), keeping regular
-// files whose lowercased extension is ".pdf" and returning one Item each.
-// No file body is ever read here — preview stays empty at Match time
-// (D-04's "no new kernel/UI rendering work" applies transitively: this
-// tracer reads only file metadata to build an item).
+// filepath.WalkDir — recursion is a later plan's work). Each candidate
+// file's D-01 relative source_id is resolved through scope.go's
+// (*scope).includes, which decides both inclusion and preview-kind
+// classification from this instance's extras-driven include/exclude globs
+// plus the default extension allowlist (D-03) — compiled once per Match
+// call via newScope, not once per file. No file body is ever read here —
+// preview stays empty at Match time (D-04's "no new kernel/UI rendering
+// work" applies transitively: Match reads only file metadata to build an
+// item; Fetch re-derives the same classification fresh, never caching it
+// from here).
 //
 // Match reads only its own declared "folders" field from match_fields and
 // ignores every other key present in the request map (D-05): when the
@@ -92,6 +128,7 @@ func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*top
 		return nil, status.Errorf(codes.Unavailable, "filesystem: read root: %v", err)
 	}
 
+	sc := newScope(p.extras)
 	folders, hasFolders := req.GetMatchFields()["folders"]
 
 	var items []*toposv1.Item
@@ -99,9 +136,16 @@ func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*top
 		if entry.IsDir() {
 			continue
 		}
-		if !strings.EqualFold(filepath.Ext(entry.Name()), ".pdf") {
+
+		full := filepath.Join(p.root, entry.Name())
+		sourceID := relPathSourceID(p.root, full)
+
+		if _, included, err := sc.includes(sourceID); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
+		} else if !included {
 			continue
 		}
+
 		info, err := entry.Info()
 		if err != nil {
 			// A file that vanished or became unreadable between ReadDir and

@@ -4,10 +4,12 @@
 // a local-path source with no base_url/token at all, since this plugin
 // reads directly from an arbitrary folder rather than a network API.
 //
-// 12-01-PLAN.md Task 2 (the phase's tracer slice) implements only the
-// thinnest complete path — top-level PDF files, no recursion, no extras-
-// driven scope widening/narrowing. Later plans in this phase expand
-// plugin.go's Match/Fetch behavior; this bootstrap shape does not change.
+// 12-01-PLAN.md Task 2 (the phase's tracer slice) implemented the thinnest
+// complete path — top-level PDF files, no recursion, no extras-driven
+// scope widening/narrowing. 12-02-PLAN.md Task 2 widens Match's document
+// scope via extras-driven include/exclude globs (D-03); this bootstrap
+// now decodes and forwards those extras, but still does not expand
+// recursion — that remains a later plan's work.
 package main
 
 import (
@@ -27,9 +29,15 @@ import (
 // Path is the configured source folder (kernel/config.Source.Path) — the
 // kernel deliberately stores it unexpanded (see that field's own doc
 // comment), so a leading "~" is expanded here, in the plugin subprocess,
-// exactly like plugins/signal/main.go already does.
+// exactly like plugins/signal/main.go already does. Extras carries this
+// instance's own config.Source.Extras verbatim (D-12/D-13) — the
+// include_glob/exclude_glob scope-override keys scope.go's newScope reads
+// (12-02-PLAN.md Task 2); omitted entirely (nil map) when this source
+// declares no extras, exactly like kernel/pluginhost/host.go's
+// sourceConfigEnvelope.Extras.
 type sourceConfig struct {
-	Path string `json:"path"`
+	Path   string            `json:"path"`
+	Extras map[string]string `json:"extras"`
 }
 
 func main() {
@@ -51,7 +59,7 @@ func main() {
 		fatal(fmt.Errorf("expand path: %w", err))
 	}
 
-	impl := NewSourcePlugin(root)
+	impl := NewSourcePlugin(root, cfg.Extras)
 
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
