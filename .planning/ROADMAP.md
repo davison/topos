@@ -51,7 +51,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.0-ROADMAP.m
   4. An external plugin receives provider-specific config keys the kernel has never heard of (arbitrary per-instance extras), with no kernel change required to add a new key.
   5. A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — the mechanism is proven before any out-of-repo source work starts.
 
-**Plans**: 1/6 plans executed (5 waves)
+**Plans**: 2/6 plans executed (5 waves)
 Plans:
 **Wave 1**
 
@@ -59,7 +59,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 11-02-PLAN.md — Kernel trust gate: pin verification, soft per-instance failure, env allowlist, extras wire
+- [x] 11-02-PLAN.md — Kernel trust gate: pin verification, soft per-instance failure, env allowlist, extras wire
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -128,7 +128,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. External Plugins & the Trust Boundary | v1.1.0 | 1/6 | In Progress|  |
+| 11. External Plugins & the Trust Boundary | v1.1.0 | 2/6 | In Progress|  |
 | 12. Filesystem Source | v1.1.0 | 0/TBD | Not started | - |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 0/TBD | Not started | - |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
