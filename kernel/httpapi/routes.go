@@ -84,6 +84,13 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	r.Get("/api/items/{id}", ItemHandler(store, cfgStore, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
+	// POST /api/items/{id}/open (D-06, 12-01-PLAN.md Task 2): the
+	// filesystem source's kernel-mediated xdg-open route — the path handed
+	// to the opener is resolved server-side from index state plus
+	// configuration only, never from anything in the request. Registered
+	// on /api only, never on the /agent/v1 mirror (MountAgentRoutes below
+	// registers zero non-GET routes on /agent/v1).
+	r.Post("/api/items/{id}/open", FilesystemOpenHandler(store, cfgStore, newXDGOpener(logger), logger))
 	r.Get("/api/sources", SourcesHandler(store, prober))
 	r.Post("/api/sources/{name}/refresh", SourceRefreshHandler(cfgStore, refresher))
 	r.Post("/api/sync", SyncRefreshHandler(refresher))

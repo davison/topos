@@ -40,12 +40,12 @@ DEV_KERNEL_CMD ?= go run ./cmd/topos serve
 DEV_UI_CMD ?= npm --prefix web run dev -- --open --host
 
 # plugins-portable is the cgo-free sibling of "plugins" — it builds
-# exactly the five CGO_ENABLED=0 plugin binaries "plugins" builds
-# (paperless, silverbullet, proton, mock, whatsapp) and, unlike
-# "plugins", does NOT chain to the cgo "signal" target. It exists for
-# the same reason "test-portable" exists: a runner (or a developer's
+# exactly the six CGO_ENABLED=0 plugin binaries "plugins" builds
+# (paperless, silverbullet, proton, mock, whatsapp, filesystem) and,
+# unlike "plugins", does NOT chain to the cgo "signal" target. It exists
+# for the same reason "test-portable" exists: a runner (or a developer's
 # machine) without the system sqlcipher package installed can still
-# produce a complete, real, operator-facing plugin set. The five names
+# produce a complete, real, operator-facing plugin set. The six names
 # are written HERE ONLY — build-portable below reaches them by
 # delegating to this target, never by naming them itself, so the two
 # variants cannot drift apart.
@@ -56,6 +56,7 @@ plugins-portable:
 	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
+	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 
 # build-portable is the cgo-free sibling of "build" — it runs the same
 # SPA-build and kernel-build steps "build" runs, then delegates to
@@ -104,6 +105,7 @@ plugins:
 	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
+	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) signal
 
 # signal builds the Signal plugin binary (SRC-02). Unlike every other
@@ -155,6 +157,7 @@ test-portable:
 	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mockstrict && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...
 	cd plugins/whatsapp && CGO_ENABLED=0 go build ./... && go test ./...
+	cd plugins/filesystem && CGO_ENABLED=0 go build ./... && go test ./...
 
 # test runs the full test suite across all seven workspace modules (sdk,
 # paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
@@ -238,6 +241,7 @@ e2e:
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
+	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) external-demo
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)

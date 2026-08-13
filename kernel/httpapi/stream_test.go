@@ -389,3 +389,82 @@ func TestStreamHandler_IndexOnlyWebspaceReportsZeroValueSyncDespiteOtherFailure(
 		t.Errorf("expected the zero-value sync object for an index-only, config-unknown webspace, got: %+v", resp.Sync)
 	}
 }
+
+// --- resolveStreamLinkURL (12-01-PLAN.md Task 2, D-06): the file://-scheme rewrite ---
+
+// TestStreamLink_FileSchemeDeepLinkIsRewrittenToTheOpenRoute proves an
+// item whose DeepLink carries the file:// scheme is served with link.url
+// pointed at the kernel's loopback open route for that item's own id,
+// never the raw file:// value.
+func TestStreamLink_FileSchemeDeepLinkIsRewrittenToTheOpenRoute(t *testing.T) {
+	it := item.Item{
+		ID:       "docs-folder:invoice.pdf",
+		Source:   "docs-folder",
+		DeepLink: "file:///home/user/Documents/invoice.pdf",
+		Fidelity: item.FidelityExact,
+	}
+	got := resolveStreamLinkURL(it)
+	want := "/api/items/docs-folder:invoice.pdf/open"
+	if got != want {
+		t.Errorf("expected link.url %q, got %q", want, got)
+	}
+}
+
+// TestStreamLink_NonFileSchemeDeepLinkIsEchoedUnchanged proves an item
+// whose DeepLink is an ordinary https URL is served with that value
+// verbatim — the rewrite is additive, never touching any other source's
+// existing behavior.
+func TestStreamLink_NonFileSchemeDeepLinkIsEchoedUnchanged(t *testing.T) {
+	it := item.Item{
+		ID:       "paperless:42",
+		Source:   "paperless",
+		DeepLink: "https://paperless.example/documents/42",
+		Fidelity: item.FidelityExact,
+	}
+	got := resolveStreamLinkURL(it)
+	want := "https://paperless.example/documents/42"
+	if got != want {
+		t.Errorf("expected link.url echoed unchanged as %q, got %q", want, got)
+	}
+}
+
+// TestStreamHandler_FileSchemeItemServesRewrittenLinkEndToEnd proves the
+// rewrite reaches the real HTTP response, not merely the unit-level helper.
+func TestStreamHandler_FileSchemeItemServesRewrittenLinkEndToEnd(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	items := []item.Item{{
+		ID:       "docs-folder:invoice.pdf",
+		Source:   "docs-folder",
+		SourceID: "invoice.pdf",
+		Title:    "invoice.pdf",
+		Fidelity: item.FidelityExact,
+		DeepLink: "file:///home/user/Documents/invoice.pdf",
+	}}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "house-move", "docs-folder", items); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	router := newTestRouter(store)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/house-move/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected exactly 1 item, got %d", len(resp.Items))
+	}
+	got := resp.Items[0].Link.URL
+	if got == "" || got[0] != '/' || !strings.HasSuffix(got, "/open") {
+		t.Errorf("expected link.url to be the loopback open route, got %q", got)
+	}
+	if strings.HasPrefix(got, "file://") {
+		t.Errorf("expected the raw file:// deep link to never be served, got %q", got)
+	}
+}

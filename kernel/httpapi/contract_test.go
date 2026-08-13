@@ -386,6 +386,13 @@ func TestContract_MutatingRoutesAreConfigScoped(t *testing.T) {
 		// scan only ever records non-GET methods.
 		{method: "Post", path: "/api/config/whatsapp-link"}:             true,
 		{method: "Delete", path: "/api/config/whatsapp-link/{session}"}: true,
+		// POST /api/items/{id}/open (D-06, 12-01-PLAN.md Task 2): the
+		// filesystem source's kernel-mediated xdg-open route — another raw
+		// exec surface outside the go-plugin gRPC handshake, resolved
+		// exclusively from index state plus configuration, never the
+		// request; its own STRIDE register row lives in 12-01-PLAN.md's
+		// threat_model (T-12-01 through T-12-06).
+		{method: "Post", path: "/api/items/{id}/open"}: true,
 	}
 
 	found := nonGetRoutesInFile(t, "routes.go", "r")
