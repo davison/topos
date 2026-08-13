@@ -93,7 +93,24 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: TBD
+**Plans**: 5 plans (4 waves)
+Plans:
+**Wave 1**
+
+- [ ] 12-01-PLAN.md — Tracer: a PDF in a folder reaches the stream and opens through the kernel-mediated open route
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 12-02-PLAN.md — Document scope, extras-driven globs, and the four preview shapes
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 12-03-PLAN.md — Recursion end to end, symlink/permission-safe walk, honest health, read-only guard
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 12-04-PLAN.md — UI: add a folder source from the picker (checkbox field kind, filesystem row)
+- [ ] 12-05-PLAN.md — External-tier rehearsal against a real plugin, plus the docs republish
 
 ### Phase 13: Per-Item Curation & Installable App
 
