@@ -1,7 +1,7 @@
 ---
 phase: 12
 slug: filesystem-source
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, Tailwind v4 (unchanged since Phase 1 — components.json present at web/components.json, no re-init this phase; every rendered color comes from web/src/app.css's hand-authored hex tokens, not the CLI's own slate defaults)"
 created: 2026-08-13
@@ -184,7 +184,7 @@ Every one of these surfaces is exercised by this phase's five success criteria a
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: **16 covered (explicit), 2 backstop, 0 unresolved** — across the two new elements (F1, F2). Every dismissal below carries a recorded reason. Coverage for every reused surface (preview branches, extras editor, match form, trust badge, health tooltip) is inherited unmodified from its originating phase's own UI-SPEC (Phase 1/2/3/9/11) and is not re-litigated here — see "Explicit Reuse" above for the mapping.
+Probe run 2026-08-13 (`ui-consideration-probe.cjs` engine: 14 applicable categories across F1/F2 — F1 form-kind ×8, F2 action-kind ×6; element kinds and all resolutions user-confirmed). Applicable state considerations resolved: **15 explicit, 2 backstop, 0 unresolved** — across the two new elements (F1, F2), including two F2 categories (partial, zero-one-many) covered beyond the probe's detected set. Every dismissal below carries a recorded reason. Coverage for every reused surface (preview branches, extras editor, match form, trust badge, health tooltip) is inherited unmodified from its originating phase's own UI-SPEC (Phase 1/2/3/9/11) and is not re-litigated here — see "Explicit Reuse" above for the mapping.
 
 ### Resolved — explicit
 
@@ -205,7 +205,6 @@ Applicable state considerations resolved: **16 covered (explicit), 2 backstop, 0
 | partial | F2 — a filesystem item whose `deep_link` somehow lands as a non-`/api/`-shaped value (defensive) | ✅ covered | Falls through to the existing plain-`<a href>` branch unmodified — the trigger condition is additive, never subtractive; an unexpected shape degrades to today's behavior rather than a broken state. |
 | long-text | F2 — kernel error-detail text in the failure title | ✅ covered | Native `title` attribute tooltip behavior — no fixed-width truncation concern, matches how every other `title`-carried detail in this app (E1's hash line, chip tooltips) already behaves. |
 | empty | F2 — kernel error response with no detail text | ✅ covered | Falls back to the fixed copy `Couldn't open — file may have moved or been removed.` per the Copywriting Contract's documented fallback rule. |
-| overflow | F1 — extras block, many declared+free-form rows | 🧪 backstop | Inherited from Phase 11 E6's own identical backstop — adding one more plugin type that uses this editor does not change its scroll/height behavior; still unverified at pathological key counts. |
 
 ### Resolved — backstop
 
@@ -237,11 +236,11 @@ No third-party (non-shadcn-official, non-`@lucide/svelte`) frontend registry is 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED — gsd-ui-checker, 6/6 dimensions, 2026-08-13
