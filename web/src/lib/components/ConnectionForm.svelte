@@ -10,6 +10,7 @@
 	import { untrack } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import SecretField from './SecretField.svelte';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -57,7 +58,18 @@
 		return typeof raw === 'string' ? raw : '';
 	}
 
-	function setField(key: ConnectionField['key'], value: string) {
+	// boolFieldValue reads a checkbox-kind field's current value, coercing
+	// an unset or non-boolean stored value to false (unchecked) — never
+	// throws, never renders an indeterminate state. Mirrors
+	// ConnectionField.defaultValue's own doc comment: a checkbox's initial
+	// state is never sourced from defaultValue, only from the value
+	// actually stored (or its safe false fallback).
+	function boolFieldValue(field: ConnectionField): boolean {
+		const raw = values[field.key];
+		return typeof raw === 'boolean' ? raw : false;
+	}
+
+	function setField(key: ConnectionField['key'], value: string | boolean) {
 		onchange({ ...values, [key]: value });
 	}
 
@@ -165,6 +177,21 @@
 				{envVars}
 				oninput={(name) => setField(field.key, wrapVar(name))}
 			/>
+		{:else if field.kind === 'checkbox'}
+			<label
+				for={`conn-${field.key}`}
+				class="flex min-h-11 items-center gap-2 text-[14px] leading-[1.4] text-foreground"
+			>
+				<Checkbox
+					id={`conn-${field.key}`}
+					checked={boolFieldValue(field)}
+					onCheckedChange={(v) => setField(field.key, v)}
+				/>
+				{field.label}
+			</label>
+			{#if field.helperText}
+				<p class="text-[14px] leading-[1.4] text-muted-foreground">{field.helperText}</p>
+			{/if}
 		{:else}
 			<div class="flex flex-col gap-1">
 				<label for={`conn-${field.key}`} class="text-[14px] leading-[1.4] text-foreground">

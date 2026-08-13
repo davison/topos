@@ -360,6 +360,13 @@ export interface SourceConfig {
 	ca_cert?: string;
 	sync_interval?: string;
 	path?: string;
+	// recursive is the frontend half of the typed config.Source.Recursive
+	// bool (12-03-PLAN.md Task 1) — the filesystem plugin's "Include
+	// subfolders" checkbox (12-UI-SPEC.md F1) writes here. Mirrors that
+	// field's own omit-when-false wire behaviour (`omitempty` on both
+	// toml/json tags in kernel/config/types.go): absent or false both mean
+	// "don't recurse," the conservative default.
+	recursive?: boolean;
 	agent: AgentGrantConfig;
 	display_name?: string;
 	// extras is this instance's opaque, per-plugin passthrough map (D-12,

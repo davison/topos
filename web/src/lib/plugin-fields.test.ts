@@ -297,6 +297,29 @@ describe('missingRequiredFieldsMessage', () => {
 	});
 });
 
+// 12-04-PLAN.md Task 1: the optional field-kind/helper-text extension to
+// ConnectionField must not regress any pre-existing plugin row to a
+// non-text render — every row in the table predates the 'checkbox' kind
+// and must keep reporting an absent (undefined) kind.
+describe('ConnectionField.kind — every pre-existing plugin row reports an absent field kind', () => {
+	it('reports kind undefined for every field of every plugin binary that predates the checkbox field kind', () => {
+		const preexistingPluginBinaries = [
+			'topos-plugin-paperless',
+			'topos-plugin-silverbullet',
+			'topos-plugin-proton',
+			'topos-plugin-signal',
+			'topos-plugin-whatsapp',
+			'topos-plugin-mockstrict',
+			'topos-plugin-external-demo'
+		];
+		for (const binary of preexistingPluginBinaries) {
+			for (const field of connectionFieldsFor(binary)) {
+				expect(field.kind).toBeUndefined();
+			}
+		}
+	});
+});
+
 describe('pluginTypeLabel', () => {
 	it('falls back to a title-cased prefix strip for topos-plugin-mockstrict — no PLUGIN_TYPE_LABELS entry is added for it', () => {
 		expect(pluginTypeLabel('topos-plugin-mockstrict')).toBe('Mockstrict');
@@ -304,5 +327,103 @@ describe('pluginTypeLabel', () => {
 
 	it('resolves topos-plugin-whatsapp to "WhatsApp"', () => {
 		expect(pluginTypeLabel('topos-plugin-whatsapp')).toBe('WhatsApp');
+	});
+
+	// 12-04-PLAN.md Task 2: the picker's "New …" row and Step 1 modal title
+	// must read as a folder source, not a title-cased binary name — matches
+	// plugins/filesystem/plugin.go's own Describe displayName ("Filesystem
+	// folder") verbatim.
+	it('resolves topos-plugin-filesystem to "Filesystem folder"', () => {
+		expect(pluginTypeLabel('topos-plugin-filesystem')).toBe('Filesystem folder');
+	});
+});
+
+// 12-04-PLAN.md Task 2 (RED, written before the topos-plugin-filesystem row
+// is added to CONNECTION_FIELDS): the filesystem connection row's shape,
+// per 12-UI-SPEC.md F1 and the DERIVATION RULE (required flags read from
+// plugins/filesystem/main.go's own fatal guard, never copied from a sibling
+// row — that plugin fatals on an empty path alone; recursive has no guard).
+describe('topos-plugin-filesystem connection row (12-04-PLAN.md Task 2)', () => {
+	it('lists Display Name, path, recursive, sync_interval, in that order', () => {
+		const fields = connectionFieldsFor('topos-plugin-filesystem');
+		expect(fields.map((f) => f.key)).toEqual([
+			'display_name',
+			'path',
+			'recursive',
+			'sync_interval'
+		]);
+	});
+
+	it('the path field is required, carries the two-example placeholder, and declares no defaultValue', () => {
+		const pathField = connectionFieldsFor('topos-plugin-filesystem').find((f) => f.key === 'path');
+		expect(pathField?.required).toBe(true);
+		expect(pathField?.secret).toBe(false);
+		expect(pathField?.advanced).toBe(false);
+		expect(pathField?.placeholder).toBe('e.g. /home/you/Documents or /mnt/nas/shared-docs');
+		expect(pathField?.defaultValue).toBeUndefined();
+	});
+
+	it('the recursive field declares the checkbox kind, is not required, and carries the exact helper text', () => {
+		const recursiveField = connectionFieldsFor('topos-plugin-filesystem').find(
+			(f) => f.key === 'recursive'
+		);
+		expect(recursiveField?.kind).toBe('checkbox');
+		expect(recursiveField?.required).toBe(false);
+		expect(recursiveField?.advanced).toBe(false);
+		expect(recursiveField?.helperText).toBe(
+			"Also scans nested folders. Off scans only this folder's own top level."
+		);
+	});
+
+	it('table truth: filesystem requires exactly path (plugins/filesystem/main.go fatals on cfg.Path == ""; recursive has no guard)', () => {
+		const requiredKeys = connectionFieldsFor('topos-plugin-filesystem')
+			.filter((f) => f.required)
+			.map((f) => f.key);
+		expect(requiredKeys).toEqual(['path']);
+	});
+});
+
+describe('defaultConnectionValues: topos-plugin-filesystem returns only the plugin key', () => {
+	it('seeds no values at all — no path default (installation-specific), and specifically no boolean coerced into the string-valued default map', () => {
+		expect(defaultConnectionValues('topos-plugin-filesystem')).toEqual({
+			plugin: 'topos-plugin-filesystem'
+		});
+	});
+});
+
+describe('missingRequiredFields: topos-plugin-filesystem', () => {
+	it('names Local Path when path is empty, regardless of the recursive value', () => {
+		const missingUnset = missingRequiredFields('topos-plugin-filesystem', {
+			plugin: 'topos-plugin-filesystem',
+			path: '',
+			agent: { read: false, handoff: false }
+		});
+		expect(missingUnset.map((f) => f.label)).toEqual(['Local Path']);
+
+		const missingRecursiveTrue = missingRequiredFields('topos-plugin-filesystem', {
+			plugin: 'topos-plugin-filesystem',
+			path: '',
+			recursive: true,
+			agent: { read: false, handoff: false }
+		});
+		expect(missingRecursiveTrue.map((f) => f.label)).toEqual(['Local Path']);
+	});
+
+	it('names nothing once path is filled, regardless of the recursive value', () => {
+		const filledRecursiveFalse = missingRequiredFields('topos-plugin-filesystem', {
+			plugin: 'topos-plugin-filesystem',
+			path: '/home/you/Documents',
+			recursive: false,
+			agent: { read: false, handoff: false }
+		});
+		expect(filledRecursiveFalse).toEqual([]);
+
+		const filledRecursiveTrue = missingRequiredFields('topos-plugin-filesystem', {
+			plugin: 'topos-plugin-filesystem',
+			path: '/home/you/Documents',
+			recursive: true,
+			agent: { read: false, handoff: false }
+		});
+		expect(filledRecursiveTrue).toEqual([]);
 	});
 });

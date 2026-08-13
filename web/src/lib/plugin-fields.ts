@@ -35,7 +35,26 @@ export interface ConnectionField {
 	// seeded default would silently produce broken deep links, a worse
 	// failure than a visible empty required field now that empty required
 	// fields are actually visible (the missingRequiredFields guard below).
+	//
+	// defaultValue stays string-typed and text-field-only (12-04-PLAN.md
+	// Task 1): a checkbox-kind field's initial checked state is NEVER
+	// sourced from this property. ConnectionForm.svelte coerces an unset
+	// or non-boolean stored value to unchecked (false) directly — the
+	// conservative default the filesystem plugin's own `recursive` key is
+	// named for: don't recurse an unfamiliar tree unless asked.
 	defaultValue?: string;
+	// kind selects which primitive ConnectionForm.svelte renders for this
+	// field, defaulting to 'text' when absent (12-04-PLAN.md Task 1) — so
+	// every pre-existing row in CONNECTION_FIELDS below, which omits this
+	// property entirely, keeps rendering exactly as it did before this
+	// field kind existed. 'checkbox' is the one other value today, reusable
+	// by any future plugin's boolean-shaped field, not filesystem-specific.
+	kind?: 'text' | 'checkbox';
+	// helperText renders as a muted paragraph beneath the field and is
+	// omitted entirely when absent (12-04-PLAN.md Task 1) — every existing
+	// field leaves this unset and renders with no helper paragraph, exactly
+	// as before this property existed.
+	helperText?: string;
 }
 
 const DISPLAY_NAME_FIELD: ConnectionField = {
@@ -196,6 +215,48 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 		},
 		SYNC_INTERVAL_FIELD
 	],
+	// topos-plugin-filesystem (12-04-PLAN.md Task 2, 12-UI-SPEC.md F1): the
+	// local/network filesystem source's row, derived — per the DERIVATION
+	// RULE above — from plugins/filesystem/main.go's own pre-Serve fatal
+	// guard, not copied from Signal's or WhatsApp's local-path rows.
+	'topos-plugin-filesystem': [
+		DISPLAY_NAME_FIELD,
+		{
+			// required: true mirrors plugins/filesystem/main.go's
+			// `cfg.Path == ""` fatal guard. Deliberately NO defaultValue:
+			// unlike Signal's/WhatsApp's fixed install locations, an
+			// arbitrary local-or-network document folder has no
+			// universally-correct default — seeding one would silently
+			// point a fresh install at a path that does not exist, which
+			// is worse than a visible empty required field. The
+			// two-example placeholder signals "local or network" up
+			// front, since SRC-04 explicitly covers both.
+			key: 'path',
+			label: 'Local Path',
+			required: true,
+			secret: false,
+			advanced: false,
+			placeholder: 'e.g. /home/you/Documents or /mnt/nas/shared-docs'
+		},
+		{
+			// required: false — plugins/filesystem/main.go has no guard on
+			// `recursive` at all; an empty/unset value simply means
+			// "don't recurse," never a startup failure. kind: 'checkbox'
+			// is what selects ConnectionForm.svelte's checkbox render
+			// branch; the field carries no defaultValue for the same
+			// reason ConnectionField.defaultValue's own doc comment
+			// gives — a checkbox's initial state is never sourced from
+			// it, coercing to unchecked instead.
+			key: 'recursive',
+			label: 'Include subfolders',
+			required: false,
+			secret: false,
+			advanced: false,
+			kind: 'checkbox',
+			helperText: "Also scans nested folders. Off scans only this folder's own top level."
+		},
+		SYNC_INTERVAL_FIELD
+	],
 	// topos-plugin-external-demo (Phase 11, ROADMAP success criterion 5,
 	// 11-04-PLAN.md): the out-of-repo proof plugin's own required-field
 	// shape — required: true mirrors testdata/external-plugin/main.go's own
@@ -313,7 +374,10 @@ const PLUGIN_TYPE_LABELS: Record<string, string> = {
 	'topos-plugin-silverbullet': 'SilverBullet',
 	'topos-plugin-proton': 'Proton',
 	'topos-plugin-signal': 'Signal',
-	'topos-plugin-whatsapp': 'WhatsApp'
+	'topos-plugin-whatsapp': 'WhatsApp',
+	// Matches plugins/filesystem/plugin.go's own Describe displayName
+	// verbatim ("Filesystem folder") — 12-04-PLAN.md Task 2.
+	'topos-plugin-filesystem': 'Filesystem folder'
 };
 
 // WHATSAPP_PLUGIN_BINARY is the one canonical spelling of the WhatsApp
