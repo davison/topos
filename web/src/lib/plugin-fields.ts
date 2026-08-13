@@ -35,7 +35,26 @@ export interface ConnectionField {
 	// seeded default would silently produce broken deep links, a worse
 	// failure than a visible empty required field now that empty required
 	// fields are actually visible (the missingRequiredFields guard below).
+	//
+	// defaultValue stays string-typed and text-field-only (12-04-PLAN.md
+	// Task 1): a checkbox-kind field's initial checked state is NEVER
+	// sourced from this property. ConnectionForm.svelte coerces an unset
+	// or non-boolean stored value to unchecked (false) directly — the
+	// conservative default the filesystem plugin's own `recursive` key is
+	// named for: don't recurse an unfamiliar tree unless asked.
 	defaultValue?: string;
+	// kind selects which primitive ConnectionForm.svelte renders for this
+	// field, defaulting to 'text' when absent (12-04-PLAN.md Task 1) — so
+	// every pre-existing row in CONNECTION_FIELDS below, which omits this
+	// property entirely, keeps rendering exactly as it did before this
+	// field kind existed. 'checkbox' is the one other value today, reusable
+	// by any future plugin's boolean-shaped field, not filesystem-specific.
+	kind?: 'text' | 'checkbox';
+	// helperText renders as a muted paragraph beneath the field and is
+	// omitted entirely when absent (12-04-PLAN.md Task 1) — every existing
+	// field leaves this unset and renders with no helper paragraph, exactly
+	// as before this property existed.
+	helperText?: string;
 }
 
 const DISPLAY_NAME_FIELD: ConnectionField = {

@@ -297,6 +297,29 @@ describe('missingRequiredFieldsMessage', () => {
 	});
 });
 
+// 12-04-PLAN.md Task 1: the optional field-kind/helper-text extension to
+// ConnectionField must not regress any pre-existing plugin row to a
+// non-text render — every row in the table predates the 'checkbox' kind
+// and must keep reporting an absent (undefined) kind.
+describe('ConnectionField.kind — every pre-existing plugin row reports an absent field kind', () => {
+	it('reports kind undefined for every field of every plugin binary that predates the checkbox field kind', () => {
+		const preexistingPluginBinaries = [
+			'topos-plugin-paperless',
+			'topos-plugin-silverbullet',
+			'topos-plugin-proton',
+			'topos-plugin-signal',
+			'topos-plugin-whatsapp',
+			'topos-plugin-mockstrict',
+			'topos-plugin-external-demo'
+		];
+		for (const binary of preexistingPluginBinaries) {
+			for (const field of connectionFieldsFor(binary)) {
+				expect(field.kind).toBeUndefined();
+			}
+		}
+	});
+});
+
 describe('pluginTypeLabel', () => {
 	it('falls back to a title-cased prefix strip for topos-plugin-mockstrict — no PLUGIN_TYPE_LABELS entry is added for it', () => {
 		expect(pluginTypeLabel('topos-plugin-mockstrict')).toBe('Mockstrict');
