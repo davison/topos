@@ -265,6 +265,11 @@ None — no external service configuration required.
 - No `readonly_test.go` (AST write-guard) exists yet for `plugins/filesystem` — 12-RESEARCH.md's recommended project structure names this file, but it was not in this plan's `files_modified` and stays a later plan's task.
 - D6 (the narrow-layout "Couldn't open" overflow backstop, carried forward from 12-01) remains genuinely unverified — untouched by this plan's scope.
 
+## Self-Check: PASSED
+
+- FOUND: `plugins/filesystem/classify.go`, `plugins/filesystem/scope.go`, `plugins/filesystem/render.go`, `plugins/filesystem/fetch.go`, `.planning/phases/12-filesystem-source/12-02-SUMMARY.md`
+- FOUND commits: `b6d7dc3`, `16936c7`, `e3856c9` (all present in `git log --oneline`)
+
 ---
 *Phase: 12-filesystem-source*
 *Completed: 2026-08-13*
