@@ -51,7 +51,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.0-ROADMAP.m
   4. An external plugin receives provider-specific config keys the kernel has never heard of (arbitrary per-instance extras), with no kernel change required to add a new key.
   5. A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — the mechanism is proven before any out-of-repo source work starts.
 
-**Plans**: 6/7 plans executed (5 waves + 1 gap-closure wave)
+**Plans**: 7/7 plans executed (5 waves + 1 gap-closure wave)
 Plans:
 **Wave 1**
 
@@ -76,7 +76,7 @@ Plans:
 
 **Gap closure** *(from 11-VERIFICATION.md — G-11-1, criterion 3 / PLUG-07)*
 
-- [ ] 11-07-PLAN.md — Confine ResolveBinary and validate Source.Plugin's shape: close the CR-01 traversal/trust-tier bypass
+- [x] 11-07-PLAN.md — Confine ResolveBinary and validate Source.Plugin's shape: close the CR-01 traversal/trust-tier bypass
 
 **UI hint**: yes
 
@@ -132,7 +132,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. External Plugins & the Trust Boundary | v1.1.0 | 6/6 | In Progress|  |
+| 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | In Progress|  |
 | 12. Filesystem Source | v1.1.0 | 0/TBD | Not started | - |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 0/TBD | Not started | - |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
