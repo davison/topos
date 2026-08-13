@@ -323,8 +323,9 @@ independent of the rendition.
 The raw bytes of the preview and thumbnail renditions, respectively,
 streamed straight through from the plugin's live `Fetch` call. Both routes
 enforce a fixed MIME allowlist (`application/pdf`, `image/png`,
-`image/jpeg`, `image/gif`, `image/webp`, `text/html`) before writing any
-byte, and set a hardened header set on every accepted response:
+`image/jpeg`, `image/gif`, `image/webp`, `text/html`, `text/plain`) before
+writing any byte, and set a hardened header set on every accepted
+response:
 
 ```
 Content-Type: <allowlisted MIME type>
@@ -412,6 +413,49 @@ byte-identical to the pre-UI-09 output. **The `/agent/v1` rendition
 mirror does not accept `?hl=`** — the agent surface has no search UI, so
 `GET /agent/v1/items/{id}/content` always serves an unhighlighted
 document regardless of any query string supplied.
+
+### `POST /api/items/{id}/open`
+
+The kernel's second raw-exec HTTP surface (after the WhatsApp link
+route's own subprocess spawn), and the serve-time counterpart to a
+plugin's `file://`-scheme `deep_link` (`docs/plugin-contract.md`'s "The
+`file://` local-path deep-link convention"): resolves `{id}`'s local file
+path from the kernel's own index state plus its source's configured
+`path`, and hands the resolved absolute path to the desktop's own
+`xdg-open`. Registered on `/api` only — there is no `/agent/v1` mirror,
+since an automated caller has no desktop session for `xdg-open` to hand
+the file to.
+
+**The resolved path comes exclusively from index state and
+configuration — never from the request.** `{id}` is the only input: the
+kernel looks up that item's indexed `source_id` and its owning source's
+configured `path`, joins them, and re-validates the join stays inside the
+configured root before ever exec'ing anything. Nothing in the request
+body or query string reaches the opener.
+
+```
+$ curl -s -X POST http://127.0.0.1:7777/api/items/docs%3Ainvoice.pdf/open | jq
+{ "schema_version": 1, "opened": true }
+```
+
+**Failure modes**, each mapped to the shared error envelope (see the
+error-code table below):
+
+- **`404 item_not_found`** — `{id}` does not exist in the local index; its
+  `deep_link` does not carry the `file://` scheme (this route is
+  unreachable for a non-filesystem item, keyed on the URL scheme alone,
+  never `source_type`); or its owning source has no configured `path` at
+  all (e.g. its `[sources.<id>]` entry was removed from config while the
+  item's index row survives).
+- **`400 invalid_path`** — the path joined from the item's indexed
+  `source_id` and its source's configured `path` resolves outside the
+  configured root. Not reachable through the request itself (the request
+  carries no path), but a defense-in-depth guard against a corrupted or
+  hand-edited index row.
+- **`502 open_failed`** — the join and validation both succeeded, but the
+  `xdg-open` invocation itself failed (e.g. no handler registered for the
+  file's type on the machine running the kernel) — carries the opener's
+  own error message verbatim.
 
 ### `GET /api/sources`
 
@@ -1201,12 +1245,14 @@ namespace", above).
 | Code | HTTP status | Route(s) | Meaning |
 |---|---|---|---|
 | `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search`, `GET /agent/v1/webspaces/{webspace}/stream` | `{webspace}` is in neither the running configuration nor the local index. A configured-but-never-synced webspace is NOT this case — it answers `200` with `"items": []` (or `"results": []`) instead. |
-| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. |
+| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children; `POST /api/items/{id}/open` | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. On `POST /api/items/{id}/open` specifically, also covers an item whose `deep_link` does not carry the `file://` scheme, and an item whose owning source has no configured `path`. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
 | `unsupported_content_shape` | 502 | `GET /api/items/{id}/content` | The rendition's `mime_type` is `text/html` but its plugin-declared `content_shape` is unrecognised or unspecified (`CONTENT_SHAPE_UNSPECIFIED`) — the kernel's sanitize/wrap boundary (D-11) refuses to guess a policy and writes no body. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
 | `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
+| `invalid_path` | 400 | `POST /api/items/{id}/open` | The path joined from the item's indexed `source_id` and its source's configured `path` resolves outside that configured root. |
+| `open_failed` | 502 | `POST /api/items/{id}/open` | The resolved path is valid, but the `xdg-open` invocation itself failed — the opener's own error message. |
 | `invalid_request` | 400 | `PUT /api/config` | The request body is not valid JSON, or is missing the `config` field. |
 | `config_changed_on_disk` | 409 | `PUT /api/config` | `base_hash` no longer matches `config.toml`'s current on-disk hash — someone else (another browser tab, a hand-edit, a `topos` CLI run) saved since you last read it. Nothing is written; re-`GET /api/config` and retry. |
 | `config_has_unknown_keys` | 409 | `PUT /api/config` | `config.toml` carries a TOML key or table the `Config` struct doesn't model. The kernel refuses to write a canonical rewrite that would silently drop it — the message names the offending key(s); fix them by hand before any UI save can succeed. |

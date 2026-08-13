@@ -323,6 +323,63 @@ never be proven end to end in a real browser.
   geometry (bounded 3:4 aspect ratio) and that extracted text flows
   beside the float, both against a real browser.
 
+## `web/e2e/specs/12-*.spec.ts` — the filesystem source, real end to end
+
+Unlike every other real-source plugin (paperless/silverbullet/proton/
+signal/whatsapp), `topos-plugin-filesystem` is a real, full-featured
+source plugin that IS built into this harness's `bin/plugins/` (`make
+e2e`'s own build step) and driven directly by four specs, rather than
+being structurally excluded like the section below describes for
+WhatsApp. It needs no live network credential or account — a filesystem
+source's only "connection detail" is a local temp directory each spec
+creates and tears down itself — so admitting it costs this harness
+nothing while proving the phase's own end-to-end claims against a real
+binary rather than a mock.
+
+- **`12-filesystem-tracer.spec.ts`** — the thin end-to-end slice: one PDF
+  in a configured folder becomes exactly one stream item, served through
+  the kernel's `file://`-rewrite open route, with an `Open in …` control
+  that renders as a real `<button>` (not an anchor).
+- **`12-filesystem-recursion.spec.ts`** — the `recursive` toggle proven
+  against two instances over the same corpus: the recursive instance
+  contributes a nested file, the non-recursive one never does; deleting
+  the nested file and re-syncing removes it from the stream — no
+  filesystem-watcher dependency anywhere in this design.
+- **`12-filesystem-add-source.spec.ts`** — the filesystem connection
+  form driven entirely from the UI: picking the plugin type, filling in a
+  local path, toggling "Include subfolders," and saving produces a source
+  that syncs its documents into the matching webspace.
+- **`12-external-rehearsal.spec.ts`** — criterion 5's rehearsal: the
+  same `topos-plugin-filesystem` binary, resolved from the external
+  (untrusted) plugins directory instead of the trusted one, is
+  discovered, pin-verified, launched and synced identically to the
+  trusted-tier specs above, with the untrusted badge on its own chip and
+  no other chip's.
+
+**What the browser cannot drive, and how it's covered instead:**
+
+- **Whether `xdg-open` genuinely hands a file to the desktop's own
+  handler** is a live, machine-dependent fact a hermetic browser harness
+  cannot assert on — the harness has no guarantee of a desktop session,
+  let alone a specific file-association setup. The route contract itself
+  (the resolved path, the `invalid_path`/`item_not_found`/`open_failed`
+  error shapes) is proven deterministically by
+  `kernel/httpapi/fsopen_test.go` against a stubbed `Opener` seam instead;
+  the e2e specs above only assert that the `Open in …` control renders
+  correctly and issues the right request, never that a real desktop
+  handler actually opened.
+- **The NFS/SMB freshness claim** (`docs/plugins/filesystem.md`'s "the
+  sync interval is the real freshness bound") is proven by design, not by
+  a live network-mount test: the polling walk (`plugins/filesystem/
+  walk.go`) calls no filesystem change-notification API at all, so its
+  behavior is mount-type-agnostic by construction — a real local
+  directory and a real network mount are indistinguishable to
+  `filepath.WalkDir`. The specs above exercise this design against a
+  local temp directory; there is no hermetic way to provision a live
+  NFS/SMB mount in CI, so the underlying protocol claim (no local change
+  events for another client's writes) is accepted as documented fact
+  rather than independently re-verified here.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
@@ -416,6 +473,15 @@ out-of-repo proof plugin", above, and
 `kernel/supervisor/externalproof_test.go`'s
 `TestExternalProof_OutOfRepoBinaryEndToEnd` for the standing gate this
 lands.
+
+**2026-08-14**: Phase 12 admits a sixth real-source plugin,
+`topos-plugin-filesystem`, directly into this harness's `bin/plugins/` —
+the first real (non-mock-shaped) source plugin this suite builds and
+drives, both from the trusted directory (`12-filesystem-tracer.spec.ts`,
+`12-filesystem-recursion.spec.ts`, `12-filesystem-add-source.spec.ts`)
+and, for criterion 5's rehearsal, from the external one
+(`12-external-rehearsal.spec.ts`). See "`web/e2e/specs/12-*.spec.ts` —
+the filesystem source, real end to end", above.
 
 ## Standing rule
 

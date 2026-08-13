@@ -821,6 +821,41 @@ Provenance: map[string]string{
 },
 ```
 
+### The `file://` local-path deep-link convention
+
+A plugin whose items are local files (a source declaring `path` in its
+own configuration — see "Configuration", above) sets `deep_link` to a
+`file://` URI over the item's real absolute path, rather than any other
+scheme. The kernel rewrites a `file://`-scheme `deep_link` at serve time
+into a loopback route, `POST /api/items/{id}/open` (`docs/api.md`), which
+execs the desktop's own file-association handler (`xdg-open` on Linux)
+against the path it independently resolves from its own index state and
+configuration — **never from the plugin-supplied URI itself**, which is
+used as a marker only. Every other `deep_link` scheme (`https://`, and
+any future scheme) is served unchanged, exactly as the plugin returned
+it.
+
+**The trigger is the URL scheme alone, never the plugin's declared
+`source_type`.** The kernel holds no table of known plugin types (D-05,
+above) and checks nothing beyond `strings.HasPrefix(deep_link, "file://")`
+— a third-party local-path plugin gets kernel-mediated, desktop-native
+"Open in …" behavior automatically, with zero kernel code change, simply
+by emitting an honest `file://` URI. There is no opt-in flag, no
+`Describe`-declared capability, and no contract version bump associated
+with this convention: it is available to any plugin, in-repo or
+out-of-repo, today.
+
+Building the URI is entirely the plugin's own responsibility — join your
+configured root with the item's own `source_id` (a forward-slash relative
+path, per the `Item` table above) and encode it as `file://` plus the
+resulting absolute path. `plugins/filesystem` (`item.go`'s
+`fileDeepLink`) is the reference implementation: `"file://" +
+filepath.ToSlash(filepath.Join(root, sourceID))`. The kernel's own
+re-resolution on the open route re-validates the joined path stays inside
+the configured root before ever exec'ing anything — the same
+defense-in-depth join-and-validate discipline your own plugin should
+already apply when resolving `source_id` back to a real path for `Fetch`.
+
 ## `LinkFidelity`
 
 ```protobuf

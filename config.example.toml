@@ -491,6 +491,56 @@ path = "~/.local/share/topos/whatsapp"
 read = false
 handoff = false
 
+[sources.filesystem]
+# plugin: the plugin binary's filename, resolved inside [plugins] dir.
+# Validation: none at load time; a missing file fails at startup, by path.
+plugin = "topos-plugin-filesystem"
+
+# display_name: see [sources.paperless]'s display_name comment, above —
+# identical shape and validation for every source.
+display_name = "Household Docs"
+
+# path: the local (or network-mounted) folder this instance reads
+# documents from. A leading "~" is expanded by the plugin subprocess
+# itself, not the kernel — identical convention to [sources.signal]'s
+# path, above.
+#
+# This source needs NO base_url, NO token, and NO environment variable at
+# all — a filesystem source's only "connection detail" is the path
+# itself.
+# Validation: kernel/config.Validate accepts a source declaring only
+# path, in place of base_url+token — identical to [sources.signal] and
+# [sources.whatsapp].
+path = "~/Documents/household"
+
+# recursive: whether this instance walks every depth beneath path (true)
+# or its own top level only (false). Optional; omitted (or explicitly
+# false) is the conservative default — a possibly-large, unfamiliar tree
+# stays shallow until you opt into depth.
+# Validation: none — false is always a legal value.
+recursive = false
+
+# [sources.filesystem.extras] — OPTIONAL glob-based scope overrides this
+# plugin's own Describe RPC declares (see [sources.paperless.extras],
+# above, for the general extras mechanism). Both keys are a single
+# comma-separated string of doublestar glob patterns (arbitrary-depth
+# "**" supported). exclude_glob always wins over include_glob; a declared
+# include_glob REPLACES the default document-extension allowlist for this
+# instance rather than widening it — see docs/plugins/filesystem.md for
+# the full precedence rule and the default allowlist by extension.
+# Validation: an empty key, or one outside [A-Za-z_][A-Za-z0-9_.-]*, fails
+# config load, naming the offending source instance and key — identical
+# to every other extras table. A malformed glob pattern fails that sync
+# with a named error, not config load (the pattern's own validity can
+# only be checked at match time).
+# [sources.filesystem.extras]
+# include_glob = "**/*.pdf,**/*.md"
+# exclude_glob = "**/node_modules/**,**/.git/**"
+
+[sources.filesystem.agent]
+read = false
+handoff = false
+
 # [sources.mock] — the reference "mock" plugin (plugins/mock, PLUG-05):
 # a working SourcePlugin built entirely from docs/plugin-contract.md, the
 # proto/topos/v1/plugin.proto wire contract, and the sdk module, with
