@@ -7,7 +7,7 @@
 // honest place a plugin type's connection fields are declared. A new
 // plugin type needs a new row in CONNECTION_FIELDS below.
 
-import type { SourceConfig } from './api';
+import type { SourceConfig, ExtrasFieldDecl } from './api';
 
 export interface ConnectionField {
 	// key is the SourceConfig field this input writes to.
@@ -195,6 +195,30 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			defaultValue: '/tmp/topos-e2e-corpus'
 		},
 		SYNC_INTERVAL_FIELD
+	],
+	// topos-plugin-external-demo (Phase 11, ROADMAP success criterion 5,
+	// 11-04-PLAN.md): the out-of-repo proof plugin's own required-field
+	// shape — required: true mirrors testdata/external-plugin/main.go's own
+	// empty-path fatal guard, the exact DERIVATION RULE above, read from
+	// that module's own main.go rather than copied from a sibling row. No
+	// defaultValue: unlike topos-plugin-mockstrict, this plugin has no
+	// "standard install" path a real operator would ever see — its e2e
+	// spec (11-untrusted-add.spec.ts) types a fixture-directory value into
+	// this field itself. This row is inert outside the e2e harness: the
+	// binary is built only by `make external-demo`, into `bin/plugins-
+	// external/`, never `bin/plugins/`, so GET /api/config/plugin-types
+	// never returns it unless a fixture links it into a temp external dir.
+	'topos-plugin-external-demo': [
+		DISPLAY_NAME_FIELD,
+		{
+			key: 'path',
+			label: 'Local Path',
+			required: true,
+			secret: false,
+			advanced: false,
+			placeholder: '/tmp/topos-e2e-external-demo'
+		},
+		SYNC_INTERVAL_FIELD
 	]
 };
 
@@ -339,4 +363,97 @@ export function parseMatchValues(input: string): string[] {
 		.split(',')
 		.map((value) => value.trim())
 		.filter((value) => value.length > 0);
+}
+
+// --- Phase 11 trust-boundary helpers (PLUG-06/08, D-06/D-07) ---
+
+/**
+ * Returns whether `pluginBinary` resolved from the external (untrusted)
+ * plugin directory at launch time, per GET /api/config/plugin-types'
+ * `plugin_type_tiers` lookup table (11-01-PLAN.md). A binary absent from
+ * `tiers` (not yet discovered, or the table failed to load) is treated as
+ * trusted — the conservative default, since an unknown binary cannot be
+ * selected from the picker in the first place.
+ */
+export function isExternalTier(tiers: Record<string, string>, pluginBinary: string): boolean {
+	return tiers[pluginBinary] === 'external';
+}
+
+/** The picker's fixed "Untrusted" label copy (11-UI-SPEC.md E3), shared by both picker groups and the untrusted-add test suite so the string exists in exactly one place. */
+export const UNTRUSTED_LABEL = 'Untrusted';
+
+// --- Phase 11 extras form helpers (PLUG-09, D-12/D-13/D-15, 11-UI-SPEC.md E6) ---
+
+/** One row of ConnectionForm's free-form (undeclared-key) extras editor — local UI-editing state only, never itself the wire shape (rowsToExtras composes the final `Record<string, string>` SourceConfig.extras carries). */
+export interface ExtrasRow {
+	key: string;
+	value: string;
+}
+
+/**
+ * Returns the free-form editor's initial rows for a saved (or in-progress)
+ * extras map: every key NOT among `declared`'s own keys, in stable
+ * alphabetical order (so re-deriving after a fresh declarations array
+ * arrives never reshuffles rows the operator is looking at). A saved key
+ * that a plugin's CURRENT Describe response no longer declares still
+ * surfaces here as a free-form row — a value can never become invisible
+ * (D-15's "older kernel + newer plugin still workable" framing).
+ */
+export function extrasToRows(
+	extras: Record<string, string> | undefined,
+	declared: ExtrasFieldDecl[]
+): ExtrasRow[] {
+	const declaredKeys = new Set(declared.map((field) => field.key));
+	return Object.entries(extras ?? {})
+		.filter(([key]) => !declaredKeys.has(key))
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([key, value]) => ({ key, value }));
+}
+
+/**
+ * Composes the final `extras` map a save writes: every declared field's
+ * OWN bound value (non-blank only — a blank non-required declared field is
+ * simply omitted, matching every other optional field's tolerance for
+ * being left empty) plus every free-form row whose key is non-blank once
+ * trimmed. A row's raw (untrimmed) key is never written — only the
+ * trimmed form. Caller is responsible for rejecting an empty/duplicate key
+ * BEFORE calling this (extrasKeyError, below) — this function does not
+ * itself validate, so a duplicate key here silently keeps the LAST
+ * occurrence, matching plain JS object-literal semantics.
+ */
+export function rowsToExtras(
+	declaredValues: Record<string, string>,
+	rows: ExtrasRow[]
+): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const [key, value] of Object.entries(declaredValues)) {
+		if (value.trim() === '') continue;
+		result[key] = value;
+	}
+	for (const row of rows) {
+		const key = row.key.trim();
+		if (key === '') continue;
+		result[key] = row.value;
+	}
+	return result;
+}
+
+/**
+ * Returns the fixed copy `Every extra field needs a unique key.` when any
+ * free-form row's key is empty/whitespace-only, duplicates another
+ * free-form row's key, or duplicates a declared field's key — null
+ * otherwise. Checked at the same submit-time point every caller already
+ * runs missingRequiredFields, never on every keystroke.
+ */
+export function extrasKeyError(declared: ExtrasFieldDecl[], rows: ExtrasRow[]): string | null {
+	const declaredKeys = new Set(declared.map((field) => field.key.trim()));
+	const seenRowKeys = new Set<string>();
+	for (const row of rows) {
+		const key = row.key.trim();
+		if (key === '' || declaredKeys.has(key) || seenRowKeys.has(key)) {
+			return 'Every extra field needs a unique key.';
+		}
+		seenRowKeys.add(key);
+	}
+	return null;
 }

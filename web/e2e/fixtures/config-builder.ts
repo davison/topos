@@ -56,6 +56,19 @@ export interface FixtureConfigSpec {
 	// still gets a (legitimately empty) external directory, per D-09's
 	// "missing external directory is a legitimate empty tier" rule.
 	externalPluginBinaries?: string[];
+	// externalPluginBinariesSrcDir (Phase 11, 11-05-PLAN.md Task 3): the
+	// directory externalPluginBinaries' names are resolved from for BOTH
+	// the symlink source (kernel.ts's linkPluginBinaries call) AND the pin
+	// hash below — defaults to PLUGIN_BIN_DIR (bin/plugins), matching
+	// every existing fixture's assumption that an "external" fixture
+	// binary is simply a trusted-dir binary symlinked into the second
+	// directory (e.g. topos-plugin-mockstrict). A spec proving a
+	// GENUINELY out-of-repo binary (built by `make external-demo` into
+	// `bin/plugins-external/`, never `bin/plugins/`) sets this to
+	// plugin-binaries.ts's EXTERNAL_DEMO_BIN_DIR so both the symlink
+	// source and the pin hash resolve against the real out-of-repo build
+	// artifact rather than throwing (no bin/plugins copy exists for it).
+	externalPluginBinariesSrcDir?: string;
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is how a spec reaches a mock-plugin fixture env
@@ -140,7 +153,7 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 	// [plugins] gets assembled.
 	const pins: Record<string, string> = {};
 	for (const name of spec.externalPluginBinaries ?? []) {
-		pins[name] = hashPluginBinary(name);
+		pins[name] = hashPluginBinary(name, spec.externalPluginBinariesSrcDir);
 	}
 
 	return {

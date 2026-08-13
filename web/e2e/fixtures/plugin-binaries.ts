@@ -19,6 +19,21 @@ export const KERNEL_BIN = join(REPO_ROOT, 'bin', 'topos');
 /** Absolute path to the directory `make e2e` builds plugin binaries into. */
 export const PLUGIN_BIN_DIR = join(REPO_ROOT, 'bin', 'plugins');
 
+/**
+ * Absolute path to the directory `make external-demo` builds the
+ * genuinely out-of-repo proof binary (topos-plugin-external-demo,
+ * ROADMAP success criterion 5) into — never `bin/plugins/`, never built
+ * by `make build`/`make plugins`/`make plugins-portable`. `make e2e`
+ * depends on this target (11-04-PLAN.md), so this directory is populated
+ * by the time any spec runs. A spec proving a real out-of-repo binary
+ * passes this as FixtureConfigSpec.externalPluginBinariesSrcDir rather
+ * than relying on the default PLUGIN_BIN_DIR every other
+ * externalPluginBinaries fixture (e.g. topos-plugin-mockstrict) uses —
+ * those are trusted-dir binaries symlinked into a second directory; this
+ * one has no trusted-dir copy at all.
+ */
+export const EXTERNAL_DEMO_BIN_DIR = join(REPO_ROOT, 'bin', 'plugins-external');
+
 function assertExists(path: string, label: string): void {
 	if (!existsSync(path)) {
 		throw new Error(

@@ -17,7 +17,8 @@
 		type StreamResponse,
 		type SourceStatus,
 		type SearchResult,
-		type ConfigResponse
+		type ConfigResponse,
+		type ExtrasFieldDecl
 	} from '$lib/api';
 	import {
 		resolveSourceFilters,
@@ -139,6 +140,15 @@
 	// never reads this binding before its own $state initializer has run.
 	let pluginTypes = $state<string[]>([]);
 
+	// pluginTypeTiers (Phase 11, PLUG-06/08): GET /api/config/plugin-types'
+	// own plugin_type_tiers lookup table, fetched alongside pluginTypes
+	// above and held here for the same lifetime — defaults to an empty
+	// object on failure, exactly like pluginTypes defaults to an empty
+	// array (loadPluginTypes below). Threaded through WebspaceHeader to
+	// AddSourceModal so its picker rows and untrusted-confirm step can key
+	// off tier without a second network call.
+	let pluginTypeTiers = $state<Record<string, string>>({});
+
 	// unknownConfigKeys surfaces GET /api/config's `unknown_keys` field
 	// (already computed by the kernel, previously never read by the UI —
 	// deviation, Rule 2: discovered live during the tracer checkpoint that
@@ -201,6 +211,16 @@
 	let editMode = $state<'connection' | 'match'>('connection');
 	let editInstance = $state<string | null>(null);
 	let editVocabulary = $state<string[]>([]);
+	// editExtrasFields (Phase 11, PLUG-09, D-15): this instance's plugin's
+	// declared expected extras keys, resolved via the SAME describePlugin
+	// substitute editVocabulary already uses (GET /api/sources carries
+	// neither field) — fetched for BOTH 'connection' and 'match' modes now
+	// (widened from editVocabulary's 'match'-only fetch), since the extras
+	// form (E6) renders inside ConnectionForm, reached only from
+	// 'connection' mode. Safe to pass [] when the fetch hasn't resolved
+	// yet or failed: the free-form editor still shows an instance's
+	// already-saved extras values either way.
+	let editExtrasFields = $state<ExtrasFieldDecl[]>([]);
 
 	// relinkInstance (D-03, 08-04-PLAN.md Task 2) is tracked in its OWN
 	// state value, deliberately never overloading editInstance/editMode —
@@ -223,6 +243,7 @@
 		editInstance = null;
 		editMode = 'connection';
 		editVocabulary = [];
+		editExtrasFields = [];
 	}
 
 	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'relink' | 'remove') {
@@ -241,6 +262,7 @@
 		editInstance = name;
 		editMode = kind;
 		editVocabulary = [];
+		editExtrasFields = [];
 		if (kind === 'match') {
 			try {
 				const source = configResponse.config.sources[name];
@@ -261,6 +283,10 @@
 				// lands, not merely at the moment of the second click.
 				if (editInstance !== name || editMode !== kind) return;
 				editVocabulary = resp.match_vocabulary;
+				// ?? [] guards a describe response that omits `extras`
+				// entirely — editExtrasFields must never become anything
+				// but an array, since extrasKeyError reads it unconditionally.
+				editExtrasFields = resp.extras ?? [];
 			} catch {
 				// Match settings can still be viewed/edited against whatever
 				// vocabulary resolved (possibly none) — a describe failure
@@ -271,8 +297,36 @@
 				// editOpen on the now-current (different) session either.
 				if (editInstance !== name || editMode !== kind) return;
 			}
+			editOpen = true;
+			return;
 		}
+		// 'connection' mode opens immediately, unchanged from before Phase
+		// 11 (no describePlugin call ever blocked this open) — the extras
+		// declarations fetch below is fire-and-forget and must never delay
+		// this modal's own open transition. ConnectionForm's own effect
+		// (keyed on extrasFields' identity) picks up the response whenever
+		// it lands; the same staleness guard as the match branch above
+		// applies inside loadEditExtrasFields.
 		editOpen = true;
+		void loadEditExtrasFields(name, kind);
+	}
+
+	// loadEditExtrasFields (Phase 11, PLUG-09, D-15): the 'connection' mode
+	// half of the widening above, split into its own function purely so it
+	// can run without blocking editOpen — 'connection' mode has always
+	// opened synchronously and this must not change that.
+	async function loadEditExtrasFields(name: string, kind: 'connection' | 'match') {
+		if (!configResponse) return;
+		try {
+			const source = configResponse.config.sources[name];
+			const resp = await describePlugin({ plugin: source.plugin, source });
+			if (editInstance !== name || editMode !== kind) return;
+			editExtrasFields = resp.extras ?? [];
+		} catch {
+			if (editInstance !== name || editMode !== kind) return;
+			// Silent — the free-form editor still shows an instance's
+			// already-saved extras values even with zero declarations known.
+		}
 	}
 
 	function handleEditClose() {
@@ -619,8 +673,10 @@
 		try {
 			const res = await listPluginTypes();
 			pluginTypes = res.plugin_types;
+			pluginTypeTiers = res.plugin_type_tiers;
 		} catch {
 			pluginTypes = [];
+			pluginTypeTiers = {};
 		}
 	}
 	loadPluginTypes();
@@ -932,6 +988,7 @@
 			config={configResponse?.config ?? null}
 			baseHash={configResponse?.hash ?? ''}
 			{pluginTypes}
+			{pluginTypeTiers}
 			envVars={configResponse?.env_vars ?? {}}
 			onsourceadded={handleSourceAdded}
 			onedit={handleChipEdit}
@@ -960,6 +1017,7 @@
 				baseHash={configResponse.hash}
 				envVars={configResponse.env_vars}
 				vocabulary={editVocabulary}
+				extrasFields={editExtrasFields}
 				onclose={handleEditClose}
 				onsaved={handleEditSaved}
 			/>

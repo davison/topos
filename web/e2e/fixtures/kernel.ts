@@ -283,7 +283,11 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	const configPath = join(configDir, 'config.toml');
 
 	linkPluginBinaries(pluginsDirPath, configSpec.pluginBinaries ?? ['topos-plugin-mock']);
-	linkPluginBinaries(externalPluginsDirPath, configSpec.externalPluginBinaries ?? []);
+	linkPluginBinaries(
+		externalPluginsDirPath,
+		configSpec.externalPluginBinaries ?? [],
+		configSpec.externalPluginBinariesSrcDir
+	);
 
 	const logBuffer = new BoundedLogBuffer();
 	const child = spawn(KERNEL_BIN, ['serve'], {

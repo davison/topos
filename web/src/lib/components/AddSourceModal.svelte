@@ -25,20 +25,26 @@
 		DialogFooter
 	} from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import ConnectionForm from './ConnectionForm.svelte';
 	import QRPanel from './QRPanel.svelte';
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
+	import TrustBadge from './TrustBadge.svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import {
 		pluginTypeLabel,
 		defaultConnectionValues,
 		missingRequiredFields,
 		missingRequiredFieldsMessage,
-		WHATSAPP_PLUGIN_BINARY
+		isExternalTier,
+		UNTRUSTED_LABEL,
+		extrasKeyError,
+		WHATSAPP_PLUGIN_BINARY,
+		type ExtrasRow
 	} from '$lib/plugin-fields';
-	import { addSourceToWebspace, upsertSourceInstance } from '$lib/config-edit';
+	import { addSourceToWebspace, upsertSourceInstance, setPluginPin } from '$lib/config-edit';
 	import { participatingInstances } from '$lib/participation';
 	import { resolveNewInstanceId } from '$lib/instance-id';
 	import {
@@ -47,7 +53,8 @@
 		ApiError,
 		CONFIG_CONFLICT_MESSAGE,
 		type KernelConfig,
-		type SourceConfig
+		type SourceConfig,
+		type ExtrasFieldDecl
 	} from '$lib/api';
 
 	let {
@@ -55,6 +62,7 @@
 		config,
 		baseHash,
 		pluginTypes,
+		pluginTypeTiers,
 		envVars,
 		onsaved
 	}: {
@@ -65,6 +73,13 @@
 		// plugin binary name (GET /api/config/plugin-types), excluding the
 		// mock reference fixture — the picker's "New {plugin type}…" rows.
 		pluginTypes: string[];
+		// pluginTypeTiers (Phase 11, PLUG-06/08): GET /api/config/plugin-types'
+		// own plugin_type_tiers lookup table, spanning every discovered
+		// binary in BOTH plugin directories — threaded through
+		// WebspaceHeader alongside pluginTypes so this component's picker
+		// rows (E2/E3) and the untrusted-confirm step (E1) can key off tier
+		// without a second network round trip.
+		pluginTypeTiers: Record<string, string>;
 		// envVars is the last GET/PUT /api/config response's own env_vars
 		// presence map — see SecretField.svelte's doc comment for why this
 		// (not a per-keystroke lookup) is what the secret badge reads.
@@ -99,7 +114,9 @@
 	// selected plugin type is WhatsApp and Step 1's trial launch succeeds
 	// — QRPanel renders inline below the already-entered connection
 	// fields, in this SAME Step 1 dialog, never a new one.
-	let step = $state<'existing' | 'connect' | 'link' | 'match' | 'connect-saved' | null>(null);
+	let step = $state<
+		'existing' | 'connect' | 'link' | 'untrusted-confirm' | 'match' | 'connect-saved' | null
+	>(null);
 	let selectedInstance = $state<string | null>(null);
 	let existingVocabulary = $state<string[]>([]);
 	let matchBlock = $state<Record<string, string[]>>({});
@@ -139,6 +156,30 @@
 	// on the connect step once a link opportunity has been declined.
 	let linkNotice = $state('');
 
+	// --- Untrusted-source confirm step state (Phase 11, PLUG-08, D-05/D-14,
+	// 11-UI-SPEC.md E1) ---
+	// pendingBinaryHash/pendingEnvVarNames are the kernel-computed facts
+	// handleConnectNext's own describe response already returned for an
+	// external-tier plugin type — never computed or invented client-side
+	// (T-11-25). confirmTyped is the type-to-confirm input's own local
+	// value; the primary action stays disabled until it exactly equals
+	// selectedPluginType (case-sensitive).
+	let pendingBinaryHash = $state('');
+	let pendingEnvVarNames = $state<string[]>([]);
+	let confirmTyped = $state('');
+
+	// --- Extras (Phase 11, PLUG-09, D-12/D-13/D-15, 11-UI-SPEC.md E6) ---
+	// declaredExtras is the plugin's Describe-declared expected extras keys
+	// — learned via a best-effort trial describe on plugin-type selection
+	// (selectPluginType, below) and refreshed by handleConnectNext's own
+	// describe response, never persisted by either call. extrasRows is
+	// ConnectionForm's own free-form (undeclared) row editor state, bound
+	// here (not owned by ConnectionForm) so extrasKeyError below can
+	// validate the SAME rows the form renders, at the same submit-time
+	// point missingRequiredFields already runs.
+	let declaredExtras = $state<ExtrasFieldDecl[]>([]);
+	let extrasRows = $state<ExtrasRow[]>([]);
+
 	function resetFlowState() {
 		step = null;
 		selectedInstance = null;
@@ -157,6 +198,11 @@
 		newVocabulary = [];
 		linkOffered = false;
 		linkNotice = '';
+		pendingBinaryHash = '';
+		pendingEnvVarNames = [];
+		confirmTyped = '';
+		declaredExtras = [];
+		extrasRows = [];
 	}
 
 	// selectExisting reads the instance's declared match vocabulary via
@@ -213,7 +259,41 @@
 		describeFailed = false;
 		connectError = null;
 		linkNotice = '';
+		pendingBinaryHash = '';
+		pendingEnvVarNames = [];
+		confirmTyped = '';
+		declaredExtras = [];
+		extrasRows = [];
 		step = 'connect';
+		// Best-effort, silent trial describe (Task 2, D-15) purely to learn
+		// this plugin type's declared extras keys BEFORE the operator has
+		// typed anything — the same trial launch handleConnectNext's own
+		// Next click already performs (see that function's own describePlugin
+		// call), fired one step earlier so the extras form's declared inputs
+		// render from the Connect step's very first paint rather than only
+		// after Next. The picker row that led here already carried the
+		// untrusted label (E3) if this plugin type is external-tier — this
+		// call persists nothing, and a failure here is silent: declarations
+		// simply stay empty and the free-form editor remains fully usable.
+		void loadDeclaredExtras(plugin, connectionValues);
+	}
+
+	async function loadDeclaredExtras(plugin: string, source: SourceConfig) {
+		try {
+			const resp = await describePlugin({ plugin, source });
+			// Staleness guard: a slower response landing after the operator
+			// has already moved on to a different plugin type (or closed the
+			// modal) must never overwrite that later selection's declarations.
+			if (selectedPluginType !== plugin) return;
+			// ?? [] guards a describe response that omits `extras` entirely
+			// (e.g. an older kernel, or a test's own scripted response) —
+			// declaredExtras must never become anything but an array, since
+			// extrasKeyError below reads it unconditionally.
+			declaredExtras = resp.extras ?? [];
+		} catch {
+			if (selectedPluginType !== plugin) return;
+			declaredExtras = [];
+		}
 	}
 
 	function handleExistingOpenChange(next: boolean) {
@@ -252,6 +332,25 @@
 			'Not linked yet — you can save this source now and link later from its menu (Re-link…).';
 	}
 
+	// cancelUntrustedConfirm (E1 interaction): returns to 'connect' with
+	// every typed connection value intact, mirroring handleLinkCancelled's
+	// own untouched-connectionValues discipline — only the confirm step's
+	// OWN typed-name state is cleared, since re-entering the confirm step
+	// later must start from an empty confirmation box again.
+	function cancelUntrustedConfirm() {
+		step = 'connect';
+		confirmTyped = '';
+	}
+
+	// confirmUntrusted (D-05, E1): a pure step transition, never a network
+	// call — the pin write rides the SAME single putConfig call the Match
+	// step's submitMatch already issues (see that function below), so
+	// there is nothing here that can itself fail.
+	function confirmUntrusted() {
+		if (!selectedPluginType || confirmTyped !== selectedPluginType) return;
+		step = 'match';
+	}
+
 	// handleConnectNext trial-launches the plugin against Step 1's
 	// just-typed, not-yet-persisted connection fields (describePlugin,
 	// 07-02) — writing nothing. On success it advances to Step 2 with the
@@ -286,6 +385,16 @@
 			return;
 		}
 
+		// Same submit-time point missingRequiredFields already gates —
+		// an empty or duplicate extras key must never reach describePlugin
+		// either (D-15's validation guard, Task 2).
+		const extrasErr = extrasKeyError(declaredExtras, extrasRows);
+		if (extrasErr) {
+			describeFailed = false;
+			connectError = extrasErr;
+			return;
+		}
+
 		const displayName = (connectionValues.display_name ?? '').trim();
 		const idResult = resolveNewInstanceId(config, displayName);
 		if (!idResult.ok) {
@@ -302,6 +411,12 @@
 			newInstanceId = idResult.id;
 			newVocabulary = resp.match_vocabulary;
 			matchBlock = {};
+			// Refresh declarations from this same describe response (Task 2)
+			// so returning to Connect via Back still shows them — no second
+			// call needed, this response already carries `extras`. ?? []
+			// guards a response that omits the field (see loadDeclaredExtras'
+			// identical guard, above).
+			declaredExtras = resp.extras ?? [];
 			// D-01/D-02: Describe carries only static match vocabulary and
 			// succeeds identically whether or not a WhatsApp device is
 			// paired — there is no field on this response that reports
@@ -315,9 +430,19 @@
 			// false and the Save-anyway control (gated on it) stays
 			// hidden, so an unpaired instance is never treated as a
 			// trial-launch failure.
+			//
+			// External-tier plugin types (Phase 11, D-05) route to the new
+			// untrusted-confirm step instead of straight to Match — this
+			// check runs after the WhatsApp branch so WhatsApp's own
+			// (always trusted-tier) link opportunity is unaffected.
 			if (selectedPluginType === WHATSAPP_PLUGIN_BINARY && !linkOffered) {
 				linkOffered = true;
 				step = 'link';
+			} else if (isExternalTier(pluginTypeTiers, selectedPluginType)) {
+				pendingBinaryHash = resp.binary_hash;
+				pendingEnvVarNames = resp.env_var_names;
+				confirmTyped = '';
+				step = 'untrusted-confirm';
 			} else {
 				step = 'match';
 			}
@@ -348,6 +473,12 @@
 		const missing = missingRequiredFields(selectedPluginType, connectionValues);
 		if (missing.length > 0) {
 			connectError = missingRequiredFieldsMessage(missing);
+			return;
+		}
+
+		const extrasErr = extrasKeyError(declaredExtras, extrasRows);
+		if (extrasErr) {
+			connectError = extrasErr;
 			return;
 		}
 
@@ -389,7 +520,15 @@
 		error = null;
 		try {
 			const withSource = upsertSourceInstance(config, newInstanceId, connectionValues);
-			const nextConfig = addSourceToWebspace(withSource, webspace, newInstanceId, matchBlock);
+			const withMatch = addSourceToWebspace(withSource, webspace, newInstanceId, matchBlock);
+			// External-tier plugin types (D-01/D-02, E1 interaction): the pin
+			// write rides this SAME single putConfig call — no extra network
+			// round trip — using pendingBinaryHash, the kernel-computed hash
+			// the untrusted-confirm step already displayed and the operator
+			// already confirmed against.
+			const nextConfig = isExternalTier(pluginTypeTiers, selectedPluginType)
+				? setPluginPin(withMatch, selectedPluginType, pendingBinaryHash)
+				: withMatch;
 			await putConfig({ base_hash: baseHash, config: nextConfig });
 			resetFlowState();
 			onsaved();
@@ -464,12 +603,15 @@
 					{#each availableInstances as instanceId (instanceId)}
 						{@const source = config.sources[instanceId]}
 						{@const location = source.base_url || source.path || pluginTypeLabel(source.plugin)}
+						{@const untrusted = isExternalTier(pluginTypeTiers, source.plugin)}
 						<button
 							type="button"
 							class="flex items-start gap-1.5 rounded-sm px-2 py-1.5 text-left hover:bg-muted"
 							onclick={() => selectExisting(instanceId)}
 						>
-							<PluginIcon plugin={source.plugin} size="size-4 mt-0.5 shrink-0" />
+							<TrustBadge tier={untrusted ? 'external' : 'trusted'} scale="picker">
+								<PluginIcon plugin={source.plugin} size="size-4 mt-0.5 shrink-0" />
+							</TrustBadge>
 							<span class="flex min-w-0 flex-col">
 								<span class="text-[14px] leading-[1.4] text-foreground">
 									{source.display_name ?? instanceId}
@@ -480,6 +622,13 @@
 								>
 									{location}
 								</span>
+								{#if untrusted}
+									<span
+										class="text-[14px] leading-[1.4] font-medium tracking-wide text-warning uppercase"
+									>
+										{UNTRUSTED_LABEL}
+									</span>
+								{/if}
 							</span>
 						</button>
 					{/each}
@@ -496,13 +645,25 @@
 						Install a new source
 					</p>
 					{#each pluginTypes as plugin (plugin)}
+						{@const untrusted = isExternalTier(pluginTypeTiers, plugin)}
 						<button
 							type="button"
-							class="flex items-center gap-1.5 rounded-md border border-border p-2 text-left text-[14px] leading-[1.4] text-foreground hover:border-primary hover:bg-muted"
+							class="flex items-center justify-between gap-1.5 rounded-md border border-border p-2 text-left text-[14px] leading-[1.4] text-foreground hover:border-primary hover:bg-muted"
 							onclick={() => selectPluginType(plugin)}
 						>
-							<PluginIcon plugin={plugin} size="size-4 shrink-0" />
-							{pluginTypeLabel(plugin)}
+							<span class="flex items-center gap-1.5">
+								<TrustBadge tier={untrusted ? 'external' : 'trusted'} scale="picker">
+									<PluginIcon plugin={plugin} size="size-4 shrink-0" />
+								</TrustBadge>
+								{pluginTypeLabel(plugin)}
+							</span>
+							{#if untrusted}
+								<span
+									class="ml-auto text-[14px] leading-[1.4] font-medium tracking-wide text-warning uppercase"
+								>
+									{UNTRUSTED_LABEL}
+								</span>
+							{/if}
 						</button>
 					{/each}
 				{/if}
@@ -547,7 +708,7 @@
   step this flow can be in, including the post-"Save anyway" confirmation.
 -->
 <Dialog
-	open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}
+	open={step === 'connect' || step === 'link' || step === 'untrusted-confirm' || step === 'match' || step === 'connect-saved'}
 	onOpenChange={handleConnectOpenChange}
 >
 	<DialogContent class="max-w-lg">
@@ -579,6 +740,8 @@
 						pluginBinary={selectedPluginType ?? ''}
 						values={connectionValues}
 						{envVars}
+						extrasFields={declaredExtras}
+						bind:extrasRows
 						onchange={(next) => (connectionValues = next)}
 					/>
 
@@ -603,7 +766,15 @@
 
 					<DialogFooter>
 						<Button type="button" variant="ghost" onclick={resetFlowState}>Cancel</Button>
-						{#if describeFailed}
+						<!--
+						  Save anyway is never offered for an external-tier plugin
+						  type (D-05 lineage, T-11-27): a connection-only save
+						  could not be pinned — no successful describe means no
+						  kernel-computed hash — so it would create an
+						  unstartable source that never showed the untrusted
+						  warning.
+						-->
+						{#if describeFailed && !(selectedPluginType && isExternalTier(pluginTypeTiers, selectedPluginType))}
 							<Button
 								type="button"
 								variant="ghost"
@@ -638,6 +809,8 @@
 						pluginBinary={selectedPluginType ?? ''}
 						values={connectionValues}
 						{envVars}
+						extrasFields={declaredExtras}
+						bind:extrasRows
 						onchange={(next) => (connectionValues = next)}
 					/>
 					<QRPanel
@@ -647,6 +820,68 @@
 						oncancelled={handleLinkCancelled}
 					/>
 				</div>
+			{:else if step === 'untrusted-confirm'}
+				<!--
+				  E1 — Untrusted-Source Confirm Interstitial (D-05, D-14):
+				  inserted between a successful trial-launch describe (Step 1)
+				  and Step 2 ("Match"), only for an external-tier plugin type.
+				  A pure step transition — confirmUntrusted below issues no
+				  network call of its own; the pin write rides the SAME
+				  putConfig call submitMatch already issues.
+				-->
+				<DialogHeader>
+					<DialogTitle>Add an untrusted source</DialogTitle>
+				</DialogHeader>
+				<div class="flex flex-col gap-4">
+					<p class="text-[14px] leading-[1.5] text-foreground">
+						{selectedPluginType} lives outside topos's own plugin directory — this is code topos
+						didn't build and can't vouch for. It runs with the same access as any other plugin
+						process; topos does not sandbox it.
+					</p>
+					<div class="rounded-md border border-border bg-card p-3">
+						<p class="text-[14px] leading-[1.4]">Binary: {selectedPluginType}</p>
+						<p class="font-mono text-[14px] leading-[1.4] break-all">
+							Pinned hash (SHA-256): {pendingBinaryHash}
+						</p>
+					</div>
+					{#if pendingEnvVarNames.length === 0}
+						<p class="text-[14px] leading-[1.4] text-muted-foreground">
+							topos will hand this plugin only the standard PATH/HOME/locale environment — this
+							source's configuration references no environment variables.
+						</p>
+					{:else}
+						<p class="text-[14px] leading-[1.4] text-muted-foreground">
+							topos will also hand this plugin the standard PATH/HOME/locale environment, plus
+							the values behind these variables referenced in this source's own configuration: {pendingEnvVarNames.join(
+								', '
+							)}.
+						</p>
+					{/if}
+					<div class="flex flex-col gap-1">
+						<label
+							for="untrusted-confirm-typed"
+							class="text-[14px] leading-[1.4] text-foreground"
+						>
+							Type {selectedPluginType} to confirm
+						</label>
+						<Input
+							id="untrusted-confirm-typed"
+							value={confirmTyped}
+							placeholder={selectedPluginType ?? ''}
+							oninput={(e) => (confirmTyped = e.currentTarget.value)}
+						/>
+					</div>
+				</div>
+				<DialogFooter>
+					<Button type="button" variant="ghost" onclick={cancelUntrustedConfirm}>Cancel</Button>
+					<Button
+						type="button"
+						disabled={confirmTyped !== selectedPluginType}
+						onclick={confirmUntrusted}
+					>
+						Add untrusted source
+					</Button>
+				</DialogFooter>
 			{:else if step === 'match'}
 				<DialogHeader>
 					<DialogTitle>Match settings for {webspace}</DialogTitle>

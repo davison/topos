@@ -124,7 +124,7 @@ describe('one-step modal: MatchFieldsForm alone, no connection fields', () => {
 describe('two-step modal: step indicator reads both "1. Connect" and "2. Match"', () => {
 	const connectDialogBlock = extractBetween(
 		stripped,
-		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
+		"open={step === 'connect' || step === 'link' || step === 'untrusted-confirm' || step === 'match' || step === 'connect-saved'}",
 		'</Dialog>'
 	);
 
@@ -145,7 +145,7 @@ describe('two-step modal: step indicator reads both "1. Connect" and "2. Match"'
 describe('WhatsApp not-linked branch (D-01/D-02): link step, never a trial-launch failure', () => {
 	const connectDialogBlock = extractBetween(
 		stripped,
-		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
+		"open={step === 'connect' || step === 'link' || step === 'untrusted-confirm' || step === 'match' || step === 'connect-saved'}",
 		'</Dialog>'
 	);
 	const handleConnectNextBody = extractBetween(
@@ -225,7 +225,7 @@ describe('declined-link notice (Amendment 2, G-08-1): neutral, not a failure', (
 	);
 	const connectDialogBlock = extractBetween(
 		stripped,
-		"open={step === 'connect' || step === 'link' || step === 'match' || step === 'connect-saved'}",
+		"open={step === 'connect' || step === 'link' || step === 'untrusted-confirm' || step === 'match' || step === 'connect-saved'}",
 		'</Dialog>'
 	);
 	const connectBranch = extractBetween(
@@ -352,8 +352,12 @@ describe('Step 1 failure branch: exact copy plus a Save anyway action', () => {
 	});
 
 	it('the Save anyway action is gated on the describe-failed flag', () => {
+		// Phase 11 (T-11-27) widened this guard to ALSO exclude
+		// external-tier plugin types — still opens with describeFailed,
+		// so a prefix match keeps this assertion accurate without
+		// hardcoding the widened condition's exact tail here.
 		expect(
-			/\{#if describeFailed\}/.test(stripped),
+			/\{#if describeFailed/.test(stripped),
 			'expected the Save anyway button to be gated on a describe-failed flag, so it never appears before Step 1 has actually failed'
 		).toBe(true);
 	});
@@ -619,7 +623,7 @@ describe('Group 1 instance rows: leading icon and location line (09-07 Fix 11)',
 	it('the secondary line carries truncate and a native title attribute', () => {
 		const idx = stripped.indexOf('pluginTypeLabel(source.plugin)');
 		expect(idx, 'expected to find the location fallback expression').toBeGreaterThanOrEqual(0);
-		const surrounding = stripped.slice(Math.max(0, idx - 200), idx + 700);
+		const surrounding = stripped.slice(Math.max(0, idx - 200), idx + 900);
 		expect(
 			/truncate/.test(surrounding),
 			'expected the location line to carry a truncate class near the fallback expression'

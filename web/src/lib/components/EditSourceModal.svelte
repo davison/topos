@@ -19,9 +19,21 @@
 	import ConnectionForm from './ConnectionForm.svelte';
 	import MatchFieldsForm from './MatchFieldsForm.svelte';
 	import { upsertSourceInstance, setMatchBlock } from '$lib/config-edit';
-	import { missingRequiredFields, missingRequiredFieldsMessage } from '$lib/plugin-fields';
+	import {
+		missingRequiredFields,
+		missingRequiredFieldsMessage,
+		extrasKeyError,
+		type ExtrasRow
+	} from '$lib/plugin-fields';
 	import { seedConnectionValues, seedMatchBlock } from '$lib/edit-modal-state';
-	import { putConfig, ApiError, CONFIG_CONFLICT_MESSAGE, type KernelConfig, type SourceConfig } from '$lib/api';
+	import {
+		putConfig,
+		ApiError,
+		CONFIG_CONFLICT_MESSAGE,
+		type KernelConfig,
+		type SourceConfig,
+		type ExtrasFieldDecl
+	} from '$lib/api';
 
 	let {
 		open,
@@ -32,6 +44,7 @@
 		baseHash,
 		envVars,
 		vocabulary,
+		extrasFields,
 		onclose,
 		onsaved
 	}: {
@@ -47,6 +60,14 @@
 		// route's handleChipEdit) before opening this modal in 'match' mode.
 		// Unused (and safe to pass []) in 'connection' mode.
 		vocabulary: string[];
+		// extrasFields (Phase 11, PLUG-09, D-15) is this instance's plugin's
+		// declared expected extras keys, resolved by the SAME describePlugin
+		// call the caller now also makes for 'connection' mode (see the
+		// route's handleChipEdit) — reused unforked by ConnectionForm's E6
+		// section exactly like the add flow. Safe to pass [] in 'match'
+		// mode, or when the describe call failed: the free-form editor
+		// still shows an instance's already-saved extras values either way.
+		extrasFields: ExtrasFieldDecl[];
 		onclose: () => void;
 		onsaved: () => void;
 	} = $props();
@@ -67,6 +88,11 @@
 	let matchBlock = $state<Record<string, string[]>>(seedMatchBlock(config, webspace, instance));
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	// extrasRows (Phase 11, PLUG-09, D-15): ConnectionForm's own free-form
+	// extras row editor state, bound here — same "caller owns it, child
+	// mutates it" contract as AddSourceModal's own extrasRows — so
+	// submitConnection below can validate the exact rows the form renders.
+	let extrasRows = $state<ExtrasRow[]>([]);
 
 	// Defensive reset-on-open (CR-02's second layer, matching
 	// CreateWebspaceModal's and ManageSourcesModal's own reset-on-open
@@ -110,6 +136,15 @@
 		const missing = missingRequiredFields(connectionValues.plugin, connectionValues);
 		if (missing.length > 0) {
 			error = missingRequiredFieldsMessage(missing);
+			return;
+		}
+
+		// Same submit-time point missingRequiredFields already gates (Phase
+		// 11, D-15) — an empty or duplicate extras key must never be
+		// persisted either.
+		const extrasErr = extrasKeyError(extrasFields, extrasRows);
+		if (extrasErr) {
+			error = extrasErr;
 			return;
 		}
 
@@ -169,6 +204,8 @@
 					pluginBinary={connectionValues.plugin}
 					values={connectionValues}
 					{envVars}
+					{extrasFields}
+					bind:extrasRows
 					onchange={(next) => (connectionValues = next)}
 				/>
 
