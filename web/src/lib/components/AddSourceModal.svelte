@@ -285,7 +285,11 @@
 			// has already moved on to a different plugin type (or closed the
 			// modal) must never overwrite that later selection's declarations.
 			if (selectedPluginType !== plugin) return;
-			declaredExtras = resp.extras;
+			// ?? [] guards a describe response that omits `extras` entirely
+			// (e.g. an older kernel, or a test's own scripted response) —
+			// declaredExtras must never become anything but an array, since
+			// extrasKeyError below reads it unconditionally.
+			declaredExtras = resp.extras ?? [];
 		} catch {
 			if (selectedPluginType !== plugin) return;
 			declaredExtras = [];
@@ -409,8 +413,10 @@
 			matchBlock = {};
 			// Refresh declarations from this same describe response (Task 2)
 			// so returning to Connect via Back still shows them — no second
-			// call needed, this response already carries `extras`.
-			declaredExtras = resp.extras;
+			// call needed, this response already carries `extras`. ?? []
+			// guards a response that omits the field (see loadDeclaredExtras'
+			// identical guard, above).
+			declaredExtras = resp.extras ?? [];
 			// D-01/D-02: Describe carries only static match vocabulary and
 			// succeeds identically whether or not a WhatsApp device is
 			// paired — there is no field on this response that reports

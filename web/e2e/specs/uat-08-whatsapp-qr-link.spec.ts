@@ -838,10 +838,15 @@ test.describe('08-04: WhatsApp in-app QR pairing flow', () => {
 		kernel
 	}) => {
 		await offerWhatsAppPluginType(page);
-		// The first describe call succeeds (so the panel appears and can
-		// be declined); the second — the fresh trial launch after
-		// declining — fails, simulating a genuine connection failure.
-		await scriptDescribeWhatsApp(page, { failFromCall: 2 });
+		// Phase 11 (D-15) added a silent, best-effort describe call at
+		// plugin-TYPE SELECTION time (AddSourceModal.svelte's
+		// selectPluginType/loadDeclaredExtras, purely to learn declared
+		// extras keys) — this is call #1, and it always succeeds here.
+		// Call #2 is openWhatsAppConnectStep's own real Next-click trial
+		// launch (so the panel appears and can be declined); call #3 — the
+		// fresh trial launch after declining — is the one this case makes
+		// fail, simulating a genuine connection failure.
+		await scriptDescribeWhatsApp(page, { failFromCall: 3 });
 		const qrResponse = {
 			status: 200,
 			body: {

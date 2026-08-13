@@ -195,6 +195,30 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			defaultValue: '/tmp/topos-e2e-corpus'
 		},
 		SYNC_INTERVAL_FIELD
+	],
+	// topos-plugin-external-demo (Phase 11, ROADMAP success criterion 5,
+	// 11-04-PLAN.md): the out-of-repo proof plugin's own required-field
+	// shape — required: true mirrors testdata/external-plugin/main.go's own
+	// empty-path fatal guard, the exact DERIVATION RULE above, read from
+	// that module's own main.go rather than copied from a sibling row. No
+	// defaultValue: unlike topos-plugin-mockstrict, this plugin has no
+	// "standard install" path a real operator would ever see — its e2e
+	// spec (11-untrusted-add.spec.ts) types a fixture-directory value into
+	// this field itself. This row is inert outside the e2e harness: the
+	// binary is built only by `make external-demo`, into `bin/plugins-
+	// external/`, never `bin/plugins/`, so GET /api/config/plugin-types
+	// never returns it unless a fixture links it into a temp external dir.
+	'topos-plugin-external-demo': [
+		DISPLAY_NAME_FIELD,
+		{
+			key: 'path',
+			label: 'Local Path',
+			required: true,
+			secret: false,
+			advanced: false,
+			placeholder: '/tmp/topos-e2e-external-demo'
+		},
+		SYNC_INTERVAL_FIELD
 	]
 };
 

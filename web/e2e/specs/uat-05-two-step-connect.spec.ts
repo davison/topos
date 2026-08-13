@@ -90,11 +90,21 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		// display_name is not one of them).
 		await dialog.locator('#conn-display_name').fill('Corpus One');
 
+		// Baseline captured HERE, not 0 (Phase 11, D-15): selecting the
+		// plugin type already fired one best-effort, silent describe-plugin
+		// call to learn its declared extras keys (AddSourceModal.svelte's
+		// selectPluginType/loadDeclaredExtras) — against the SEEDED,
+		// non-blank default path, before the user ever touched the field.
+		// The load-bearing claim below is unchanged: clicking Next with a
+		// BLANK field must add no FURTHER request past this baseline.
+		const baselineDescribeCount = describeRequestCount;
+
 		// --- Step 3/4: clear the required field and click Next — assert the
-		// missing-field message AND zero describe-plugin/config-write
-		// requests together. The zero-request half is the load-bearing
-		// assertion (T-07.1-16): the UI's job is to block before the plugin
-		// subprocess is ever launched with a blank mandatory field.
+		// missing-field message AND zero ADDITIONAL describe-plugin/
+		// config-write requests together. The zero-additional-request half
+		// is the load-bearing assertion (T-07.1-16): the UI's job is to
+		// block before the plugin subprocess is ever launched with a blank
+		// mandatory field.
 		//
 		// A single space, not an empty string, is what reaches the app's own
 		// missingRequiredFields() JS guard here: the Input's native HTML
@@ -115,7 +125,7 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		await dialog.getByRole('button', { name: 'Next' }).click();
 
 		await expect(dialog.getByText('Fill in Corpus Path before continuing.')).toBeVisible();
-		expect(describeRequestCount).toBe(0);
+		expect(describeRequestCount).toBe(baselineDescribeCount);
 		expect(putConfigRequestCount).toBe(0);
 
 		// --- Step 5: restore the seeded value and click Next — the Match
@@ -130,7 +140,9 @@ test.describe('07-UAT item 5: two-step "New Mockstrict…" connect flow and the 
 		await expect(dialog.getByText('2. Match', { exact: true })).toHaveClass(/font-semibold/);
 		await expect(dialog.getByLabel('Tags')).toBeVisible();
 		await expect(dialog.getByText('Labels', { exact: true })).toHaveCount(0);
-		expect(describeRequestCount).toBe(1);
+		// baseline (the selection-time best-effort describe) + this real
+		// Next-click describe = exactly one ADDITIONAL request.
+		expect(describeRequestCount).toBe(baselineDescribeCount + 1);
 		expect(putConfigRequestCount).toBe(0);
 
 		// --- Step 6/7: enter a value the mockstrict corpus actually carries

@@ -283,7 +283,10 @@
 				// lands, not merely at the moment of the second click.
 				if (editInstance !== name || editMode !== kind) return;
 				editVocabulary = resp.match_vocabulary;
-				editExtrasFields = resp.extras;
+				// ?? [] guards a describe response that omits `extras`
+				// entirely — editExtrasFields must never become anything
+				// but an array, since extrasKeyError reads it unconditionally.
+				editExtrasFields = resp.extras ?? [];
 			} catch {
 				// Match settings can still be viewed/edited against whatever
 				// vocabulary resolved (possibly none) — a describe failure
@@ -318,7 +321,7 @@
 			const source = configResponse.config.sources[name];
 			const resp = await describePlugin({ plugin: source.plugin, source });
 			if (editInstance !== name || editMode !== kind) return;
-			editExtrasFields = resp.extras;
+			editExtrasFields = resp.extras ?? [];
 		} catch {
 			if (editInstance !== name || editMode !== kind) return;
 			// Silent — the free-form editor still shows an instance's
