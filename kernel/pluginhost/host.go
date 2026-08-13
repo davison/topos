@@ -211,6 +211,17 @@ type Plugin struct {
 	// external-tier source's GET /api/sources entry can show the pin it is
 	// currently running under, not only a broken one.
 	pinnedHash string
+	// binaryHash is this instance's on-disk SHA-256, computed for EVERY
+	// TierExternal launch (11-03-PLAN.md Task 2) — including a describeOnly
+	// trial launch, where it is the ONLY way to learn an external binary's
+	// identity/hash before any pin can exist for it (T-11-14). Empty for
+	// TierTrusted (nothing is pinned for the trusted tier, D-04).
+	binaryHash string
+	// extras mirrors this instance's Describe-declared
+	// DescribeResponse.extras (D-15), filtered to drop any entry with an
+	// empty key (filterExtras) — a plugin must not be able to inject a
+	// nameless field into the operator's add-source form.
+	extras []*toposv1.ExtrasField
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -235,6 +246,15 @@ func (p *Plugin) DisplayName() string { return p.displayName }
 // or TierExternal, set once at launch by ResolveBinary and never
 // re-derived from anything the plugin process reports (T-11-01).
 func (p *Plugin) Tier() Tier { return p.tier }
+
+// BinaryHash returns this instance's on-disk SHA-256, computed at launch
+// time for TierExternal only — empty for TierTrusted (11-03-PLAN.md Task 2).
+func (p *Plugin) BinaryHash() string { return p.binaryHash }
+
+// Extras returns this instance's Describe-declared extras field
+// declarations (D-15), already filtered to drop any entry with an empty
+// key.
+func (p *Plugin) Extras() []*toposv1.ExtrasField { return p.extras }
 
 // PluginDisplayName returns the Describe-learned display name for the
 // plugin KIND this instance runs (e.g. "paperless-ngx", "SilverBullet") —
@@ -793,13 +813,17 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		}
 	}
 
-	// launchPinnedHash carries the matched pin out of the block below into
-	// the returned *Plugin's own pinnedHash field (11-03-PLAN.md Task 1) —
-	// declared at this scope, rather than inside the if-block, so a
-	// successful external-tier launch can record the pin it matched
-	// without a second hash/lookup.
-	var launchPinnedHash string
-	if tier == TierExternal && !describeOnly {
+	// binaryHash and launchPinnedHash carry TierExternal launch-time hash
+	// facts out of this block into the returned *Plugin (11-03-PLAN.md
+	// Tasks 1/2) — declared at this scope, rather than inside the
+	// if-block, so the values survive past it. binaryHash is this
+	// instance's on-disk SHA-256, computed for EVERY external-tier launch
+	// including a describeOnly trial launch (DescribePluginType needs it
+	// to report binary_hash before any pin can exist for a not-yet-added
+	// source); launchPinnedHash is only ever set once a REAL (non-trial)
+	// launch's pin actually matched.
+	var binaryHash, launchPinnedHash string
+	if tier == TierExternal {
 		var pins map[string]string
 		if raw != nil {
 			pins = raw.Plugins.Pins
@@ -808,17 +832,21 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		if hashErr != nil {
 			return nil, fmt.Errorf("pluginhost: hash external plugin binary for instance %q: %w", name, hashErr)
 		}
-		if currentHash != pinnedHash {
-			return nil, &pinMismatchError{
-				instance:    name,
-				plugin:      src.Plugin,
-				displayName: instanceDisplayName,
-				tier:        tier,
-				pinnedHash:  pinnedHash,
-				currentHash: currentHash,
+		binaryHash = currentHash
+
+		if !describeOnly {
+			if currentHash != pinnedHash {
+				return nil, &pinMismatchError{
+					instance:    name,
+					plugin:      src.Plugin,
+					displayName: instanceDisplayName,
+					tier:        tier,
+					pinnedHash:  pinnedHash,
+					currentHash: currentHash,
+				}
 			}
+			launchPinnedHash = pinnedHash
 		}
-		launchPinnedHash = pinnedHash
 	}
 
 	sourceConfig, err := json.Marshal(sourceConfigEnvelope{
@@ -941,7 +969,24 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		impl:            impl,
 		tier:            tier,
 		pinnedHash:      launchPinnedHash,
+		binaryHash:      binaryHash,
+		extras:          filterExtras(desc.GetExtras()),
 	}, nil
+}
+
+// filterExtras drops any declared extras field whose key is empty
+// (11-03-PLAN.md Task 2) — a plugin must not be able to inject a nameless
+// field into the operator's add-source form via a malformed Describe
+// response.
+func filterExtras(fields []*toposv1.ExtrasField) []*toposv1.ExtrasField {
+	out := make([]*toposv1.ExtrasField, 0, len(fields))
+	for _, f := range fields {
+		if f.GetKey() == "" {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // Plugins returns every launched plugin — a defensive copy (via snapshot)
@@ -987,6 +1032,17 @@ type DescribeInfo struct {
 	// launch's own *Plugin, never from anything the plugin's Describe
 	// response itself asserts.
 	Tier Tier
+	// BinaryHash is the SHA-256 of the trial-launched binary, computed by
+	// launch() at the exact point ResolveBinary hands back TierExternal
+	// (11-03-PLAN.md Task 2) — the fact the add-source flow's confirm
+	// interstitial displays and, on save, the value written to
+	// [plugins.pins]. Empty for TierTrusted (D-04: never pinned).
+	BinaryHash string
+	// Extras mirrors the plugin's declared DescribeResponse.extras (D-15),
+	// in declaration order, with any entry carrying an empty key already
+	// dropped (filterExtras) — a plugin must not be able to inject a
+	// nameless field into the operator's add-source form.
+	Extras []*toposv1.ExtrasField
 }
 
 // DescribePluginType trial-launches src (a config.Source naming the
@@ -1029,6 +1085,8 @@ func DescribePluginType(ctx context.Context, dirs Dirs, src config.Source, logge
 		PluginDisplayName: p.PluginDisplayName(),
 		MatchVocabulary:   p.MatchVocabulary(),
 		Tier:              p.Tier(),
+		BinaryHash:        p.BinaryHash(),
+		Extras:            p.Extras(),
 	}, nil
 }
 
