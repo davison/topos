@@ -93,11 +93,11 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: 5 plans (4 waves)
+**Plans**: 1/5 plans executed (4 waves)
 Plans:
 **Wave 1**
 
-- [ ] 12-01-PLAN.md — Tracer: a PDF in a folder reaches the stream and opens through the kernel-mediated open route
+- [x] 12-01-PLAN.md — Tracer: a PDF in a folder reaches the stream and opens through the kernel-mediated open route
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -150,7 +150,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
-| 12. Filesystem Source | v1.1.0 | 0/TBD | Not started | - |
+| 12. Filesystem Source | v1.1.0 | 1/5 | In Progress|  |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 0/TBD | Not started | - |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
