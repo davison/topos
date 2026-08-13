@@ -124,7 +124,7 @@ token = "unused"
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -274,13 +274,13 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 	}
 
 	s := &Supervisor{
-		idx:        idx,
-		cfgStore:   config.NewStoreForTesting(cfg),
-		pluginsDir: t.TempDir(), // empty — Reconcile's launch attempt for "slow" fails deterministically
-		logger:     hclog.NewNullLogger(),
-		baseCtx:    context.Background(),
-		host:       &pluginhost.Host{},
-		cfg:        cfg,
+		idx:      idx,
+		cfgStore: config.NewStoreForTesting(cfg),
+		dirs:     pluginhost.Dirs{Trusted: t.TempDir()}, // empty — Reconcile's launch attempt for "slow" fails deterministically
+		logger:   hclog.NewNullLogger(),
+		baseCtx:  context.Background(),
+		host:     &pluginhost.Host{},
+		cfg:      cfg,
 	}
 	engine := &correlate.Engine{Store: idx, Config: cfg}
 	s.coord = syncer.NewCoordinator(idx, engine, []correlate.Source{blocker})
@@ -492,7 +492,7 @@ sources = ["control"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -610,7 +610,7 @@ sources = ["control"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -713,7 +713,7 @@ sources = ["survivor"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -849,7 +849,7 @@ token = "unused"
 keywords = ["labels"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -964,7 +964,7 @@ keywords = ["demo"]
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -1070,7 +1070,7 @@ token = "unused"
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -1136,7 +1136,7 @@ token = "unused"
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -1196,7 +1196,7 @@ keywords = ["demo"]
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -1257,7 +1257,7 @@ token = "unused"
 keywords = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}

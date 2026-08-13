@@ -29,7 +29,7 @@ base_url = "http://mock.test"
 token = "unused"
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -73,7 +73,7 @@ base_url = "http://mock.test"
 token = "unused"
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -145,7 +145,7 @@ labels = ["demo"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -263,7 +263,7 @@ labels = ["demo"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}
@@ -342,7 +342,7 @@ labels = ["demo"]
 labels = ["demo"]
 `)
 
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}

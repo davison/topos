@@ -26,7 +26,7 @@ func newAgentTestRouter(store *index.Store, cfg *config.Config, fetcher Fetcher,
 	// store alongside the router — every call site in this file still
 	// builds a *config.Config by hand, so wrap it here rather than
 	// touching each one.
-	router, _ := Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, &fakePluginIconProvider{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, config.NewStoreForTesting(cfg), fetcher, prober, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, &fakePluginIconProvider{}, pluginhost.Dirs{Trusted: "testdata-unused-plugins-dir"}, hclog.NewNullLogger())
 	return router
 }
 

@@ -54,6 +54,45 @@ func newTestSourcesRouter(store *index.Store, cfg *config.Config, prober HealthP
 	return r
 }
 
+// TestSourcesHandler_ReportsTierPerInstance is Phase 11's shape check
+// (PLUG-06/07): GET /api/sources publishes the launch-time provenance
+// Tier verbatim, per instance — one trusted, one external, in the same
+// response — never merged or dropped. The trust badge (SourceChip's
+// TrustBadge) renders off this field alone, so the wire contract must
+// carry it byte-exact.
+func TestSourcesHandler_ReportsTierPerInstance(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{healths: []pluginhost.SourceHealth{
+		{Name: "paperless", SourceType: "paperless", DisplayName: "paperless-ngx", Reachable: true, Tier: pluginhost.TierTrusted},
+		{Name: "example", SourceType: "example", DisplayName: "Example", Reachable: true, Tier: pluginhost.TierExternal},
+	}}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var paperless, example sourceStatus
+	for _, s := range resp.Sources {
+		switch s.Name {
+		case "paperless":
+			paperless = s
+		case "example":
+			example = s
+		}
+	}
+	if paperless.Tier != "trusted" {
+		t.Errorf("expected paperless tier %q, got %q", "trusted", paperless.Tier)
+	}
+	if example.Tier != "external" {
+		t.Errorf("expected example tier %q, got %q", "external", example.Tier)
+	}
+}
+
 func TestSourcesHandler_ReturnsBothSourcesSortedByName(t *testing.T) {
 	store := newTestStoreForHTTP(t)
 	prober := &fakeProber{healths: []pluginhost.SourceHealth{

@@ -264,6 +264,25 @@ export interface SourceStatus {
 	source_type: string; // plugin kind (Describe-reported), matches StreamItem.source_type — descriptive only, never identity
 	display_name: string; // this instance's resolved display name (D-09): configured display_name, or `name` itself when omitted
 	plugin: string; // plugin BINARY name (e.g. "topos-plugin-mock") — the key PluginIcon.svelte addresses GET /api/plugins/{plugin}/icon with (09-01-PLAN.md Task 3)
+	// tier is this instance's launch-time provenance (Phase 11, PLUG-06/07)
+	// — published by kernel/httpapi/sources.go's sourceStatus.Tier, derived
+	// EXCLUSIVELY from which configured directory the launched binary
+	// resolved from (kernel/pluginhost.ResolveBinary), never from anything
+	// the plugin itself declares. TrustBadge and SourceChip's tooltip
+	// render off this field alone (T-11-01).
+	tier: 'trusted' | 'external';
+	// pinned_hash/current_hash/launch_failure are declared here now (the
+	// complete Phase 11 wire surface, so no later plan re-edits this file)
+	// but not yet published by the kernel — that lands with pin
+	// verification in a later Phase 11 plan (D-01/D-02/D-03). pinned_hash
+	// is the SHA-256 pinned in [plugins.pins] for this instance's binary
+	// (external tier only, D-04); current_hash is the hash actually on
+	// disk at last launch attempt; launch_failure carries 'pin_mismatch'
+	// when the two disagree, driving the "binary changed" health state
+	// and the chip menu's re-pin action.
+	pinned_hash?: string;
+	current_hash?: string;
+	launch_failure?: '' | 'pin_mismatch';
 	reachable: boolean;
 	syncing: boolean;
 	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown
@@ -343,6 +362,13 @@ export interface SourceConfig {
 	path?: string;
 	agent: AgentGrantConfig;
 	display_name?: string;
+	// extras is this instance's opaque, per-plugin passthrough map (D-12,
+	// D-13) — kernel/config/types.go's Source.Extras mirrored verbatim:
+	// string values only, round-tripped through the canonical TOML rewrite
+	// without kernel interpretation. Present only when non-empty
+	// (`omitempty` on the wire, matching every other optional field on
+	// this interface).
+	extras?: Record<string, string>;
 }
 
 export interface WebspaceConfig {
@@ -359,7 +385,12 @@ export interface WebspaceConfig {
 export interface KernelConfig {
 	server: { listen: string };
 	index: { path: string };
-	plugins: { dir: string };
+	// plugins.external_dir/pins mirror kernel/config/types.go's
+	// PluginsConfig.ExternalDir/Pins (Phase 11, D-09/D-01/D-02): the
+	// second, untrusted plugin directory and the per-external-binary
+	// SHA-256 pin map. Both optional/absent-when-empty on the wire,
+	// matching the Go struct's own `omitempty` tags.
+	plugins: { dir: string; external_dir?: string; pins?: Record<string, string> };
 	sync: { interval: string };
 	sources: Record<string, SourceConfig>;
 	webspaces: Record<string, WebspaceConfig>;
@@ -420,6 +451,15 @@ export interface PluginTypesResponse {
 	// "topos-plugin-paperless"), excluding the mock reference fixture —
 	// the "New {plugin type}…" picker row list.
 	plugin_types: string[];
+	// plugin_type_tiers is an ADDITIVE sibling (Phase 11, PLUG-06/07): a
+	// tier lookup table spanning EVERY discovered binary in BOTH
+	// directories, keyed by binary name — kernel/httpapi/config.go's
+	// pluginTypesResponse.PluginTypeTiers mirrored verbatim. Deliberately
+	// wider than plugin_types (it also covers excluded fixture names,
+	// since it is a lookup table for names a caller already holds, never
+	// a second catalog to browse) — see that Go type's own doc comment.
+	// No schema_version bump accompanies this field.
+	plugin_type_tiers: Record<string, 'trusted' | 'external'>;
 }
 
 /** GET /api/config/plugin-types */
@@ -526,11 +566,45 @@ export interface DescribePluginRequest {
 	source: SourceConfig;
 }
 
+// ExtrasFieldDecl is one entry of a later Phase 11 plan's
+// DescribePluginResponse.extras (D-15): the plugin contract's optional
+// declaration of an expected extras key, so the add-source form can
+// render a labeled input instead of relying entirely on the free-form
+// key/value editor. `secret` mirrors SecretField's own treatment (a
+// declared secret-ish key renders through SecretField, identical
+// treatment to a secret connection field); `placeholder` is
+// display-only — a declared default is NEVER auto-filled into the bound
+// value (D-14: a malicious plugin cannot get its suggested default
+// silently saved).
+export interface ExtrasFieldDecl {
+	key: string;
+	label: string;
+	required: boolean;
+	secret: boolean;
+	placeholder: string;
+}
+
 export interface DescribePluginResponse {
 	schema_version: number;
 	source_type: string;
 	plugin_display_name: string;
 	match_vocabulary: string[];
+	// tier/binary_hash/env_var_names/extras are declared here now (the
+	// complete Phase 11 wire surface, so no later plan re-edits this
+	// file) — DescribePluginHandler gains the code that POPULATES them in
+	// a later Phase 11 plan alongside pin verification and the extras
+	// form. tier is kernel-derived provenance (T-11-01), never
+	// plugin-asserted; binary_hash is computed kernel-side from the
+	// RESOLVED binary's bytes, never supplied by the plugin process;
+	// env_var_names are NAMES only, never values — the same env_vars
+	// boolean-only discipline ConfigResponse already applies (D-05),
+	// extended to the trial-launch describe response so the
+	// untrusted-confirm interstitial (E1) can disclose which variables
+	// this source's own configuration references.
+	tier: 'trusted' | 'external';
+	binary_hash: string;
+	env_var_names: string[];
+	extras: ExtrasFieldDecl[];
 }
 
 /** POST /api/config/describe-plugin */

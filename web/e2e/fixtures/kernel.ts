@@ -265,9 +265,16 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	const configDir = join(tmpDir, 'topos');
 	const indexDir = join(tmpDir, 'index');
 	const pluginsDirPath = join(tmpDir, 'plugins');
+	// externalPluginsDirPath (Phase 11, 11-01-PLAN.md Task 3): the second,
+	// untrusted plugin directory buildConfig always writes into
+	// `plugins.external_dir` — created unconditionally, alongside the
+	// existing trusted directory, so an empty externalPluginBinaries list
+	// still produces an existing-but-empty directory (the legitimate
+	// empty tier, D-09), never a missing one.
+	const externalPluginsDirPath = join(tmpDir, 'plugins-external');
 	const shareDir = join(tmpDir, 'share');
 	const cacheDir = join(tmpDir, 'cache');
-	for (const dir of [configDir, indexDir, pluginsDirPath, shareDir, cacheDir]) {
+	for (const dir of [configDir, indexDir, pluginsDirPath, externalPluginsDirPath, shareDir, cacheDir]) {
 		mkdirSync(dir, { recursive: true });
 	}
 
@@ -276,6 +283,7 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	const configPath = join(configDir, 'config.toml');
 
 	linkPluginBinaries(pluginsDirPath, configSpec.pluginBinaries ?? ['topos-plugin-mock']);
+	linkPluginBinaries(externalPluginsDirPath, configSpec.externalPluginBinaries ?? []);
 
 	const logBuffer = new BoundedLogBuffer();
 	const child = spawn(KERNEL_BIN, ['serve'], {

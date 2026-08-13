@@ -48,7 +48,14 @@ type sourceStatus struct {
 	// "topos-plugin-mock"), added 09-01-PLAN.md Task 3 so the SPA can
 	// address GET /api/plugins/{plugin}/icon directly off this row —
 	// never source_type (the plugin KIND) and never the instance id.
-	Plugin       string `json:"plugin"`
+	Plugin string `json:"plugin"`
+	// Tier is this instance's launch-time provenance ("trusted" or
+	// "external", Phase 11 PLUG-06/07) — derived exclusively from which
+	// configured directory the launched binary resolved from
+	// (pluginhost.ResolveBinary), never from anything the plugin itself
+	// declares (T-11-01). The SourceChip trust badge (11-UI-SPEC.md E2)
+	// renders off this field alone.
+	Tier         string `json:"tier"`
 	Reachable    bool   `json:"reachable"`
 	Syncing      bool   `json:"syncing"`
 	LastStatus   string `json:"last_status"`
@@ -110,6 +117,7 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			SourceType:   h.SourceType,
 			DisplayName:  h.DisplayName,
 			Plugin:       h.Plugin,
+			Tier:         string(h.Tier),
 			Reachable:    h.Reachable,
 			Syncing:      syncing[h.Name],
 			LastStatus:   run.Status,

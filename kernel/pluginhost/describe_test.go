@@ -16,7 +16,7 @@ import (
 // live subprocess required (the seam this comment names: launch()'s own
 // os.Stat check fails before anything is ever exec'd).
 func TestDescribePluginType_LaunchFailureWrapsErrorWithoutASubprocess(t *testing.T) {
-	_, err := DescribePluginType(context.Background(), t.TempDir(), config.Source{Plugin: "topos-plugin-does-not-exist"}, hclog.NewNullLogger())
+	_, err := DescribePluginType(context.Background(), Dirs{Trusted: t.TempDir()}, config.Source{Plugin: "topos-plugin-does-not-exist"}, hclog.NewNullLogger())
 	if err == nil {
 		t.Fatal("expected an error for a missing plugin binary")
 	}
@@ -34,7 +34,7 @@ func TestDescribePluginType_LaunchFailureWrapsErrorWithoutASubprocess(t *testing
 func TestDescribePluginType_RealPlugin_ReturnsDescribeInfoAndKillsBeforeReturning(t *testing.T) {
 	dir := buildMockPluginDir(t)
 
-	info, err := DescribePluginType(context.Background(), dir, config.Source{Plugin: "topos-plugin-mock"}, hclog.NewNullLogger())
+	info, err := DescribePluginType(context.Background(), Dirs{Trusted: dir}, config.Source{Plugin: "topos-plugin-mock"}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("DescribePluginType: %v", err)
 	}

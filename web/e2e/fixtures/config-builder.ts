@@ -7,6 +7,7 @@
 import { isAbsolute, join } from 'node:path';
 import { writeFileSync } from 'node:fs';
 import { stringify } from 'smol-toml';
+import { hashPluginBinary } from './plugin-binaries';
 
 /** One [sources.<id>] block, mirroring kernel/config.Source's toml tags. */
 export interface FixtureSourceSpec {
@@ -17,6 +18,11 @@ export interface FixtureSourceSpec {
 	token?: string;
 	displayName?: string;
 	agent?: { read?: boolean; handoff?: boolean };
+	// extras mirrors kernel/config.Source.Extras (D-12/D-13, Phase 11) —
+	// this instance's opaque per-plugin passthrough map. Emitted as the
+	// source's `extras` sub-table only when non-empty, so a fixture
+	// naming nothing here is byte-identical to before this field existed.
+	extras?: Record<string, string>;
 }
 
 /** One [webspaces.<name>] block, mirroring kernel/config.Webspace's toml tags. */
@@ -39,6 +45,17 @@ export interface FixtureConfigSpec {
 	// spec needing the Plan 07.1-02 e2e plugin (or any future plugin type
 	// this harness grows) names it here without editing this fixture file.
 	pluginBinaries?: string[];
+	// externalPluginBinaries (Phase 11, 11-01-PLAN.md Task 3): binary
+	// names the kernel fixture links into the SECOND, external plugins
+	// directory (`plugins.external_dir`) rather than the trusted one —
+	// the two-tier sibling of pluginBinaries above. Every name listed
+	// here is also written into buildConfig's `[plugins.pins]` table
+	// (hashed via hashPluginBinary), so an external-tier fixture source
+	// stays launchable once pin enforcement lands in a later Phase 11
+	// plan. Empty/undefined by default — a fixture naming nothing here
+	// still gets a (legitimately empty) external directory, per D-09's
+	// "missing external directory is a legitimate empty tier" rule.
+	externalPluginBinaries?: string[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is how a spec reaches a mock-plugin fixture env
@@ -86,14 +103,21 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 
 	const indexPath = join(opts.tmpDir, 'index', 'index.db');
 	const pluginsDir = join(opts.tmpDir, 'plugins');
+	// externalPluginsDir (Phase 11, 11-01-PLAN.md Task 3): the second,
+	// untrusted plugin directory, computed here under the identical
+	// single-writer/absolute-path discipline as index.path/plugins.dir —
+	// so a two-tier fixture never needs a second config-writing seam.
+	const externalPluginsDir = join(opts.tmpDir, 'plugins-external');
 
-	if (!isAbsolute(indexPath) || !isAbsolute(pluginsDir)) {
+	if (!isAbsolute(indexPath) || !isAbsolute(pluginsDir) || !isAbsolute(externalPluginsDir)) {
 		// Unreachable given the isAbsolute(opts.tmpDir) check above and
 		// node:path.join's own contract (joining onto an absolute path
 		// always stays absolute) — kept as a second, independent guard
 		// rather than trusting that invariant silently, since this is
 		// exactly the property T-07.1-01 exists to pin.
-		throw new Error('config-builder: computed index.path/plugins.dir is not absolute');
+		throw new Error(
+			'config-builder: computed index.path/plugins.dir/plugins.external_dir is not absolute'
+		);
 	}
 
 	const sources: Record<string, unknown> = {};
@@ -106,10 +130,23 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 		webspaces[ws.name] = buildWebspaceEntry(ws);
 	}
 
+	// pins (Phase 11, D-01/D-02): every name in spec.externalPluginBinaries
+	// gets an entry here, hashed via hashPluginBinary against the real
+	// build artifact — the identical bytes linkPluginBinaries symlinks
+	// into the fixture's external directory, so the pin always matches
+	// what the kernel will actually hash at launch time. Written here
+	// (rather than by a downstream helper) for the same single-writer
+	// reason index.path/plugins.dir already are — this is the ONE place
+	// [plugins] gets assembled.
+	const pins: Record<string, string> = {};
+	for (const name of spec.externalPluginBinaries ?? []) {
+		pins[name] = hashPluginBinary(name);
+	}
+
 	return {
 		server: { listen: `127.0.0.1:${opts.port}` },
 		index: { path: indexPath },
-		plugins: { dir: pluginsDir },
+		plugins: { dir: pluginsDir, external_dir: externalPluginsDir, pins },
 		// sync.interval defaults to "1h" (not kernel/config's own "15m"
 		// default) so the boot-time refresh happens exactly once per
 		// fixture lifetime and no background resync races a mid-spec
@@ -140,6 +177,11 @@ function buildSourceEntry(src: FixtureSourceSpec): Record<string, unknown> {
 	if (src.displayName !== undefined) entry.display_name = src.displayName;
 	if (src.agent !== undefined) {
 		entry.agent = { read: src.agent.read ?? false, handoff: src.agent.handoff ?? false };
+	}
+	// extras (D-12/D-13, Phase 11): emitted only when non-empty, mirroring
+	// every other optional sub-table on this entry.
+	if (src.extras !== undefined && Object.keys(src.extras).length > 0) {
+		entry.extras = src.extras;
 	}
 
 	return entry;

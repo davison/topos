@@ -225,33 +225,65 @@ func ConfigReloadHandler(cfgStore *config.Store, applier Applier) http.HandlerFu
 }
 
 // pluginTypesResponse is GET /api/config/plugin-types's response: the
-// plugin binaries actually present on disk (pluginhost.DiscoverBinaries),
+// plugin binaries actually present on disk (pluginhost.DiscoverTiered),
 // sorted, excluding the mock reference fixture — never a built-in table
 // of known plugin types.
+//
+// PluginTypeTiers is an ADDITIVE sibling field (Phase 11, PLUG-06/07): a
+// tier lookup table spanning EVERY discovered binary in BOTH tiers, keyed
+// by binary name — sourced from pluginhost.DiscoverAllTiered, not
+// DiscoverTiered, so it deliberately INCLUDES the excluded fixture names
+// (topos-plugin-mock/-mockstrict). This is intentional, not an
+// inconsistency with PluginTypes above: PluginTypeTiers is a lookup table
+// for names a caller ALREADY HOLDS (e.g. resolving the tier of an
+// already-configured instance's binary, which may legitimately be an
+// excluded fixture — see DescribePluginHandler's own doc comment for the
+// identical DiscoverBinaries/DiscoverAllBinaries split this mirrors),
+// never a second catalog to browse. No schema_version bump accompanies
+// this addition: PluginTypes' own element shape (a bare string) is
+// unchanged, and an API consumer that does not know about
+// PluginTypeTiers simply never reads it — the same additive-field
+// discipline every other Phase 11 wire addition in this repo follows.
 type pluginTypesResponse struct {
-	SchemaVersion int      `json:"schema_version"`
-	PluginTypes   []string `json:"plugin_types"`
+	SchemaVersion   int               `json:"schema_version"`
+	PluginTypes     []string          `json:"plugin_types"`
+	PluginTypeTiers map[string]string `json:"plugin_type_tiers"`
 }
 
 // PluginTypesHandler serves GET /api/config/plugin-types — the kernel
 // half of D-11's "+" chip picker's "New <plugin type>…" list. Only the
-// kernel process can see the plugins/ directory on the desktop machine's
-// filesystem; the browser has no other way to learn which plugin types
-// are installed.
-func PluginTypesHandler(pluginsDir string) http.HandlerFunc {
+// kernel process can see the plugins/ directories on the desktop
+// machine's filesystem; the browser has no other way to learn which
+// plugin types are installed, in which tier.
+func PluginTypesHandler(dirs pluginhost.Dirs) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		names, err := pluginhost.DiscoverBinaries(pluginsDir)
+		catalog, err := pluginhost.DiscoverTiered(dirs)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
-		WriteJSON(w, http.StatusOK, pluginTypesResponse{SchemaVersion: schemaVersion, PluginTypes: names})
+		names := make([]string, len(catalog))
+		for i, tb := range catalog {
+			names[i] = tb.Name
+		}
+
+		all, err := pluginhost.DiscoverAllTiered(dirs)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+		tiers := make(map[string]string, len(all))
+		for _, tb := range all {
+			tiers[tb.Name] = string(tb.Tier)
+		}
+
+		WriteJSON(w, http.StatusOK, pluginTypesResponse{SchemaVersion: schemaVersion, PluginTypes: names, PluginTypeTiers: tiers})
 	}
 }
 
 // describePluginRequest is POST /api/config/describe-plugin's request
 // body: the plugin binary name (must be a member of
-// pluginhost.DiscoverAllBinaries' own result set — see
+// pluginhost.DiscoverAllTiered's own result set — see
 // DescribePluginHandler) and the connection fields the operator has typed
 // into step 1 of the "New <plugin type>…" modal, OR an already-configured
 // instance's own stored connection fields (the "+" picker's one-step
@@ -283,21 +315,23 @@ type describePluginResponse struct {
 // disk and registering nothing on the running kernel's plugin host (see
 // pluginhost.DescribePluginType's own doc comment).
 //
-// The requested plugin MUST be a member of pluginhost.DiscoverAllBinaries'
-// own result set, checked BEFORE anything is executed (T-07-09): a
-// request naming an arbitrary binary/path is refused 404
-// plugin_binary_not_found and never reaches exec.Command — directory
-// listing, never a caller-supplied path, is the authority over what may
-// be launched. Deliberately DiscoverAllBinaries, not DiscoverBinaries: the
-// latter's ExcludedPluginBinaries filtering (kernel/pluginhost/
+// The requested plugin MUST be a member of pluginhost.DiscoverAllTiered's
+// own result set (spanning both directories), checked BEFORE anything is
+// executed (T-07-09, extended to two tiers T-11-02): a request naming an
+// arbitrary binary/path is refused 404 plugin_binary_not_found and never
+// reaches exec.Command — directory listing across BOTH configured
+// directories, never a caller-supplied path, is the authority over what
+// may be launched. Deliberately DiscoverAllTiered, not DiscoverTiered:
+// the latter's ExcludedPluginBinaries filtering (kernel/pluginhost/
 // discover_binaries.go) is a UI-policy concern scoped to what the "+ New
 // <plugin type>…" picker OFFERS (PluginTypesHandler, below) — it must not
 // also block describing an instance whose plugin type is ALREADY
 // legitimately configured, which is exactly what the one-step
 // existing-instance flow does for every already-configured instance,
 // including a topos-plugin-mock one (see DiscoverAllBinaries' own doc
-// comment for the regression this fixes).
-func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerFunc {
+// comment for the regression this fixes, which DiscoverAllTiered
+// inherits unchanged).
+func DescribePluginHandler(dirs pluginhost.Dirs, logger hclog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req describePluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -305,14 +339,14 @@ func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerF
 			return
 		}
 
-		available, err := pluginhost.DiscoverAllBinaries(pluginsDir)
+		available, err := pluginhost.DiscoverAllTiered(dirs)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
 		}
 		known := false
-		for _, name := range available {
-			if name == req.Plugin {
+		for _, tb := range available {
+			if tb.Name == req.Plugin {
 				known = true
 				break
 			}
@@ -328,7 +362,7 @@ func DescribePluginHandler(pluginsDir string, logger hclog.Logger) http.HandlerF
 		// disagree.
 		req.Source.Plugin = req.Plugin
 
-		info, err := pluginhost.DescribePluginType(r.Context(), pluginsDir, req.Source, logger)
+		info, err := pluginhost.DescribePluginType(r.Context(), dirs, req.Source, logger)
 		if err != nil {
 			WriteError(w, http.StatusBadGateway, "plugin_describe_failed", err.Error())
 			return

@@ -17,6 +17,7 @@ import (
 
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/pluginhost"
 	"github.com/davison/topos/kernel/webui"
 )
 
@@ -55,7 +56,8 @@ const schemaVersion = 1
 // ConfigSaveHandler and ConfigReloadHandler call after a successful
 // config.Store mutation, so a save or reload reconfigures the running
 // kernel in the same request rather than only the file (D-06/D-08).
-// pluginsDir and logger (07-02-PLAN.md Task 3) feed PluginTypesHandler
+// dirs (Phase 11: widened from a single pluginsDir string to
+// pluginhost.Dirs) and logger (07-02-PLAN.md Task 3) feed PluginTypesHandler
 // and DescribePluginHandler — the kernel-side half of the "+" chip
 // picker's plugin-type discovery and trial-launch-then-Describe
 // sequencing (D-11 step 1 -> step 2).
@@ -74,7 +76,7 @@ const schemaVersion = 1
 // constructed *linkSessionStore backing those routes — callers
 // (cmd/topos/main.go) must call its Shutdown() on kernel shutdown so a
 // live link subprocess is never orphaned holding a source's store lock.
-func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, suspender Suspender, icons PluginIconProvider, pluginsDir string, logger hclog.Logger) (chi.Router, *linkSessionStore) {
+func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober HealthProber, refresher Refresher, applier Applier, suspender Suspender, icons PluginIconProvider, dirs pluginhost.Dirs, logger hclog.Logger) (chi.Router, *linkSessionStore) {
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
@@ -98,8 +100,8 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// (D-11 step 1 -> step 2): the kernel-side half of the "+" chip
 	// picker's plugin-type discovery and trial-launch-then-Describe
 	// sequencing — see kernel/httpapi/config.go.
-	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
-	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, logger))
+	r.Get("/api/config/plugin-types", PluginTypesHandler(dirs))
+	r.Post("/api/config/describe-plugin", DescribePluginHandler(dirs, logger))
 	// The plugin-icon route (09-01-PLAN.md Task 2, 09-UI-SPEC.md Fix 10):
 	// the plugin BINARY's own declared identity icon, cached at its
 	// launch-time Describe call — see kernel/httpapi/pluginicon.go.
@@ -110,8 +112,12 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// browser drives it directly from the Add-Source/Re-link UI); like
 	// every other /api/config/* route it is registered on /api/ only —
 	// MountAgentRoutes below registers zero non-GET routes on /agent/v1.
+	// WhatsAppLinkStartHandler deliberately resolves against dirs.Trusted
+	// ONLY, never dirs.External (11-CONTEXT.md, this plan's own
+	// prohibition): the QR link flow is an in-repo-plugin-only path and
+	// must not gain an external-tier launch surface.
 	linkStore := newLinkSessionStore()
-	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(pluginsDir, suspender, newExecLinkSpawner(logger), linkStore, logger))
+	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(dirs.Trusted, suspender, newExecLinkSpawner(logger), linkStore, logger))
 	r.Get("/api/config/whatsapp-link/{session}", WhatsAppLinkPollHandler(linkStore, logger))
 	r.Delete("/api/config/whatsapp-link/{session}", WhatsAppLinkCancelHandler(linkStore, logger))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a

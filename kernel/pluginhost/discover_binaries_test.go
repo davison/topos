@@ -277,3 +277,133 @@ func TestDiscoverBinaries_FollowsSymlinkedBinaries(t *testing.T) {
 		t.Fatalf("expected exactly a symlinked topos-plugin-paperless to be discovered, got %v", got)
 	}
 }
+
+// TestDiscoverAllTiered_NameInBothDirectoriesResolvesToTrustedOnly proves
+// D-11's shadow rule at the discovery level: a binary name present in
+// BOTH the trusted and external directories appears EXACTLY ONCE in
+// DiscoverAllTiered's result, tagged TierTrusted — the trusted copy
+// always wins a two-tier name collision.
+func TestDiscoverAllTiered_NameInBothDirectoriesResolvesToTrustedOnly(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-shadowed")
+	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+
+	externalDir := t.TempDir()
+	writeFixtureFile(t, externalDir, "topos-plugin-shadowed")
+	writeFixtureFile(t, externalDir, "topos-plugin-example")
+
+	got, err := DiscoverAllTiered(Dirs{Trusted: trustedDir, External: externalDir})
+	if err != nil {
+		t.Fatalf("DiscoverAllTiered: %v", err)
+	}
+
+	want := []TieredBinary{
+		{Name: "topos-plugin-example", Tier: TierExternal},
+		{Name: "topos-plugin-paperless", Tier: TierTrusted},
+		{Name: "topos-plugin-shadowed", Tier: TierTrusted},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %+v, got %+v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected sorted, de-duplicated %+v, got %+v", want, got)
+		}
+	}
+}
+
+// TestDiscoverTiered_ExclusionPolicyAppliesUniformlyAcrossBothTiers
+// proves the mock/mockstrict UI-policy exclusion is applied identically
+// regardless of which directory the fixture binary sits in — a fixture
+// binary in the EXTERNAL directory is excluded from the catalog exactly
+// like one in the trusted directory always has been.
+func TestDiscoverTiered_ExclusionPolicyAppliesUniformlyAcrossBothTiers(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-mock")
+	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+
+	externalDir := t.TempDir()
+	writeFixtureFile(t, externalDir, "topos-plugin-mockstrict")
+	writeFixtureFile(t, externalDir, "topos-plugin-example")
+
+	got, err := DiscoverTiered(Dirs{Trusted: trustedDir, External: externalDir})
+	if err != nil {
+		t.Fatalf("DiscoverTiered: %v", err)
+	}
+
+	for _, tb := range got {
+		if tb.Name == "topos-plugin-mock" || tb.Name == "topos-plugin-mockstrict" {
+			t.Fatalf("expected both fixture binaries excluded regardless of tier, got %+v", got)
+		}
+	}
+
+	want := []TieredBinary{
+		{Name: "topos-plugin-example", Tier: TierExternal},
+		{Name: "topos-plugin-paperless", Tier: TierTrusted},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %+v, got %+v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected sorted %+v, got %+v", want, got)
+		}
+	}
+}
+
+// TestDiscoverAllTiered_AbsentExternalDirectoryIsEmptyTierNotAnError
+// proves a missing/absent external directory contributes an empty set —
+// a legitimate empty tier, mirroring DiscoverAllBinaries' own
+// missing-directory-is-empty-state contract, never an error.
+func TestDiscoverAllTiered_AbsentExternalDirectoryIsEmptyTierNotAnError(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+
+	got, err := DiscoverAllTiered(Dirs{Trusted: trustedDir, External: filepath.Join(t.TempDir(), "does-not-exist")})
+	if err != nil {
+		t.Fatalf("expected a nil error for an absent external directory, got: %v", err)
+	}
+	want := []TieredBinary{{Name: "topos-plugin-paperless", Tier: TierTrusted}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("expected %+v, got %+v", want, got)
+	}
+}
+
+// TestDiscoverAllTiered_BothDirectoriesEmptyStringReturnsEmptyNotError
+// proves the zero-value Dirs{} (both fields the empty string, e.g. an
+// omitted [plugins] external_dir before cmd/topos resolves a default)
+// returns an empty, never-nil slice with a nil error.
+func TestDiscoverAllTiered_BothDirectoriesEmptyStringReturnsEmptyNotError(t *testing.T) {
+	got, err := DiscoverAllTiered(Dirs{})
+	if err != nil {
+		t.Fatalf("expected a nil error for an empty Dirs, got: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected an empty slice, got %+v", got)
+	}
+}
+
+// TestDiscoverAllTiered_SymlinkedExternalBinaryIsDiscovered proves a
+// symlinked binary in the EXTERNAL directory is discovered exactly like
+// a symlinked binary in the trusted directory already is (the e2e
+// harness's own fixture shape, extended to the external tier by plan
+// 11-01's Task 3) — tagged TierExternal.
+func TestDiscoverAllTiered_SymlinkedExternalBinaryIsDiscovered(t *testing.T) {
+	realDir := t.TempDir()
+	writeFixtureFile(t, realDir, "topos-plugin-example")
+
+	externalDir := t.TempDir()
+	if err := os.Symlink(filepath.Join(realDir, "topos-plugin-example"), filepath.Join(externalDir, "topos-plugin-example")); err != nil {
+		t.Fatalf("symlink fixture: %v", err)
+	}
+
+	got, err := DiscoverAllTiered(Dirs{External: externalDir})
+	if err != nil {
+		t.Fatalf("DiscoverAllTiered: %v", err)
+	}
+	want := []TieredBinary{{Name: "topos-plugin-example", Tier: TierExternal}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("expected a symlinked external binary %+v, got %+v", want, got)
+	}
+}
+
