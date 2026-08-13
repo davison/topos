@@ -158,12 +158,17 @@ kernel always dispenses `"source"`).
 The kernel discovers plugins by scanning a plugins directory for binaries,
 not from a compile-time list — this is what lets a kernel build ship
 without a Signal-plugin's cgo/C-toolchain requirement for a user who
-doesn't configure Signal. The directory defaults to `plugins`, resolved
-relative to the running `topos` executable, and is overridable via the
-`[plugins] dir` config key (see `config.example.toml`).
+doesn't configure Signal. As of this contract generation the kernel scans
+**two** directories, not one — see "Trust tiers and pinning", below, for
+the full shape; the short version is that `[plugins] dir` (default
+`plugins`, resolved relative to the running `topos` executable) is
+unchanged, and a second, independently configured directory
+(`[plugins] external_dir`) is scanned alongside it, with a binary's
+directory of origin determining how much the kernel — and, downstream, its
+own UI — trusts it.
 
 For each configured `[sources.<name>]` entry, the kernel launches
-`<plugins-dir>/<plugin-binary-name>` as a subprocess and negotiates the
+`<resolved-dir>/<plugin-binary-name>` as a subprocess and negotiates the
 handshake over gRPC only — `AllowedProtocols` is restricted to
 `[]plugin.Protocol{plugin.ProtocolGRPC}`, so a plugin implementing only
 the legacy net/rpc transport will fail to connect. Immediately after a
@@ -188,6 +193,141 @@ instance identity** — it still declares only its `source_type` via
 `Describe`, exactly as before this phase, and has no way to observe
 which `[sources.<id>]` key the kernel launched it under. Identity lives
 entirely on the kernel side of the process boundary.
+
+## Trust tiers
+
+The kernel scans two plugin directories, never one:
+
+- **Trusted** — `[plugins] dir`, default `plugins`, the directory this
+  repository's own `make build`/`make dev` populates. A binary resolved
+  from here is `pluginhost.TierTrusted`.
+- **External** — `[plugins] external_dir`. A binary resolved from here is
+  `pluginhost.TierExternal`. Omitted (the common case — most operators
+  never set this key), it defaults to a per-OS platform data directory
+  with no config required: `$XDG_DATA_HOME/topos/plugins-external`
+  (falling back to `~/.local/share/topos/plugins-external` when
+  `XDG_DATA_HOME` is unset) on Linux, `~/Library/Application
+  Support/topos/plugins-external` on macOS, and
+  `%LOCALAPPDATA%\topos\plugins-external` on Windows. The kernel never
+  creates this directory itself — an operator who never drops a binary
+  there simply has an empty external tier, which is a legitimate,
+  unremarkable state, not an error.
+
+**Tier is derived exclusively from which directory a binary resolved
+from, launch time — never from anything the plugin itself declares.**
+There is no `Describe`-reported "I am trusted" field, no signature, no
+allowlist of known-good `source_type` values: the kernel decides tier
+purely by asking "which directory did I find this binary's bytes in,"
+and that answer is set once at launch and never re-derived from a live
+RPC afterward. This is a structural choice, not an oversight — a plugin
+process is not a trustworthy witness to its own trustworthiness.
+
+**The shadow rule.** If a binary of the same filename exists in BOTH
+directories, the kernel launches the trusted copy and ignores the
+external one, logging a named warning identifying the shadowed binary. A
+binary can never impersonate a trusted plugin by choosing a colliding
+filename in the external directory — the trusted directory always wins,
+silently to the running kernel (loudly to its own logs), never the other
+way around.
+
+**Two instances, two tiers, no conflict.** Two `[sources.<id>]` entries
+naming the same plugin binary always resolve to the same tier (tier is a
+property of the binary's resolved path, not of the instance), but two
+DIFFERENT plugin binaries can freely sit in different tiers — a
+deployment mixing this repository's own trusted paperless/SilverBullet/
+Proton/Signal/WhatsApp plugins with a third-party external one is the
+expected shape this whole mechanism exists to support.
+
+## Pinning
+
+An external-tier binary is additionally **content-pinned**: the kernel
+records the SHA-256 of its bytes in `[plugins.pins]`, keyed by binary
+name (e.g. `"topos-plugin-example"`), the first time an operator adds a
+source using that binary — the kernel's own confirm-before-trust flow
+writes this table; hand-editing it is never required (though a hand-edit
+is honored exactly like any other config key). Every subsequent launch of
+that binary **re-verifies** the pin: the kernel recomputes the on-disk
+SHA-256 immediately before `exec`, and refuses to launch — never
+executing the binary at all — if the two hashes disagree.
+
+**Trusted-tier binaries are never pinned.** This repository's own
+`make build`/`make dev` rebuilds every trusted binary constantly during
+normal development; pinning one would false-alarm on every rebuild for no
+security benefit (a trusted-directory binary already IS the operator's
+own build). Pinning applies to the external tier exclusively.
+
+**What a pin mismatch looks like operationally.** A pin mismatch is a
+SOFT, per-instance failure, never a hard kernel-boot or config-save
+failure: every other configured source — trusted or external, pinned or
+not — still boots and syncs normally. The one mismatched instance is
+simply refused launch, named, with both the pinned and the current hash
+recorded; it surfaces as a real, visible entry on `GET /api/sources`
+(never a silent omission — see `docs/api.md`'s `launch_failure` field)
+carrying a `pin_mismatch` reason the kernel's own UI renders as a
+re-pin ("Trust updated binary") action, repairable per source from that
+same source's own menu. An external binary with NO recorded pin at all is
+treated identically to a mismatch — there is no "unpinned, launch
+anyway" state for the external tier.
+
+**A pin proves sameness, not provenance.** A matching SHA-256 tells you
+"these are the exact same bytes the kernel saw and you accepted before" —
+it says nothing about who built those bytes, whether the source code they
+came from is trustworthy, or whether the binary does what its name
+implies. There is no signature verification, no publisher identity, no
+supply-chain attestation anywhere in this design. If a third-party plugin
+author publishes a checksum through their own release process, verify it
+yourself, independently of this mechanism, before you first add the
+source — the kernel's pin only protects you AFTER that first informed
+decision, by detecting any later, unexpected change to the bytes it
+already trusted.
+
+## The launch environment
+
+A launched plugin subprocess receives **exactly** the following
+environment, and nothing else — it must not expect to inherit anything
+from the kernel process's own environment beyond what is listed here:
+
+1. **A fixed, documented desktop-session allowlist**, copied present-only
+   (an unset allowlisted variable contributes nothing, never an
+   empty-string entry): `PATH`, `HOME`, `LANG`, `LC_ALL`, `LC_CTYPE`,
+   `TZ`, `TMPDIR`, `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS`. The
+   first seven cover the ordinary needs of any subprocess (locating
+   binaries, resolving `~`, consistent locale/timezone/scratch-space
+   handling); the last two are desktop-session plumbing the Signal
+   plugin's Secret Service key retrieval requires — session ADDRESSES,
+   not secret values.
+2. **The value behind every `${VAR}`/`$VAR` reference THIS instance's own
+   raw config actually declares** — scanned from the instance's
+   `[sources.<id>]` block (including any `extras` table, below), and
+   nothing else. A variable set in the kernel process's own environment
+   but referenced nowhere in this instance's own config is never copied
+   in, no matter what it happens to be named: the kernel's remaining
+   environment (any credential, any unrelated secret sitting in the
+   operator's shell) is structurally invisible to a plugin subprocess
+   that never referenced it.
+3. **`WEBSPACES_SOURCE_CONFIG`** (always) and **`WEBSPACES_DESCRIBE_ONLY=1`**
+   (trial launches only) — see "Configuration", below.
+
+Nothing else reaches the subprocess. The kernel never passes its own
+`os.Environ()` through wholesale — the allowlist above is enforced at the
+process-launch boundary itself (`goplugin.ClientConfig.SkipHostEnv`), not
+merely by constructing a restricted `exec.Cmd.Env` and hoping the
+transport respects it.
+
+**This is disclosure and least-hand-over, not containment.** Everything
+in "A plugin is read-only by construction," above, still applies without
+qualification: topos does not sandbox plugins. A plugin binary launched
+by the kernel is a regular native process with the full local OS access
+of the user who runs the kernel — it can read any file its OS-level
+permissions allow, open any socket, and see the desktop session
+addresses listed above directly off the filesystem regardless of what
+this allowlist withholds. What this section describes is a deliberate,
+honest reduction of what the kernel HANDS the subprocess through its own
+environment variables — never a claim that the subprocess cannot reach
+further on its own. Installing a third-party plugin remains exactly the
+same trust decision as installing the kernel binary itself: only run
+plugin binaries you built yourself or whose source you trust, tiers and
+pins notwithstanding.
 
 ## Configuration: `WEBSPACES_SOURCE_CONFIG`
 
@@ -243,12 +383,63 @@ requires `WEBSPACES_SOURCE_CONFIG` to be set:
 _ = os.Getenv("WEBSPACES_SOURCE_CONFIG")
 ```
 
+**`extras` — a nested object for provider-specific settings the kernel
+has no built-in field for.** An operator declares these under
+`[sources.<id>.extras]` in `config.toml`:
+
+```toml
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "${EXAMPLE_URL}"
+token = "${EXAMPLE_TOKEN}"
+
+[sources.example.extras]
+region = "${EXAMPLE_REGION}"
+project_id = "acme-prod"
+```
+
+and they reach the subprocess nested inside `WEBSPACES_SOURCE_CONFIG`, as
+an `extras` object alongside the top-level keys:
+
+```json
+{
+  "base_url": "https://example.lan",
+  "token": "abc123...",
+  "extras": { "region": "eu-west", "project_id": "acme-prod" }
+}
+```
+
+Every `extras` value is always a **string** — the kernel has no
+type-inference over this table, and holds no built-in knowledge of what
+any given extras key means (D-12). A `${VAR}`/`$VAR` reference inside an
+extras value expands from the environment exactly like `base_url` or
+`token` does — the identical `os.Expand` pass, run before your plugin
+ever sees the JSON. The `extras` key is **omitted entirely** (never an
+empty object) when a source declares no extras at all, so your plugin's
+own JSON decode sees "no extras configured" unambiguously rather than an
+empty-vs-absent case to special-case.
+
 ## RPC semantics
 
 ### `Describe`
 
 Called once, immediately after the handshake, before any other RPC.
-Returns the plugin's identity:
+Returns the plugin's identity.
+
+**The kernel may call `Describe` against your plugin before any source
+using it is ever persisted.** The webspace builder's add-source flow
+trial-launches your binary — full handshake, one `Describe` call, then
+kills the subprocess — against connection fields the operator has typed
+but not yet saved, so it can show them the resulting tier, match
+vocabulary, and (for the external tier) the binary's own hash before
+anything reaches `config.toml`. This is the ONLY way an operator can
+learn an external binary's identity/hash before a pin can exist for it
+(a `WEBSPACES_DESCRIBE_ONLY=1` marker is set on this launch's own
+environment — see "The launch environment", above). A well-behaved
+plugin's `Describe` implementation is idempotent and side-effect-free
+regardless of whether it is ever called this way or as part of a real,
+persisted launch — nothing about this contract distinguishes the two
+call sites at the RPC level.
 
 ```protobuf
 message DescribeResponse {
@@ -259,6 +450,16 @@ message DescribeResponse {
   repeated string match_vocabulary = 4;
   bytes  icon              = 5;  // small square SVG or PNG, <= 64KB
   string icon_mime         = 6;  // "image/svg+xml" or "image/png"
+  repeated ExtrasField extras = 7;  // OPTIONAL: declared provider-specific
+                                      // config.Source.Extras keys (D-15)
+}
+
+message ExtrasField {
+  string key         = 1;  // exact Extras map key, e.g. "region" — never a label
+  string label       = 2;  // human-readable form-input label
+  bool   required    = 3;  // advisory only — the kernel never enforces this
+  bool   secret      = 4;  // hint: render the form input masked
+  string placeholder = 5;  // DISPLAY-ONLY — never pre-filled into a saved value
 }
 ```
 
@@ -309,6 +510,28 @@ declared by this repository's in-repo plugins — `["folders"]` (proton),
 closed set: a future plugin type declares whatever field names make sense
 for its own source system's native categorization, with no proto change
 required.
+
+`extras` (D-15) is an OPTIONAL, additive declaration of provider-specific
+config keys your plugin expects beyond the built-in `base_url`/`token`/
+`path`/etc. fields — declaring nothing is fully supported (the kernel's
+add-source UI falls back to a free-form key/value editor that still lets
+an operator supply any extras key your plugin's own documentation names,
+whether or not you declared it here). Each `ExtrasField` names one
+`[sources.<id>.extras]` key (`key`, matched verbatim, never a display
+label), a human-readable `label` for the kernel's own add-source form,
+whether the form should treat it as `required` (advisory only — the
+kernel never rejects a saved config missing a "required" extras key,
+since your plugin's own requirements are not something
+`kernel/config.Validate` enforces), whether the form should render the
+input `secret` (masked, matching the treatment `base_url`/`token` already
+receive), and an optional `placeholder` hint. **`placeholder` is
+display-only and is NEVER pre-filled into a value the kernel then
+saves** — this is deliberate (T-11-11): a malicious `Describe` response
+suggesting its own default (e.g. `"${SOME_SECRET}"`) can never get
+silently persisted into an operator's `config.toml` and later expanded
+just because it looked plausible in an empty form field. A field carrying
+an empty `key` is dropped entirely by the kernel before it ever reaches
+any form — a plugin cannot use this mechanism to inject a nameless field.
 
 ### `Match`
 
