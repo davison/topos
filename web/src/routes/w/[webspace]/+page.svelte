@@ -36,6 +36,7 @@
 	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
 	import EditSourceModal from '$lib/components/EditSourceModal.svelte';
 	import RelinkModal from '$lib/components/RelinkModal.svelte';
+	import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';
 	import ManageSourcesModal from '$lib/components/ManageSourcesModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
@@ -231,6 +232,16 @@
 	// stale-response guard above exists to prevent for the describe race.
 	let relinkInstance = $state<string | null>(null);
 
+	// trustUpdateInstance (11-06-PLAN.md Task 2, 11-UI-SPEC.md E4) mirrors
+	// relinkInstance's own shape exactly — its own state slot, never
+	// overloaded onto editInstance/editMode, since TrustUpdateDialog is
+	// another structurally different per-chip modal with no describePlugin
+	// call of its own. Resolved to a real SourceStatus via trustUpdateSource
+	// (declared below, alongside sourcesByInstance — GET /api/sources' own
+	// live pinned_hash/current_hash facts; TrustUpdateDialog never derives
+	// or computes a hash itself).
+	let trustUpdateInstance = $state<string | null>(null);
+
 	// The single edit-session reset site (mirrors AddSourceModal.svelte's
 	// own single resetFlowState) — handleEditClose and handleEditSaved both
 	// call this and do no clearing of their own. Clearing editInstance
@@ -262,12 +273,11 @@
 			return;
 		}
 		if (kind === 'trust-update') {
-			// Placeholder (11-06-PLAN.md Task 1): widening onedit's kind
-			// union in SourceChip.svelte (this route's own onedit prop type
-			// must widen in lockstep to stay assignable) requires this
-			// branch to exist for the file to type-check. Task 2 of this
-			// same plan replaces this no-op with the real trustUpdateInstance
-			// state slot and TrustUpdateDialog mount.
+			// Branches before the describe path below, exactly like
+			// 'relink' above (11-06-PLAN.md Task 2, E4) — re-establishing
+			// trust needs no describePlugin call either, and therefore no
+			// stale-response guard.
+			trustUpdateInstance = name;
 			return;
 		}
 		if (!configResponse) return;
@@ -363,6 +373,24 @@
 	}
 
 	async function handleRelinked() {
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
+
+	// handleTrustUpdateClose/handleTrustUpdateSaved (11-06-PLAN.md Task 2,
+	// E4): trustUpdateInstance is the ONE place a re-pin session is
+	// cleared, mirroring handleRelinkClose/handleRelinked exactly.
+	// TrustUpdateDialog itself calls onclose() on Cancel/outside-click/
+	// Escape and onsaved() (which also clears the instance) once the
+	// single putConfig write succeeds — refreshing config (the new pin),
+	// sources (the chip's own health/hash fields) and the stream (D-07's
+	// eager reconcile) together, so the chip recovers without a kernel
+	// restart.
+	function handleTrustUpdateClose() {
+		trustUpdateInstance = null;
+	}
+
+	async function handleTrustUpdateSaved() {
+		trustUpdateInstance = null;
 		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
 	}
 
@@ -489,6 +517,14 @@
 	let sourcesState: 'loading' | 'error' | 'ready' = $state('loading');
 	let sourcesByInstance = $derived(new Map(sources.map((s) => [s.name, s])));
 	let staleInstances = $derived(staleSources(sources));
+	// trustUpdateSource (11-06-PLAN.md Task 2, E4): resolves trustUpdateInstance
+	// to its live SourceStatus via the same sourcesByInstance map every other
+	// per-instance lookup already uses — declared here, after
+	// sourcesByInstance, so its own $derived reads an already-initialized
+	// value rather than one still in its declaration's temporal dead zone.
+	let trustUpdateSource = $derived(
+		trustUpdateInstance ? (sourcesByInstance.get(trustUpdateInstance) ?? null) : null
+	);
 
 	// Filter selection lives in the URL query so a reload or a shared
 	// deep link restores the same multi-source view (D-02, superseding
@@ -1044,6 +1080,19 @@
 				config={configResponse.config}
 				onclose={handleRelinkClose}
 				onrelinked={handleRelinked}
+			/>
+		{/key}
+	{/if}
+
+	{#if configResponse && trustUpdateInstance && trustUpdateSource}
+		{#key trustUpdateInstance}
+			<TrustUpdateDialog
+				open={true}
+				source={trustUpdateSource}
+				config={configResponse.config}
+				baseHash={configResponse.hash}
+				onclose={handleTrustUpdateClose}
+				onsaved={handleTrustUpdateSaved}
 			/>
 		{/key}
 	{/if}

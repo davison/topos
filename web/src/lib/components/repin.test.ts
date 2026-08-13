@@ -256,3 +256,194 @@ describe('SourceChip.svelte: onedit kind union widened with \'trust-update\'', (
 		).toBe(true);
 	});
 });
+
+// --- Task 2: TrustUpdateDialog.svelte and the route's 'trust-update' wiring ---
+
+const dialogPath = join(here, 'TrustUpdateDialog.svelte');
+const routePath = join(here, '..', '..', 'routes', 'w', '[webspace]', '+page.svelte');
+const rawDialog = readFileSync(dialogPath, 'utf-8');
+const rawRoute = readFileSync(routePath, 'utf-8');
+const strippedDialog = stripComments(rawDialog);
+const strippedRoute = stripComments(rawRoute);
+
+describe('repin guard (Task 2): found non-empty comment-stripped sources', () => {
+	it('TrustUpdateDialog.svelte', () => {
+		expect(strippedDialog.length).toBeGreaterThan(0);
+	});
+	it('+page.svelte', () => {
+		expect(strippedRoute.length).toBeGreaterThan(0);
+	});
+});
+
+describe('TrustUpdateDialog.svelte: E4 Copywriting Contract', () => {
+	it('renders the exact dialog title', () => {
+		expect(strippedDialog.includes('Binary changed')).toBe(true);
+	});
+
+	it('renders the exact body copy, with {source.plugin} as the binary name', () => {
+		const normalized = strippedDialog.replace(/\s+/g, ' ');
+		expect(
+			normalized.includes(
+				"{source.plugin} no longer matches the hash topos pinned when you added it. This can mean the binary was rebuilt, or that something else replaced it — topos can't tell which. Only continue if you trust this change."
+			)
+		).toBe(true);
+	});
+
+	it('renders the hash block lines', () => {
+		expect(strippedDialog.includes('Previously pinned:')).toBe(true);
+		expect(strippedDialog.includes('Currently on disk:')).toBe(true);
+	});
+
+	it('renders Cancel and Trust updated binary buttons', () => {
+		expect(strippedDialog.includes('Cancel')).toBe(true);
+		expect(strippedDialog.includes('Trust updated binary')).toBe(true);
+	});
+});
+
+describe('TrustUpdateDialog.svelte: hash block — short previous, full+break-all current, no-previous-pin branch', () => {
+	const hashBlock = extractBetween(strippedDialog, 'Previously pinned:', 'Currently on disk:');
+
+	it('the previously-pinned line branches on source.pinned_hash — a "not pinned" reading when absent (edge: empty)', () => {
+		expect(
+			strippedDialog.includes(
+				"Previously pinned: {source.pinned_hash ? shortHash(source.pinned_hash) : 'not pinned'}"
+			)
+		).toBe(true);
+	});
+
+	it('the currently-on-disk line renders the FULL hash with break-all so it wraps rather than overflows', () => {
+		const currentlyBlockIdx = strippedDialog.indexOf('Currently on disk:');
+		const surrounding = strippedDialog.slice(
+			Math.max(0, currentlyBlockIdx - 100),
+			currentlyBlockIdx
+		);
+		expect(surrounding.includes('break-all')).toBe(true);
+		expect(strippedDialog.includes('Currently on disk: {source.current_hash')).toBe(true);
+	});
+
+	it('never renders a shortened form on the currently-on-disk line', () => {
+		const currentlyBlockIdx = strippedDialog.indexOf('Currently on disk:');
+		const line = strippedDialog.slice(currentlyBlockIdx, currentlyBlockIdx + 120);
+		expect(line.includes('shortHash')).toBe(false);
+	});
+
+	it('imports shortHash from $lib/format for the previously-pinned line only', () => {
+		expect(strippedDialog.includes("import { shortHash } from '$lib/format';")).toBe(true);
+		expect(hashBlock.length).toBeGreaterThan(0);
+	});
+});
+
+describe('TrustUpdateDialog.svelte: confirm handler — setPluginPin + putConfig exactly once each, keyed on the binary (D-02)', () => {
+	const confirmBody = extractBetween(
+		strippedDialog,
+		'async function confirmTrustUpdate() {',
+		'\n\t}'
+	);
+
+	it('imports setPluginPin from $lib/config-edit', () => {
+		expect(strippedDialog.includes("import { setPluginPin } from '$lib/config-edit';")).toBe(true);
+	});
+
+	it('calls setPluginPin exactly once, keyed on source.plugin (the binary name, never the instance id — D-02)', () => {
+		const calls = confirmBody.match(/setPluginPin\(/g) ?? [];
+		expect(calls.length).toBe(1);
+		expect(confirmBody.includes('setPluginPin(config, source.plugin, source.current_hash')).toBe(
+			true
+		);
+	});
+
+	it('passes the kernel-published source.current_hash, never a value it computes itself', () => {
+		expect(/sha256|SHA-256|createHash/i.test(confirmBody)).toBe(false);
+	});
+
+	it('calls putConfig exactly once — the pin write and the save are the SAME network round trip', () => {
+		const calls = confirmBody.match(/putConfig\(/g) ?? [];
+		expect(calls.length).toBe(1);
+	});
+
+	it('the confirm button disables while saving is true', () => {
+		expect(strippedDialog.includes('disabled={saving}')).toBe(true);
+	});
+
+	it('renders the destructive Alert + CONFIG_CONFLICT_MESSAGE pattern on failure', () => {
+		expect(strippedDialog.includes('Alert variant="destructive"')).toBe(true);
+		expect(strippedDialog.includes('CONFIG_CONFLICT_MESSAGE')).toBe(true);
+	});
+});
+
+describe('+page.svelte: the \'trust-update\' kind is handled and mounts TrustUpdateDialog', () => {
+	it('imports TrustUpdateDialog', () => {
+		expect(
+			strippedRoute.includes("import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';")
+		).toBe(true);
+	});
+
+	it('handleChipEdit branches on kind === \'trust-update\' before the describe path, exactly like \'relink\'', () => {
+		const handleChipEditBody = extractBetween(
+			strippedRoute,
+			'async function handleChipEdit(',
+			'\n\t}'
+		);
+		const relinkIdx = handleChipEditBody.indexOf("kind === 'relink'");
+		const trustUpdateIdx = handleChipEditBody.indexOf("kind === 'trust-update'");
+		const describeIdx = handleChipEditBody.indexOf('describePlugin(');
+		expect(trustUpdateIdx, "expected handleChipEdit to check kind === 'trust-update'").toBeGreaterThanOrEqual(
+			0
+		);
+		expect(relinkIdx).toBeGreaterThanOrEqual(0);
+		expect(
+			trustUpdateIdx,
+			"expected the 'trust-update' branch to run strictly before the describePlugin( call"
+		).toBeLessThan(describeIdx);
+		expect(
+			trustUpdateIdx,
+			"expected 'trust-update' to be checked after 'relink', mirroring source order"
+		).toBeGreaterThan(relinkIdx);
+	});
+
+	it('sets trustUpdateInstance = name inside the \'trust-update\' branch', () => {
+		const handleChipEditBody = extractBetween(
+			strippedRoute,
+			'async function handleChipEdit(',
+			'\n\t}'
+		);
+		const branchStart = handleChipEditBody.indexOf("kind === 'trust-update'");
+		const branch = handleChipEditBody.slice(branchStart, branchStart + 200);
+		expect(branch.includes('trustUpdateInstance = name')).toBe(true);
+	});
+
+	it('mounts TrustUpdateDialog gated on configResponse && trustUpdateInstance && trustUpdateSource', () => {
+		expect(
+			strippedRoute.includes('{#if configResponse && trustUpdateInstance && trustUpdateSource}')
+		).toBe(true);
+	});
+
+	it('TrustUpdateDialog is keyed on trustUpdateInstance — a genuinely different instance always remounts fresh', () => {
+		const mountIdx = strippedRoute.indexOf(
+			'{#if configResponse && trustUpdateInstance && trustUpdateSource}'
+		);
+		const afterMount = strippedRoute.slice(mountIdx, mountIdx + 120);
+		expect(afterMount.includes('{#key trustUpdateInstance}')).toBe(true);
+	});
+
+	it('passes source={trustUpdateSource}, config, baseHash, onclose, onsaved', () => {
+		const dialogTag = extractBetween(strippedRoute, '<TrustUpdateDialog', '/>');
+		expect(dialogTag.includes('source={trustUpdateSource}')).toBe(true);
+		expect(dialogTag.includes('config={configResponse.config}')).toBe(true);
+		expect(dialogTag.includes('baseHash={configResponse.hash}')).toBe(true);
+		expect(dialogTag.includes('onclose={handleTrustUpdateClose}')).toBe(true);
+		expect(dialogTag.includes('onsaved={handleTrustUpdateSaved}')).toBe(true);
+	});
+
+	it('handleTrustUpdateSaved clears trustUpdateInstance and refreshes config/sources/stream (D-07 eager reconcile)', () => {
+		const fnBody = extractBetween(
+			strippedRoute,
+			'async function handleTrustUpdateSaved() {',
+			'\n\t}'
+		);
+		expect(fnBody.includes('trustUpdateInstance = null')).toBe(true);
+		expect(fnBody.includes('loadConfig(navGeneration)')).toBe(true);
+		expect(fnBody.includes('loadSources()')).toBe(true);
+		expect(fnBody.includes('load(navGeneration)')).toBe(true);
+	});
+});
