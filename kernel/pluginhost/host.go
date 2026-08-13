@@ -39,6 +39,102 @@ var ErrItemNotFound = errors.New("pluginhost: item not found")
 // or any other transport-level failure calling the plugin).
 var ErrSourceUnavailable = errors.New("pluginhost: source unavailable")
 
+// ErrPinMismatch is returned by launch (wrapped inside *pinMismatchError,
+// which Discover/Reconcile extract via errors.As) when an external-tier
+// binary's recomputed SHA-256 does not equal its pinned value in
+// [plugins.pins] — including the "no pin recorded at all" case, which is
+// treated identically to a mismatch (the empty pinned value never matches a
+// real digest). T-11-07/PLUG-07/D-03: the refusal happens BEFORE
+// exec.Command is ever constructed, so a tampered or unpinned external
+// binary is never executed. Trusted-tier binaries never reach this check at
+// all (D-04) — see launch's own doc comment.
+var ErrPinMismatch = errors.New("pluginhost: external plugin binary does not match its pinned hash")
+
+// LaunchFailurePinMismatch is the one populated LaunchFailure.Reason value
+// this phase introduces — kept as a named constant (rather than an inline
+// string literal at every call site) so a future second failure-reason
+// class has an established place to add its own constant beside this one.
+const LaunchFailurePinMismatch = "pin_mismatch"
+
+// LaunchFailure is one instance's SOFT, per-instance launch failure —
+// currently only ever a pin mismatch (11-RESEARCH.md Pitfall 1, D-03):
+// unlike every other launch-failure class (missing/broken binary), which
+// still hard-fails the whole Discover/Reconcile call exactly as before this
+// phase, a pin mismatch is recorded here instead, so the instance is simply
+// absent from Host.Plugins() rather than taking down every other
+// configured source's boot or apply.
+type LaunchFailure struct {
+	Instance    string
+	Plugin      string
+	DisplayName string
+	Tier        Tier
+	Reason      string
+	PinnedHash  string
+	CurrentHash string
+	Message     string
+}
+
+// pinMismatchError carries the structured facts a caller (Discover,
+// Reconcile) needs to build a LaunchFailure record WITHOUT re-hashing the
+// binary a second time (the "small helper" this phase's action text calls
+// for) — launch computes the current hash exactly once, and this type
+// threads both hashes back out through the returned error rather than
+// forcing the caller to re-derive them from the error string.
+type pinMismatchError struct {
+	instance, plugin, displayName string
+	tier                          Tier
+	pinnedHash, currentHash       string
+}
+
+// Error names the instance, the binary, the pinned value (or "not pinned"
+// when absent) and the on-disk value — the fail-loudly-by-name convention
+// this package's matchconfig.go already establishes, extended here.
+func (e *pinMismatchError) Error() string {
+	pinnedDisplay := e.pinnedHash
+	if pinnedDisplay == "" {
+		pinnedDisplay = "not pinned"
+	}
+	return fmt.Sprintf(
+		"pluginhost: instance %q binary %q hash mismatch: pinned=%s current=%s",
+		e.instance, e.plugin, pinnedDisplay, e.currentHash,
+	)
+}
+
+// Unwrap makes errors.Is(err, ErrPinMismatch) true for every
+// *pinMismatchError, so a caller that only cares about the failure CLASS
+// (not its structured fields) can test for it with the plain sentinel.
+func (e *pinMismatchError) Unwrap() error { return ErrPinMismatch }
+
+// toLaunchFailure converts e into the exported LaunchFailure shape
+// Host.launchFailures stores, filling in the fixed Reason/message fields
+// this phase's one failure class always carries.
+func (e *pinMismatchError) toLaunchFailure() LaunchFailure {
+	return LaunchFailure{
+		Instance:    e.instance,
+		Plugin:      e.plugin,
+		DisplayName: e.displayName,
+		Tier:        e.tier,
+		Reason:      LaunchFailurePinMismatch,
+		PinnedHash:  e.pinnedHash,
+		CurrentHash: e.currentHash,
+		Message:     e.Error(),
+	}
+}
+
+// hashAndLookupPin computes path's current SHA-256 (via HashBinary) and
+// looks up binary's pinned value in pins in one call, so launch's pin-check
+// and the LaunchFailure record it may need to build never hash the same
+// file twice. pins may be nil (no [plugins.pins] table at all) — a nil map
+// read is the Go zero value "", which is exactly the "not pinned" case this
+// function's caller already treats identically to a mismatch.
+func hashAndLookupPin(path, binary string, pins map[string]string) (currentHash, pinnedHash string, err error) {
+	currentHash, err = HashBinary(path)
+	if err != nil {
+		return "", "", err
+	}
+	return currentHash, pins[binary], nil
+}
+
 // MaxIconBytes is the size ceiling enforced on DescribeResponse.icon at
 // capture time (09-01-PLAN.md Task 2, T-09-03): an icon larger than this
 // is dropped — never truncated — and never fails the launch.
@@ -204,6 +300,21 @@ type Host struct {
 	// this repo already holds for the call's whole duration.
 	mu      sync.RWMutex
 	plugins []*Plugin
+	// launchFailures holds one entry per instance CURRENTLY refused at
+	// launch by a soft failure class (today: pin mismatch only) — guarded
+	// by mu alongside plugins, since both are written together at the same
+	// commit points (Discover's construction, Reconcile's commit region).
+	// Rebuilt wholesale on every Reconcile call (never merged), which is
+	// what clears a stale entry the instant its pin is repaired or the
+	// instance is removed from config — see Reconcile's own doc comment.
+	launchFailures map[string]LaunchFailure
+	// raw is the latest raw (unexpanded) *config.Config Discover/Reconcile
+	// were called with — stored under mu alongside plugins/launchFailures
+	// because both pins ([plugins.pins]) and Task 2's env-reference
+	// allowlist are read from the RAW document, never the expanded one
+	// (D-05's secret-value discipline: raw never holds a resolved secret
+	// VALUE, only the ${VAR} reference).
+	raw *config.Config
 }
 
 // snapshot returns a defensive copy of the currently launched plugin set
@@ -225,12 +336,50 @@ func (h *Host) snapshot() []*Plugin {
 // resulting Host. Every launched plugin's Describe RPC is called
 // immediately to learn its source_type — the kernel never trusts a
 // plugin's identity from its filename (T-01-07).
-func Discover(ctx context.Context, dirs Dirs, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
-	h := &Host{dirs: dirs}
+//
+// raw is the RAW (unexpanded) config sources was derived from — Phase 11's
+// pin map ([plugins.pins]) and env-reference allowlist (Task 2) both come
+// from this document, never the expanded one. raw may be nil (no
+// call site outside this package's own tests should pass nil for a real
+// boot, but a nil raw degrades gracefully: no pins are ever known, so every
+// external-tier launch behaves as if unpinned — a mismatch, per D-01's
+// empty-pin-is-a-mismatch rule).
+//
+// Sources are launched in SORTED name order (deterministic run to run,
+// matching this package's established convention — see matchconfig.go) —
+// pure ordering, not a correctness requirement, since every source is
+// launched independently either way.
+//
+// A pin-mismatched external-tier source (ErrPinMismatch, T-11-07) is a
+// SOFT, per-instance failure (11-RESEARCH.md Pitfall 1, D-03): it is
+// recorded in the returned Host's LaunchFailures(), logged by name, and
+// Discover CONTINUES to the next source — it does not add the failed
+// instance to Host.Plugins(), but every OTHER configured source still
+// boots normally. Every other launch-failure class (missing/broken binary,
+// handshake failure) is untouched: it still kills every plugin already
+// launched by this call and returns a hard error, exactly as before this
+// phase (RESEARCH A3, decided at Task 1).
+func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
+	h := &Host{dirs: dirs, raw: raw, launchFailures: make(map[string]LaunchFailure)}
 
-	for name, src := range sources {
-		p, err := launch(ctx, dirs, name, src, logger, false)
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		src := sources[name]
+		p, err := launch(ctx, dirs, name, src, raw, logger, false)
 		if err != nil {
+			var pmErr *pinMismatchError
+			if errors.As(err, &pmErr) {
+				h.launchFailures[name] = pmErr.toLaunchFailure()
+				logger.Error("plugin launch refused: pinned binary hash mismatch (T-11-07)",
+					"instance", name, "plugin", src.Plugin,
+					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
+				continue
+			}
 			h.Shutdown()
 			return nil, fmt.Errorf("pluginhost: launch source %q: %w", name, err)
 		}
@@ -269,7 +418,30 @@ func Discover(ctx context.Context, dirs Dirs, sources map[string]config.Source, 
 // concurrent reader (Plugins/ProbeSources/Fetch/byInstance) kernel-wide,
 // contradicting phase success criterion 4's "every other source is
 // unaffected" — so it must never be done here again.
-func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, logger hclog.Logger) error {
+//
+// raw is the RAW (unexpanded) config sources was derived from — see
+// Discover's doc comment for why this is needed (pins, and Task 2's env
+// allowlist) and why a nil raw degrades gracefully rather than panicking.
+//
+// A pin-mismatched external-tier instance (T-11-07, D-03) is a SOFT,
+// per-instance failure exactly like Discover's: it is recorded, logged by
+// name, and this call does NOT abort — every other new/changed instance
+// still launches, every unchanged instance is left running untouched, and
+// Reconcile still returns nil. Every other launch-failure class (missing
+// binary, handshake failure) keeps T-07-11's existing hard-fail behavior
+// verbatim: it kills only what THIS call itself launched and returns an
+// error naming the offending instance, leaving the previously running set
+// fully intact (RESEARCH A3, decided at Task 1).
+//
+// Host.launchFailures is rebuilt WHOLESALE from this call's own toLaunch
+// loop (never merged with the previous round) — an instance no longer in
+// sources at all, or one that now launches successfully because its pin
+// was repaired, is simply absent from the new map, which is what clears a
+// stale "binary changed" state the instant the operator fixes it. An
+// instance still pin-mismatched is never "kept" (it never has a *Plugin in
+// h.plugins to keep — see the kept/toLaunch split below), so it is always
+// retried on every Reconcile call, exactly the retry a repaired pin needs.
+func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[string]config.Source, logger hclog.Logger) error {
 	h.mu.RLock()
 	existing := make(map[string]*Plugin, len(h.plugins))
 	for _, p := range h.plugins {
@@ -295,9 +467,18 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 	}
 
 	launched := make(map[string]*Plugin, len(toLaunch))
+	newFailures := make(map[string]LaunchFailure, len(toLaunch))
 	for _, name := range toLaunch {
-		p, err := launch(ctx, h.dirs, name, sources[name], logger, false)
+		p, err := launch(ctx, h.dirs, name, sources[name], raw, logger, false)
 		if err != nil {
+			var pmErr *pinMismatchError
+			if errors.As(err, &pmErr) {
+				newFailures[name] = pmErr.toLaunchFailure()
+				logger.Error("plugin launch refused: pinned binary hash mismatch (T-11-07)",
+					"instance", name, "plugin", sources[name].Plugin,
+					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
+				continue
+			}
 			for _, lp := range launched {
 				lp.Kill()
 			}
@@ -325,10 +506,28 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 			next = append(next, p)
 			continue
 		}
-		next = append(next, launched[name])
+		if p, ok := launched[name]; ok {
+			next = append(next, p)
+		}
 	}
 	h.plugins = next
+	h.raw = raw
+	h.launchFailures = newFailures
 	return nil
+}
+
+// LaunchFailures returns a defensive copy of every instance CURRENTLY
+// refused at launch by a soft failure class (today: pin mismatch only),
+// sorted by Instance for deterministic output.
+func (h *Host) LaunchFailures() []LaunchFailure {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]LaunchFailure, 0, len(h.launchFailures))
+	for _, lf := range h.launchFailures {
+		out = append(out, lf)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Instance < out[j].Instance })
+	return out
 }
 
 // stderrTailCap bounds stderrTail's retained byte count. Chosen in the low
@@ -407,6 +606,102 @@ func (t *stderrTail) lastLine() string {
 	return strings.TrimSpace(trimmed)
 }
 
+// sourceConfigEnvelope is the WEBSPACES_SOURCE_CONFIG JSON document every
+// launched plugin subprocess receives — a NAMED struct (Phase 11 Task 3),
+// replacing the pre-Phase-11 flat map[string]string literal so a nested
+// sub-table (Extras) can be represented at all: a flat map can only ever
+// hold string values, never a nested object. Every pre-existing key's JSON
+// tag is byte-identical to what the flat map produced, so every already-
+// shipped plugin binary keeps reading the same top-level document
+// unchanged — this type is purely additive.
+//
+// Flattening Extras into this envelope's own top-level key space is
+// PROHIBITED (D-12): the sub-table boundary — kernel-known fields stay
+// strictly typed here, provider-specific keys stay opaque inside their own
+// nested object — is the entire point of D-12. A plugin reads its own
+// provider keys from config["extras"]["key"], never from a top-level key
+// the kernel itself could someday also want to use.
+type sourceConfigEnvelope struct {
+	BaseURL        string `json:"base_url"`
+	Token          string `json:"token"`
+	APIVersion     string `json:"api_version"`
+	CACert         string `json:"ca_cert"`
+	Username       string `json:"username"`
+	WebmailBaseURL string `json:"webmail_base_url"`
+	Path           string `json:"path"`
+	// Extras carries config.Source.Extras verbatim (D-12/D-13) — omitted
+	// entirely (no "extras" key at all, never an empty object) when this
+	// source declares no extras, so a plugin's own JSON decode sees exactly
+	// "no extras configured" rather than an ambiguous empty-vs-absent case.
+	Extras map[string]string `json:"extras,omitempty"`
+}
+
+// allowedDesktopSessionEnvVars is the fixed, documented allowlist copied
+// into every plugin subprocess's environment (D-14), regardless of which
+// ${VAR} references that instance's own config happens to declare:
+//
+//   - PATH, HOME — needed by any subprocess at all, and by "~" expansion
+//     (plugins/signal resolves its own Path field's leading "~" itself,
+//     not the kernel — see kernel/config/types.go's Source.Path comment).
+//   - LANG, LC_ALL, LC_CTYPE, TZ, TMPDIR — the locale/timezone/scratch-
+//     space group, so a plugin's date and text handling stays identical to
+//     the kernel's own, rather than silently falling back to a C-locale
+//     default inside the subprocess.
+//   - XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS — desktop-session plumbing
+//     the Signal plugin's Secret Service key retrieval requires
+//     (plugins/signal/secretservice.go's D-Bus call to unwrap Signal
+//     Desktop's SQLCipher key). These are SESSION ADDRESSES, not secret
+//     values — withholding them would not meaningfully contain a plugin
+//     that can already read the session bus socket path directly off the
+//     filesystem; this phase implements honest disclosure of what a
+//     plugin subprocess can see (D-14's whole point), not sandboxing
+//     (11-RESEARCH.md's explicit no-containment framing, unchanged here).
+var allowedDesktopSessionEnvVars = []string{
+	"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR",
+	"XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+}
+
+// allowedEnv builds the COMPLETE environment for a launched plugin
+// subprocess (D-14) — the sole producer of exec.Cmd.Env in launch below,
+// which never reads the kernel process's own environment wholesale
+// (os.Environ()) again. Three, and only three, sources contribute:
+//
+//  1. allowedDesktopSessionEnvVars above, copied present-only (an unset
+//     allowlisted variable contributes nothing — never an empty-string
+//     entry).
+//  2. Every name in config.EnvRefNames(rawSrc) that is CURRENTLY SET in the
+//     kernel process — the values behind the ${VAR} references THIS
+//     instance's own raw config declares, and nothing else. A variable set
+//     on the kernel process but referenced nowhere in rawSrc is never
+//     copied, no matter what it's named — this is the T-11-08 mitigation:
+//     the kernel's remaining environment (any credential, any unrelated
+//     secret sitting in the operator's shell) is structurally invisible to
+//     a plugin subprocess that never referenced it.
+//  3. The WEBSPACES_SOURCE_CONFIG envelope (always) and
+//     WEBSPACES_DESCRIBE_ONLY=1 (trial launches only) — unchanged from
+//     before this phase.
+func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool) []string {
+	env := make([]string, 0, len(allowedDesktopSessionEnvVars)+4)
+
+	for _, name := range allowedDesktopSessionEnvVars {
+		if v, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+v)
+		}
+	}
+
+	for _, name := range config.EnvRefNames(rawSrc) {
+		if v, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+v)
+		}
+	}
+
+	env = append(env, "WEBSPACES_SOURCE_CONFIG="+string(sourceConfigJSON))
+	if describeOnly {
+		env = append(env, "WEBSPACES_DESCRIBE_ONLY=1")
+	}
+	return env
+}
+
 // launch resolves src.Plugin against dirs via ResolveBinary (Phase 11's
 // two-tier provenance authority), execs the resolved path, performs the
 // go-plugin handshake, and calls Describe to learn the launched instance's
@@ -430,23 +725,103 @@ func (t *stderrTail) lastLine() string {
 // that does not recognise the variable simply ignores it and launches
 // exactly as before — this is additive, never a behavior change for any
 // plugin type that hasn't opted in.
-func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
+//
+// raw is the RAW (unexpanded) config Discover/Reconcile were called with —
+// nil for DescribePluginType's trial-launch path, where the SUBMITTED src
+// itself already IS the raw form (nothing loaded it from disk). launch
+// resolves rawSrc, this instance's own raw config.Source, as raw.Sources[name]
+// when raw is non-nil and the name is present there, falling back to src
+// otherwise — this is what lets a real boot-time launch see the operator's
+// literal ${VAR} references (Task 2's env allowlist) while a trial launch
+// still works with no raw document to draw from at all.
+//
+// Pin verification (T-11-07, D-01/D-02/D-03/D-04): immediately after
+// ResolveBinary resolves an EXTERNAL-tier binary, and BEFORE exec.Command is
+// ever constructed, launch recomputes the binary's SHA-256 (HashBinary) and
+// compares it to raw.Plugins.Pins[src.Plugin]. A mismatch — including "no
+// pin recorded at all", which compares equal to the zero-value empty
+// string and therefore never matches a real 64-character digest — returns
+// a *pinMismatchError (wrapping ErrPinMismatch) and creates NO subprocess
+// at all. TierTrusted skips this entire block (D-04: a trusted-dir binary
+// is rebuilt constantly by `make build`/`make dev`, so pinning it would
+// false-alarm on every rebuild). describeOnly launches ALSO skip this
+// block deliberately (T-11-14, accepted risk, 11-PLAN.md threat register):
+// the add-source flow's trial launch is the ONLY way to learn an external
+// binary's identity (and therefore compute the hash an operator can choose
+// to pin) BEFORE any pin can exist for it — gating the trial launch on a
+// pin that cannot yet exist would make it structurally impossible to ever
+// add a first external source.
+func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
 	binPath, tier, err := ResolveBinary(dirs, src.Plugin, logger)
 	if err != nil {
 		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, err)
 	}
 
-	sourceConfig, err := json.Marshal(map[string]string{
-		"base_url":         src.BaseURL,
-		"token":            src.Token,
-		"api_version":      src.APIVersion,
-		"ca_cert":          src.CACert,
-		"username":         src.Username,
-		"webmail_base_url": src.WebmailBaseURL,
-		// path: the local filesystem path source config field (Source.Path
+	// The instance display name resolves from the operator's own config
+	// (D-09), falling back to the instance id itself when display_name is
+	// omitted — never from anything the plugin process asserts. Resolved
+	// here (before the pin check below, and well before Describe returns)
+	// so a pin-mismatch LaunchFailure record can carry it too — mirrors
+	// config.Config.DisplayNameFor without needing the whole *config.Config
+	// here, since launch already holds this instance's own config.Source.
+	instanceDisplayName := src.DisplayName
+	if instanceDisplayName == "" {
+		instanceDisplayName = name
+	}
+
+	// rawSrc is this instance's own RAW (unexpanded) config.Source — the
+	// operator's literal ${VAR} references, never a resolved secret value
+	// (D-05) — read from raw.Sources[name] when raw is non-nil and the name
+	// is present there, falling back to src itself for DescribePluginType's
+	// trial-launch path (raw is nil there: the SUBMITTED src already IS the
+	// raw form, since nothing loaded it from disk). allowedEnv below is the
+	// only consumer — it decides which ${VAR} values THIS instance may see.
+	rawSrc := src
+	if raw != nil {
+		if rs, ok := raw.Sources[name]; ok {
+			rawSrc = rs
+		}
+	}
+
+	if tier == TierExternal && !describeOnly {
+		var pins map[string]string
+		if raw != nil {
+			pins = raw.Plugins.Pins
+		}
+		currentHash, pinnedHash, hashErr := hashAndLookupPin(binPath, src.Plugin, pins)
+		if hashErr != nil {
+			return nil, fmt.Errorf("pluginhost: hash external plugin binary for instance %q: %w", name, hashErr)
+		}
+		if currentHash != pinnedHash {
+			return nil, &pinMismatchError{
+				instance:    name,
+				plugin:      src.Plugin,
+				displayName: instanceDisplayName,
+				tier:        tier,
+				pinnedHash:  pinnedHash,
+				currentHash: currentHash,
+			}
+		}
+	}
+
+	sourceConfig, err := json.Marshal(sourceConfigEnvelope{
+		BaseURL:        src.BaseURL,
+		Token:          src.Token,
+		APIVersion:     src.APIVersion,
+		CACert:         src.CACert,
+		Username:       src.Username,
+		WebmailBaseURL: src.WebmailBaseURL,
+		// Path: the local filesystem path source config field (Source.Path
 		// — kernel/config/types.go), needed by a local-path source like
 		// SRC-02's Signal plugin, which has no base_url/token at all.
-		"path": src.Path,
+		Path: src.Path,
+		// Extras (D-12/D-13, Phase 11 Task 3): src is the EXPANDED
+		// config.Source (never rawSrc) — expandEnv runs over the raw TOML
+		// text before decode (kernel/config/config.go's LoadRaw doc
+		// comment), so a ${VAR} reference inside an extras value is
+		// already resolved here exactly like base_url/token are, with no
+		// separate expansion step needed in this package.
+		Extras: src.Extras,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal source config: %w", err)
@@ -459,11 +834,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 	// The capture goes through ClientConfig.Stderr below instead, which
 	// go-plugin's own logStderr goroutine writes to.
 	cmd := exec.Command(binPath)
-	env := append(os.Environ(), "WEBSPACES_SOURCE_CONFIG="+string(sourceConfig))
-	if describeOnly {
-		env = append(env, "WEBSPACES_DESCRIBE_ONLY=1")
-	}
-	cmd.Env = env
+	cmd.Env = allowedEnv(rawSrc, sourceConfig, describeOnly)
 
 	tail := &stderrTail{}
 
@@ -473,6 +844,19 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 		Cmd:              cmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger:           logger.Named("plugin." + name),
+		// SkipHostEnv is D-14's actual enforcement point, not merely
+		// cmd.Env above: go-plugin's own Client() (client.go) UNCONDITIONALLY
+		// appends the ENTIRE os.Environ() onto cmd.Env before exec'ing —
+		// "if !c.config.SkipHostEnv { cmd.Env = append(cmd.Env,
+		// os.Environ()...) }" — regardless of what cmd.Env already holds.
+		// Without this field, allowedEnv's restricted allowlist above would
+		// be silently widened right back out to the kernel's full
+		// environment by go-plugin itself, one layer below where this
+		// package's own code stops looking. Discovered live while writing
+		// this phase's own supervisor tests (kernel/supervisor/
+		// launchlatency_test.go): a variable NOT in cmd.Env still reached
+		// the subprocess until this field was added.
+		SkipHostEnv: true,
 		// Raises the gRPC message-size ceiling to match sdk.GRPCServer on
 		// the plugin side, so a unary Fetch response carrying a full
 		// rendition doesn't hit the 4 MB default (D-Task1, 01-01).
@@ -507,13 +891,13 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 		return nil, fmt.Errorf("connect to plugin subprocess: %w", err)
 	}
 
-	raw, err := rpcClient.Dispense("source")
+	dispensed, err := rpcClient.Dispense("source")
 	if err != nil {
 		client.Kill()
 		return nil, fmt.Errorf("dispense source plugin: %w", err)
 	}
 
-	impl, ok := raw.(sdk.SourcePlugin)
+	impl, ok := dispensed.(sdk.SourcePlugin)
 	if !ok {
 		client.Kill()
 		return nil, fmt.Errorf("plugin %s does not implement sdk.SourcePlugin", name)
@@ -523,17 +907,6 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logg
 	if err != nil {
 		client.Kill()
 		return nil, fmt.Errorf("describe plugin %s: %w", name, err)
-	}
-
-	// The instance display name resolves from the operator's own config
-	// (D-09), falling back to the instance id itself when display_name is
-	// omitted — never from anything the plugin process asserts. This
-	// mirrors config.Config.DisplayNameFor without needing the whole
-	// *config.Config here, since launch already holds this instance's own
-	// config.Source.
-	instanceDisplayName := src.DisplayName
-	if instanceDisplayName == "" {
-		instanceDisplayName = name
 	}
 
 	iconBytes, iconMIME, _ := captureIcon(desc)
@@ -627,7 +1000,7 @@ type DescribeInfo struct {
 // stops the trial-launch from always losing that lock race against a real
 // running instance and failing before Describe is ever reached.
 func DescribePluginType(ctx context.Context, dirs Dirs, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
-	p, err := launch(ctx, dirs, "__trial__", src, logger, true)
+	p, err := launch(ctx, dirs, "__trial__", src, nil, logger, true)
 	if err != nil {
 		return DescribeInfo{}, fmt.Errorf("pluginhost: trial-launch for describe: %w", err)
 	}

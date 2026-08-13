@@ -25,6 +25,22 @@ import (
 // documents as load-bearing: a webspace that does not participate would
 // never touch the plugin handles at all, and this test would pass against
 // the defective code while proving nothing.
+//
+// Phase 11 Task 2 (D-14): this fixture no longer relies on blanket
+// environment inheritance — kernel/pluginhost.launch's exec.Cmd carries
+// goplugin.ClientConfig.SkipHostEnv:true, and go-plugin's own Client()
+// unconditionally appends the FULL os.Environ() onto cmd.Env unless that
+// field is set, so a variable merely set on the kernel test process no
+// longer reaches the subprocess at all. It now travels the documented,
+// reference-driven path instead: "slow-one"'s own
+// [sources.slow-one.extras] block below declares a
+// "${WEBSPACES_MOCK_LAUNCH_DELAY_MS}" reference — the RAW config retains
+// that literal string regardless of whether the variable is set yet at
+// config-load time (LoadRaw never expands the raw form), so
+// config.EnvRefNames(rawSrc) still finds the reference at the relaunch
+// below, and kernel/pluginhost.allowedEnv copies whatever value is set on
+// the kernel process AT LAUNCH TIME — which is exactly when t.Setenv sets
+// it, further down this test, right before the delayed relaunch it drives.
 func TestResume_SlowRelaunchDoesNotFreezeOtherSources(t *testing.T) {
 	dir := buildMockPluginDir(t)
 	idx := newTestIndex(t)
@@ -40,6 +56,9 @@ interval = "1h"
 plugin = "topos-plugin-mock"
 base_url = "http://mock.test"
 token = "unused"
+
+[sources.slow-one.extras]
+launch_delay_ms = "${WEBSPACES_MOCK_LAUNCH_DELAY_MS}"
 
 [sources.control]
 plugin = "topos-plugin-mock"

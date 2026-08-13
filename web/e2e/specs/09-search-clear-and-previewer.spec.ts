@@ -27,6 +27,16 @@
 // item smoke-core-journey.spec.ts already proves carries non-empty
 // extracted text, so one item exercises both the float and the flowing
 // text at once.
+//
+// 11-02-PLAN.md Task 2 (D-14): WEBSPACES_MOCK_RENDITION alone on the
+// kernel process is no longer enough to reach the plugin subprocess —
+// kernel/pluginhost.launch's exec.Cmd now carries
+// goplugin.ClientConfig.SkipHostEnv:true, so a plugin subprocess receives
+// only the documented allowlist plus the values behind ${VAR} references
+// this instance's own raw config declares. The mock source's own
+// `extras.rendition` entry below supplies that reference, travelling the
+// same documented, reference-driven path every other Phase 11 fixture
+// migration in this repo now uses.
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { webspacesWithKeywords, type FixtureConfigSpec } from '../fixtures/config-builder';
 
@@ -40,7 +50,18 @@ const CLEAR_LABEL = 'Clear search';
 const SEARCH_PLACEHOLDER = 'Search this webspace';
 
 const configSpec: FixtureConfigSpec = {
-	sources: [{ id: MOCK_ID, plugin: 'topos-plugin-mock', displayName: 'Mock Source' }],
+	sources: [
+		{
+			id: MOCK_ID,
+			plugin: 'topos-plugin-mock',
+			displayName: 'Mock Source',
+			// extras.rendition references ${WEBSPACES_MOCK_RENDITION} so the
+			// value set on the kernel process below actually reaches this
+			// instance's plugin subprocess (11-02-PLAN.md Task 2, D-14) — the
+			// key name itself is arbitrary; only the ${VAR} reference matters.
+			extras: { rendition: '${WEBSPACES_MOCK_RENDITION}' }
+		}
+	],
 	webspaces: webspacesWithKeywords(['previewer'], ['demo']),
 	env: { WEBSPACES_MOCK_RENDITION: '1' }
 };

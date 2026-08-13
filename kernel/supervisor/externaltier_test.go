@@ -9,6 +9,7 @@ package supervisor
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,7 +62,21 @@ func TestExternalTier_BinaryPresentOnlyExternallyLaunchesAndReportsTier(t *testi
 	idx := newTestIndex(t)
 	ctx := context.Background()
 
-	cfgStore := newTestConfigStore(t, `
+	// Phase 11-02's pin gate (T-11-07) refuses an unpinned external-tier
+	// launch — pin the real on-disk hash of THIS test's own externalDir
+	// binary so the launch this test asserts on actually succeeds; the
+	// pin-mismatch/no-pin cases are covered by pin_test.go and
+	// pinmismatch_test.go instead, not by widening this pre-existing tier
+	// proof's scope.
+	pinnedHash, err := pluginhost.HashBinary(filepath.Join(externalDir, "topos-plugin-mock"))
+	if err != nil {
+		t.Fatalf("hash external mock binary for pin: %v", err)
+	}
+
+	cfgStore := newTestConfigStore(t, fmt.Sprintf(`
+[plugins.pins]
+"topos-plugin-mock" = %q
+
 [sources.demo]
 plugin = "topos-plugin-mock"
 base_url = "http://mock.test"
@@ -69,7 +84,7 @@ token = "unused"
 
 [webspaces.demo]
 keywords = ["demo"]
-`)
+`, pinnedHash))
 
 	dirs := pluginhost.Dirs{Trusted: trustedDir, External: externalDir}
 	sup, err := NewSupervisor(ctx, idx, cfgStore, dirs, hclog.NewNullLogger())

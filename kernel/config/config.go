@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -364,6 +365,103 @@ func (cfg *Config) Validate(missing []string) error {
 		return err
 	}
 
+	if err := cfg.validatePins(); err != nil {
+		return err
+	}
+
+	if err := cfg.validateExtras(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// pinKeyPluginPrefix mirrors pluginhost.PluginBinaryPrefix
+// (kernel/pluginhost/discover_binaries.go) verbatim, duplicated here rather
+// than imported: config must never import pluginhost (config.Load runs
+// before any plugin subprocess exists — pluginhost already imports config
+// the other way, so importing it back here would be a cycle). Both
+// constants must be kept in sync by hand if the naming convention ever
+// changes.
+const pinKeyPluginPrefix = "topos-plugin-"
+
+// pinHashPattern matches exactly 64 lowercase hex characters — a SHA-256
+// digest in the same lowercase hex.EncodeToString shape
+// kernel/pluginhost.HashBinary produces (and kernel/config/store.go's
+// fileHash already established project-wide). Uppercase hex or any other
+// length is rejected: this repo has exactly one hashing convention, and a
+// pin value that doesn't match it can never legitimately compare equal to
+// what HashBinary computes at launch time.
+var pinHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// validatePins checks every [plugins.pins] entry (D-01/D-02, Phase 11):
+// the key must look like a plugin binary name (the pluginBinaryPrefix
+// convention, checked as a string shape only — config has no way to know
+// which binaries actually exist on disk, and doesn't need to for this
+// check), and the value must be exactly a 64-character lowercase hex
+// SHA-256 digest. Keys are iterated in sorted order so a multi-error pins
+// table reports the same offending key deterministically run to run,
+// matching this file's own established discipline (validateWebspaces,
+// validateDisplayNameUniqueness).
+func (cfg *Config) validatePins() error {
+	names := make([]string, 0, len(cfg.Plugins.Pins))
+	for name := range cfg.Plugins.Pins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if !strings.HasPrefix(name, pinKeyPluginPrefix) {
+			return fmt.Errorf("config: [plugins.pins] key %q is not a plugin binary name (expected a name prefixed %q)", name, pinKeyPluginPrefix)
+		}
+		value := cfg.Plugins.Pins[name]
+		if !pinHashPattern.MatchString(value) {
+			return fmt.Errorf("config: [plugins.pins] value for %q is not a 64-character lowercase hex SHA-256 digest, got %q", name, value)
+		}
+	}
+	return nil
+}
+
+// extrasKeyPattern matches the documented Extras key shape (D-12/D-13,
+// Phase 11 Task 3): an ASCII letter or underscore, then any run of ASCII
+// letters, digits, underscores, dots or hyphens. Values are NOT
+// constrained by this pattern — Extras values are unconstrained,
+// arbitrary provider-specific strings (D-13); only the key, which the
+// kernel itself later serialises as a JSON object key and which an
+// operator hand-types into config.toml, is shape-checked.
+var extrasKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+
+// validateExtras checks every [sources.<id>.extras] entry (D-12/D-13,
+// Phase 11 Task 3): an empty key, or one outside extrasKeyPattern's shape,
+// fails load naming the source instance and the offending key — caught
+// here, at load time, rather than left to fail later and less
+// informatively at launch. Source instances and, within each, extras keys
+// are both iterated in sorted order for the identical deterministic-
+// multi-error-reporting reason validatePins above already states.
+func (cfg *Config) validateExtras() error {
+	names := make([]string, 0, len(cfg.Sources))
+	for name := range cfg.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		src := cfg.Sources[name]
+		keys := make([]string, 0, len(src.Extras))
+		for key := range src.Extras {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			if key == "" {
+				return fmt.Errorf("config: source %q declares an empty extras key", name)
+			}
+			if !extrasKeyPattern.MatchString(key) {
+				return fmt.Errorf("config: source %q declares an extras key %q outside the allowed shape (letters, digits, underscore, dot, hyphen; must not start with a digit, dot, or hyphen)", name, key)
+			}
+		}
+	}
 	return nil
 }
 

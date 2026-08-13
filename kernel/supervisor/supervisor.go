@@ -130,7 +130,7 @@ func NewSupervisor(ctx context.Context, idx *index.Store, cfgStore *config.Store
 
 	cfg := cfgStore.Expanded()
 
-	host, err := pluginhost.Discover(ctx, dirs, cfg.Sources, logger)
+	host, err := pluginhost.Discover(ctx, dirs, cfgStore.Raw(), cfg.Sources, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +243,15 @@ func (s *Supervisor) Fetch(ctx context.Context, source, sourceID string, variant
 // current plugin host.
 func (s *Supervisor) ProbeSources(ctx context.Context) []pluginhost.SourceHealth {
 	return s.Host().ProbeSources(ctx)
+}
+
+// LaunchFailures delegates to the CURRENT plugin host's LaunchFailures,
+// resolved fresh via Host() on every call — never a captured host pointer,
+// the same "never a snapshot taken once" discipline ProbeSources above
+// already follows (Reconcile mutates the SAME *pluginhost.Host in place, so
+// this stays correct across a config apply with no extra care needed).
+func (s *Supervisor) LaunchFailures() []pluginhost.LaunchFailure {
+	return s.Host().LaunchFailures()
 }
 
 // PluginIcon satisfies kernel/httpapi.PluginIconProvider (09-01-PLAN.md
@@ -390,7 +399,7 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 	// beside an in-flight sync would otherwise open.
 	s.stopScheduler()
 
-	if err := s.host.Reconcile(ctx, withoutName, s.logger); err != nil {
+	if err := s.host.Reconcile(ctx, s.cfgStore.Raw(), withoutName, s.logger); err != nil {
 		// Mirror Apply's own pre-Reconcile failure branch exactly, and for
 		// the identical reason: Reconcile's own T-07-11 guarantee is that a
 		// launch failure leaves the previously running set fully intact, so
@@ -431,7 +440,7 @@ func (s *Supervisor) SuspendInstance(ctx context.Context, name string) (func(con
 
 		s.stopScheduler()
 
-		if err := s.host.Reconcile(ctx, s.cfg.Sources, s.logger); err != nil {
+		if err := s.host.Reconcile(ctx, s.cfgStore.Raw(), s.cfg.Sources, s.logger); err != nil {
 			// Same mirror of Apply's pre-Reconcile branch as the suspend
 			// path above: the old (still-suspended-minus-name) generation
 			// is what Reconcile left intact, so it is what gets restarted.
@@ -669,7 +678,7 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 		}
 	}
 
-	if err := s.host.Reconcile(ctx, reconcileSources, s.logger); err != nil {
+	if err := s.host.Reconcile(ctx, s.cfgStore.Raw(), reconcileSources, s.logger); err != nil {
 		// Pre-Reconcile failure: Reconcile's own T-07-11 guarantee means the
 		// previously running plugin set is genuinely untouched, so the OLD
 		// generation is the consistent one here — this is the mirror image

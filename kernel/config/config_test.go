@@ -945,3 +945,129 @@ func TestApplyDefaults_NormalizesCollectionsWithoutChangingValidateVerdicts(t *t
 		})
 	}
 }
+
+// TestValidate_Pins is Phase 11's own load-time gate over [plugins.pins]
+// (D-01/D-02): a well-formed pin (a topos-plugin- prefixed key, a
+// 64-character lowercase hex value) validates cleanly; a too-short pin, an
+// uppercase-hex pin, and a non-plugin-shaped key are each rejected, naming
+// the offending key.
+func TestValidate_Pins(t *testing.T) {
+	validHash := strings.Repeat("a", 64)
+
+	t.Run("well-formed pin validates cleanly", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": validHash}},
+		}
+		if err := cfg.Validate(nil); err != nil {
+			t.Fatalf("expected a well-formed pin to validate cleanly, got: %v", err)
+		}
+	})
+
+	t.Run("63-character pin is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": validHash[:63]}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a 63-character pin to be rejected")
+		}
+		if !strings.Contains(err.Error(), "topos-plugin-example") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+
+	t.Run("uppercase-hex pin is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"topos-plugin-example": strings.ToUpper(validHash)}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected an uppercase-hex pin to be rejected")
+		}
+		if !strings.Contains(err.Error(), "topos-plugin-example") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+
+	t.Run("non-plugin-shaped key is rejected naming the key", func(t *testing.T) {
+		cfg := &Config{
+			Sync:    SyncConfig{Interval: "15m"},
+			Plugins: PluginsConfig{Pins: map[string]string{"not-a-plugin-name": validHash}},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a non-plugin-shaped key to be rejected")
+		}
+		if !strings.Contains(err.Error(), "not-a-plugin-name") {
+			t.Errorf("expected the error to name the offending key, got: %v", err)
+		}
+	})
+}
+
+// TestLoad_ExtrasVarExpandsExactlyLikeBaseURL proves D-13: a ${VAR}
+// reference inside a [sources.<id>.extras] value expands at load time
+// exactly like base_url/token do — the operator never needs a second
+// mental model for "which config fields support ${VAR}".
+func TestLoad_ExtrasVarExpandsExactlyLikeBaseURL(t *testing.T) {
+	t.Setenv("TEST_EXTRAS_REGION", "eu-west-1")
+
+	path := writeTempConfig(t, `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+region = "${TEST_EXTRAS_REGION}"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Sources["example"].Extras["region"]; got != "eu-west-1" {
+		t.Errorf("expected extras.region to expand to %q, got %q", "eu-west-1", got)
+	}
+}
+
+// TestLoad_MalformedExtrasKeyFailsNamingSourceAndKey proves the load-time
+// gate over extras key shape: an empty key and a key outside the
+// documented shape both fail load, naming the offending source instance
+// and key.
+func TestLoad_MalformedExtrasKeyFailsNamingSourceAndKey(t *testing.T) {
+	cases := map[string]string{
+		"leading digit": `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+"1bad" = "value"
+`,
+		"space in key": `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+"bad key" = "value"
+`,
+	}
+
+	for name, contents := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeTempConfig(t, contents)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected a malformed extras key to fail load")
+			}
+			if !strings.Contains(err.Error(), "example") {
+				t.Errorf("expected the error to name the source instance %q, got: %v", "example", err)
+			}
+		})
+	}
+}
