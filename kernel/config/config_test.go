@@ -1007,6 +1007,146 @@ func TestValidate_Pins(t *testing.T) {
 	})
 }
 
+// TestValidate_SourcePluginTraversalIsRejectedNamingTheSource is Phase
+// 11's gap-closure gate over [sources.<id>] plugin's shape (CR-01,
+// 11-REVIEW.md; T-11-35): a "../"-containing value, an absolute path, a
+// Windows-separator value, and "."/".." are all rejected by Validate,
+// naming the offending source.
+func TestValidate_SourcePluginTraversalIsRejectedNamingTheSource(t *testing.T) {
+	cases := map[string]string{
+		"traversal":         "../../../../bin/sh",
+		"absolute path":     "/tmp/topos-plugin-evil",
+		"windows separator": `..\..\topos-plugin-evil`,
+		"dot":               ".",
+		"dot dot":           "..",
+	}
+
+	for name, plugin := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{
+				Sync: SyncConfig{Interval: "15m"},
+				Sources: map[string]Source{
+					"evil": {Plugin: plugin, BaseURL: "http://x.lan", Token: "tok"},
+				},
+			}
+			err := cfg.Validate(nil)
+			if err == nil {
+				t.Fatalf("expected plugin %q to be rejected", plugin)
+			}
+			if !strings.Contains(err.Error(), "evil") {
+				t.Errorf("expected the error to name the source %q, got: %v", "evil", err)
+			}
+			if !strings.Contains(err.Error(), "must be a bare binary filename") {
+				t.Errorf("expected the error to contain %q, got: %v", "must be a bare binary filename", err)
+			}
+		})
+	}
+}
+
+// TestValidate_SourcePluginEmptyIsRejectedNamingTheSource proves an
+// absent plugin key, a whitespace-only value, and a ${VAR} reference that
+// expands to empty because the variable is unset are all rejected by
+// Validate, naming the offending source — the unset-${VAR} case
+// additionally names the unset variable through missingSuffix, the same
+// shape the existing base_url/token checks produce.
+func TestValidate_SourcePluginEmptyIsRejectedNamingTheSource(t *testing.T) {
+	t.Run("absent plugin key", func(t *testing.T) {
+		cfg := &Config{
+			Sync: SyncConfig{Interval: "15m"},
+			Sources: map[string]Source{
+				"evil": {BaseURL: "http://x.lan", Token: "tok"},
+			},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected an absent plugin key to be rejected")
+		}
+		if !strings.Contains(err.Error(), "evil") {
+			t.Errorf("expected the error to name the source %q, got: %v", "evil", err)
+		}
+		if !strings.Contains(err.Error(), "has no plugin specified") {
+			t.Errorf("expected the error to contain %q, got: %v", "has no plugin specified", err)
+		}
+	})
+
+	t.Run("whitespace-only plugin value", func(t *testing.T) {
+		cfg := &Config{
+			Sync: SyncConfig{Interval: "15m"},
+			Sources: map[string]Source{
+				"evil": {Plugin: "   ", BaseURL: "http://x.lan", Token: "tok"},
+			},
+		}
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a whitespace-only plugin value to be rejected")
+		}
+		if !strings.Contains(err.Error(), "evil") {
+			t.Errorf("expected the error to name the source %q, got: %v", "evil", err)
+		}
+		if !strings.Contains(err.Error(), "has no plugin specified") {
+			t.Errorf("expected the error to contain %q, got: %v", "has no plugin specified", err)
+		}
+	})
+
+	t.Run("unset ${VAR} reference expands to empty", func(t *testing.T) {
+		path := writeTempConfig(t, `
+[sync]
+interval = "15m"
+
+[sources.evil]
+plugin = "${UNSET_PLUGIN_NAME_TEST_VAR}"
+base_url = "http://x.lan"
+token = "tok"
+`)
+		_, err := Load(path)
+		if err == nil {
+			t.Fatal("expected an unset ${VAR} plugin reference to be rejected")
+		}
+		if !strings.Contains(err.Error(), "evil") {
+			t.Errorf("expected the error to name the source %q, got: %v", "evil", err)
+		}
+		if !strings.Contains(err.Error(), "has no plugin specified") {
+			t.Errorf("expected the error to contain %q, got: %v", "has no plugin specified", err)
+		}
+		if !strings.Contains(err.Error(), "UNSET_PLUGIN_NAME_TEST_VAR") {
+			t.Errorf("expected the error to name the unset variable via missingSuffix, got: %v", err)
+		}
+	})
+}
+
+// TestValidate_SourcePluginErrorIsDeterministicAcrossRuns proves
+// validateSourcePlugins' sorted iteration: a config with two offending
+// sources reports the same offending source first on every run, the
+// identical determinism discipline validatePins/validateExtras already
+// document.
+func TestValidate_SourcePluginErrorIsDeterministicAcrossRuns(t *testing.T) {
+	cfg := &Config{
+		Sync: SyncConfig{Interval: "15m"},
+		Sources: map[string]Source{
+			"zzz-second-offender": {Plugin: "../also-bad", BaseURL: "http://x.lan", Token: "tok"},
+			"aaa-first-offender":  {Plugin: "../bad", BaseURL: "http://x.lan", Token: "tok"},
+		},
+	}
+
+	var firstErr string
+	for i := 0; i < 50; i++ {
+		err := cfg.Validate(nil)
+		if err == nil {
+			t.Fatal("expected a two-offender config to be rejected")
+		}
+		if i == 0 {
+			firstErr = err.Error()
+			continue
+		}
+		if err.Error() != firstErr {
+			t.Fatalf("expected a deterministic error string across runs:\nfirst=%q\ngot=%q", firstErr, err.Error())
+		}
+	}
+	if !strings.Contains(firstErr, "aaa-first-offender") {
+		t.Errorf("expected the sorted-first offender %q to be named, got: %v", "aaa-first-offender", firstErr)
+	}
+}
+
 // TestLoad_ExtrasVarExpandsExactlyLikeBaseURL proves D-13: a ${VAR}
 // reference inside a [sources.<id>.extras] value expands at load time
 // exactly like base_url/token do — the operator never needs a second

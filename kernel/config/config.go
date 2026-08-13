@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -365,6 +366,10 @@ func (cfg *Config) Validate(missing []string) error {
 		return err
 	}
 
+	if err := cfg.validateSourcePlugins(missing); err != nil {
+		return err
+	}
+
 	if err := cfg.validatePins(); err != nil {
 		return err
 	}
@@ -417,6 +422,47 @@ func (cfg *Config) validatePins() error {
 		value := cfg.Plugins.Pins[name]
 		if !pinHashPattern.MatchString(value) {
 			return fmt.Errorf("config: [plugins.pins] value for %q is not a 64-character lowercase hex SHA-256 digest, got %q", name, value)
+		}
+	}
+	return nil
+}
+
+// validateSourcePlugins checks every [sources.<id>] plugin value shape
+// (CR-01, 11-REVIEW.md; PLUG-07): this is the config-validation-time half
+// of the same confinement rule kernel/pluginhost.validatePluginBinaryName
+// enforces at launch time — both must be changed together, since
+// kernel/config MUST NOT import kernel/pluginhost to share the rule
+// (pluginhost already imports config, so the reverse would be an import
+// cycle), the same by-hand duplication discipline pinKeyPluginPrefix's
+// doc comment above already documents. This is a SHAPE check only:
+// config.Load runs before any plugin directory is scanned and has no way
+// to know which binaries actually exist on disk, the same boundary
+// validatePins' comment draws for [plugins.pins] keys.
+//
+// Sources are iterated in sorted order so a config carrying two offending
+// sources reports the same offending source first on every run — the
+// identical deterministic-multi-error discipline validatePins and
+// validateExtras already document.
+//
+// Deliberately NOT enforced here: the "topos-plugin-" prefix. Prefix
+// filtering is discovery/catalog policy (D-10), not a config-validity
+// rule — existing in-tree fixtures configure short plugin names such as
+// "x" and must keep validating.
+func (cfg *Config) validateSourcePlugins(missing []string) error {
+	names := make([]string, 0, len(cfg.Sources))
+	for name := range cfg.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		src := cfg.Sources[name]
+		if strings.TrimSpace(src.Plugin) == "" {
+			return fmt.Errorf("config: source %q has no plugin specified%s", name, missingSuffix(missing))
+		}
+		if strings.ContainsRune(src.Plugin, '/') || strings.ContainsRune(src.Plugin, '\\') ||
+			src.Plugin == "." || src.Plugin == ".." || src.Plugin != filepath.Base(src.Plugin) {
+			return fmt.Errorf("config: source %q has invalid plugin %q — must be a bare binary filename with no path separators or \"..\" segments", name, src.Plugin)
 		}
 	}
 	return nil

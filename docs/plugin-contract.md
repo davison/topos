@@ -230,6 +230,17 @@ filename in the external directory — the trusted directory always wins,
 silently to the running kernel (loudly to its own logs), never the other
 way around.
 
+**`[sources.<id>] plugin` must be a bare binary filename.** The value
+resolves directly inside one of the two configured directories above and
+nowhere else — it must not contain a path separator (either `/` or `\`)
+or an `.`/`..` segment, and it must not be empty. A value carrying any of
+those shapes fails config load and `PUT /api/config` with an error naming
+the offending source, before the config is written to disk. This is what
+keeps the premise "trust is decided by the kernel from where the binary
+lives" true: a caller-supplied path can never point the kernel at a file
+outside `[plugins] dir`/`[plugins] external_dir`, and so can never make a
+binary outside either directory launch as if it were `TierTrusted`.
+
 **Two instances, two tiers, no conflict.** Two `[sources.<id>]` entries
 naming the same plugin binary always resolve to the same tier (tier is a
 property of the binary's resolved path, not of the instance), but two
