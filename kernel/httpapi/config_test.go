@@ -415,6 +415,110 @@ keywords = ["house-move"]
 	}
 }
 
+// TestConfigSaveHandler_TraversalPluginValueReturns422AndLeavesFileUnchanged
+// is the HTTP-layer half of CR-01's fix (11-07-PLAN.md Task 2): a
+// [sources.<id>] plugin value carrying a "../" traversal must be rejected
+// 422 config_invalid at the exact reachable surface CR-01 identified —
+// PUT /api/config — with the file on disk left byte-identical, never
+// partially written. Mirrors
+// TestConfigSaveHandler_InvalidConfigReturns422WithValidatorMessageVerbatim's
+// own discipline: the envelope message is asserted against a live
+// invalid.Validate(nil) call, never a hardcoded sentence.
+func TestConfigSaveHandler_TraversalPluginValueReturns422AndLeavesFileUnchanged(t *testing.T) {
+	contents := `
+[webspaces.house-move]
+keywords = ["house-move"]
+`
+	cfgStore := newTestConfigStoreFromFile(t, contents)
+	router := newConfigTestRouter(cfgStore)
+
+	configPath := cfgStore.Path()
+	before, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.toml before PUT: %v", err)
+	}
+
+	invalid := &config.Config{
+		Sync: config.SyncConfig{Interval: "15m"},
+		Sources: map[string]config.Source{
+			"evil": {Plugin: "../../../../bin/sh", BaseURL: "http://x.lan", Token: "tok"},
+		},
+	}
+	wantErr := invalid.Validate(nil)
+	if wantErr == nil {
+		t.Fatal("test fixture itself must be invalid — Validate(nil) unexpectedly returned nil")
+	}
+
+	reqBody, err := json.Marshal(configSaveRequest{BaseHash: cfgStore.Hash(), Config: invalid})
+	if err != nil {
+		t.Fatalf("marshal PUT body: %v", err)
+	}
+	rec := doConfigRequest(t, router, http.MethodPut, string(reqBody))
+
+	assertErrorEnvelope(t, rec, http.StatusUnprocessableEntity, "config_invalid")
+
+	var envelope errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal error envelope: %v", err)
+	}
+	if envelope.Error.Message != wantErr.Error() {
+		t.Errorf("expected the validator's own message verbatim:\ngot=%q\nwant=%q", envelope.Error.Message, wantErr.Error())
+	}
+	if !strings.Contains(envelope.Error.Message, "evil") {
+		t.Errorf("expected the message to name the source %q, got: %q", "evil", envelope.Error.Message)
+	}
+
+	after, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config.toml after rejected PUT: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("expected config.toml to be byte-identical after a rejected PUT:\nbefore=%q\nafter=%q", before, after)
+	}
+}
+
+// TestConfigSaveHandler_EmptyPluginValueReturns422NamingTheSource is the
+// sibling of the traversal test above, for the absent/empty-plugin shape:
+// a [sources.<id>] entry with Plugin: "" must be rejected 422
+// config_invalid, naming the offending source.
+func TestConfigSaveHandler_EmptyPluginValueReturns422NamingTheSource(t *testing.T) {
+	cfgStore := newTestConfigStoreFromFile(t, `
+[webspaces.house-move]
+keywords = ["house-move"]
+`)
+	router := newConfigTestRouter(cfgStore)
+
+	invalid := &config.Config{
+		Sync: config.SyncConfig{Interval: "15m"},
+		Sources: map[string]config.Source{
+			"evil": {Plugin: "", BaseURL: "http://x.lan", Token: "tok"},
+		},
+	}
+	wantErr := invalid.Validate(nil)
+	if wantErr == nil {
+		t.Fatal("test fixture itself must be invalid — Validate(nil) unexpectedly returned nil")
+	}
+
+	reqBody, err := json.Marshal(configSaveRequest{BaseHash: cfgStore.Hash(), Config: invalid})
+	if err != nil {
+		t.Fatalf("marshal PUT body: %v", err)
+	}
+	rec := doConfigRequest(t, router, http.MethodPut, string(reqBody))
+
+	assertErrorEnvelope(t, rec, http.StatusUnprocessableEntity, "config_invalid")
+
+	var envelope errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal error envelope: %v", err)
+	}
+	if envelope.Error.Message != wantErr.Error() {
+		t.Errorf("expected the validator's own message verbatim:\ngot=%q\nwant=%q", envelope.Error.Message, wantErr.Error())
+	}
+	if !strings.Contains(envelope.Error.Message, "evil") {
+		t.Errorf("expected the message to name the source %q, got: %q", "evil", envelope.Error.Message)
+	}
+}
+
 // TestConfigSaveHandler_UnknownKeysReturns409 is the HTTP-layer half of
 // the lossless-rewrite prohibition: a config.toml carrying a key the
 // Config struct does not model must refuse the save with 409
