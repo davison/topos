@@ -48,7 +48,14 @@ Full phase details, success criteria, and plan lists: [milestones/v1.0-ROADMAP.m
   3. Trust is decided by the kernel from where the binary lives plus a content hash pinned when the source was added; swapping the binary afterwards is caught at the next launch and fails loudly by name instead of inheriting stale trust.
   4. An external plugin receives provider-specific config keys the kernel has never heard of (arbitrary per-instance extras), with no kernel change required to add a new key.
   5. A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — the mechanism is proven before any out-of-repo source work starts.
-**Plans**: TBD
+**Plans**: 6 plans (5 waves)
+Plans:
+- [ ] 11-01-PLAN.md — Tracer: two-tier discovery, tier published end to end, untrusted chip badge
+- [ ] 11-02-PLAN.md — Kernel trust gate: pin verification, soft per-instance failure, env allowlist, extras wire
+- [ ] 11-03-PLAN.md — HTTP trust surface + contract/API/example-config republish
+- [ ] 11-04-PLAN.md — Out-of-repo proof binary and its end-to-end gate (success criterion 5)
+- [ ] 11-05-PLAN.md — UI: untrusted add flow, picker labels, extras form
+- [ ] 11-06-PLAN.md — UI: binary-changed state, re-pin flow, pinned-hash footer
 **UI hint**: yes
 
 ### Phase 12: Filesystem Source
