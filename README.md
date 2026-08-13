@@ -31,11 +31,12 @@ the browser._
 
 ## Status
 
-topos has completed 11 of its v1 phases. All five sources ship today —
+topos has completed 11 of its v1 phases. Six sources ship today —
 paperless-ngx, SilverBullet, Proton Mail (via Bridge, never marking mail
 read), Signal Desktop (read strictly read-only from its local database),
-and WhatsApp (as a linked device, with its own persistent message store)
-— interleaved in one chronological stream per webspace. You get source
+WhatsApp (as a linked device, with its own persistent message store), and
+a local/network filesystem folder (docs in a directory, optionally its
+subfolders) — interleaved in one chronological stream per webspace. You get source
 filtering, per-source health with manual refresh, full-text search
 across a webspace, a live detail pane, webspace creation and source
 configuration entirely from the browser (no hand-editing TOML required
@@ -72,6 +73,12 @@ build from one CI runner's distro carries no guarantee of running on
 yours. If you use Signal, build the plugin yourself with `make signal`
 against your own system's SQLCipher; see
 [`docs/plugins/signal.md`](docs/plugins/signal.md) for the prerequisites.
+
+**The filesystem plugin binary is not yet published either** — it needs
+no cgo and builds cleanly under `make build-portable`, but the release
+workflow's published-asset list has not been widened to include it yet.
+Build it from source with `make build` or `make build-portable` (below)
+in the meantime; see [`docs/plugins/filesystem.md`](docs/plugins/filesystem.md).
 
 ### From source
 
@@ -169,7 +176,7 @@ detects a non-loopback bind, but does not refuse to start.
   provenance keys, and the full error-code list. This is the same JSON
   the web UI consumes — there is no separate agent API.
 - **[`docs/plugins/`](docs/plugins/)** — per-plugin operator docs: install
-  requirements, configuration, and gotchas for each of the five source
+  requirements, configuration, and gotchas for each of the six source
   plugins.
 - **[`SECURITY.md`](SECURITY.md)** — how to report a vulnerability.
 - **[`docs/releasing.md`](docs/releasing.md)** — how a release is cut,

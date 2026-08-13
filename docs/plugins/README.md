@@ -14,6 +14,8 @@ document is the author-facing contract.
   paperless-ngx instance over its REST API, matching on tags.
 - **[SilverBullet](./silverbullet.md)** — reads pages from a SilverBullet
   space over its HTTP filesystem API, matching on tags and page names.
+- **[Filesystem](./filesystem.md)** — reads documents out of a local or
+  network-mounted folder, matching on folder names.
 
 A new plugin page is created by copying `_template.md`. The fixture
 plugins `mock` and `mockstrict` deliberately have no page here — they are
