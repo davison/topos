@@ -164,3 +164,90 @@ func TestValidateMatchConfig_PassingTwoFieldVocabulary(t *testing.T) {
 		t.Fatalf("expected no error for a fully-declared two-field vocabulary, got: %v", err)
 	}
 }
+
+// newTestHostWithLaunchFailure builds a *Host carrying zero launched
+// plugins and exactly one recorded soft launch failure for `instance` — the
+// T-11-33 exemption's own fixture shape, same-package direct construction
+// (Host.launchFailures is unexported) mirroring newTestHost's own pattern.
+func newTestHostWithLaunchFailure(instance string) *Host {
+	return &Host{
+		launchFailures: map[string]LaunchFailure{
+			instance: {Instance: instance, Reason: LaunchFailurePinMismatch},
+		},
+	}
+}
+
+// TestValidateMatchConfig_PinMismatchedInstanceExcusedFromExplicitMatchBlock
+// proves T-11-33's own threat-register mitigation at the pluginhost layer
+// (11-06-PLAN.md Task 3's browser proof surfaced this gap live —
+// 11-02-SUMMARY.md's "Issues Encountered" had flagged it, unresolved, as
+// "a later plan... if it becomes user-visible"): an explicit match block
+// naming a CURRENTLY pin-mismatched instance (LaunchFailures(), not
+// byInstance) must not fail this check — its own launch refusal is already
+// reported separately (GET /api/sources), not a config defect to reject an
+// unrelated save over.
+func TestValidateMatchConfig_PinMismatchedInstanceExcusedFromExplicitMatchBlock(t *testing.T) {
+	host := newTestHostWithLaunchFailure("bad-pin")
+	cfg := &config.Config{
+		Sources: map[string]config.Source{"bad-pin": {Plugin: "topos-plugin-external"}},
+		Webspaces: map[string]config.Webspace{
+			"demo": {
+				Match: map[string]config.MatchBlock{
+					"bad-pin": {"labels": {"anything"}},
+				},
+			},
+		},
+	}
+
+	if err := ValidateMatchConfig(cfg, host); err != nil {
+		t.Fatalf("expected a pin-mismatched instance's explicit match block to be excused, got: %v", err)
+	}
+}
+
+// TestValidateMatchConfig_PinMismatchedInstanceExcusedFromKeywordsFallback
+// is the fallback-vocabulary sibling of the test above — a pin-mismatched
+// instance participating via ws.Keywords (no explicit match block) must be
+// excused the same way, not just the explicit-match-block path.
+func TestValidateMatchConfig_PinMismatchedInstanceExcusedFromKeywordsFallback(t *testing.T) {
+	host := newTestHostWithLaunchFailure("bad-pin")
+	cfg := &config.Config{
+		Sources: map[string]config.Source{"bad-pin": {Plugin: "topos-plugin-external"}},
+		Webspaces: map[string]config.Webspace{
+			"demo": {Keywords: []string{"demo"}},
+		},
+	}
+
+	if err := ValidateMatchConfig(cfg, host); err != nil {
+		t.Fatalf("expected a pin-mismatched instance's keywords-fallback participation to be excused, got: %v", err)
+	}
+}
+
+// TestValidateMatchConfig_UnlaunchedInstanceStillFailsWhenNotExcused proves
+// the exemption above is scoped EXACTLY to instances LaunchFailures()
+// names, not a blanket relaxation — an instance absent from byInstance AND
+// absent from the excused set must still fail exactly as
+// TestValidateMatchConfig_UnlaunchedInstanceFails already proves for a
+// plain *Host with no recorded failures at all.
+func TestValidateMatchConfig_UnlaunchedInstanceStillFailsWhenNotExcused(t *testing.T) {
+	// A launch failure recorded for a DIFFERENT instance must not excuse
+	// this one.
+	host := newTestHostWithLaunchFailure("some-other-instance")
+	cfg := &config.Config{
+		Sources: map[string]config.Source{"home-email": {Plugin: "topos-plugin-proton"}},
+		Webspaces: map[string]config.Webspace{
+			"house-move": {
+				Match: map[string]config.MatchBlock{
+					"home-email": {"folders": {"Home"}},
+				},
+			},
+		},
+	}
+
+	err := ValidateMatchConfig(cfg, host)
+	if err == nil {
+		t.Fatal("expected error for a match block naming an unlaunched, non-excused instance, got nil")
+	}
+	if !strings.Contains(err.Error(), "house-move") || !strings.Contains(err.Error(), "home-email") {
+		t.Errorf("expected error to name the webspace and the unlaunched instance, got: %v", err)
+	}
+}

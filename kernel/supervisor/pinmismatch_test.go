@@ -75,15 +75,20 @@ func TestPinMismatch_BootSucceedsHealthySourceSyncsFailureRecorded(t *testing.T)
 	wrongPin := strings.Repeat("f", 64)
 
 	// The "demo" webspace's sources allowlist deliberately names only
-	// "healthy": pluginhost.ValidateMatchConfig (unchanged by this phase)
-	// still rejects a webspace whose keywords-fallback participation names
-	// an instance with no launched plugin — exactly the D-05 cross-check a
-	// SUSPENDED instance already needs its own ValidateMatchConfigWithSuspended
-	// exemption for (kernel/supervisor.SuspendInstance). Scoping "bad-pin"
-	// out of every webspace's participation here is this test's own
-	// fixture choice, not a claim that pin-mismatch/match-vocabulary
-	// interaction is solved — extending the suspended-instance exemption
-	// to a pin-mismatched one is out of this task's declared scope.
+	// "healthy" — this test's own scope is the boot/Apply soft-failure
+	// proof, not the match-vocabulary interaction. As of 11-06-PLAN.md
+	// Task 3, pluginhost.ValidateMatchConfig DOES excuse a pin-mismatched
+	// instance from its own match-vocabulary check (a third participant
+	// class alongside "launched" and "suspended" — see
+	// pluginhost.launchFailedNames and matchconfig_test.go's own
+	// TestValidateMatchConfig_PinMismatchedInstanceExcused* pair), closing
+	// the gap this comment previously flagged as unresolved. "bad-pin"
+	// stays out of "demo"'s participation here purely to keep THIS test
+	// focused on boot/Apply semantics rather than match-vocabulary
+	// interaction — the participating-instance case (a pin-mismatched
+	// instance named in a real webspace's match config, through a real
+	// browser session) is proved end to end by
+	// web/e2e/specs/11-binary-changed-repin.spec.ts.
 	cfgStore := newTestConfigStore(t, fmt.Sprintf(`
 [plugins.pins]
 "topos-plugin-mockext" = %q

@@ -18,7 +18,17 @@ declare namespace NodeJS {
 // node:fs.readFileSync's no-encoding overload returns this, and
 // node:crypto's Hash.update accepts it — callers never read fields off it
 // directly, only pass the raw bytes straight through to the hasher.
+//
+// 11-06-PLAN.md Task 3 (the binary-changed/re-pin spec) additionally needs
+// the Buffer NAMESPACE's own static constructors — appending a tampered
+// trailing byte to a real binary's bytes needs Buffer.from/Buffer.concat,
+// narrowed to exactly that pair, matching this file's own established
+// "exactly what's imported, nothing more" discipline.
 interface Buffer {}
+declare var Buffer: {
+	from(data: number[]): Buffer;
+	concat(list: Buffer[]): Buffer;
+};
 
 declare var process: {
 	env: Record<string, string | undefined>;
@@ -57,7 +67,17 @@ declare module 'node:fs' {
 	// caller's shape.
 	export function readFileSync(path: string): Buffer;
 	export function readFileSync(path: string, encoding: string): string;
+	// Two overloads, matching node:fs's real shape: a string caller (every
+	// pre-existing writer in this tree, e.g. config-builder.ts's
+	// writeConfig) and a raw-bytes caller (11-06-PLAN.md Task 3's tampered-
+	// binary write, which must never round-trip through a text encoding).
 	export function writeFileSync(path: string, data: string, encoding?: string): void;
+	export function writeFileSync(path: string, data: Buffer): void;
+	// chmodSync (11-06-PLAN.md Task 3): restores the executable bit the
+	// tampered-binary write above does not itself preserve (writeFileSync
+	// creates a fresh file at the default umask-governed mode, not the
+	// original symlink target's 0o755).
+	export function chmodSync(path: string, mode: number): void;
 	export function readdirSync(path: string): string[];
 }
 

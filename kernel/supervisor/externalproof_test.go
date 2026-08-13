@@ -224,20 +224,21 @@ keywords = ["external-demo-proof"]
 	}
 
 	// Retire the "proof" webspace (demo's only participation) before
-	// re-booting: pluginhost.ValidateMatchConfig rejects ANY webspace whose
-	// keywords-fallback (or explicit match block) participation names an
-	// instance with no launched plugin, and — unlike a suspended instance
-	// (ValidateMatchConfigWithSuspended) — a pin-mismatched instance gets no
-	// such exemption (a documented, deliberately out-of-scope gap; see
-	// kernel/supervisor/pinmismatch_test.go's identical workaround and
-	// 11-02-SUMMARY.md's "Issues Encountered"). This mirrors a real
-	// operator's own next step on discovering a tampered binary — narrow
-	// what depends on it — and is the only way, within this test's own file
-	// scope, to reboot and observe the refusal rather than a hard
-	// NewSupervisor failure unrelated to the pin check under test. "demo"
-	// remains fully configured under [sources.demo] and is still
-	// launch-attempted (and therefore still recorded in LaunchFailures())
-	// by the reboot below — only its webspace PARTICIPATION is removed.
+	// re-booting — this test's own scope is the pin-refusal-at-boot proof,
+	// not the match-vocabulary interaction (kept minimal and independent of
+	// that concern, mirroring pinmismatch_test.go's identical choice). As
+	// of 11-06-PLAN.md Task 3, pluginhost.ValidateMatchConfig DOES excuse a
+	// pin-mismatched instance from its own match-vocabulary check (see
+	// pluginhost.launchFailedNames and matchconfig_test.go's own
+	// TestValidateMatchConfig_PinMismatchedInstanceExcused* pair) — this
+	// retire-then-reboot step is no longer REQUIRED to avoid a spurious
+	// NewSupervisor failure, but is kept anyway so this test's own
+	// assertions stay focused on the pin-tamper-and-refuse behavior; the
+	// participating-instance case is proved end to end by
+	// web/e2e/specs/11-binary-changed-repin.spec.ts. "demo" remains fully
+	// configured under [sources.demo] and is still launch-attempted (and
+	// therefore still recorded in LaunchFailures()) by the reboot below —
+	// only its webspace PARTICIPATION is removed.
 	next := cfgStore.Raw()
 	delete(next.Webspaces, "proof")
 	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
