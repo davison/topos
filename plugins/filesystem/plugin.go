@@ -208,55 +208,9 @@ func (p *SourcePlugin) toItem(name string, info os.FileInfo) *toposv1.Item {
 	}
 }
 
-// noRenditionReason is the fixed unavailable_reason used for a content
-// variant this tracer's PDF-only scope never has a rendition for
-// (THUMBNAIL) — a normal outcome, not an error, mirroring the paperless
-// plugin's identical convention.
-const noRenditionReason = "no thumbnail rendition"
-
-// Fetch dispatches on ContentVariant exactly like plugins/paperless/
-// plugin.go does. FULL and PREVIEW both re-read the file fresh from disk
-// (never cached from Match, matching every other plugin's "Fetch re-fetches
-// fresh from source" rule) and return the PDF's raw bytes; THUMBNAIL
-// returns unavailable with a fixed reason — this tracer never generates a
-// thumbnail rendition.
-func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
-	switch req.GetVariant() {
-	case toposv1.ContentVariant_CONTENT_VARIANT_FULL, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
-		return p.fetchBytes(req.GetSourceId())
-	case toposv1.ContentVariant_CONTENT_VARIANT_THUMBNAIL:
-		return &toposv1.FetchResponse{Available: false, UnavailableReason: noRenditionReason}, nil
-	default:
-		return nil, status.Error(codes.InvalidArgument, "filesystem: unspecified content variant")
-	}
-}
-
-// fetchBytes re-validates sourceID resolves inside the configured root
-// (defense-in-depth, mirroring kernel/httpapi/fsopen.go's identical guard)
-// before reading — a missing file is codes.NotFound, any other I/O failure
-// is codes.Unavailable, matching the paperless/silverbullet error-code
-// convention.
-func (p *SourcePlugin) fetchBytes(sourceID string) (*toposv1.FetchResponse, error) {
-	full, err := resolvePath(p.root, sourceID)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
-	}
-
-	data, err := os.ReadFile(full)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
-		}
-		return nil, status.Errorf(codes.Unavailable, "filesystem: read %q: %v", sourceID, err)
-	}
-
-	return &toposv1.FetchResponse{
-		Available: true,
-		MimeType:  "application/pdf",
-		SizeBytes: int64(len(data)),
-		Data:      data,
-	}, nil
-}
+// Fetch is implemented in fetch.go — the per-preview-kind dispatch
+// (12-02-PLAN.md Task 3) that superseded this tracer's PDF-only
+// fetchBytes.
 
 // Health stats the configured root: a readable directory is reachable;
 // anything else (missing, unreadable, or a non-directory) is unreachable

@@ -37,10 +37,11 @@ type classification struct {
 
 // extensionTable is the closed, hand-rolled extension -> classification
 // map this plugin's default document-ish allowlist is built from (D-03).
-// Deliberately NOT mime.TypeByExtension: that stdlib helper's behavior
-// varies with the host's /etc/mime.types, and this table must read
-// identically on the operator's desktop, in CI and on a fresh install
-// (12-RESEARCH.md Anti-Patterns, 12-02-PLAN.md Task 2 action text).
+// Deliberately not the stdlib "mime" package's extension-lookup helper:
+// that helper's behavior varies with the host's /etc/mime.types, and this
+// table must read identically on the operator's desktop, in CI and on a
+// fresh install (12-RESEARCH.md Anti-Patterns, 12-02-PLAN.md Task 2
+// action text).
 //
 // Every image extension claiming previewKindBytes here is already present
 // in kernel/httpapi/item.go's allowedRenditionTypes; svg/bmp/tif/tiff/heic
