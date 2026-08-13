@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,8 +52,9 @@ var iconSVG []byte
 // remains a later plan's work — this plan widens document scope and
 // preview shapes only, still walking the configured root's top level.
 type SourcePlugin struct {
-	root   string
-	extras map[string]string
+	root      string
+	extras    map[string]string
+	recursive bool
 }
 
 // NewSourcePlugin builds a SourcePlugin rooted at root — already expanded
@@ -61,9 +63,11 @@ type SourcePlugin struct {
 // silently. extras carries this instance's own config.Source.Extras
 // verbatim (D-12/D-13) — may be nil, a legitimate "no scope overrides
 // configured" state that newScope resolves to the default allowlist
-// alone.
-func NewSourcePlugin(root string, extras map[string]string) *SourcePlugin {
-	return &SourcePlugin{root: root, extras: extras}
+// alone. recursive carries config.Source.Recursive verbatim
+// (12-03-PLAN.md Task 1) — false means Match reads the root's own top
+// level only; true means every depth (Task 2's walk.go is the consumer).
+func NewSourcePlugin(root string, extras map[string]string, recursive bool) *SourcePlugin {
+	return &SourcePlugin{root: root, extras: extras, recursive: recursive}
 }
 
 // includeGlobKey and excludeGlobKey are the two extras keys this plugin
@@ -104,17 +108,14 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 	}, nil
 }
 
-// Match reads the configured root's TOP LEVEL ONLY (os.ReadDir, never
-// filepath.WalkDir — recursion is a later plan's work). Each candidate
-// file's D-01 relative source_id is resolved through scope.go's
-// (*scope).includes, which decides both inclusion and preview-kind
-// classification from this instance's extras-driven include/exclude globs
-// plus the default extension allowlist (D-03) — compiled once per Match
-// call via newScope, not once per file. No file body is ever read here —
-// preview stays empty at Match time (D-04's "no new kernel/UI rendering
-// work" applies transitively: Match reads only file metadata to build an
-// item; Fetch re-derives the same classification fresh, never caching it
-// from here).
+// Match delegates the tree traversal to walk.go's walk (12-03-PLAN.md
+// Task 2): recursion on/off, symlink and hidden-file policy, permission
+// tolerance and the per-sync item cap all live there. walk returns the
+// COMPLETE current candidate set — never partial — which is exactly what
+// kernel/correlate's full-replace persistence requires; Match itself does
+// no diffing of its own. No file body is ever read here — preview stays
+// empty at Match time (Fetch re-derives classification fresh, never
+// caching it from here).
 //
 // Match reads only its own declared "folders" field from match_fields and
 // ignores every other key present in the request map (D-05): when the
@@ -122,40 +123,27 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 // (case-insensitive exact comparison, never substring/prefix); when
 // absent, every item is returned so the kernel's keywords fallback can do
 // the matching.
-func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
-	entries, err := os.ReadDir(p.root)
+func (p *SourcePlugin) Match(ctx context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
+	sc := newScope(p.extras)
+
+	results, skipped, err := walk(ctx, p.root, p.recursive, sc)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "filesystem: read root: %v", err)
+		return nil, status.Errorf(codes.Unavailable, "filesystem: %v", err)
+	}
+	if skipped > 0 {
+		// go-plugin captures this subprocess's stderr and re-emits it
+		// through the kernel's own hclog pipeline (host.go's stderrTail)
+		// — no dedicated plugin-side logger exists for this plugin, so
+		// this is the established, already-wired channel for a
+		// non-fatal notice.
+		fmt.Fprintf(os.Stderr, "topos-plugin-filesystem: skipped %d unreadable subtree(s) during walk\n", skipped)
 	}
 
-	sc := newScope(p.extras)
 	folders, hasFolders := req.GetMatchFields()["folders"]
 
 	var items []*toposv1.Item
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		full := filepath.Join(p.root, entry.Name())
-		sourceID := relPathSourceID(p.root, full)
-
-		if _, included, err := sc.includes(sourceID); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
-		} else if !included {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			// A file that vanished or became unreadable between ReadDir and
-			// Info is skipped for this sync — the next poll picks it back up
-			// if it reappears, matching the stat-diff-via-full-replace design
-			// (12-RESEARCH.md).
-			continue
-		}
-
-		it := p.toItem(entry.Name(), info)
+	for _, r := range results {
+		it := p.toItem(r.sourceID, r.info)
 		if hasFolders && !labelMatchesAny(it.GetLabels(), folders.GetValues()) {
 			continue
 		}
@@ -180,20 +168,20 @@ func labelMatchesAny(labels, values []string) bool {
 	return false
 }
 
-// toItem builds the Item for the top-level file name (info already stat'd
-// by Match). source_id is the D-01 relative path; labels is the D-05
-// folder-vocabulary value; deep_link is the file:// URI the kernel rewrites
-// at serve time (Task 1 checkpoint, option-a); fidelity is always EXACT for
-// this tracer's PDF-only scope; preview stays empty.
-func (p *SourcePlugin) toItem(name string, info os.FileInfo) *toposv1.Item {
-	full := filepath.Join(p.root, name)
-	sourceID := relPathSourceID(p.root, full)
+// toItem builds the Item for sourceID (a D-01 forward-slash relative path
+// — walk.go's walk already resolved it, at any depth), given info already
+// stat'd by walk. Title is the file's own base name (never the full
+// relative path — a nested file's directory context lives in Labels, not
+// the title); deep_link is the file:// URI the kernel rewrites at serve
+// time (Task 1 checkpoint, option-a); fidelity is always EXACT.
+func (p *SourcePlugin) toItem(sourceID string, info os.FileInfo) *toposv1.Item {
+	full := filepath.Join(p.root, filepath.FromSlash(sourceID))
 	modUnix := info.ModTime().Unix()
 
 	return &toposv1.Item{
 		SourceId:               sourceID,
 		SourceType:             sourceType,
-		Title:                  name,
+		Title:                  filepath.Base(sourceID),
 		TimestampUnix:          modUnix,
 		SecondaryTimestampUnix: modUnix,
 		Fidelity:               toposv1.LinkFidelity_LINK_FIDELITY_EXACT,
@@ -212,19 +200,20 @@ func (p *SourcePlugin) toItem(name string, info os.FileInfo) *toposv1.Item {
 // (12-02-PLAN.md Task 3) that superseded this tracer's PDF-only
 // fetchBytes.
 
-// Health stats the configured root: a readable directory is reachable;
-// anything else (missing, unreadable, or a non-directory) is unreachable
-// with the OS error (or a named reason) as last_error — never
-// reachable-with-zero-items for an unreadable mount (12-CONTEXT.md
-// Claude's Discretion; mirrors the WhatsApp/Signal "degrade honestly"
-// precedent).
+// Health lists the configured root's own top level: a readable directory
+// — empty or not — is reachable; a missing, unreadable, or non-directory
+// path is unreachable with the OS error as last_error (12-03-PLAN.md
+// Task 2, 12-CONTEXT.md Claude's Discretion; mirrors the WhatsApp/Signal
+// "degrade honestly" precedent). os.ReadDir, not os.Stat, is deliberate:
+// Stat alone can succeed against a directory whose own permissions deny
+// entry (traversal only needs execute on the PARENT, not the target),
+// so it cannot distinguish "readable" from "exists but denied" — exactly
+// the T-12-16 distinction this response must never collapse. No persisted
+// last-known-mtime cache exists anywhere: the freshness bound for a
+// network mount is the sync interval (12-RESEARCH.md Pitfall 4).
 func (p *SourcePlugin) Health(_ context.Context, _ *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
-	info, err := os.Stat(p.root)
-	if err != nil {
+	if _, err := os.ReadDir(p.root); err != nil {
 		return &toposv1.HealthResponse{Reachable: false, LastError: err.Error()}, nil
-	}
-	if !info.IsDir() {
-		return &toposv1.HealthResponse{Reachable: false, LastError: "filesystem: configured path is not a directory"}, nil
 	}
 	return &toposv1.HealthResponse{Reachable: true, LastSyncUnix: time.Now().Unix()}, nil
 }

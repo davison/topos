@@ -38,7 +38,7 @@ func TestFetch_PDFFetchesAvailableWithBytesAndMime(t *testing.T) {
 	root := t.TempDir()
 	body := []byte("%PDF-1.4 fixture body")
 	writeFixture(t, root, "invoice.pdf", body)
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "invoice.pdf")
 	if !resp.GetAvailable() {
@@ -58,7 +58,7 @@ func TestFetch_PDFFetchesAvailableWithBytesAndMime(t *testing.T) {
 func TestFetch_PNGFetchesAvailableWithImageMime(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "photo.png", []byte("fake png bytes"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "photo.png")
 	if !resp.GetAvailable() {
@@ -72,7 +72,7 @@ func TestFetch_PNGFetchesAvailableWithImageMime(t *testing.T) {
 func TestFetch_MarkdownFetchesAsRenderedHTMLWithMarkdownShape(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "notes.md", []byte("# Title\n\nbody\n"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "notes.md")
 	if !resp.GetAvailable() {
@@ -92,7 +92,7 @@ func TestFetch_MarkdownFetchesAsRenderedHTMLWithMarkdownShape(t *testing.T) {
 func TestFetch_PlainTextFetchesWithTextPopulated(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "notes.txt", []byte("hello plain text"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "notes.txt")
 	if !resp.GetAvailable() {
@@ -110,7 +110,7 @@ func TestFetch_PlainTextLongerThanBoundIsHonestlyTruncated(t *testing.T) {
 	root := t.TempDir()
 	body := strings.Repeat("a", maxPlainTextSize+100)
 	writeFixture(t, root, "big.txt", []byte(body))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "big.txt")
 	if !resp.GetAvailable() {
@@ -125,7 +125,7 @@ func TestFetch_PlainTextLongerThanBoundIsHonestlyTruncated(t *testing.T) {
 func TestFetch_DocxFetchesUnavailableWithNoMimeOrBytes(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "report.docx", []byte("not really an office doc"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "report.docx")
 	if resp.GetAvailable() {
@@ -145,7 +145,7 @@ func TestFetch_DocxFetchesUnavailableWithNoMimeOrBytes(t *testing.T) {
 func TestFetch_SVGFetchesUnavailableWithNamedReason(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "diagram.svg", []byte("<svg></svg>"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "diagram.svg")
 	if resp.GetAvailable() {
@@ -162,7 +162,7 @@ func TestFetch_ThumbnailAlwaysUnavailableForEveryKind(t *testing.T) {
 	writeFixture(t, root, "notes.md", []byte("# hi"))
 	writeFixture(t, root, "notes.txt", []byte("hi"))
 	writeFixture(t, root, "report.docx", []byte("doc"))
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	for _, sourceID := range []string{"invoice.pdf", "notes.md", "notes.txt", "report.docx"} {
 		resp, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
@@ -180,7 +180,7 @@ func TestFetch_ThumbnailAlwaysUnavailableForEveryKind(t *testing.T) {
 
 func TestFetch_MissingFileIsNotFoundGRPCError(t *testing.T) {
 	root := t.TempDir()
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	_, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
 		SourceId: "does-not-exist.pdf",
@@ -210,7 +210,7 @@ func TestFetch_OversizeFileIsUnavailableWithSizeReasonAndBytesNeverRead(t *testi
 	if err := f.Close(); err != nil {
 		t.Fatalf("close fixture: %v", err)
 	}
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	resp := fetchFull(t, p, "huge.pdf")
 	if resp.GetAvailable() {
@@ -226,7 +226,7 @@ func TestFetch_OversizeFileIsUnavailableWithSizeReasonAndBytesNeverRead(t *testi
 
 func TestFetch_SourceIDEscapingTheRootIsRefusedBeforeAnyFileIsOpened(t *testing.T) {
 	root := t.TempDir()
-	p := NewSourcePlugin(root, nil)
+	p := NewSourcePlugin(root, nil, false)
 
 	_, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
 		SourceId: "../../etc/passwd",

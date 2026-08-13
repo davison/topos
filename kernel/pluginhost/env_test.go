@@ -7,6 +7,7 @@
 package pluginhost
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -119,6 +120,69 @@ func TestAllowedEnv_DescribeOnlyAddsMarker(t *testing.T) {
 		if hasEnvName(e, "WEBSPACES_DESCRIBE_ONLY") {
 			t.Errorf("expected no WEBSPACES_DESCRIBE_ONLY entry for a real (non-describe-only) launch, got: %v", realEnv)
 		}
+	}
+}
+
+// TestSourceConfigEnvelope_RecursiveKeyPresentOutsideExtras proves
+// 12-03-PLAN.md Task 1's envelope contract: a top-level "recursive"
+// boolean reflecting the source's own value is always present, alongside
+// the existing typed keys and OUTSIDE the nested "extras" object.
+func TestSourceConfigEnvelope_RecursiveKeyPresentOutsideExtras(t *testing.T) {
+	envelope := sourceConfigEnvelope{
+		Path:      "/mnt/docs",
+		Recursive: true,
+		Extras:    map[string]string{"include_glob": "**/*.pdf"},
+	}
+
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	got, ok := decoded["recursive"].(bool)
+	if !ok {
+		t.Fatalf("expected a top-level \"recursive\" boolean, got: %s", raw)
+	}
+	if !got {
+		t.Errorf("expected recursive == true, got false")
+	}
+
+	extras, ok := decoded["extras"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected a nested \"extras\" object, got: %s", raw)
+	}
+	if _, ok := extras["recursive"]; ok {
+		t.Errorf("expected \"recursive\" to stay OUTSIDE the nested extras object, got: %s", raw)
+	}
+}
+
+// TestSourceConfigEnvelope_RecursiveFalseStillEmitsKey proves recursive is
+// NOT omitempty on the envelope: false is a meaningful, present value
+// distinct from "field absent", unlike Extras' legitimate absent state.
+func TestSourceConfigEnvelope_RecursiveFalseStillEmitsKey(t *testing.T) {
+	envelope := sourceConfigEnvelope{Path: "/mnt/docs"}
+
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	got, ok := decoded["recursive"]
+	if !ok {
+		t.Fatalf("expected a \"recursive\" key even when false, got: %s", raw)
+	}
+	if got != false {
+		t.Errorf("expected recursive == false, got %v", got)
 	}
 }
 

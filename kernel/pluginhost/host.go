@@ -659,6 +659,14 @@ type sourceConfigEnvelope struct {
 	Username       string `json:"username"`
 	WebmailBaseURL string `json:"webmail_base_url"`
 	Path           string `json:"path"`
+	// Recursive carries config.Source.Recursive verbatim (12-03-PLAN.md
+	// Task 1) — a kernel-known typed field, always emitted like every
+	// other scalar above (never omitempty: false is a meaningful, present
+	// value distinct from "field absent", unlike Extras' legitimate
+	// absent state below), and never folded into the nested Extras object
+	// — the sub-table boundary (D-12) is between kernel-known typed
+	// fields and opaque provider keys, and this is a kernel-known field.
+	Recursive bool `json:"recursive"`
 	// Extras carries config.Source.Extras verbatim (D-12/D-13) — omitted
 	// entirely (no "extras" key at all, never an empty object) when this
 	// source declares no extras, so a plugin's own JSON decode sees exactly
@@ -860,6 +868,9 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		// — kernel/config/types.go), needed by a local-path source like
 		// SRC-02's Signal plugin, which has no base_url/token at all.
 		Path: src.Path,
+		// Recursive (12-03-PLAN.md Task 1): src is the EXPANDED
+		// config.Source, matching every other typed field here.
+		Recursive: src.Recursive,
 		// Extras (D-12/D-13, Phase 11 Task 3): src is the EXPANDED
 		// config.Source (never rawSrc) — expandEnv runs over the raw TOML
 		// text before decode (kernel/config/config.go's LoadRaw doc

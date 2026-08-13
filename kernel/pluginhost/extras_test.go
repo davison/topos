@@ -99,7 +99,12 @@ func TestSourceConfigEnvelope_TopLevelKeyNamesUnchanged(t *testing.T) {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 
-	var decoded map[string]string
+	// map[string]any, not map[string]string (12-03-PLAN.md Task 1
+	// deviation): the envelope now also carries a non-string scalar
+	// (Recursive, a bool), so a string-typed decode target would fail
+	// this test vacuously on an unrelated field addition rather than
+	// actually checking the string-valued keys below.
+	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}

@@ -20,16 +20,34 @@ func relPathSourceID(root, full string) string {
 	return filepath.ToSlash(rel)
 }
 
-// folderLabels returns the single D-05 folder-vocabulary label for full:
-// the containing directory's own base name — which for a top-level file
-// (this tracer's only case; recursion is a later plan's work) is the
-// source root's own base name.
+// folderLabels returns the D-05 folder-vocabulary labels for full: for a
+// top-level file (directly in root), the source root's own base name;
+// for a nested file, one label per containing-directory segment's own
+// name PLUS the cumulative relative directory path — so a webspace match
+// block can name either a subfolder name alone or a full relative path
+// (12-03-PLAN.md Task 2). A file at "receipts/2026/inv.pdf" under a root
+// named "docs" carries the labels "receipts", "2026" and
+// "receipts/2026"; a file directly in the root still carries only
+// "docs", byte-identical to before recursion existed.
 func folderLabels(root, full string) []string {
 	dir := filepath.Dir(full)
 	if dir == filepath.Clean(root) {
 		return []string{filepath.Base(root)}
 	}
-	return []string{filepath.Base(dir)}
+
+	relDir, err := filepath.Rel(root, dir)
+	if err != nil {
+		return []string{filepath.Base(dir)}
+	}
+	relDir = filepath.ToSlash(relDir)
+
+	segments := strings.Split(relDir, "/")
+	labels := make([]string, 0, len(segments)+1)
+	labels = append(labels, segments...)
+	if len(segments) > 1 {
+		labels = append(labels, relDir)
+	}
+	return labels
 }
 
 // fileDeepLink builds a file:// URI over the real absolute path (root
