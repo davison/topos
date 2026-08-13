@@ -201,6 +201,16 @@ type Plugin struct {
 	// and never overwritten from anything the plugin process itself
 	// later reports (Describe, Health, or any other RPC).
 	tier Tier
+	// pinnedHash is the SHA-256 this instance's binary matched in
+	// [plugins.pins] at launch time (Phase 11 plan 11-03) — populated only
+	// for a real (non-trial), TierExternal launch that passed the pin
+	// check in launch() below; empty for every trusted-tier instance
+	// (D-04: never pinned) and for a trial-launched instance (pin
+	// verification is skipped entirely for describeOnly launches). Read by
+	// ProbeSources to populate SourceHealth.PinnedHash, so a healthy
+	// external-tier source's GET /api/sources entry can show the pin it is
+	// currently running under, not only a broken one.
+	pinnedHash string
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -783,6 +793,12 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		}
 	}
 
+	// launchPinnedHash carries the matched pin out of the block below into
+	// the returned *Plugin's own pinnedHash field (11-03-PLAN.md Task 1) —
+	// declared at this scope, rather than inside the if-block, so a
+	// successful external-tier launch can record the pin it matched
+	// without a second hash/lookup.
+	var launchPinnedHash string
 	if tier == TierExternal && !describeOnly {
 		var pins map[string]string
 		if raw != nil {
@@ -802,6 +818,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 				currentHash: currentHash,
 			}
 		}
+		launchPinnedHash = pinnedHash
 	}
 
 	sourceConfig, err := json.Marshal(sourceConfigEnvelope{
@@ -923,6 +940,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		client:          client,
 		impl:            impl,
 		tier:            tier,
+		pinnedHash:      launchPinnedHash,
 	}, nil
 }
 
@@ -1035,7 +1053,14 @@ type SourceHealth struct {
 	// Tier is the launched instance's launch-time provenance Tier
 	// (T-11-01) — set from the same *Plugin.Tier() every other field on
 	// this line reads, never re-derived from a live RPC.
-	Tier       Tier
+	Tier Tier
+	// PinnedHash is the SHA-256 this instance's external-tier binary
+	// matched in [plugins.pins] at launch time (11-03-PLAN.md Task 1) —
+	// empty for a trusted-tier instance (D-04: never pinned) or a
+	// trial-launched one (pin verification skipped). Lets a healthy
+	// external-tier GET /api/sources entry show its current pin, not only
+	// a pin-mismatched one.
+	PinnedHash string
 	Reachable  bool
 	ProbeError string
 }
@@ -1056,7 +1081,7 @@ func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
-			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier}
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier, PinnedHash: p.pinnedHash}
 			resp, err := p.Health(ctx)
 			switch {
 			case err != nil:

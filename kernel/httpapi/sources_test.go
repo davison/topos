@@ -19,11 +19,19 @@ import (
 // fakeProber is a test double satisfying httpapi.HealthProber without
 // launching real plugin subprocesses.
 type fakeProber struct {
-	healths []pluginhost.SourceHealth
+	healths  []pluginhost.SourceHealth
+	failures []pluginhost.LaunchFailure
 }
 
 func (f *fakeProber) ProbeSources(context.Context) []pluginhost.SourceHealth {
 	return f.healths
+}
+
+// LaunchFailures satisfies httpapi.HealthProber's Phase 11 widening
+// (11-03-PLAN.md Task 1) — defaults to nil (no launch failures) for every
+// existing test that constructs a bare &fakeProber{healths: ...} literal.
+func (f *fakeProber) LaunchFailures() []pluginhost.LaunchFailure {
+	return f.failures
 }
 
 // fakeRefresher is a test double satisfying httpapi.Refresher.
@@ -90,6 +98,193 @@ func TestSourcesHandler_ReportsTierPerInstance(t *testing.T) {
 	}
 	if example.Tier != "external" {
 		t.Errorf("expected example tier %q, got %q", "external", example.Tier)
+	}
+}
+
+// TestSourcesHandler_MergesLaunchFailureIntoSourcesResponse is Phase 11's
+// central shape check (PLUG-07/08, 11-RESEARCH.md Pitfall 1/2): a configured
+// source that never launched at all (a pin mismatch) still produces a real,
+// named entry in GET /api/sources — not an entry silently absent — carrying
+// the closed-vocabulary launch_failure field and both hashes.
+func TestSourcesHandler_MergesLaunchFailureIntoSourcesResponse(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{
+		healths: []pluginhost.SourceHealth{
+			{Name: "paperless", SourceType: "paperless", DisplayName: "paperless-ngx", Reachable: true, Tier: pluginhost.TierTrusted},
+		},
+		failures: []pluginhost.LaunchFailure{
+			{
+				Instance:    "swapped",
+				Plugin:      "topos-plugin-example",
+				DisplayName: "Swapped Source",
+				Tier:        pluginhost.TierExternal,
+				Reason:      pluginhost.LaunchFailurePinMismatch,
+				PinnedHash:  "aaaa",
+				CurrentHash: "bbbb",
+				Message:     `pluginhost: instance "swapped" binary "topos-plugin-example" hash mismatch: pinned=aaaa current=bbbb`,
+			},
+		},
+	}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 2 {
+		t.Fatalf("expected 2 entries (1 probed + 1 launch-failed), got %d: %+v", len(resp.Sources), resp.Sources)
+	}
+	// Sorted by name: "paperless" < "swapped".
+	if resp.Sources[0].Name != "paperless" || resp.Sources[1].Name != "swapped" {
+		t.Fatalf("expected entries sorted by name, got: %+v", resp.Sources)
+	}
+	swapped := resp.Sources[1]
+	if swapped.DisplayName != "Swapped Source" {
+		t.Errorf("expected display_name %q, got %q", "Swapped Source", swapped.DisplayName)
+	}
+	if swapped.Plugin != "topos-plugin-example" {
+		t.Errorf("expected plugin %q, got %q", "topos-plugin-example", swapped.Plugin)
+	}
+	if swapped.Tier != "external" {
+		t.Errorf("expected tier %q, got %q", "external", swapped.Tier)
+	}
+	if swapped.LaunchFailure != "pin_mismatch" {
+		t.Errorf("expected launch_failure %q, got %q", "pin_mismatch", swapped.LaunchFailure)
+	}
+	if swapped.PinnedHash != "aaaa" {
+		t.Errorf("expected pinned_hash %q, got %q", "aaaa", swapped.PinnedHash)
+	}
+	if swapped.CurrentHash != "bbbb" {
+		t.Errorf("expected current_hash %q, got %q", "bbbb", swapped.CurrentHash)
+	}
+	if swapped.Reachable {
+		t.Error("expected reachable:false for a launch-failed source")
+	}
+	if swapped.SourceType != "" {
+		t.Errorf("expected empty source_type (Describe never ran), got %q", swapped.SourceType)
+	}
+	if swapped.LastError == "" {
+		t.Error("expected last_error to carry the kernel's own named message")
+	}
+	// The healthy sibling is unaffected.
+	paperless := resp.Sources[0]
+	if paperless.LaunchFailure != "" {
+		t.Errorf("expected the sibling healthy source to have no launch_failure, got %q", paperless.LaunchFailure)
+	}
+}
+
+// TestSourcesHandler_ProbeResultWinsOverLaunchFailureForSameInstance proves
+// an instance present in BOTH the probe result and the launch-failure set
+// yields exactly one entry — the probe result, since it describes what is
+// actually running right now.
+func TestSourcesHandler_ProbeResultWinsOverLaunchFailureForSameInstance(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{
+		healths: []pluginhost.SourceHealth{
+			{Name: "example", SourceType: "example", DisplayName: "Example", Reachable: true, Tier: pluginhost.TierExternal},
+		},
+		failures: []pluginhost.LaunchFailure{
+			{Instance: "example", Plugin: "topos-plugin-example", DisplayName: "Stale Failure", Tier: pluginhost.TierExternal, Reason: pluginhost.LaunchFailurePinMismatch},
+		},
+	}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 1 {
+		t.Fatalf("expected exactly 1 entry for a name present in both sets, got %d: %+v", len(resp.Sources), resp.Sources)
+	}
+	got := resp.Sources[0]
+	if got.LaunchFailure != "" {
+		t.Errorf("expected the probe result to win (no launch_failure), got %q", got.LaunchFailure)
+	}
+	if !got.Reachable {
+		t.Error("expected the probe result's reachable:true to win")
+	}
+}
+
+// TestSourcesHandler_HealthyExternalSourceReportsPinnedHash proves the
+// pinned_hash field is populated for a HEALTHY external-tier source, not
+// only a pin-mismatched one — the chip menu's pinned-hash footer needs it
+// either way.
+func TestSourcesHandler_HealthyExternalSourceReportsPinnedHash(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{healths: []pluginhost.SourceHealth{
+		{Name: "example", SourceType: "example", DisplayName: "Example", Reachable: true, Tier: pluginhost.TierExternal, PinnedHash: "cccc"},
+	}}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 1 || resp.Sources[0].PinnedHash != "cccc" {
+		t.Errorf("expected pinned_hash %q on the healthy external source, got: %+v", "cccc", resp.Sources)
+	}
+}
+
+// TestAgentSourcesHandler_LaunchFailedSourceRespectsGrant proves the merge
+// in sourceStatusesFrom stays subject to agent.go's grant filter: a
+// launch-failed source with no read grant is structurally absent from
+// GET /agent/v1/sources, and present (with capabilities.read=true) once
+// granted.
+func TestAgentSourcesHandler_LaunchFailedSourceRespectsGrant(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	failure := pluginhost.LaunchFailure{
+		Instance: "swapped", Plugin: "topos-plugin-example", DisplayName: "Swapped Source",
+		Tier: pluginhost.TierExternal, Reason: pluginhost.LaunchFailurePinMismatch,
+	}
+
+	ungranted := &config.Config{Sources: map[string]config.Source{
+		"swapped": {Plugin: "topos-plugin-example", BaseURL: "http://x", Token: "t"},
+	}}
+	prober := &fakeProber{failures: []pluginhost.LaunchFailure{failure}}
+	router := newAgentTestRouter(store, ungranted, &fakeFetcher{}, prober)
+
+	req := httptest.NewRequest(http.MethodGet, "/agent/v1/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var resp agentSourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 0 {
+		t.Errorf("expected an ungranted launch-failed source to be absent, got: %+v", resp.Sources)
+	}
+
+	granted := &config.Config{Sources: map[string]config.Source{
+		"swapped": {Plugin: "topos-plugin-example", BaseURL: "http://x", Token: "t", Agent: config.AgentGrant{Read: true}},
+	}}
+	router2 := newAgentTestRouter(store, granted, &fakeFetcher{}, prober)
+	req2 := httptest.NewRequest(http.MethodGet, "/agent/v1/sources", nil)
+	rec2 := httptest.NewRecorder()
+	router2.ServeHTTP(rec2, req2)
+	var resp2 agentSourcesResponse
+	if err := json.Unmarshal(rec2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp2.Sources) != 1 {
+		t.Fatalf("expected a granted launch-failed source to be present, got: %+v", resp2.Sources)
+	}
+	if resp2.Sources[0].LaunchFailure != "pin_mismatch" {
+		t.Errorf("expected launch_failure %q, got %q", "pin_mismatch", resp2.Sources[0].LaunchFailure)
+	}
+	if !resp2.Sources[0].Capabilities.Read {
+		t.Error("expected capabilities.read true for a granted source")
 	}
 }
 
