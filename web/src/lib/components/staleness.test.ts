@@ -12,6 +12,7 @@ function makeSource(overrides: Partial<SourceStatus> = {}): SourceStatus {
 		source_type: 'silverbullet',
 		display_name: 'SilverBullet',
 		plugin: 'topos-plugin-silverbullet',
+		tier: 'trusted',
 		reachable: true,
 		syncing: false,
 		last_status: 'ok',

@@ -18,6 +18,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
+	import TrustBadge from '$lib/components/TrustBadge.svelte';
 	import { cn } from '$lib/utils.js';
 	import { healthTone, formatRelativeTime, type HealthTone } from '$lib/format';
 	import { WHATSAPP_SOURCE_TYPE } from '$lib/plugin-fields';
@@ -54,6 +55,12 @@
 	// reveals exactly ONE trailing hover/focus-visible control (the ⋮
 	// trigger), not two. `onrefresh`/`onedit`'s signatures are unchanged,
 	// so WebspaceHeader.svelte needs no edit.
+	//
+	// 11-01-PLAN.md Task 2 (11-UI-SPEC.md E2) wraps PluginIcon in
+	// TrustBadge: an external-tier source's icon gains a small warning
+	// glyph overlay, and its tooltip text gains an untrusted clause — a
+	// trusted-tier chip's markup and tooltip text are byte-identical to
+	// before this phase (D-06).
 	let {
 		source,
 		selected,
@@ -111,19 +118,28 @@
 	// verbatim with NO appended word — appending " ago" was wrong in every
 	// case, not just the numeric-delta ones ("synced yesterday ago" was a
 	// latent instance of the identical bug).
+	// Phase 11 (11-UI-SPEC.md E2): trust tier and sync state are
+	// orthogonal facts about the same chip — an external-tier source
+	// appends " — untrusted external plugin" to WHICHEVER branch above
+	// produced the text, rather than replacing it or gaining a fifth
+	// branch of its own. The four base strings stay byte-identical for a
+	// trusted-tier source (D-06).
 	let tooltipText = $derived.by(() => {
-		if (source.syncing) return `${source.display_name} — syncing…`;
-		const relative = formatRelativeTime(source.last_sync_unix);
-		switch (tone) {
-			case 'success':
-				return `${source.display_name} — synced ${relative}`;
-			case 'warning':
-				return `${source.display_name} — last error ${relative}: ${source.last_error}`;
-			case 'destructive':
-				return `${source.display_name} — unreachable since ${relative}`;
-			default:
-				return `${source.display_name} — not yet synced`;
-		}
+		const base = (() => {
+			if (source.syncing) return `${source.display_name} — syncing…`;
+			const relative = formatRelativeTime(source.last_sync_unix);
+			switch (tone) {
+				case 'success':
+					return `${source.display_name} — synced ${relative}`;
+				case 'warning':
+					return `${source.display_name} — last error ${relative}: ${source.last_error}`;
+				case 'destructive':
+					return `${source.display_name} — unreachable since ${relative}`;
+				default:
+					return `${source.display_name} — not yet synced`;
+			}
+		})();
+		return source.tier === 'external' ? `${base} — untrusted external plugin` : base;
 	});
 
 	// stopPropagation before anything else — this is the D-12 versus Phase
@@ -166,7 +182,11 @@
 							)}
 							aria-hidden="true"
 						></span>
-						<PluginIcon plugin={source.plugin} size="size-3.5 shrink-0" />
+						<TrustBadge tier={source.tier} scale="chip">
+							{#snippet children()}
+								<PluginIcon plugin={source.plugin} size="size-3.5 shrink-0" />
+							{/snippet}
+						</TrustBadge>
 						<!--
 						  R2: two nested title attributes, deliberately. The outer
 						  button's title={tooltipText} is the touch degrade for
