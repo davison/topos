@@ -295,6 +295,45 @@ func DiscoverTiered(dirs Dirs) ([]TieredBinary, error) {
 	return out, nil
 }
 
+// validatePluginBinaryName rejects any name shape that could escape a
+// configured plugin directory or resolve to something other than the
+// directory member it claims to be (CR-01, 11-REVIEW.md; T-11-35/T-11-36).
+// Its hand-kept twin is kernel/config/config.go's validateSourcePlugins —
+// config must never import pluginhost (pluginhost already imports config,
+// so the reverse would be an import cycle), so the same four rules are
+// duplicated by hand there, exactly like the existing pinKeyPluginPrefix
+// precedent. Both must be changed together.
+//
+// The four rules, in order:
+//  1. an empty or whitespace-only name is rejected — filepath.Join(dir, "")
+//     equals dir itself, which would otherwise resolve the plugins
+//     directory as if it were a binary.
+//  2. a name containing a '/' or a '\' is rejected — both separators
+//     explicitly, so a value authored on Windows is rejected identically
+//     on Linux, where filepath.Base does not recognise a backslash.
+//  3. "." or ".." is rejected — with separators already barred above,
+//     these are the only remaining ".."-segment forms a name can take.
+//  4. a name that does not equal filepath.Base(name) is rejected — a
+//     belt-and-braces restatement of rules 2/3 in the standard library's
+//     own terms, so the guard tracks filepath semantics rather than only
+//     this function's hand-enumerated cases.
+//
+// Deliberately NOT enforced here: the "topos-plugin-" prefix. Prefix
+// filtering is DiscoverAllBinaries' catalog policy (D-10), not a
+// resolution-shape rule — several existing callers resolve short names,
+// and duplicating the prefix policy here would both break them and split
+// ownership of a rule that already has a home.
+func validatePluginBinaryName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("pluginhost: plugin binary name is empty")
+	}
+	if strings.ContainsRune(name, '/') || strings.ContainsRune(name, '\\') ||
+		name == "." || name == ".." || name != filepath.Base(name) {
+		return fmt.Errorf("pluginhost: invalid plugin binary name %q — must be a bare filename with no path separators or \"..\" segments", name)
+	}
+	return nil
+}
+
 // ResolveBinary is the one launch-time authority for turning a plugin
 // binary NAME into a filesystem PATH plus the Tier it resolved to
 // (T-11-01): every launch in this package — Discover, Reconcile, and
@@ -303,24 +342,40 @@ func DiscoverTiered(dirs Dirs) ([]TieredBinary, error) {
 // re-derived or overwritten from anything the plugin process itself
 // later reports.
 //
+// Confinement contract (CR-01, 11-REVIEW.md; T-11-35): name is validated
+// by validatePluginBinaryName as this function's FIRST statement, before
+// either configured directory is consulted at all — only a bare filename
+// is resolvable, so a resolved path always lies directly inside one of
+// the two configured directories. kernel/config/config.go's
+// validateSourcePlugins is this contract's hand-kept twin at the
+// config-validation end of the same chain (see that function's doc
+// comment for why the rule is duplicated rather than imported).
+//
 // Resolution order implements D-11's shadow rule: dirs.Trusted is
-// consulted first. When name exists there, ResolveBinary returns that
-// path with TierTrusted immediately — but first checks whether name ALSO
-// exists in dirs.External, and if so emits a named hclog.Warn line
-// carrying the colliding binary name (a shadow must never be silent).
-// When name does not exist in dirs.Trusted, dirs.External is checked
-// next; a hit there returns TierExternal. Neither directory holding name
-// returns an error naming the binary and both directories searched — an
-// empty Dirs field is treated as "nothing to check there", not a
-// separate failure mode, mirroring DiscoverAllBinaries' own
-// missing-directory-is-empty-state contract.
+// consulted first. When name exists there AS A REGULAR FILE (T-11-36:
+// os.Stat, which follows symlinks — the e2e harness's symlinked plugin
+// fixtures depend on this — but never a directory or other non-regular
+// entry), ResolveBinary returns that path with TierTrusted immediately —
+// but first checks whether name ALSO exists in dirs.External, and if so
+// emits a named hclog.Warn line carrying the colliding binary name (a
+// shadow must never be silent). When name does not resolve to a regular
+// file in dirs.Trusted, dirs.External is checked next; a hit there
+// returns TierExternal. Neither directory holding name returns an error
+// naming the binary and both directories searched — an empty Dirs field
+// is treated as "nothing to check there", not a separate failure mode,
+// mirroring DiscoverAllBinaries' own missing-directory-is-empty-state
+// contract.
 func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, err error) {
+	if err := validatePluginBinaryName(name); err != nil {
+		return "", "", err
+	}
+
 	if dirs.Trusted != "" {
 		trustedPath := filepath.Join(dirs.Trusted, name)
-		if _, statErr := os.Stat(trustedPath); statErr == nil {
+		if info, statErr := os.Stat(trustedPath); statErr == nil && info.Mode().IsRegular() {
 			if dirs.External != "" {
 				externalPath := filepath.Join(dirs.External, name)
-				if _, extStatErr := os.Stat(externalPath); extStatErr == nil {
+				if extInfo, extStatErr := os.Stat(externalPath); extStatErr == nil && extInfo.Mode().IsRegular() {
 					if logger == nil {
 						logger = hclog.NewNullLogger()
 					}
@@ -334,7 +389,7 @@ func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, ti
 
 	if dirs.External != "" {
 		externalPath := filepath.Join(dirs.External, name)
-		if _, statErr := os.Stat(externalPath); statErr == nil {
+		if info, statErr := os.Stat(externalPath); statErr == nil && info.Mode().IsRegular() {
 			return externalPath, TierExternal, nil
 		}
 	}

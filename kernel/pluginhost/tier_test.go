@@ -9,6 +9,7 @@ package pluginhost
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,5 +144,174 @@ func TestResolveBinary_EmptyDirsReturnsNamedErrorNotPanic(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "topos-plugin-does-not-exist") {
 		t.Errorf("expected the error to name the missing binary, got: %v", err)
+	}
+}
+
+// TestResolveBinary_TraversalNameIsRejectedBeforeAnyDirectoryIsConsulted
+// proves CR-01's core fix: a "../"-containing name is rejected by
+// validatePluginBinaryName as ResolveBinary's first statement, naming the
+// offending value, an empty path, and the empty Tier — even when the
+// traversal target genuinely exists on disk. A rejection that only works
+// because the target is absent would prove nothing, so this test
+// materialises a real file in a SIBLING temp directory (never inside
+// dirs.Trusted/dirs.External) and proves rejection happens despite it.
+func TestResolveBinary_TraversalNameIsRejectedBeforeAnyDirectoryIsConsulted(t *testing.T) {
+	trustedDir := t.TempDir()
+	outsideDir := t.TempDir()
+	writeFixtureFile(t, outsideDir, "topos-plugin-evil")
+
+	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, "../"+filepath.Base(outsideDir)+"/topos-plugin-evil", hclog.NewNullLogger())
+	if err == nil {
+		t.Fatal("expected an error for a traversal name, even though the target exists on disk")
+	}
+	if !strings.Contains(err.Error(), "invalid plugin binary name") {
+		t.Errorf("expected the error to contain %q, got: %v", "invalid plugin binary name", err)
+	}
+	if !strings.Contains(err.Error(), "topos-plugin-evil") {
+		t.Errorf("expected the error to name the offending value, got: %v", err)
+	}
+	if path != "" {
+		t.Errorf("expected an empty path, got %q", path)
+	}
+	if tier != Tier("") {
+		t.Errorf("expected an empty tier, got %q", tier)
+	}
+	if tier == TierTrusted {
+		t.Errorf("must never return TierTrusted for a traversal name")
+	}
+}
+
+// TestResolveBinary_AbsolutePathNameIsRejected proves an absolute-path
+// value is rejected identically to a relative traversal — filepath.Base
+// of an absolute path is not equal to the path itself, so rule (d) alone
+// already catches this, but the test pins the observable behavior
+// directly rather than relying on the rule's internal mechanics.
+func TestResolveBinary_AbsolutePathNameIsRejected(t *testing.T) {
+	trustedDir := t.TempDir()
+	outsideDir := t.TempDir()
+	writeFixtureFile(t, outsideDir, "topos-plugin-evil")
+
+	_, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, filepath.Join(outsideDir, "topos-plugin-evil"), hclog.NewNullLogger())
+	if err == nil {
+		t.Fatal("expected an error for an absolute-path name")
+	}
+	if !strings.Contains(err.Error(), "invalid plugin binary name") {
+		t.Errorf("expected the error to contain %q, got: %v", "invalid plugin binary name", err)
+	}
+	if tier == TierTrusted {
+		t.Errorf("must never return TierTrusted for an absolute-path name")
+	}
+}
+
+// TestResolveBinary_WindowsSeparatorNameIsRejected proves a
+// backslash-separated name is rejected on Linux too — filepath.Base does
+// not treat '\\' as a separator on this platform, so without the explicit
+// backslash check in validatePluginBinaryName, a value like
+// "..\\..\\topos-plugin-evil" would pass through as a single opaque
+// "filename" and be joined verbatim onto a configured directory.
+func TestResolveBinary_WindowsSeparatorNameIsRejected(t *testing.T) {
+	trustedDir := t.TempDir()
+
+	_, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, `..\..\topos-plugin-evil`, hclog.NewNullLogger())
+	if err == nil {
+		t.Fatal("expected an error for a Windows-separator name")
+	}
+	if !strings.Contains(err.Error(), "invalid plugin binary name") {
+		t.Errorf("expected the error to contain %q, got: %v", "invalid plugin binary name", err)
+	}
+	if tier == TierTrusted {
+		t.Errorf("must never return TierTrusted for a Windows-separator name")
+	}
+}
+
+// TestResolveBinary_EmptyNameIsRejectedNotResolvedToTheDirectoryItself
+// proves the empty-name edge case CR-01 calls out by name:
+// filepath.Join(dir, "") equals dir, os.Stat on a directory succeeds, and
+// before this fix the caller received the plugins directory itself
+// tagged trusted. After the fix, an empty name is rejected outright.
+func TestResolveBinary_EmptyNameIsRejectedNotResolvedToTheDirectoryItself(t *testing.T) {
+	trustedDir := t.TempDir()
+
+	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, "", hclog.NewNullLogger())
+	if err == nil {
+		t.Fatal("expected an error for an empty name")
+	}
+	if path == trustedDir {
+		t.Errorf("must never resolve an empty name to the plugins directory itself")
+	}
+	if tier == TierTrusted {
+		t.Errorf("expected tier to not be %q, got %q", TierTrusted, tier)
+	}
+}
+
+// TestResolveBinary_DotAndDotDotNamesAreRejected proves "." and ".." are
+// both rejected — the only remaining ".."-segment forms a name can take
+// once bare separators are already barred.
+func TestResolveBinary_DotAndDotDotNamesAreRejected(t *testing.T) {
+	trustedDir := t.TempDir()
+
+	for _, name := range []string{".", ".."} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := ResolveBinary(Dirs{Trusted: trustedDir}, name, hclog.NewNullLogger())
+			if err == nil {
+				t.Fatalf("expected an error for name %q", name)
+			}
+			if !strings.Contains(err.Error(), "invalid plugin binary name") {
+				t.Errorf("expected the error to contain %q, got: %v", "invalid plugin binary name", err)
+			}
+		})
+	}
+}
+
+// TestResolveBinary_DirectoryNamedLikeABinaryIsNotResolved proves T-11-36:
+// a DIRECTORY sitting inside dirs.Trusted, named exactly like a plugin
+// binary would be, yields the existing named not-found error mentioning
+// both searched directories — never a successful resolution that later
+// dies inside exec.Command.
+func TestResolveBinary_DirectoryNamedLikeABinaryIsNotResolved(t *testing.T) {
+	trustedDir := t.TempDir()
+	externalDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(trustedDir, "topos-plugin-notafile"), 0o755); err != nil {
+		t.Fatalf("mkdir fixture: %v", err)
+	}
+
+	_, _, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-notafile", hclog.NewNullLogger())
+	if err == nil {
+		t.Fatal("expected an error when the only match is a directory, not a regular file")
+	}
+	if !strings.Contains(err.Error(), "topos-plugin-notafile") {
+		t.Errorf("expected the error to name the binary, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), trustedDir) || !strings.Contains(err.Error(), externalDir) {
+		t.Errorf("expected the error to name both searched directories, got: %v", err)
+	}
+}
+
+// TestResolveBinary_SymlinkedBinaryStillResolvesAfterRegularFileCheck is
+// the regression guard for the browser e2e harness's own fixture shape
+// (web/e2e/fixtures/plugin-binaries.ts's linkPluginBinaries symlinks
+// rather than copies): a regular plugin binary symlinked into
+// dirs.Trusted must still resolve to that path with TierTrusted and a nil
+// error after the info.Mode().IsRegular() gate lands, because os.Stat
+// (never os.Lstat) follows symlinks.
+func TestResolveBinary_SymlinkedBinaryStillResolvesAfterRegularFileCheck(t *testing.T) {
+	realDir := t.TempDir()
+	writeFixtureFile(t, realDir, "topos-plugin-symlinked")
+
+	trustedDir := t.TempDir()
+	linkPath := filepath.Join(trustedDir, "topos-plugin-symlinked")
+	if err := os.Symlink(filepath.Join(realDir, "topos-plugin-symlinked"), linkPath); err != nil {
+		t.Fatalf("symlink fixture: %v", err)
+	}
+
+	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, "topos-plugin-symlinked", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("ResolveBinary: %v", err)
+	}
+	if path != linkPath {
+		t.Errorf("expected path %q, got %q", linkPath, path)
+	}
+	if tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
 	}
 }
