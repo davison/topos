@@ -72,7 +72,7 @@ func TestReconcile_UnchangedSourceMapKeepsSamePluginPointers(t *testing.T) {
 	dir := buildMockPluginDir(t)
 	sources := map[string]config.Source{"demo": {Plugin: "topos-plugin-mock"}}
 
-	h, err := Discover(context.Background(), dir, sources, hclog.NewNullLogger())
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, sources, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestReconcile_UnchangedSourceMapKeepsSamePluginPointers(t *testing.T) {
 // Plugins().
 func TestReconcile_RemovedInstanceIsKilledAndDropped(t *testing.T) {
 	dir := buildMockPluginDir(t)
-	h, err := Discover(context.Background(), dir, map[string]config.Source{
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock"},
 	}, hclog.NewNullLogger())
 	if err != nil {
@@ -116,7 +116,7 @@ func TestReconcile_RemovedInstanceIsKilledAndDropped(t *testing.T) {
 // launched and unrestarted — a partial apply must never look successful.
 func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 	dir := buildMockPluginDir(t)
-	h, err := Discover(context.Background(), dir, map[string]config.Source{
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock"},
 	}, hclog.NewNullLogger())
 	if err != nil {
@@ -149,7 +149,7 @@ func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 // changed.
 func TestReconcile_ChangedConnectionConfigRelaunches(t *testing.T) {
 	dir := buildMockPluginDir(t)
-	h, err := Discover(context.Background(), dir, map[string]config.Source{
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock", DisplayName: "before"},
 	}, hclog.NewNullLogger())
 	if err != nil {

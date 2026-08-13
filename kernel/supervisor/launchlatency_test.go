@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // TestResume_SlowRelaunchDoesNotFreezeOtherSources is the hermetic,
@@ -55,7 +57,7 @@ labels = ["demo"]
 `)
 
 	// Boot with the launch-delay variable UNSET: boot must be fast.
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}

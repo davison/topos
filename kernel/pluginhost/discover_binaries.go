@@ -1,10 +1,13 @@
 package pluginhost
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 // PluginBinaryPrefix is the naming convention every plugin binary follows
@@ -152,4 +155,189 @@ func isRegularFileFollowingSymlinks(dir string, e os.DirEntry) bool {
 		return false
 	}
 	return info.Mode().IsRegular()
+}
+
+// Tier names which of the two configured plugin directories a binary
+// resolved from (Phase 11, PLUG-06/PLUG-07). Trust is derived EXCLUSIVELY
+// from this provenance fact — never from anything a plugin declares about
+// itself via Describe, its filename, or a config key — so Tier is set
+// once, at ResolveBinary time, and never overwritten from RPC data
+// afterward (T-11-01).
+type Tier string
+
+const (
+	// TierTrusted names a binary that resolved from Dirs.Trusted — built
+	// from the davison/topos repo itself (`make build`/`make dev`).
+	TierTrusted Tier = "trusted"
+	// TierExternal names a binary that resolved from Dirs.External — code
+	// topos did not build and cannot vouch for. Untrusted, not sandboxed:
+	// an external-tier plugin runs with the same OS-level access as any
+	// other plugin process (11-CONTEXT.md's explicit out-of-scope note on
+	// sandboxing).
+	TierExternal Tier = "external"
+)
+
+// Dirs is the two configured plugin directories every discovery and
+// launch call site addresses a plugin binary through, replacing the
+// single pluginsDir string every pre-Phase-11 call site used. Either
+// field may be empty or name a directory that does not yet exist on
+// disk — both are legitimate empty-tier states, never an error (mirrors
+// DiscoverAllBinaries' own missing-directory contract, extended to two
+// directories).
+type Dirs struct {
+	// Trusted is the existing single plugin directory (PluginsConfig.Dir)
+	// every plugin binary resolved from before Phase 11 — code built from
+	// the davison/topos repo.
+	Trusted string
+	// External is the second, untrusted directory Phase 11 introduces
+	// (PluginsConfig.ExternalDir, D-09) — code topos did not build.
+	External string
+}
+
+// TieredBinary is one binary name paired with the tier it resolved to —
+// DiscoverTiered and DiscoverAllTiered's element type.
+type TieredBinary struct {
+	Name string
+	Tier Tier
+}
+
+// DiscoverAllTiered is the two-tier SECURITY-AUTHORITY listing (the
+// direct analogue of DiscoverAllBinaries, widened to two directories):
+// every binary discoverable in EITHER configured directory, tagged with
+// the tier it resolved to, sorted by name and de-duplicated. Callers that
+// need to know "is this a legitimately launchable binary, and if so
+// which tier" — kernel/httpapi/config.go's DescribePluginHandler
+// membership check chief among them (T-11-02) — use this function, never
+// DiscoverTiered, for the identical reason DiscoverAllBinaries exists
+// alongside DiscoverBinaries: a UI-policy exclusion must never also gate
+// what may legitimately be described or launched.
+//
+// D-11's shadow rule: a binary name present in BOTH directories resolves
+// to TierTrusted and appears exactly once in the result — the trusted
+// copy always wins a name collision, never silently (see ResolveBinary,
+// below, for the launch-time half of this rule, which additionally logs
+// the collision by name). A directory that is empty, missing, or whose
+// Dirs field is the empty string contributes nothing and never errors —
+// two absent directories return an empty (never nil) slice with a nil
+// error, the same "operator hasn't installed anything yet" legitimacy
+// DiscoverAllBinaries already grants a single missing directory.
+func DiscoverAllTiered(dirs Dirs) ([]TieredBinary, error) {
+	tierOf := make(map[string]Tier)
+
+	if dirs.Trusted != "" {
+		names, err := DiscoverAllBinaries(dirs.Trusted)
+		if err != nil {
+			return nil, fmt.Errorf("pluginhost: discover trusted plugins: %w", err)
+		}
+		for _, name := range names {
+			tierOf[name] = TierTrusted
+		}
+	}
+
+	if dirs.External != "" {
+		names, err := DiscoverAllBinaries(dirs.External)
+		if err != nil {
+			return nil, fmt.Errorf("pluginhost: discover external plugins: %w", err)
+		}
+		for _, name := range names {
+			if _, alreadyTrusted := tierOf[name]; alreadyTrusted {
+				// D-11: trusted shadows external — the name stays mapped
+				// to TierTrusted, set above; only the sorted-set MEMBERSHIP
+				// changes here (it already does, since the map key already
+				// exists), never the tier value. The loud, named log line
+				// this rule also requires lives in ResolveBinary, the
+				// launch-time call site, which has a logger to write to —
+				// this discovery-only function deliberately has none, so it
+				// stays a pure, side-effect-free listing.
+				continue
+			}
+			tierOf[name] = TierExternal
+		}
+	}
+
+	names := make([]string, 0, len(tierOf))
+	for name := range tierOf {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]TieredBinary, 0, len(names))
+	for _, name := range names {
+		out = append(out, TieredBinary{Name: name, Tier: tierOf[name]})
+	}
+	return out, nil
+}
+
+// DiscoverTiered is the two-tier UI-POLICY catalog (the analogue of
+// DiscoverBinaries): DiscoverAllTiered's result minus every name in
+// ExcludedPluginBinaries. The exclusion is applied UNIFORMLY across both
+// tiers — a fixture binary (topos-plugin-mock/-mockstrict) sitting in
+// EITHER directory is excluded identically, because the exclusion exists
+// to keep dev fixtures out of the "+" picker regardless of which
+// directory a developer's copy happens to sit in (11-CONTEXT.md leaves
+// this to planner discretion; decided here). As with DiscoverBinaries,
+// this is a policy view over what may be OFFERED as a brand-new instance
+// — it must never also gate what may be described or launched, which is
+// exactly why DescribePluginHandler and ResolveBinary below use
+// DiscoverAllTiered instead.
+func DiscoverTiered(dirs Dirs) ([]TieredBinary, error) {
+	all, err := DiscoverAllTiered(dirs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TieredBinary, 0, len(all))
+	for _, tb := range all {
+		if ExcludedPluginBinaries[tb.Name] {
+			continue
+		}
+		out = append(out, tb)
+	}
+	return out, nil
+}
+
+// ResolveBinary is the one launch-time authority for turning a plugin
+// binary NAME into a filesystem PATH plus the Tier it resolved to
+// (T-11-01): every launch in this package — Discover, Reconcile, and
+// DescribePluginType's trial launch — goes through this function via
+// launch(), so tier is set from provenance at exactly one point and never
+// re-derived or overwritten from anything the plugin process itself
+// later reports.
+//
+// Resolution order implements D-11's shadow rule: dirs.Trusted is
+// consulted first. When name exists there, ResolveBinary returns that
+// path with TierTrusted immediately — but first checks whether name ALSO
+// exists in dirs.External, and if so emits a named hclog.Warn line
+// carrying the colliding binary name (a shadow must never be silent).
+// When name does not exist in dirs.Trusted, dirs.External is checked
+// next; a hit there returns TierExternal. Neither directory holding name
+// returns an error naming the binary and both directories searched — an
+// empty Dirs field is treated as "nothing to check there", not a
+// separate failure mode, mirroring DiscoverAllBinaries' own
+// missing-directory-is-empty-state contract.
+func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, err error) {
+	if dirs.Trusted != "" {
+		trustedPath := filepath.Join(dirs.Trusted, name)
+		if _, statErr := os.Stat(trustedPath); statErr == nil {
+			if dirs.External != "" {
+				externalPath := filepath.Join(dirs.External, name)
+				if _, extStatErr := os.Stat(externalPath); extStatErr == nil {
+					if logger == nil {
+						logger = hclog.NewNullLogger()
+					}
+					logger.Warn("plugin binary name shadowed: trusted copy wins, external copy ignored (D-11)",
+						"binary", name)
+				}
+			}
+			return trustedPath, TierTrusted, nil
+		}
+	}
+
+	if dirs.External != "" {
+		externalPath := filepath.Join(dirs.External, name)
+		if _, statErr := os.Stat(externalPath); statErr == nil {
+			return externalPath, TierExternal, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("plugin binary %q not found in trusted directory %q or external directory %q", name, dirs.Trusted, dirs.External)
 }

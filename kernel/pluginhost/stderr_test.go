@@ -66,7 +66,7 @@ func TestDescribePluginType_PreHandshakeFatalSurfacesPluginStderr(t *testing.T) 
 	const message = "topos-plugin-fake-fatal: config.Path is required, got empty string"
 	dir := writeFakeFatalPlugin(t, message)
 
-	_, err := DescribePluginType(context.Background(), dir, config.Source{Plugin: "topos-plugin-fake-fatal"}, hclog.NewNullLogger())
+	_, err := DescribePluginType(context.Background(), Dirs{Trusted: dir}, config.Source{Plugin: "topos-plugin-fake-fatal"}, hclog.NewNullLogger())
 	if err == nil {
 		t.Fatal("expected an error for a plugin that fatals before the handshake")
 	}
@@ -89,7 +89,7 @@ func TestDescribePluginType_PreHandshakeFatalSurfacesPluginStderr(t *testing.T) 
 func TestDescribePluginType_SilentPreHandshakeExitLeavesErrorUnchanged(t *testing.T) {
 	dir := writeFakeSilentPlugin(t)
 
-	_, err := DescribePluginType(context.Background(), dir, config.Source{Plugin: "topos-plugin-fake-silent"}, hclog.NewNullLogger())
+	_, err := DescribePluginType(context.Background(), Dirs{Trusted: dir}, config.Source{Plugin: "topos-plugin-fake-silent"}, hclog.NewNullLogger())
 	if err == nil {
 		t.Fatal("expected an error for a plugin that exits non-zero before the handshake")
 	}

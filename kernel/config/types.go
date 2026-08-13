@@ -32,6 +32,37 @@ type IndexConfig struct {
 // PluginsConfig configures where plugin binaries are discovered.
 type PluginsConfig struct {
 	Dir string `toml:"dir" json:"dir"` // default "plugins" (resolved relative to the running executable)
+	// ExternalDir names the second, untrusted plugin directory Phase 11
+	// introduces (D-09, PLUG-06): binaries found here are discovered,
+	// launched and synced exactly like Dir's trusted binaries, but are
+	// tagged pluginhost.TierExternal — never pluginhost.TierTrusted —
+	// because trust is derived purely from WHICH directory a binary
+	// resolved from, never from anything the binary declares about
+	// itself. Omitted (empty) resolves to a per-OS platform data
+	// directory at runtime (cmd/topos.defaultExternalPluginsDir) with no
+	// config required; an absolute value is used verbatim, a relative
+	// value resolves relative to the running executable exactly like Dir
+	// does (cmd/topos.externalPluginsDir). The kernel never creates this
+	// directory — a missing external directory is a legitimate empty
+	// tier, identical to a missing Dir today.
+	ExternalDir string `toml:"external_dir,omitempty" json:"external_dir,omitempty"`
+	// Pins maps an EXTERNAL-tier plugin BINARY name (e.g.
+	// "topos-plugin-example") to the lowercase hex SHA-256 digest of that
+	// binary's bytes, pinned at add-time via the hot-apply config path
+	// and re-verified at every launch (D-01, D-02, D-03). Keyed by binary
+	// name, not by source instance id: every instance of one external
+	// binary shares a single pin, and a re-accept ("Trust updated
+	// binary") updates it for every instance at once, since one binary on
+	// disk serves all of them. Pins apply to the external tier ONLY
+	// (D-04) — a trusted-dir binary is rebuilt constantly by
+	// `make build`/`make dev`, so pinning it would false-alarm on every
+	// rebuild; a trusted-tier binary launches unpinned regardless of
+	// whether it happens to share a name with an entry here. Behavior
+	// (hash verification, the "binary changed" health state, the re-pin
+	// write) lands in a later Phase 11 plan — this field only declares
+	// the config surface now, so no later plan needs to re-touch this
+	// file.
+	Pins map[string]string `toml:"pins,omitempty" json:"pins,omitempty"`
 }
 
 // SyncConfig configures the background scheduler's global sync interval
@@ -129,6 +160,28 @@ type Source struct {
 	// renaming the [sources.<id>] map key itself does that, because the
 	// map key, not this field, is the instance's identity.
 	DisplayName string `toml:"display_name,omitempty" json:"display_name,omitempty"`
+	// Extras is an opaque, per-instance passthrough map of provider-
+	// specific configuration keys the kernel never interprets (D-12):
+	// unlike every field above, the kernel holds no built-in knowledge of
+	// what a key here means — it round-trips the map verbatim through the
+	// canonical TOML rewrite and hands it to the plugin subprocess as-is.
+	// This is what lets an external plugin (Phase 11's whole point) take
+	// provider-specific config the kernel was never built to know about,
+	// without a kernel code change. Values are strings only, end to end
+	// (TOML -> wire -> plugin, D-13) — a plugin parses what it needs from
+	// the string itself, the same discipline every other Source field
+	// already follows for env-style values. A value may be a
+	// "${VAR}"-style environment reference exactly like BaseURL/Token
+	// above (D-04 lineage): it expands the same way at the same point,
+	// never persisted expanded. Declared as `map[string]string` (never
+	// nested) rather than a generic map[string]any specifically so a
+	// later contract change to typed values is a deliberate, visible
+	// migration rather than a silent shape drift — see this field's
+	// entry in 11-CONTEXT.md's D-13 for the "costly to reverse" call.
+	// Behavior (declared-field rendering, the free-form editor, launch
+	// env disclosure) lands in a later Phase 11 plan; this field only
+	// declares the config surface now.
+	Extras map[string]string `toml:"extras,omitempty" json:"extras,omitempty"`
 }
 
 // AgentGrant is one source's per-plugin agent permission grant (AGENT-01,

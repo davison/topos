@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // TestBoot_FirstRefreshSurvivesAPluginLaunchReadinessWindow is the first
@@ -47,7 +49,7 @@ keywords = ["demo"]
 	// that produced the gap: NewSupervisor -> startScheduler -> Scheduler.Run
 	// -> runSource's immediate first refresh, racing the mock subprocess's
 	// own 700ms readiness window.
-	sup, err := NewSupervisor(ctx, idx, cfgStore, dir, hclog.NewNullLogger())
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("NewSupervisor: %v", err)
 	}

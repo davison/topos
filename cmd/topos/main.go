@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/httpapi"
 	"github.com/davison/topos/kernel/index"
+	"github.com/davison/topos/kernel/pluginhost"
 	"github.com/davison/topos/kernel/supervisor"
 )
 
@@ -89,6 +91,71 @@ func pluginsDir(cfg *config.Config) (string, error) {
 		return "", fmt.Errorf("resolve executable path: %w", err)
 	}
 	return filepath.Join(filepath.Dir(exe), cfg.Plugins.Dir), nil
+}
+
+// defaultExternalPluginsDir resolves the per-OS platform data directory
+// Phase 11's external plugin tier defaults to when
+// PluginsConfig.ExternalDir is unset (D-09): "$XDG_DATA_HOME/topos/
+// plugins-external" (falling back to "~/.local/share/topos/
+// plugins-external" when XDG_DATA_HOME is unset or empty) on Linux and
+// every other non-darwin, non-windows GOOS; "~/Library/Application
+// Support/topos/plugins-external" on macOS; "%LOCALAPPDATA%\topos\
+// plugins-external" on Windows. Portable resolution without committing to
+// Windows support — the project stays Linux-anchored (D-Bus keyring,
+// desktop chat DBs) — this helper only avoids a hard-coded Linux-only
+// path assumption leaking into a config key an operator on another OS
+// would have to override by hand. Never creates the directory: a missing
+// external directory is a legitimate empty tier, exactly like a missing
+// trusted directory already is.
+func defaultExternalPluginsDir() (string, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		return filepath.Join(home, "Library", "Application Support", "topos", "plugins-external"), nil
+	case "windows":
+		if local := os.Getenv("LOCALAPPDATA"); local != "" {
+			return filepath.Join(local, "topos", "plugins-external"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		return filepath.Join(home, "AppData", "Local", "topos", "plugins-external"), nil
+	default:
+		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+			return filepath.Join(xdg, "topos", "plugins-external"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		return filepath.Join(home, ".local", "share", "topos", "plugins-external"), nil
+	}
+}
+
+// externalPluginsDir resolves cfg.Plugins.ExternalDir: an explicitly
+// configured value is used verbatim when absolute, or resolved relative
+// to the running executable when relative — the identical convention
+// pluginsDir already applies to cfg.Plugins.Dir, extended here so the two
+// directories behave identically under an operator-authored relative
+// path. An empty (omitted) ExternalDir resolves to
+// defaultExternalPluginsDir() instead — the zero-config, drop-a-binary-in
+// default (D-09).
+func externalPluginsDir(cfg *config.Config) (string, error) {
+	if cfg.Plugins.ExternalDir == "" {
+		return defaultExternalPluginsDir()
+	}
+	if filepath.IsAbs(cfg.Plugins.ExternalDir) {
+		return cfg.Plugins.ExternalDir, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve executable path: %w", err)
+	}
+	return filepath.Join(filepath.Dir(exe), cfg.Plugins.ExternalDir), nil
 }
 
 func setupLogger() hclog.Logger {
@@ -211,8 +278,13 @@ func runSync() error {
 	if err != nil {
 		return err
 	}
+	extdir, err := externalPluginsDir(cfg)
+	if err != nil {
+		return err
+	}
+	dirs := pluginhost.Dirs{Trusted: pdir, External: extdir}
 
-	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, pdir, logger)
+	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, dirs, logger)
 	if err != nil {
 		return err
 	}
@@ -259,6 +331,11 @@ func runServe() error {
 	if err != nil {
 		return err
 	}
+	extdir, err := externalPluginsDir(cfg)
+	if err != nil {
+		return err
+	}
+	dirs := pluginhost.Dirs{Trusted: pdir, External: extdir}
 
 	// supervisor.NewSupervisor performs the boot sequence Phase 1-6 built
 	// directly into this function (Discover, ValidateMatchConfig, build
@@ -266,7 +343,7 @@ func runServe() error {
 	// why: a config save now needs to repeat this same sequence in place
 	// (D-06/D-07), so it lives in one package the HTTP layer can also
 	// call into via Supervisor.Apply, rather than being duplicated here.
-	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, pdir, logger)
+	sup, err := supervisor.NewSupervisor(ctx, store, cfgStore, dirs, logger)
 	if err != nil {
 		return err
 	}
@@ -285,7 +362,7 @@ func runServe() error {
 	// subprocess on kernel shutdown so none is ever left orphaned holding
 	// a source's store lock, the same guarantee sup.Shutdown() already
 	// gives every pluginhost-launched subprocess.
-	router, linkStore := httpapi.Router(store, cfgStore, sup, sup, sup, sup, sup, sup, pdir, logger)
+	router, linkStore := httpapi.Router(store, cfgStore, sup, sup, sup, sup, sup, sup, dirs, logger)
 	defer linkStore.Shutdown()
 
 	listen := cfg.Server.Listen

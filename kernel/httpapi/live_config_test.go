@@ -22,6 +22,7 @@ import (
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/item"
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // liveConfigTestRouter builds the REAL Router (not individual handlers)
@@ -41,7 +42,7 @@ func liveConfigTestRouter(t *testing.T, contents string) (http.Handler, *config.
 		t.Fatalf("config.NewStore: %v", err)
 	}
 	store := newTestStoreForHTTP(t)
-	router, _ := Router(store, cfgStore, &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, &fakePluginIconProvider{}, "testdata-unused-plugins-dir", hclog.NewNullLogger())
+	router, _ := Router(store, cfgStore, &fakeFetcher{}, &fakeProber{}, &fakeRefresher{}, &fakeApplier{}, &fakeSuspender{}, &fakePluginIconProvider{}, pluginhost.Dirs{Trusted: "testdata-unused-plugins-dir"}, hclog.NewNullLogger())
 	return router, cfgStore, store
 }
 

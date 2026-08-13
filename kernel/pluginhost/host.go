@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -101,6 +100,11 @@ type Plugin struct {
 	src    config.Source
 	client *goplugin.Client
 	impl   sdk.SourcePlugin
+	// tier is the provenance Tier this instance's binary resolved to at
+	// launch time, via ResolveBinary (T-11-01) — set exactly once here
+	// and never overwritten from anything the plugin process itself
+	// later reports (Describe, Health, or any other RPC).
+	tier Tier
 }
 
 // Name returns the config key this plugin was launched under (under
@@ -120,6 +124,11 @@ func (p *Plugin) SourceType() string { return p.sourceType }
 // which names the plugin KIND regardless of how many instances of it are
 // configured.
 func (p *Plugin) DisplayName() string { return p.displayName }
+
+// Tier returns this instance's launch-time provenance Tier — TierTrusted
+// or TierExternal, set once at launch by ResolveBinary and never
+// re-derived from anything the plugin process reports (T-11-01).
+func (p *Plugin) Tier() Tier { return p.tier }
 
 // PluginDisplayName returns the Describe-learned display name for the
 // plugin KIND this instance runs (e.g. "paperless-ngx", "SilverBullet") —
@@ -175,12 +184,13 @@ func (p *Plugin) Icon() ([]byte, string, bool) {
 
 // Host owns the lifecycle of every launched plugin subprocess.
 type Host struct {
-	// pluginsDir is the directory Discover launched every plugin binary
-	// from — retained (07-02-PLAN.md Task 1) so Reconcile can launch a
-	// replacement/added instance later without a caller having to thread
-	// the directory through a second time. Set once at construction and
-	// never written again, so it needs no lock.
-	pluginsDir string
+	// dirs is the two configured plugin directories Discover launched
+	// every plugin binary from (Phase 11, widening the pre-existing
+	// single pluginsDir field) — retained (07-02-PLAN.md Task 1) so
+	// Reconcile can launch a replacement/added instance later without a
+	// caller having to thread the directories through a second time. Set
+	// once at construction and never written again, so it needs no lock.
+	dirs Dirs
 
 	// mu guards ONLY the plugins field below (08-13-PLAN.md Task 1(C),
 	// closing G-08-5's second, latent defect: kernel/supervisor.Supervisor
@@ -210,15 +220,16 @@ func (h *Host) snapshot() []*Plugin {
 	return out
 }
 
-// Discover launches one subprocess per configured source, in pluginsDir,
-// and returns the resulting Host. Every launched plugin's Describe RPC is
-// called immediately to learn its source_type — the kernel never trusts a
+// Discover launches one subprocess per configured source, resolving each
+// binary through dirs (Phase 11's two-tier ResolveBinary), and returns the
+// resulting Host. Every launched plugin's Describe RPC is called
+// immediately to learn its source_type — the kernel never trusts a
 // plugin's identity from its filename (T-01-07).
-func Discover(ctx context.Context, pluginsDir string, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
-	h := &Host{pluginsDir: pluginsDir}
+func Discover(ctx context.Context, dirs Dirs, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
+	h := &Host{dirs: dirs}
 
 	for name, src := range sources {
-		p, err := launch(ctx, pluginsDir, name, src, logger, false)
+		p, err := launch(ctx, dirs, name, src, logger, false)
 		if err != nil {
 			h.Shutdown()
 			return nil, fmt.Errorf("pluginhost: launch source %q: %w", name, err)
@@ -285,7 +296,7 @@ func (h *Host) Reconcile(ctx context.Context, sources map[string]config.Source, 
 
 	launched := make(map[string]*Plugin, len(toLaunch))
 	for _, name := range toLaunch {
-		p, err := launch(ctx, h.pluginsDir, name, sources[name], logger, false)
+		p, err := launch(ctx, h.dirs, name, sources[name], logger, false)
 		if err != nil {
 			for _, lp := range launched {
 				lp.Kill()
@@ -396,8 +407,10 @@ func (t *stderrTail) lastLine() string {
 	return strings.TrimSpace(trimmed)
 }
 
-// launch execs pluginsDir/src.Plugin, performs the go-plugin handshake, and
-// calls Describe to learn the launched instance's identity. Every caller —
+// launch resolves src.Plugin against dirs via ResolveBinary (Phase 11's
+// two-tier provenance authority), execs the resolved path, performs the
+// go-plugin handshake, and calls Describe to learn the launched instance's
+// identity. Every caller —
 // Discover, Reconcile, and DescribePluginType's trial launch — goes
 // through this one function, so the bounded stderr capture wired in below
 // (stderrTail) covers a pre-handshake plugin fatal identically whether the
@@ -417,10 +430,10 @@ func (t *stderrTail) lastLine() string {
 // that does not recognise the variable simply ignores it and launches
 // exactly as before — this is additive, never a behavior change for any
 // plugin type that hasn't opted in.
-func launch(ctx context.Context, pluginsDir, name string, src config.Source, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
-	binPath := filepath.Join(pluginsDir, src.Plugin)
-	if _, err := os.Stat(binPath); err != nil {
-		return nil, fmt.Errorf("plugin binary %s not found: %w", binPath, err)
+func launch(ctx context.Context, dirs Dirs, name string, src config.Source, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
+	binPath, tier, err := ResolveBinary(dirs, src.Plugin, logger)
+	if err != nil {
+		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, err)
 	}
 
 	sourceConfig, err := json.Marshal(map[string]string{
@@ -536,6 +549,7 @@ func launch(ctx context.Context, pluginsDir, name string, src config.Source, log
 		src:             src,
 		client:          client,
 		impl:            impl,
+		tier:            tier,
 	}, nil
 }
 
@@ -577,6 +591,11 @@ type DescribeInfo struct {
 	SourceType        string
 	PluginDisplayName string
 	MatchVocabulary   []string
+	// Tier is the launch-time provenance Tier the trial-launched binary
+	// resolved to (T-11-01) — set from ResolveBinary via the trial
+	// launch's own *Plugin, never from anything the plugin's Describe
+	// response itself asserts.
+	Tier Tier
 }
 
 // DescribePluginType trial-launches src (a config.Source naming the
@@ -607,8 +626,8 @@ type DescribeInfo struct {
 // exclusive store lock for its entire process lifetime — this is what
 // stops the trial-launch from always losing that lock race against a real
 // running instance and failing before Describe is ever reached.
-func DescribePluginType(ctx context.Context, pluginsDir string, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
-	p, err := launch(ctx, pluginsDir, "__trial__", src, logger, true)
+func DescribePluginType(ctx context.Context, dirs Dirs, src config.Source, logger hclog.Logger) (DescribeInfo, error) {
+	p, err := launch(ctx, dirs, "__trial__", src, logger, true)
 	if err != nil {
 		return DescribeInfo{}, fmt.Errorf("pluginhost: trial-launch for describe: %w", err)
 	}
@@ -618,6 +637,7 @@ func DescribePluginType(ctx context.Context, pluginsDir string, src config.Sourc
 		SourceType:        p.SourceType(),
 		PluginDisplayName: p.PluginDisplayName(),
 		MatchVocabulary:   p.MatchVocabulary(),
+		Tier:              p.Tier(),
 	}, nil
 }
 
@@ -638,7 +658,11 @@ type SourceHealth struct {
 	// Threaded through to GET /api/sources (09-01-PLAN.md Task 3) so the
 	// SPA can address GET /api/plugins/{plugin}/icon per row without a
 	// second lookup.
-	Plugin     string
+	Plugin string
+	// Tier is the launched instance's launch-time provenance Tier
+	// (T-11-01) — set from the same *Plugin.Tier() every other field on
+	// this line reads, never re-derived from a live RPC.
+	Tier       Tier
 	Reachable  bool
 	ProbeError string
 }
@@ -659,7 +683,7 @@ func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
-			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin}
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier}
 			resp, err := p.Health(ctx)
 			switch {
 			case err != nil:

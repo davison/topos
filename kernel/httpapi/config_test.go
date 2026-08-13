@@ -31,6 +31,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // newTestConfigStoreFromFile writes contents to a real temp config.toml
@@ -786,11 +787,15 @@ func TestRoutesGuard_NoLocalConfigSnapshot(t *testing.T) {
 
 // newPluginTypesTestRouter mounts only the two plugin-discovery routes —
 // PluginTypesHandler and DescribePluginHandler are pure functions of
-// pluginsDir, needing no config.Store or index.Store at all.
+// dirs, needing no config.Store or index.Store at all. pluginsDir is
+// wrapped as the TRUSTED directory only — every pre-existing caller of
+// this helper predates the external tier and asserts trusted-directory
+// behavior exclusively.
 func newPluginTypesTestRouter(pluginsDir string) http.Handler {
+	dirs := pluginhost.Dirs{Trusted: pluginsDir}
 	r := chi.NewRouter()
-	r.Get("/api/config/plugin-types", PluginTypesHandler(pluginsDir))
-	r.Post("/api/config/describe-plugin", DescribePluginHandler(pluginsDir, hclog.NewNullLogger()))
+	r.Get("/api/config/plugin-types", PluginTypesHandler(dirs))
+	r.Post("/api/config/describe-plugin", DescribePluginHandler(dirs, hclog.NewNullLogger()))
 	return r
 }
 
@@ -829,6 +834,68 @@ func TestPluginTypesHandler_ReturnsSortedMockFreeList(t *testing.T) {
 	for i := range want {
 		if resp.PluginTypes[i] != want[i] {
 			t.Fatalf("expected sorted, mock-free %v, got %v", want, resp.PluginTypes)
+		}
+	}
+}
+
+// TestPluginTypesHandler_ReturnsPluginTypeTiersAlongsidePluginTypes is
+// Phase 11's own shape check (PLUG-06/07): GET /api/config/plugin-types
+// returns BOTH the pre-existing plugin_types array of strings AND the new
+// additive plugin_type_tiers object — a tier lookup table spanning every
+// discovered binary in both directories, including a fixture name
+// (topos-plugin-mock) excluded from plugin_types itself, proving
+// PluginTypeTiers is sourced from DiscoverAllTiered (the security-
+// authority listing), never the UI-policy-filtered DiscoverTiered.
+func TestPluginTypesHandler_ReturnsPluginTypeTiersAlongsidePluginTypes(t *testing.T) {
+	trustedDir := t.TempDir()
+	for _, name := range []string{"topos-plugin-paperless", "topos-plugin-mock"} {
+		if err := os.WriteFile(filepath.Join(trustedDir, name), []byte("x"), 0o755); err != nil {
+			t.Fatalf("write trusted fixture %s: %v", name, err)
+		}
+	}
+	externalDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(externalDir, "topos-plugin-example"), []byte("x"), 0o755); err != nil {
+		t.Fatalf("write external fixture: %v", err)
+	}
+
+	dirs := pluginhost.Dirs{Trusted: trustedDir, External: externalDir}
+	r := chi.NewRouter()
+	r.Get("/api/config/plugin-types", PluginTypesHandler(dirs))
+	router := r
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config/plugin-types", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp pluginTypesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	wantTypes := []string{"topos-plugin-example", "topos-plugin-paperless"}
+	if len(resp.PluginTypes) != len(wantTypes) {
+		t.Fatalf("expected plugin_types %v, got %v", wantTypes, resp.PluginTypes)
+	}
+	for i := range wantTypes {
+		if resp.PluginTypes[i] != wantTypes[i] {
+			t.Fatalf("expected plugin_types %v, got %v", wantTypes, resp.PluginTypes)
+		}
+	}
+
+	wantTiers := map[string]string{
+		"topos-plugin-paperless": "trusted",
+		"topos-plugin-mock":      "trusted",
+		"topos-plugin-example":   "external",
+	}
+	if len(resp.PluginTypeTiers) != len(wantTiers) {
+		t.Fatalf("expected plugin_type_tiers %v, got %v", wantTiers, resp.PluginTypeTiers)
+	}
+	for name, wantTier := range wantTiers {
+		if got := resp.PluginTypeTiers[name]; got != wantTier {
+			t.Errorf("expected plugin_type_tiers[%q] = %q, got %q", name, wantTier, got)
 		}
 	}
 }

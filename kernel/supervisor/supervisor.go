@@ -32,10 +32,10 @@ import (
 // kernel's boot sequence once; Apply repeats the relevant part of it
 // after every successful config.Store.Save/Reload.
 type Supervisor struct {
-	idx        *index.Store
-	cfgStore   *config.Store
-	pluginsDir string
-	logger     hclog.Logger
+	idx      *index.Store
+	cfgStore *config.Store
+	dirs     pluginhost.Dirs
+	logger   hclog.Logger
 
 	// baseCtx is the long-lived context every scheduler generation derives
 	// its own cancellable context from (never a per-request ctx passed
@@ -115,22 +115,22 @@ type Supervisor struct {
 // the kernel's lifetime and call Shutdown() when done; Apply is the seam
 // every subsequent config.Store.Save/Reload must call so the running
 // kernel catches up with the swapped config (D-06).
-func NewSupervisor(ctx context.Context, idx *index.Store, cfgStore *config.Store, pluginsDir string, logger hclog.Logger) (*Supervisor, error) {
+func NewSupervisor(ctx context.Context, idx *index.Store, cfgStore *config.Store, dirs pluginhost.Dirs, logger hclog.Logger) (*Supervisor, error) {
 	if logger == nil {
 		logger = hclog.NewNullLogger()
 	}
 
 	s := &Supervisor{
-		idx:        idx,
-		cfgStore:   cfgStore,
-		pluginsDir: pluginsDir,
-		logger:     logger,
-		baseCtx:    ctx,
+		idx:      idx,
+		cfgStore: cfgStore,
+		dirs:     dirs,
+		logger:   logger,
+		baseCtx:  ctx,
 	}
 
 	cfg := cfgStore.Expanded()
 
-	host, err := pluginhost.Discover(ctx, pluginsDir, cfg.Sources, logger)
+	host, err := pluginhost.Discover(ctx, dirs, cfg.Sources, logger)
 	if err != nil {
 		return nil, err
 	}
