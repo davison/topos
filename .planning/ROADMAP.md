@@ -51,7 +51,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.0-ROADMAP.m
   4. An external plugin receives provider-specific config keys the kernel has never heard of (arbitrary per-instance extras), with no kernel change required to add a new key.
   5. A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — the mechanism is proven before any out-of-repo source work starts.
 
-**Plans**: 6/6 plans executed (5 waves)
+**Plans**: 6/7 plans executed (5 waves + 1 gap-closure wave)
 Plans:
 **Wave 1**
 
@@ -73,6 +73,10 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 11-06-PLAN.md — UI: binary-changed state, re-pin flow, pinned-hash footer
+
+**Gap closure** *(from 11-VERIFICATION.md — G-11-1, criterion 3 / PLUG-07)*
+
+- [ ] 11-07-PLAN.md — Confine ResolveBinary and validate Source.Plugin's shape: close the CR-01 traversal/trust-tier bypass
 
 **UI hint**: yes
 
