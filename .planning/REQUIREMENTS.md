@@ -17,7 +17,7 @@ Requirements for this milestone. Each maps to roadmap phases. REQ-ID numbering c
 
 ### New Sources
 
-- [ ] **SRC-04**: User can add a local or network filesystem folder (optional subfolders) as a source; documents appear in webspace streams with previews and deep links, synced via stat-diff polling that works on network mounts
+- [x] **SRC-04**: User can add a local or network filesystem folder (optional subfolders) as a source; documents appear in webspace streams with previews and deep links, synced via stat-diff polling that works on network mounts
 - [ ] **SRC-05**: User can add a Google Drive folder as a source using their own Google OAuth client (bring-your-own credentials via env refs), with incremental sync, Workspace-doc export previews, and deep links to the Drive web UI
 - [ ] **SRC-06**: The Google Drive plugin is developed out-of-repo against the published contract and installed through the external-plugin path — proving a third party can ship a working untrusted plugin end to end
 
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLUG-07 | Phase 11 | Complete |
 | PLUG-08 | Phase 11 | Complete |
 | PLUG-09 | Phase 11 | Complete |
-| SRC-04 | Phase 12 | Pending |
+| SRC-04 | Phase 12 | Complete |
 | SRC-05 | Phase 14 | Pending |
 | SRC-06 | Phase 14 | Pending |
 | KERN-09 | Phase 13 | Pending |

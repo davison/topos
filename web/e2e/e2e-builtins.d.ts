@@ -86,6 +86,10 @@ declare module 'node:path' {
 	export function resolve(...segments: string[]): string;
 	export function dirname(path: string): string;
 	export function isAbsolute(path: string): boolean;
+	// basename (12-01-PLAN.md Task 2, the filesystem-tracer spec): the
+	// corpus temp directory's own base name is the D-05 folder-vocabulary
+	// label the filesystem plugin emits for a top-level file.
+	export function basename(path: string): string;
 }
 
 declare module 'node:os' {

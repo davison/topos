@@ -599,6 +599,12 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 		{"Post", "/api/sync"}:                             true,
 		{"Post", "/api/config/whatsapp-link"}:             true,
 		{"Delete", "/api/config/whatsapp-link/{session}"}: true,
+		// POST /api/items/{id}/open (D-06, 12-01-PLAN.md Task 2): the
+		// filesystem source's kernel-mediated xdg-open route — a raw exec
+		// surface outside the go-plugin gRPC handshake, like whatsapp-link
+		// above, resolved exclusively from index state plus configuration,
+		// never from the request.
+		{"Post", "/api/items/{id}/open"}: true,
 	}
 
 	var found []allowedNonGetRoute

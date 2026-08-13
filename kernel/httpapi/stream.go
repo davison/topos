@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -199,8 +200,26 @@ func toStreamItemFor(it item.Item, resolveDisplayName func(string) string) strea
 		Labels:                 labels,
 		GroupID:                it.GroupID,
 		GroupLabel:             it.GroupLabel,
-		Link:                   link{URL: it.DeepLink, Fidelity: string(it.Fidelity)},
+		Link:                   link{URL: resolveStreamLinkURL(it), Fidelity: string(it.Fidelity)},
 		ThumbnailURL:           thumb,
 		Provenance:             prov,
 	}
+}
+
+// resolveStreamLinkURL resolves the served link.url for it (12-01-PLAN.md
+// Task 2, D-06): an item whose DeepLink carries the file:// scheme is
+// served with the kernel's loopback open route for its own id
+// (FilesystemOpenHandler, fsopen.go) instead of the raw file:// value —
+// built with the same string-concatenation convention
+// "/api/items/" + it.ID + "/content" already uses. Every other item is
+// served with its deep link echoed unchanged. Keyed on the URL SCHEME
+// alone, never it.SourceType — so a future third-party local-path plugin
+// is covered for free, matching the contract's "no built-in table of known
+// plugin types" discipline. This one helper covers the item-detail route
+// too, since ItemHandler serializes through toStreamItemFor.
+func resolveStreamLinkURL(it item.Item) string {
+	if strings.HasPrefix(it.DeepLink, "file://") {
+		return "/api/items/" + it.ID + "/open"
+	}
+	return it.DeepLink
 }
