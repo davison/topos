@@ -6,8 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"reflect"
-	"regexp"
 
 	"github.com/hashicorp/go-hclog"
 
@@ -45,61 +43,21 @@ type configResponse struct {
 	UnknownKeys   []string        `json:"unknown_keys"`
 }
 
-// envVarPattern matches both ${NAME} and bare $NAME env-var reference
-// shapes — the same two forms os.Expand itself recognises (config.go's
-// expandEnv delegates to os.Expand directly).
-var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
-
-// envVarsIn scans every string field reachable from cfg (structs, maps,
-// slices, pointers) for ${VAR}/$VAR references and reports, per referenced
-// name, whether that variable is currently set in the kernel process's own
-// environment (os.LookupEnv) — a boolean only, never the value (D-05: the
-// response boundary carries references and booleans, never secret values).
+// envVarsIn reports, per ${VAR}/$VAR reference reachable from cfg (via
+// config.EnvRefNames — Phase 11 Task 2's single shared scanner, moved to
+// kernel/config so kernel/pluginhost's plugin-launch env allowlist can use
+// the identical implementation), whether that variable is currently set in
+// the kernel process's own environment (os.LookupEnv) — a boolean only,
+// never the value (D-05: the response boundary carries references and
+// booleans, never secret values).
 func envVarsIn(cfg *config.Config) map[string]bool {
-	names := map[string]struct{}{}
-	collectEnvVarNames(reflect.ValueOf(cfg), names)
-
+	names := config.EnvRefNames(cfg)
 	out := make(map[string]bool, len(names))
-	for name := range names {
+	for _, name := range names {
 		_, ok := os.LookupEnv(name)
 		out[name] = ok
 	}
 	return out
-}
-
-func collectEnvVarNames(v reflect.Value, names map[string]struct{}) {
-	if !v.IsValid() {
-		return
-	}
-	switch v.Kind() {
-	case reflect.Pointer:
-		if v.IsNil() {
-			return
-		}
-		collectEnvVarNames(v.Elem(), names)
-	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			collectEnvVarNames(v.Field(i), names)
-		}
-	case reflect.Map:
-		for _, key := range v.MapKeys() {
-			collectEnvVarNames(v.MapIndex(key), names)
-		}
-	case reflect.Slice, reflect.Array:
-		for i := 0; i < v.Len(); i++ {
-			collectEnvVarNames(v.Index(i), names)
-		}
-	case reflect.String:
-		for _, m := range envVarPattern.FindAllStringSubmatch(v.String(), -1) {
-			name := m[1]
-			if name == "" {
-				name = m[2]
-			}
-			if name != "" {
-				names[name] = struct{}{}
-			}
-		}
-	}
 }
 
 // unknownKeysOrEmpty normalises UnknownKeys' nil-when-none result to an

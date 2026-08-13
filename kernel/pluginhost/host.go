@@ -606,6 +606,72 @@ func (t *stderrTail) lastLine() string {
 	return strings.TrimSpace(trimmed)
 }
 
+// allowedDesktopSessionEnvVars is the fixed, documented allowlist copied
+// into every plugin subprocess's environment (D-14), regardless of which
+// ${VAR} references that instance's own config happens to declare:
+//
+//   - PATH, HOME — needed by any subprocess at all, and by "~" expansion
+//     (plugins/signal resolves its own Path field's leading "~" itself,
+//     not the kernel — see kernel/config/types.go's Source.Path comment).
+//   - LANG, LC_ALL, LC_CTYPE, TZ, TMPDIR — the locale/timezone/scratch-
+//     space group, so a plugin's date and text handling stays identical to
+//     the kernel's own, rather than silently falling back to a C-locale
+//     default inside the subprocess.
+//   - XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS — desktop-session plumbing
+//     the Signal plugin's Secret Service key retrieval requires
+//     (plugins/signal/secretservice.go's D-Bus call to unwrap Signal
+//     Desktop's SQLCipher key). These are SESSION ADDRESSES, not secret
+//     values — withholding them would not meaningfully contain a plugin
+//     that can already read the session bus socket path directly off the
+//     filesystem; this phase implements honest disclosure of what a
+//     plugin subprocess can see (D-14's whole point), not sandboxing
+//     (11-RESEARCH.md's explicit no-containment framing, unchanged here).
+var allowedDesktopSessionEnvVars = []string{
+	"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TMPDIR",
+	"XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+}
+
+// allowedEnv builds the COMPLETE environment for a launched plugin
+// subprocess (D-14) — the sole producer of exec.Cmd.Env in launch below,
+// which never reads the kernel process's own environment wholesale
+// (os.Environ()) again. Three, and only three, sources contribute:
+//
+//  1. allowedDesktopSessionEnvVars above, copied present-only (an unset
+//     allowlisted variable contributes nothing — never an empty-string
+//     entry).
+//  2. Every name in config.EnvRefNames(rawSrc) that is CURRENTLY SET in the
+//     kernel process — the values behind the ${VAR} references THIS
+//     instance's own raw config declares, and nothing else. A variable set
+//     on the kernel process but referenced nowhere in rawSrc is never
+//     copied, no matter what it's named — this is the T-11-08 mitigation:
+//     the kernel's remaining environment (any credential, any unrelated
+//     secret sitting in the operator's shell) is structurally invisible to
+//     a plugin subprocess that never referenced it.
+//  3. The WEBSPACES_SOURCE_CONFIG envelope (always) and
+//     WEBSPACES_DESCRIBE_ONLY=1 (trial launches only) — unchanged from
+//     before this phase.
+func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool) []string {
+	env := make([]string, 0, len(allowedDesktopSessionEnvVars)+4)
+
+	for _, name := range allowedDesktopSessionEnvVars {
+		if v, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+v)
+		}
+	}
+
+	for _, name := range config.EnvRefNames(rawSrc) {
+		if v, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+v)
+		}
+	}
+
+	env = append(env, "WEBSPACES_SOURCE_CONFIG="+string(sourceConfigJSON))
+	if describeOnly {
+		env = append(env, "WEBSPACES_DESCRIBE_ONLY=1")
+	}
+	return env
+}
+
 // launch resolves src.Plugin against dirs via ResolveBinary (Phase 11's
 // two-tier provenance authority), execs the resolved path, performs the
 // go-plugin handshake, and calls Describe to learn the launched instance's
@@ -673,6 +739,20 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		instanceDisplayName = name
 	}
 
+	// rawSrc is this instance's own RAW (unexpanded) config.Source — the
+	// operator's literal ${VAR} references, never a resolved secret value
+	// (D-05) — read from raw.Sources[name] when raw is non-nil and the name
+	// is present there, falling back to src itself for DescribePluginType's
+	// trial-launch path (raw is nil there: the SUBMITTED src already IS the
+	// raw form, since nothing loaded it from disk). allowedEnv below is the
+	// only consumer — it decides which ${VAR} values THIS instance may see.
+	rawSrc := src
+	if raw != nil {
+		if rs, ok := raw.Sources[name]; ok {
+			rawSrc = rs
+		}
+	}
+
 	if tier == TierExternal && !describeOnly {
 		var pins map[string]string
 		if raw != nil {
@@ -717,11 +797,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 	// The capture goes through ClientConfig.Stderr below instead, which
 	// go-plugin's own logStderr goroutine writes to.
 	cmd := exec.Command(binPath)
-	env := append(os.Environ(), "WEBSPACES_SOURCE_CONFIG="+string(sourceConfig))
-	if describeOnly {
-		env = append(env, "WEBSPACES_DESCRIBE_ONLY=1")
-	}
-	cmd.Env = env
+	cmd.Env = allowedEnv(rawSrc, sourceConfig, describeOnly)
 
 	tail := &stderrTail{}
 
@@ -731,6 +807,19 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		Cmd:              cmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger:           logger.Named("plugin." + name),
+		// SkipHostEnv is D-14's actual enforcement point, not merely
+		// cmd.Env above: go-plugin's own Client() (client.go) UNCONDITIONALLY
+		// appends the ENTIRE os.Environ() onto cmd.Env before exec'ing —
+		// "if !c.config.SkipHostEnv { cmd.Env = append(cmd.Env,
+		// os.Environ()...) }" — regardless of what cmd.Env already holds.
+		// Without this field, allowedEnv's restricted allowlist above would
+		// be silently widened right back out to the kernel's full
+		// environment by go-plugin itself, one layer below where this
+		// package's own code stops looking. Discovered live while writing
+		// this phase's own supervisor tests (kernel/supervisor/
+		// launchlatency_test.go): a variable NOT in cmd.Env still reached
+		// the subprocess until this field was added.
+		SkipHostEnv: true,
 		// Raises the gRPC message-size ceiling to match sdk.GRPCServer on
 		// the plugin side, so a unary Fetch response carrying a full
 		// rendition doesn't hit the 4 MB default (D-Task1, 01-01).

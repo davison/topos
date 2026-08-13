@@ -23,10 +23,25 @@ import (
 // retry) survives it: the source ends up with an "ok" latest sync run and
 // persisted, streamable items, rather than pinned on the launch window's
 // errored row for the default sync interval.
+//
+// Phase 11 Task 2 (D-14): this fixture no longer relies on blanket
+// environment inheritance — kernel/pluginhost.launch's exec.Cmd carries
+// goplugin.ClientConfig.SkipHostEnv:true, and go-plugin's own Client()
+// unconditionally appends the FULL os.Environ() onto cmd.Env unless that
+// field is set, so a variable merely set on the kernel test process no
+// longer reaches the subprocess at all. It now travels the documented,
+// reference-driven path instead: t.Setenv sets the value on the kernel
+// process exactly as before, but mock-01's own [sources.mock-01.extras]
+// block below declares a "${WEBSPACES_MOCK_READY_AFTER_MS}" reference —
+// config.EnvRefNames(rawSrc) picks that reference up, and
+// kernel/pluginhost.allowedEnv copies the value behind it into the
+// subprocess's environment because THIS instance's own raw config
+// actually referenced it, not because the kernel happened to have it set.
 func TestBoot_FirstRefreshSurvivesAPluginLaunchReadinessWindow(t *testing.T) {
-	// t.Setenv MUST run first, before building anything: it is inherited by
-	// the subprocess through os.Environ() in kernel/pluginhost/host.go's
-	// launch(). t.Setenv also forbids t.Parallel() on this test, which is
+	// t.Setenv MUST run first, before building anything: allowedEnv reads
+	// os.LookupEnv at launch time, so the value must already be set on the
+	// kernel test process before NewSupervisor below performs its boot-time
+	// launch. t.Setenv also forbids t.Parallel() on this test, which is
 	// correct — this test owns process env for its duration.
 	t.Setenv("WEBSPACES_MOCK_READY_AFTER_MS", "700")
 
@@ -39,6 +54,9 @@ func TestBoot_FirstRefreshSurvivesAPluginLaunchReadinessWindow(t *testing.T) {
 plugin = "topos-plugin-mock"
 base_url = "http://mock.test"
 token = "unused"
+
+[sources.mock-01.extras]
+ready_after_ms = "${WEBSPACES_MOCK_READY_AFTER_MS}"
 
 [webspaces.demo]
 keywords = ["demo"]
