@@ -196,6 +196,41 @@ already-configured instance of either is unaffected, since
 `ExcludesMockstrictBinary` pair and `web/e2e/specs/
 mockstrict-discovery.spec.ts` for the specs that gate this.
 
+## `topos-plugin-external-demo` — the out-of-repo proof plugin
+
+Phase 11 (`testdata/external-plugin/`, ROADMAP success criterion 5) adds a
+third fixture binary, built and consumed very differently from the two
+mock-shaped plugins above: it is a genuinely **separate Go module**
+(module path `example.com/acme/topos-plugin-external-demo`, deliberately
+outside `github.com/davison/topos`), written from nothing but the
+published contract, standing in for a third party's own out-of-repo
+build — the standing, mechanical gate for the claim that a binary this
+project did not build as part of its plugin set can be discovered, marked
+untrusted, launched under a content-hash pin, and synced end to end.
+
+- **Built only by its own target**, `make external-demo`, into its own
+  output directory, `bin/plugins-external/topos-plugin-external-demo` —
+  never `bin/plugins/`, and never by `make build`, `make plugins`, or
+  `make plugins-portable`. `make e2e` depends on this target so the
+  browser harness (plans 11-05/11-06) can link the built binary into a
+  fixture's external plugin directory alongside the mock-shaped plugins'
+  trusted-directory symlinks.
+- **Its synced corpus reports back exactly what it was launched
+  with** — this is the mechanism by which Phase 11's extras-passthrough
+  (`PLUG-09`) and launch-environment-allowlist (D-14) claims are proven by
+  observation rather than asserted by a test's own mock: it returns one
+  item per configured `[sources.<id>.extras]` key, and one item per
+  environment variable actually visible to the launched subprocess
+  (variable **names only**, never values, so the synced corpus can never
+  carry a secret).
+- **Gated by `kernel/supervisor/externalproof_test.go`**'s
+  `TestExternalProof_OutOfRepoBinaryEndToEnd` — a real supervisor boot
+  against the built binary, asserting discovery, tier, pin enforcement
+  (including refusal of a tampered copy by name, alongside a still-healthy
+  control source), extras passthrough, and environment scrubbing, all from
+  the plugin's own point of view. See `testdata/external-plugin/README.md`
+  for the full shape and the reasons it lives under `testdata/`.
+
 ### `WEBSPACES_MOCK_READY_AFTER_MS` — the mock's launch-readiness fixture
 
 `topos-plugin-mock` also carries an opt-in launch-readiness window
@@ -370,6 +405,17 @@ concurrent `Reconcile`. This failure class now has a hermetic gate over a
 real plugin subprocess (`kernel/supervisor/launchlatency_test.go`,
 `TestResume_SlowRelaunchDoesNotFreezeOtherSources`), using the mock
 plugin's new `WEBSPACES_MOCK_LAUNCH_DELAY_MS` fixture (above).
+
+**2026-08-13**: Phase 11 adds `topos-plugin-external-demo`
+(`testdata/external-plugin/`, ROADMAP success criterion 5) — a genuinely
+separate Go module, built by its own `make external-demo` target into its
+own `bin/plugins-external/` directory, standing in for a third party's own
+out-of-repo plugin build. `make e2e` now depends on this target alongside
+the mock/mockstrict builds. See "`topos-plugin-external-demo` — the
+out-of-repo proof plugin", above, and
+`kernel/supervisor/externalproof_test.go`'s
+`TestExternalProof_OutOfRepoBinaryEndToEnd` for the standing gate this
+lands.
 
 ## Standing rule
 

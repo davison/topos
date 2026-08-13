@@ -10,4 +10,14 @@ use (
 	./plugins/silverbullet
 	./plugins/whatsapp
 	./sdk
+	// testdata/external-plugin is a fixture module (Phase 11, ROADMAP
+	// success criterion 5), not a real plugin — it is a workspace member
+	// so its sdk import resolves locally with no replace directive, and
+	// it lives under testdata/ because the go tool never matches
+	// "testdata" in a "./..." pattern and this repository's own AST
+	// audits (internal/audit) skip any directory named "testdata"
+	// everywhere they walk, so this module never joins the in-repo
+	// plugin set's build or audit surface. See
+	// testdata/external-plugin/README.md.
+	./testdata/external-plugin
 )
