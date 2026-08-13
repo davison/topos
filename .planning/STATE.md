@@ -5,8 +5,8 @@ milestone_name: Plugin Ecosystem
 current_phase: 12
 current_phase_name: Filesystem Source
 status: planning
-stopped_at: Phase 12 context gathered
-last_updated: "2026-08-13T17:21:52.149Z"
+stopped_at: Phase 12 UI-SPEC approved
+last_updated: "2026-08-13T18:31:35.481Z"
 last_activity: 2026-08-13
 last_activity_desc: Phase 11 complete - UAT passed, transitioned to Phase 12
 progress:
@@ -140,6 +140,7 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 
 - 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
 - 2026-08-05 — Centralize rendition theming (and sanitization) in the kernel content boundary (major, api; schedule with Phase 5 contract work or ecosystem milestone)
+- 2026-08-13 — Plugin trust tier is directory-location, not provenance (major, security; Phase 11 debt — consent flow bypassable via config edit, file drop, or D-11 shadowing; candidate own hardening phase)
 
 ### Blockers/Concerns
 
@@ -176,9 +177,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T17:21:52.137Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-filesystem-source/12-CONTEXT.md
+Last session: 2026-08-13T18:31:35.470Z
+Stopped at: Phase 12 UI-SPEC approved
+Resume file: .planning/phases/12-filesystem-source/12-UI-SPEC.md
 
 ## Operator Next Steps
 
