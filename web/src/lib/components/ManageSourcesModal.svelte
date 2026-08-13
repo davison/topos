@@ -331,6 +331,7 @@
 			baseHash={localHash}
 			{envVars}
 			vocabulary={[]}
+			extrasFields={[]}
 			onclose={() => (editInstance = null)}
 			onsaved={handleEditSaved}
 		/>

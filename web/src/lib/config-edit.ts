@@ -283,3 +283,25 @@ export function removeSourceInstance(cfg: KernelConfig, instanceId: string): Ker
 	}
 	return next;
 }
+
+/**
+ * Returns a new document with `[plugins.pins]` gaining (or overwriting) an
+ * entry for `pluginBinary` set to `hash` — the untrusted-source confirm
+ * step's write (Phase 11, D-01/D-02, T-11-25). `hash` MUST be the
+ * kernel-computed `binary_hash` a describe response already returned; this
+ * function never computes, invents, or otherwise derives a hash of its
+ * own — it only ever echoes back a value the caller already holds. Pins
+ * are per BINARY, not per source instance (D-02): every existing or
+ * future instance of `pluginBinary` shares the one pin this overwrites,
+ * so a re-accept (the chip menu's future "Trust updated binary" action)
+ * updates every instance at once by construction, never diverging.
+ */
+export function setPluginPin(
+	cfg: KernelConfig,
+	pluginBinary: string,
+	hash: string
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	next.plugins = { ...next.plugins, pins: { ...(next.plugins.pins ?? {}), [pluginBinary]: hash } };
+	return next;
+}

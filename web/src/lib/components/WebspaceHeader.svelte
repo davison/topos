@@ -53,6 +53,7 @@
 		config,
 		baseHash,
 		pluginTypes,
+		pluginTypeTiers,
 		envVars,
 		onsourceadded,
 		onedit,
@@ -129,6 +130,11 @@
 		config: KernelConfig | null;
 		baseHash: string;
 		pluginTypes: string[];
+		// pluginTypeTiers (Phase 11, PLUG-06/08): GET /api/config/plugin-types'
+		// own plugin_type_tiers lookup table, fetched alongside pluginTypes
+		// by the caller and threaded straight through to AddSourceModal —
+		// this component owns no tier logic of its own.
+		pluginTypeTiers: Record<string, string>;
 		// envVars is the last GET/PUT /api/config response's own env_vars
 		// presence map (D-15's secret-field set/unset badge source) — see
 		// SecretField.svelte's doc comment for why this, not a per-keystroke
@@ -515,6 +521,7 @@
 						{config}
 						{baseHash}
 						{pluginTypes}
+						{pluginTypeTiers}
 						{envVars}
 						onsaved={onsourceadded}
 					/>
