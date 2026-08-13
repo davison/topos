@@ -140,3 +140,79 @@ filter = ["boiler", "quote"]
 		t.Fatalf("expected marshal->write->reload->write to be a fixed point (byte-identical output):\nfirst=%s\nsecond=%s", firstWrite, secondWrite)
 	}
 }
+
+// TestWriteCanonical_RoundTripsExtrasAndPinsWithLiteralVarPreserved is
+// Phase 11 Task 3's own round-trip proof (D-14, D-05 lineage): a canonical
+// rewrite of a config carrying both [sources.<id>.extras] and
+// [plugins.pins] reproduces both tables losslessly, and a ${VAR} reference
+// inside an extras value is written back out LITERALLY — never a resolved
+// secret value — exactly like WriteCanonical already guarantees for
+// base_url/token (D-05's secret-value-never-on-disk-expanded discipline,
+// unchanged and extended here to extras).
+func TestWriteCanonical_RoundTripsExtrasAndPinsWithLiteralVarPreserved(t *testing.T) {
+	t.Setenv("TEST_EXTRAS_ROUNDTRIP_REGION", "eu-west-1")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	original := `
+[plugins]
+[plugins.pins]
+"topos-plugin-example" = "` + strings.Repeat("a", 64) + `"
+
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+region = "${TEST_EXTRAS_ROUNDTRIP_REGION}"
+plain = "literal-value"
+`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatalf("seed initial file: %v", err)
+	}
+
+	_, raw, _, _, err := LoadRaw(path)
+	if err != nil {
+		t.Fatalf("LoadRaw: %v", err)
+	}
+
+	if err := WriteCanonical(path, raw); err != nil {
+		t.Fatalf("WriteCanonical: %v", err)
+	}
+
+	_, reloaded, _, _, err := LoadRaw(path)
+	if err != nil {
+		t.Fatalf("LoadRaw (after canonical rewrite): %v", err)
+	}
+
+	gotPin := reloaded.Plugins.Pins["topos-plugin-example"]
+	wantPin := strings.Repeat("a", 64)
+	if gotPin != wantPin {
+		t.Errorf("expected the pin to round-trip as %q, got %q", wantPin, gotPin)
+	}
+
+	gotExtras := reloaded.Sources["example"].Extras
+	if got := gotExtras["region"]; got != "${TEST_EXTRAS_ROUNDTRIP_REGION}" {
+		t.Errorf("expected extras.region to round-trip with its literal ${VAR} form preserved, got %q", got)
+	}
+	if got := gotExtras["plain"]; got != "literal-value" {
+		t.Errorf("expected extras.plain to round-trip unchanged, got %q", got)
+	}
+
+	// The canonical rewrite's own written bytes must never contain the
+	// RESOLVED secret value — only the raw form (which never expands ${VAR}
+	// at all) is ever passed to WriteCanonical, so this is a second,
+	// independent proof at the byte level, not merely a re-parse check.
+	rewritten, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read rewritten file: %v", err)
+	}
+	if strings.Contains(string(rewritten), "eu-west-1") {
+		t.Fatalf("expected the canonical rewrite to NEVER contain the resolved secret value \"eu-west-1\" — the file:\n%s", rewritten)
+	}
+	if !strings.Contains(string(rewritten), "${TEST_EXTRAS_ROUNDTRIP_REGION}") {
+		t.Fatalf("expected the canonical rewrite to preserve the literal ${VAR} form — the file:\n%s", rewritten)
+	}
+}

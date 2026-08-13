@@ -4,6 +4,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -152,6 +153,79 @@ func TestDescribeResponseIconFieldsZeroValue(t *testing.T) {
 	}
 	if got := desc.GetIconMime(); got != "" {
 		t.Errorf("expected GetIconMime() on an icon-less DescribeResponse to return \"\", got %q", got)
+	}
+}
+
+// TestContractDeclaresExtrasDeclaration is Phase 11's contract-shape gate
+// (11-02-PLAN.md Task 3, D-15): the published proto must declare
+// DescribeResponse.extras at field 7 (the next free number after icon_mime
+// at 6) and the ExtrasField message's five fields, mirroring the icon-field
+// guards above — read the .proto source, never trust the generated Go
+// stubs alone to prove what the PUBLISHED contract commits to.
+func TestContractDeclaresExtrasDeclaration(t *testing.T) {
+	stripped := stripComments(readProto(t))
+
+	extrasFieldRe := regexp.MustCompile(`\bextras\s*=\s*7\s*;`)
+	if !extrasFieldRe.MatchString(stripped) {
+		t.Errorf("expected %s to declare DescribeResponse.extras = 7", protoRelPath)
+	}
+
+	if !strings.Contains(stripped, "message ExtrasField") {
+		t.Fatalf("expected %s to declare message ExtrasField", protoRelPath)
+	}
+
+	for _, want := range []struct {
+		name string
+		num  int
+	}{
+		{"key", 1}, {"label", 2}, {"required", 3}, {"secret", 4}, {"placeholder", 5},
+	} {
+		fieldRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(want.name) + `\s*=\s*` + strconv.Itoa(want.num) + `\s*;`)
+		if !fieldRe.MatchString(stripped) {
+			t.Errorf("expected %s's ExtrasField message to declare %s = %d", protoRelPath, want.name, want.num)
+		}
+	}
+
+	// Fields 1-6 on DescribeResponse must remain untouched by this
+	// additive change — the same five checks TestContractDeclaresIconFields
+	// and TestContractDeclaresMatchVocabulary above already pin, repeated
+	// here so this guard alone is sufficient evidence the extras addition
+	// didn't renumber anything.
+	for _, want := range []struct {
+		name string
+		num  int
+	}{
+		{"source_type", 1}, {"display_name", 2}, {"contract_version", 3},
+		{"match_vocabulary", 4}, {"icon", 5}, {"icon_mime", 6},
+	} {
+		fieldRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(want.name) + `\s*=\s*` + strconv.Itoa(want.num) + `\s*;`)
+		if !fieldRe.MatchString(stripped) {
+			t.Errorf("expected DescribeResponse's pre-existing field %s = %d to remain unchanged", want.name, want.num)
+		}
+	}
+}
+
+// TestContractExtrasFieldIsAdditive pins the two guarantees a proto3
+// additive field change must uphold, mirroring
+// TestContractIconFieldsAreAdditive: the RPC set is unchanged (already
+// enforced by TestContractRPCAllowlist against the unchanged allowedRPCs),
+// and sdk.Handshake.ProtocolVersion stays at 2, so a plugin binary built
+// against the pre-extras contract (which never sets this field) keeps
+// handshaking successfully exactly as it did before this phase.
+func TestContractExtrasFieldIsAdditive(t *testing.T) {
+	if Handshake.ProtocolVersion != 2 {
+		t.Errorf("expected sdk.Handshake.ProtocolVersion to remain 2 (extras is an additive proto3 change, not a wire break), got %d", Handshake.ProtocolVersion)
+	}
+}
+
+// TestDescribeResponseExtrasFieldZeroValue proves the pre-extras-contract
+// plugin case against the regenerated stubs directly: a DescribeResponse
+// with no extras set (exactly what a plugin built against the old contract
+// produces) reports a nil/empty slice, never a nil-pointer panic.
+func TestDescribeResponseExtrasFieldZeroValue(t *testing.T) {
+	desc := &toposv1.DescribeResponse{}
+	if got := desc.GetExtras(); len(got) != 0 {
+		t.Errorf("expected GetExtras() on an extras-less DescribeResponse to return an empty slice, got %d entries", len(got))
 	}
 }
 

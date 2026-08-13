@@ -58,6 +58,46 @@ message DescribeResponse {
   // side and treated identically to "no icon declared"
   // (kernel/pluginhost/host.go's allowedIconMIME).
   string icon_mime = 6;
+  // extras is Phase 11's additive declaration (D-15, PLUG-09): a plugin MAY
+  // declare the provider-specific config.Source.Extras keys it expects, so
+  // the kernel's add-source form can render labeled inputs instead of a
+  // bare free-form key/value editor. Field 7 — the next free number; fields
+  // 1-6 above are never renumbered or repurposed. A plugin that declares
+  // nothing here is fully supported (the kernel falls back to the
+  // free-form extras editor), and an older kernel simply ignores this
+  // field entirely — this is additive exactly like icon/icon_mime were, so
+  // sdk.Handshake.ProtocolVersion is NOT bumped for it.
+  repeated ExtrasField extras = 7;
+}
+
+// ExtrasField is one provider-specific config.Source.Extras key a plugin
+// declares expecting, via DescribeResponse.extras above (D-15).
+message ExtrasField {
+  // key is the exact Extras map key this field describes (e.g. "region") —
+  // matched verbatim against the operator-authored [sources.<id>.extras]
+  // key, never a display label.
+  string key = 1;
+  // label is the human-readable form input label the kernel's add-source
+  // UI renders next to this field.
+  string label = 2;
+  // required signals the kernel's add-source form should not let the
+  // operator submit without a value for this key — advisory only: the
+  // kernel never rejects a saved config missing a "required" extras key,
+  // since a plugin's own declared requirements are not something
+  // kernel/config.Validate enforces (D-12: the kernel holds no built-in
+  // knowledge of what an extras key means).
+  bool required = 3;
+  // secret signals the kernel's add-source form should render this
+  // field's input masked (e.g. a password/API-key input), matching the
+  // treatment base_url/token already receive.
+  bool secret = 4;
+  // placeholder is a DISPLAY-ONLY hint text the kernel's add-source form
+  // may show inside the empty input — it must NEVER be pre-filled into a
+  // value the kernel then saves, precisely so a malicious Describe
+  // response cannot get its own suggested default (e.g. "${SOME_SECRET}")
+  // silently persisted into the operator's config.toml and later expanded
+  // (D-14, T-11-11).
+  string placeholder = 5;
 }
 
 // StringList wraps a repeated string as a map value — proto3 maps cannot

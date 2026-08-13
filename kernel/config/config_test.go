@@ -1006,3 +1006,68 @@ func TestValidate_Pins(t *testing.T) {
 		}
 	})
 }
+
+// TestLoad_ExtrasVarExpandsExactlyLikeBaseURL proves D-13: a ${VAR}
+// reference inside a [sources.<id>.extras] value expands at load time
+// exactly like base_url/token do — the operator never needs a second
+// mental model for "which config fields support ${VAR}".
+func TestLoad_ExtrasVarExpandsExactlyLikeBaseURL(t *testing.T) {
+	t.Setenv("TEST_EXTRAS_REGION", "eu-west-1")
+
+	path := writeTempConfig(t, `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+region = "${TEST_EXTRAS_REGION}"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Sources["example"].Extras["region"]; got != "eu-west-1" {
+		t.Errorf("expected extras.region to expand to %q, got %q", "eu-west-1", got)
+	}
+}
+
+// TestLoad_MalformedExtrasKeyFailsNamingSourceAndKey proves the load-time
+// gate over extras key shape: an empty key and a key outside the
+// documented shape both fail load, naming the offending source instance
+// and key.
+func TestLoad_MalformedExtrasKeyFailsNamingSourceAndKey(t *testing.T) {
+	cases := map[string]string{
+		"leading digit": `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+"1bad" = "value"
+`,
+		"space in key": `
+[sources.example]
+plugin = "topos-plugin-example"
+base_url = "http://x.lan"
+token = "tok"
+
+[sources.example.extras]
+"bad key" = "value"
+`,
+	}
+
+	for name, contents := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeTempConfig(t, contents)
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected a malformed extras key to fail load")
+			}
+			if !strings.Contains(err.Error(), "example") {
+				t.Errorf("expected the error to name the source instance %q, got: %v", "example", err)
+			}
+		})
+	}
+}

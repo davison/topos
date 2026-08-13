@@ -369,6 +369,10 @@ func (cfg *Config) Validate(missing []string) error {
 		return err
 	}
 
+	if err := cfg.validateExtras(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -413,6 +417,49 @@ func (cfg *Config) validatePins() error {
 		value := cfg.Plugins.Pins[name]
 		if !pinHashPattern.MatchString(value) {
 			return fmt.Errorf("config: [plugins.pins] value for %q is not a 64-character lowercase hex SHA-256 digest, got %q", name, value)
+		}
+	}
+	return nil
+}
+
+// extrasKeyPattern matches the documented Extras key shape (D-12/D-13,
+// Phase 11 Task 3): an ASCII letter or underscore, then any run of ASCII
+// letters, digits, underscores, dots or hyphens. Values are NOT
+// constrained by this pattern — Extras values are unconstrained,
+// arbitrary provider-specific strings (D-13); only the key, which the
+// kernel itself later serialises as a JSON object key and which an
+// operator hand-types into config.toml, is shape-checked.
+var extrasKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+
+// validateExtras checks every [sources.<id>.extras] entry (D-12/D-13,
+// Phase 11 Task 3): an empty key, or one outside extrasKeyPattern's shape,
+// fails load naming the source instance and the offending key — caught
+// here, at load time, rather than left to fail later and less
+// informatively at launch. Source instances and, within each, extras keys
+// are both iterated in sorted order for the identical deterministic-
+// multi-error-reporting reason validatePins above already states.
+func (cfg *Config) validateExtras() error {
+	names := make([]string, 0, len(cfg.Sources))
+	for name := range cfg.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		src := cfg.Sources[name]
+		keys := make([]string, 0, len(src.Extras))
+		for key := range src.Extras {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			if key == "" {
+				return fmt.Errorf("config: source %q declares an empty extras key", name)
+			}
+			if !extrasKeyPattern.MatchString(key) {
+				return fmt.Errorf("config: source %q declares an extras key %q outside the allowed shape (letters, digits, underscore, dot, hyphen; must not start with a digit, dot, or hyphen)", name, key)
+			}
 		}
 	}
 	return nil

@@ -606,6 +606,36 @@ func (t *stderrTail) lastLine() string {
 	return strings.TrimSpace(trimmed)
 }
 
+// sourceConfigEnvelope is the WEBSPACES_SOURCE_CONFIG JSON document every
+// launched plugin subprocess receives — a NAMED struct (Phase 11 Task 3),
+// replacing the pre-Phase-11 flat map[string]string literal so a nested
+// sub-table (Extras) can be represented at all: a flat map can only ever
+// hold string values, never a nested object. Every pre-existing key's JSON
+// tag is byte-identical to what the flat map produced, so every already-
+// shipped plugin binary keeps reading the same top-level document
+// unchanged — this type is purely additive.
+//
+// Flattening Extras into this envelope's own top-level key space is
+// PROHIBITED (D-12): the sub-table boundary — kernel-known fields stay
+// strictly typed here, provider-specific keys stay opaque inside their own
+// nested object — is the entire point of D-12. A plugin reads its own
+// provider keys from config["extras"]["key"], never from a top-level key
+// the kernel itself could someday also want to use.
+type sourceConfigEnvelope struct {
+	BaseURL        string `json:"base_url"`
+	Token          string `json:"token"`
+	APIVersion     string `json:"api_version"`
+	CACert         string `json:"ca_cert"`
+	Username       string `json:"username"`
+	WebmailBaseURL string `json:"webmail_base_url"`
+	Path           string `json:"path"`
+	// Extras carries config.Source.Extras verbatim (D-12/D-13) — omitted
+	// entirely (no "extras" key at all, never an empty object) when this
+	// source declares no extras, so a plugin's own JSON decode sees exactly
+	// "no extras configured" rather than an ambiguous empty-vs-absent case.
+	Extras map[string]string `json:"extras,omitempty"`
+}
+
 // allowedDesktopSessionEnvVars is the fixed, documented allowlist copied
 // into every plugin subprocess's environment (D-14), regardless of which
 // ${VAR} references that instance's own config happens to declare:
@@ -774,17 +804,24 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		}
 	}
 
-	sourceConfig, err := json.Marshal(map[string]string{
-		"base_url":         src.BaseURL,
-		"token":            src.Token,
-		"api_version":      src.APIVersion,
-		"ca_cert":          src.CACert,
-		"username":         src.Username,
-		"webmail_base_url": src.WebmailBaseURL,
-		// path: the local filesystem path source config field (Source.Path
+	sourceConfig, err := json.Marshal(sourceConfigEnvelope{
+		BaseURL:        src.BaseURL,
+		Token:          src.Token,
+		APIVersion:     src.APIVersion,
+		CACert:         src.CACert,
+		Username:       src.Username,
+		WebmailBaseURL: src.WebmailBaseURL,
+		// Path: the local filesystem path source config field (Source.Path
 		// — kernel/config/types.go), needed by a local-path source like
 		// SRC-02's Signal plugin, which has no base_url/token at all.
-		"path": src.Path,
+		Path: src.Path,
+		// Extras (D-12/D-13, Phase 11 Task 3): src is the EXPANDED
+		// config.Source (never rawSrc) — expandEnv runs over the raw TOML
+		// text before decode (kernel/config/config.go's LoadRaw doc
+		// comment), so a ${VAR} reference inside an extras value is
+		// already resolved here exactly like base_url/token are, with no
+		// separate expansion step needed in this package.
+		Extras: src.Extras,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal source config: %w", err)
