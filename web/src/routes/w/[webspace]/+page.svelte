@@ -246,7 +246,10 @@
 		editExtrasFields = [];
 	}
 
-	async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'relink' | 'remove') {
+	async function handleChipEdit(
+		name: string,
+		kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+	) {
 		if (kind === 'remove') {
 			await handleRemoveSource(name);
 			return;
@@ -256,6 +259,15 @@
 			// opens a different modal and needs no describePlugin call,
 			// and therefore no stale-response guard.
 			relinkInstance = name;
+			return;
+		}
+		if (kind === 'trust-update') {
+			// Placeholder (11-06-PLAN.md Task 1): widening onedit's kind
+			// union in SourceChip.svelte (this route's own onedit prop type
+			// must widen in lockstep to stay assignable) requires this
+			// branch to exist for the file to type-check. Task 2 of this
+			// same plan replaces this no-op with the real trustUpdateInstance
+			// state slot and TrustUpdateDialog mount.
 			return;
 		}
 		if (!configResponse) return;

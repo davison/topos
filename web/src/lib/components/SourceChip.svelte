@@ -17,10 +17,13 @@
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import QrCode from '@lucide/svelte/icons/qr-code';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Check from '@lucide/svelte/icons/check';
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
 	import TrustBadge from '$lib/components/TrustBadge.svelte';
 	import { cn } from '$lib/utils.js';
-	import { healthTone, formatRelativeTime, type HealthTone } from '$lib/format';
+	import { healthTone, formatRelativeTime, shortHash, type HealthTone } from '$lib/format';
 	import { WHATSAPP_SOURCE_TYPE } from '$lib/plugin-fields';
 	import type { SourceStatus } from '$lib/api';
 
@@ -61,6 +64,14 @@
 	// glyph overlay, and its tooltip text gains an untrusted clause — a
 	// trusted-tier chip's markup and tooltip text are byte-identical to
 	// before this phase (D-06).
+	//
+	// 11-06-PLAN.md Task 1 (11-UI-SPEC.md E4/E5) widens onedit's kind
+	// union with 'trust-update' and adds two conditional menu regions: a
+	// leading "Trust updated binary…" item (E4) shown only while this
+	// source's launch_failure carries the kernel-published pin-mismatch
+	// signal, and a static pinned-hash footer (E5) shown for every
+	// external-tier source that has a pin — a trusted-tier chip's menu
+	// stays byte-identical to before this phase (D-04).
 	let {
 		source,
 		selected,
@@ -73,7 +84,10 @@
 		selected: boolean;
 		onfilter: (name: string) => void;
 		onrefresh: (name: string) => void;
-		onedit: (name: string, kind: 'connection' | 'match' | 'relink' | 'remove') => void;
+		onedit: (
+			name: string,
+			kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+		) => void;
 		// busy (07-05-PLAN.md Task 2, the shared save/reload state pattern's
 		// in-flight rule — E6 "the initiating control disables in flight")
 		// disables ONLY the "Remove from this webspace" item below: it is
@@ -93,6 +107,34 @@
 	// actually exposes, never on a plugin binary name this component has
 	// no other reason to know.
 	let isWhatsApp = $derived(source.source_type === WHATSAPP_SOURCE_TYPE);
+
+	// isPinMismatch/isExternal (11-UI-SPEC.md E4/E5) mirror isWhatsApp's own
+	// shape — keyed on kernel-published fields (launch_failure/tier), never
+	// on a last_error string match (T-11-32's own guard, RESEARCH.md
+	// Pitfall 2).
+	let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch');
+	let isExternal = $derived(source.tier === 'external');
+
+	// hashCopied (E5): a lightweight, silent copy confirmation — the Copy
+	// icon swaps to a check for ~1.5s, then reverts. No toast/alert; a
+	// clipboard-API failure leaves this false and changes nothing visible,
+	// since the full hash remains reachable via the footer's own title
+	// attribute.
+	let hashCopied = $state(false);
+
+	async function copyPinnedHash() {
+		if (!source.pinned_hash) return;
+		try {
+			await navigator.clipboard.writeText(source.pinned_hash);
+			hashCopied = true;
+			setTimeout(() => {
+				hashCopied = false;
+			}, 1500);
+		} catch {
+			// Silent no-op (E5) — the full hash stays available via this
+			// row's own title attribute as a manual-copy fallback.
+		}
+	}
 
 	const DOT_TONE_CLASS: Record<HealthTone, string> = {
 		success: 'bg-success',
@@ -124,9 +166,19 @@
 	// produced the text, rather than replacing it or gaining a fifth
 	// branch of its own. The four base strings stay byte-identical for a
 	// trusted-tier source (D-06).
+	//
+	// Phase 11 (11-UI-SPEC.md E4): a binary-changed source gets its OWN
+	// branch — checked after the syncing check (still yields to "syncing…"
+	// since a mid-relaunch is a more immediate fact) and ahead of the
+	// tone switch below (the cause and remedy are different and specific,
+	// so this takes priority over the plain destructive/"unreachable"
+	// wording). This branch supplies its own complete Copywriting Contract
+	// string and is exempt from the trailing "— untrusted external
+	// plugin" append below — the exact E4 copy carries no such suffix.
 	let tooltipText = $derived.by(() => {
 		const base = (() => {
 			if (source.syncing) return `${source.display_name} — syncing…`;
+			if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
 			const relative = formatRelativeTime(source.last_sync_unix);
 			switch (tone) {
 				case 'success':
@@ -139,7 +191,7 @@
 					return `${source.display_name} — not yet synced`;
 			}
 		})();
-		return source.tier === 'external' ? `${base} — untrusted external plugin` : base;
+		return source.tier === 'external' && !isPinMismatch ? `${base} — untrusted external plugin` : base;
 	});
 
 	// stopPropagation before anything else — this is the D-12 versus Phase
@@ -231,8 +283,14 @@
 			{/snippet}
 		</DropdownMenuTrigger>
 		<DropdownMenuContent>
+			{#if isPinMismatch}
+				<DropdownMenuItem onSelect={() => onedit(source.name, 'trust-update')}>
+					<ShieldCheck aria-hidden="true" />
+					Trust updated binary…
+				</DropdownMenuItem>
+			{/if}
 			<DropdownMenuItem
-				disabled={source.syncing}
+				disabled={source.syncing || isPinMismatch}
 				onSelect={() => onrefresh(source.name)}
 			>
 				<RefreshCw class={cn('size-4', source.syncing && 'animate-spin')} aria-hidden="true" />
@@ -261,6 +319,28 @@
 			>
 				Remove from this webspace
 			</DropdownMenuItem>
+			{#if isExternal && source.pinned_hash}
+				<DropdownMenuSeparator />
+				<div
+					class="flex items-center justify-between gap-2 px-2 py-1.5 text-[14px] leading-[1.4] text-muted-foreground"
+				>
+					<span class="truncate font-mono" title={source.pinned_hash}
+						>Pinned: {shortHash(source.pinned_hash)}</span
+					>
+					<button
+						type="button"
+						onclick={copyPinnedHash}
+						aria-label="Copy pinned hash"
+						class="shrink-0 text-muted-foreground hover:text-foreground"
+					>
+						{#if hashCopied}
+							<Check class="size-3.5 text-success" aria-hidden="true" />
+						{:else}
+							<Copy class="size-3.5" aria-hidden="true" />
+						{/if}
+					</button>
+				</div>
+			{/if}
 		</DropdownMenuContent>
 	</DropdownMenu>
 </div>

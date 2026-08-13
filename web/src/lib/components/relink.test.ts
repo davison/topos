@@ -80,9 +80,13 @@ describe('RelinkModal.svelte: renders QRPanel and no connection or match form', 
 });
 
 describe("the route's handleChipEdit branches on 'relink' before the describe path", () => {
+	// 11-06-PLAN.md Task 1 widens handleChipEdit's kind parameter across two
+	// lines (the union no longer fits one line) — the marker below matches
+	// only up through the opening brace, which still uniquely locates this
+	// function regardless of how its parameter list wraps.
 	const handleChipEditBody = extractBetween(
 		routeStripped,
-		"async function handleChipEdit(name: string, kind: 'connection' | 'match' | 'relink' | 'remove') {",
+		'async function handleChipEdit(',
 		'\n\t}'
 	);
 
