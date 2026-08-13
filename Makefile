@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check
+.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -121,6 +121,21 @@ plugins:
 signal:
 	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
+# external-demo builds Phase 11's out-of-repo proof plugin
+# (testdata/external-plugin, ROADMAP success criterion 5) — a genuinely
+# separate Go module (module path example.com/acme/topos-plugin-external-demo,
+# outside github.com/davison/topos) written entirely from the published
+# contract, standing in for a third party's own separate build. This
+# binary is deliberately NOT part of "plugins", "plugins-portable" or
+# "build" — it must never land in bin/plugins/, the directory a real
+# installation's [plugins] dir can point at — so it gets its own output
+# directory, bin/plugins-external/, that no real "[plugins] dir" or
+# "external_dir" config value in this repository's own examples ever
+# names. CGO_ENABLED=0 like every other plugin in this repo except signal.
+external-demo:
+	mkdir -p bin/plugins-external
+	CGO_ENABLED=0 go build -o bin/plugins-external/topos-plugin-external-demo ./testdata/external-plugin
+
 # test-portable runs every workspace module test EXCEPT the cgo Signal
 # plugin (sdk, paperless, silverbullet, proton, mock, mockstrict, whatsapp,
 # plus the root kernel module) — the credential-free, cgo-free half of
@@ -210,6 +225,12 @@ dev-check:
 # which excludes both fixture binaries from the picker's catalog listing
 # unconditionally, regardless of what happens to be sitting in
 # bin/plugins/.
+#
+# This target also depends on external-demo (above): Phase 11's
+# out-of-repo proof plugin, built into its own bin/plugins-external/
+# directory (never bin/plugins/), for the browser specs plans 11-05/11-06
+# add that link a real, out-of-repo-shaped plugin binary into a fixture's
+# external plugin directory — see testdata/external-plugin/README.md.
 e2e:
 	npm --prefix web ci
 	npm --prefix web run build
@@ -217,6 +238,7 @@ e2e:
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
+	$(MAKE) external-demo
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
