@@ -200,3 +200,7 @@ None - no external service configuration required.
 ---
 *Phase: 11-external-plugins-the-trust-boundary*
 *Completed: 2026-08-13*
+
+## Self-Check: PASSED
+
+All 6 modified files and the SUMMARY.md itself verified present on disk. All 4 task/docs commits (`910e6d7`, `efbfc4f`, `a793b46`, `34f56e2`) verified present in `git log`.
