@@ -253,16 +253,51 @@ type describePluginRequest struct {
 	Source config.Source `json:"source"`
 }
 
+// extrasFieldResponse mirrors topos.v1.ExtrasField's five fields with
+// snake_case json names — one entry of describePluginResponse.Extras below,
+// in the plugin's own declaration order (D-15).
+type extrasFieldResponse struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Required    bool   `json:"required"`
+	Secret      bool   `json:"secret"`
+	Placeholder string `json:"placeholder,omitempty"`
+}
+
 // describePluginResponse is POST /api/config/describe-plugin's response:
-// the three Describe-derived facts step 2 of the modal needs to build its
-// match-vocabulary-driven form. No connection field from the request is
-// ever echoed back here (T-07-10) — only source_type, the plugin KIND's
-// own display name, and its declared match vocabulary.
+// the Describe-derived facts the add-source modal needs to build its
+// match-vocabulary-driven form AND (Phase 11, PLUG-08/09) show the operator
+// exactly what they are about to trust. No connection field from the
+// request is ever echoed back here (T-07-10) — never a secret VALUE, only
+// source_type, the plugin KIND's own display name, its declared match
+// vocabulary, its trust tier, the kernel-computed binary hash (external
+// tier only), the NAMES (never values, D-05) of every ${VAR} the submitted
+// source references, and the extras fields the plugin declared.
 type describePluginResponse struct {
 	SchemaVersion     int      `json:"schema_version"`
 	SourceType        string   `json:"source_type"`
 	PluginDisplayName string   `json:"plugin_display_name"`
 	MatchVocabulary   []string `json:"match_vocabulary"`
+	// Tier is this trial-launched binary's launch-time provenance
+	// ("trusted" or "external") — the same fact GET /api/sources publishes
+	// per instance (T-11-01), learned here before the source is ever saved
+	// (11-UI-SPEC.md E1).
+	Tier string `json:"tier"`
+	// BinaryHash is the SHA-256 the kernel computed from the resolved
+	// binary this trial launch actually ran — empty for tier "trusted"
+	// (nothing is pinned for the trusted tier, D-04). This is the exact
+	// value the confirm interstitial displays and, on save, the value
+	// written to [plugins.pins].
+	BinaryHash string `json:"binary_hash,omitempty"`
+	// EnvVarNames lists every ${VAR}/$VAR name referenced anywhere in the
+	// submitted source (including inside extras), sorted and
+	// de-duplicated — NAMES only, never a value (D-05): this response
+	// boundary carries references and booleans, never secret values,
+	// exactly like GET /api/config's env_vars field.
+	EnvVarNames []string `json:"env_var_names"`
+	// Extras mirrors the plugin's declared extras fields, in declaration
+	// order — empty (never null) when the plugin declares none.
+	Extras []extrasFieldResponse `json:"extras"`
 }
 
 // DescribePluginHandler serves POST /api/config/describe-plugin (D-11
@@ -326,11 +361,32 @@ func DescribePluginHandler(dirs pluginhost.Dirs, logger hclog.Logger) http.Handl
 			return
 		}
 
+		extras := make([]extrasFieldResponse, 0, len(info.Extras))
+		for _, f := range info.Extras {
+			extras = append(extras, extrasFieldResponse{
+				Key:         f.GetKey(),
+				Label:       f.GetLabel(),
+				Required:    f.GetRequired(),
+				Secret:      f.GetSecret(),
+				Placeholder: f.GetPlaceholder(),
+			})
+		}
+
 		WriteJSON(w, http.StatusOK, describePluginResponse{
 			SchemaVersion:     schemaVersion,
 			SourceType:        info.SourceType,
 			PluginDisplayName: info.PluginDisplayName,
 			MatchVocabulary:   info.MatchVocabulary,
+			Tier:              string(info.Tier),
+			BinaryHash:        info.BinaryHash,
+			// EnvVarNames is scanned from req.Source (the just-authoritative-
+			// stamped submission, extras included — config.EnvRefNames walks
+			// every string field reachable from it), the identical scanner
+			// GET /api/config's env_vars field and the plugin-launch env
+			// allowlist both already share (kernel/config/envrefs.go) —
+			// NAMES only, never a value (D-05).
+			EnvVarNames: config.EnvRefNames(req.Source),
+			Extras:      extras,
 		})
 	}
 }

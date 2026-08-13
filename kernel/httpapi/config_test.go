@@ -1085,3 +1085,174 @@ func TestDescribePluginHandler_ExistingMockInstance_ReturnsMatchVocabulary(t *te
 		t.Errorf("expected match_vocabulary [\"labels\"], got %v", resp.MatchVocabulary)
 	}
 }
+
+// newExternalTierDescribeRouter mounts only DescribePluginHandler with dir
+// wrapped as the EXTERNAL tier — the counterpart to
+// newPluginTypesTestRouter's trusted-only wrapping, needed by this Phase 11
+// plan's tier/binary_hash tests below.
+func newExternalTierDescribeRouter(dir string) http.Handler {
+	dirs := pluginhost.Dirs{External: dir}
+	r := chi.NewRouter()
+	r.Post("/api/config/describe-plugin", DescribePluginHandler(dirs, hclog.NewNullLogger()))
+	return r
+}
+
+// TestDescribePluginHandler_ExternalBinary_ReturnsTierAndKernelComputedHash
+// is Phase 11 Task 2's central shape check (PLUG-08/09): describing a
+// binary that resolves from the EXTERNAL directory returns tier "external"
+// and a binary_hash equal to an independently computed SHA-256 of that same
+// file — the exact fact the confirm interstitial and the eventual
+// [plugins.pins] write both depend on.
+func TestDescribePluginHandler_ExternalBinary_ReturnsTierAndKernelComputedHash(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	router := newExternalTierDescribeRouter(dir)
+
+	wantHash, err := pluginhost.HashBinary(filepath.Join(dir, "topos-plugin-mock"))
+	if err != nil {
+		t.Fatalf("HashBinary (independent computation): %v", err)
+	}
+
+	body := `{"plugin":"topos-plugin-mock","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp describePluginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Tier != "external" {
+		t.Errorf("expected tier %q, got %q", "external", resp.Tier)
+	}
+	if resp.BinaryHash != wantHash {
+		t.Errorf("expected binary_hash %q, got %q", wantHash, resp.BinaryHash)
+	}
+}
+
+// TestDescribePluginHandler_TrustedBinary_ReturnsTierTrustedAndEmptyHash
+// proves the D-04 counterpart: a trusted-tier binary reports tier "trusted"
+// and an EMPTY binary_hash — nothing is ever pinned for the trusted tier.
+func TestDescribePluginHandler_TrustedBinary_ReturnsTierTrustedAndEmptyHash(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	router := newPluginTypesTestRouter(dir)
+
+	body := `{"plugin":"topos-plugin-mock","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp describePluginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Tier != "trusted" {
+		t.Errorf("expected tier %q, got %q", "trusted", resp.Tier)
+	}
+	if resp.BinaryHash != "" {
+		t.Errorf("expected an empty binary_hash for the trusted tier, got %q", resp.BinaryHash)
+	}
+}
+
+// TestDescribePluginHandler_EnvVarNamesReferenceTokenAndExtras_NeverLeaksValues
+// is T-11-15's own proof: a source referencing ${A} in its token and ${B}
+// inside an extras value returns env_var_names ["A","B"] while the raw
+// response body contains NEITHER variable's actual value — both variables
+// are set in the test process's own environment to distinctive strings, so
+// a leak of either would be caught here, not merely inferred from the
+// field's absence.
+func TestDescribePluginHandler_EnvVarNamesReferenceTokenAndExtras_NeverLeaksValues(t *testing.T) {
+	t.Setenv("TOPOS_TEST_A", "distinctive-secret-value-A")
+	t.Setenv("TOPOS_TEST_B", "distinctive-secret-value-B")
+
+	dir := buildMockPluginDir(t)
+	router := newPluginTypesTestRouter(dir)
+
+	reqBody := describePluginRequest{
+		Plugin: "topos-plugin-mock",
+		Source: config.Source{
+			Token:  "${TOPOS_TEST_A}",
+			Extras: map[string]string{"region": "${TOPOS_TEST_B}"},
+		},
+	}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", bytes.NewReader(bodyBytes))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rawBody := rec.Body.String()
+
+	var resp describePluginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	wantNames := []string{"TOPOS_TEST_A", "TOPOS_TEST_B"}
+	if len(resp.EnvVarNames) != len(wantNames) {
+		t.Fatalf("expected env_var_names %v, got %v", wantNames, resp.EnvVarNames)
+	}
+	for i := range wantNames {
+		if resp.EnvVarNames[i] != wantNames[i] {
+			t.Fatalf("expected env_var_names %v, got %v", wantNames, resp.EnvVarNames)
+		}
+	}
+	if strings.Contains(rawBody, "distinctive-secret-value-A") {
+		t.Error("expected the response body to never contain TOPOS_TEST_A's value")
+	}
+	if strings.Contains(rawBody, "distinctive-secret-value-B") {
+		t.Error("expected the response body to never contain TOPOS_TEST_B's value")
+	}
+}
+
+// TestDescribePluginHandler_ExtrasAndEnvVarNamesSerializeAsEmptyArrayNotNull
+// proves a plugin declaring no extras (the mock reference plugin) and a
+// source referencing no ${VAR} at all both serialize as `[]`, never `null`
+// — an API consumer must never need to special-case a null field here.
+func TestDescribePluginHandler_ExtrasAndEnvVarNamesSerializeAsEmptyArrayNotNull(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	router := newPluginTypesTestRouter(dir)
+
+	body := `{"plugin":"topos-plugin-mock","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rawBody := rec.Body.String()
+	if !strings.Contains(rawBody, `"extras":[]`) {
+		t.Errorf("expected \"extras\":[] in the response body, got: %s", rawBody)
+	}
+	if strings.Contains(rawBody, `"env_var_names":null`) || strings.Contains(rawBody, `"extras":null`) {
+		t.Errorf("expected no null array field in the response body, got: %s", rawBody)
+	}
+}
+
+// TestDescribePluginHandler_UnknownBinaryStillReturns404AlongsidePhase11Fields
+// re-proves T-07-09 with the Phase 11-widened response shape in scope: an
+// unknown binary name is refused 404 plugin_binary_not_found before
+// anything (including a trial launch) executes, regardless of the new
+// fields describePluginResponse now carries.
+func TestDescribePluginHandler_UnknownBinaryStillReturns404AlongsidePhase11Fields(t *testing.T) {
+	dir := t.TempDir() // empty — nothing discoverable at all
+	router := newPluginTypesTestRouter(dir)
+
+	body := `{"plugin":"topos-plugin-does-not-exist","source":{}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	assertErrorEnvelope(t, rec, http.StatusNotFound, "plugin_binary_not_found")
+}

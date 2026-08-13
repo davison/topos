@@ -29,6 +29,14 @@ import (
 // caller.
 type HealthProber interface {
 	ProbeSources(ctx context.Context) []pluginhost.SourceHealth
+	// LaunchFailures returns every instance CURRENTLY refused at launch by
+	// a soft, per-instance failure class (Phase 11: pin mismatch only,
+	// pluginhost.LaunchFailurePinMismatch) — sourceStatusesFrom merges this
+	// set into GET /api/sources so a configured source that never launched
+	// still produces a real, named entry (11-RESEARCH.md Pitfall 1)
+	// instead of vanishing from the response entirely. *pluginhost.Host
+	// and *supervisor.Supervisor both satisfy this structurally.
+	LaunchFailures() []pluginhost.LaunchFailure
 }
 
 // Refresher is the minimal sync-dispatch surface SourceRefreshHandler and
@@ -55,12 +63,35 @@ type sourceStatus struct {
 	// (pluginhost.ResolveBinary), never from anything the plugin itself
 	// declares (T-11-01). The SourceChip trust badge (11-UI-SPEC.md E2)
 	// renders off this field alone.
-	Tier         string `json:"tier"`
-	Reachable    bool   `json:"reachable"`
-	Syncing      bool   `json:"syncing"`
-	LastStatus   string `json:"last_status"`
-	LastSyncUnix int64  `json:"last_sync_unix"`
-	LastError    string `json:"last_error"`
+	Tier string `json:"tier"`
+	// PinnedHash is the SHA-256 this instance's external-tier binary is
+	// pinned to in [plugins.pins] — populated for a healthy external-tier
+	// entry (from the launch-time pin match, pluginhost.SourceHealth.
+	// PinnedHash) as well as a pin-mismatched entry (from the
+	// pluginhost.LaunchFailure record), so the chip menu's pinned-hash
+	// footer (11-UI-SPEC.md E5) has this fact whether or not the source
+	// is currently reachable. Always empty for a trusted-tier entry
+	// (D-04: never pinned).
+	PinnedHash string `json:"pinned_hash,omitempty"`
+	// CurrentHash is the on-disk SHA-256 of a pin-mismatched instance's
+	// binary — the value the operator would be re-pinning to if they
+	// confirm the "Trust updated binary" action (11-UI-SPEC.md E4). Empty
+	// except on a pin-mismatch entry.
+	CurrentHash string `json:"current_hash,omitempty"`
+	// LaunchFailure is the CLOSED-VOCABULARY reason this instance never
+	// launched at all — today only "pin_mismatch"
+	// (pluginhost.LaunchFailurePinMismatch) — or empty when the instance
+	// did launch (whether or not it is currently reachable — see
+	// Reachable/LastError for that). The SPA gates the re-pin remedial
+	// action on THIS field alone, never on a last_error string match
+	// (T-11-18): a copy edit to last_error can never enable or disable the
+	// action.
+	LaunchFailure string `json:"launch_failure,omitempty"`
+	Reachable     bool   `json:"reachable"`
+	Syncing       bool   `json:"syncing"`
+	LastStatus    string `json:"last_status"`
+	LastSyncUnix  int64  `json:"last_sync_unix"`
+	LastError     string `json:"last_error"`
 }
 
 type sourcesResponse struct {
@@ -91,14 +122,25 @@ func SourcesHandler(store *index.Store, prober HealthProber) http.HandlerFunc {
 	}
 }
 
-// sourceStatusesFrom builds one sourceStatus per launched plugin, sorted by
-// name — the shared merge SourcesHandler (unfiltered) and
-// kernel/httpapi/agent.go's agent sources route (grant-filtered on top of
-// this) both build on. Factored out here (02-04-PLAN.md Task 1) so the
-// agent route reuses the identical merge logic rather than reimplementing
-// it against a restricted source set.
+// sourceStatusesFrom builds one sourceStatus per CONFIGURED source instance
+// — one entry per instance whether it is actually launched (a probe result
+// exists) or was refused at launch by a soft failure class (a LaunchFailure
+// record exists, 11-RESEARCH.md Pitfall 1) — sorted by name. The shared
+// merge SourcesHandler (unfiltered) and kernel/httpapi/agent.go's agent
+// sources route (grant-filtered on top of this) both build on this.
+// Factored out here (02-04-PLAN.md Task 1) so the agent route reuses the
+// identical merge logic rather than reimplementing it against a restricted
+// source set.
+//
+// The merge (11-03-PLAN.md Task 1): probe-derived entries are built first;
+// then one synthesized entry is appended per LaunchFailure whose instance id
+// is NOT already present among them. An instance can appear in both sets
+// only in a narrow race (Reconcile launched it successfully after this
+// failure was recorded) — the probe result always wins, since it describes
+// what is actually running, so no instance ever produces two entries.
 func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthProber) ([]sourceStatus, error) {
 	healths := prober.ProbeSources(ctx)
+	failures := prober.LaunchFailures()
 
 	runs, err := store.LatestSyncRunPerSource(ctx)
 	if err != nil {
@@ -109,22 +151,62 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 		return nil, err
 	}
 
-	statuses := make([]sourceStatus, len(healths))
-	for i, h := range healths {
+	statuses := make([]sourceStatus, 0, len(healths)+len(failures))
+	seen := make(map[string]bool, len(healths))
+	for _, h := range healths {
 		run := runs[h.Name] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
-		statuses[i] = sourceStatus{
+		statuses = append(statuses, sourceStatus{
 			Name:         h.Name,
 			SourceType:   h.SourceType,
 			DisplayName:  h.DisplayName,
 			Plugin:       h.Plugin,
 			Tier:         string(h.Tier),
+			PinnedHash:   h.PinnedHash,
 			Reachable:    h.Reachable,
 			Syncing:      syncing[h.Name],
 			LastStatus:   run.Status,
 			LastSyncUnix: run.FinishedUnix,
 			LastError:    run.Error,
-		}
+		})
+		seen[h.Name] = true
 	}
+
+	for _, f := range failures {
+		if seen[f.Instance] {
+			// A probe result already exists for this instance — it is
+			// actually running (a Reconcile launched it successfully after
+			// this failure was recorded, or the prober's two calls raced
+			// each other) — the probe result wins, since it describes what
+			// is genuinely running right now. Never emit a second entry
+			// for the same instance id.
+			continue
+		}
+		run := runs[f.Instance]
+		statuses = append(statuses, sourceStatus{
+			Name: f.Instance,
+			// SourceType is deliberately left empty: a launch-failed
+			// instance's Describe RPC never ran (there is no live
+			// subprocess to call it on), so the kernel never learned a
+			// source_type for it — and T-01-07 forbids trusting the
+			// binary's filename for that fact instead.
+			DisplayName:   f.DisplayName,
+			Plugin:        f.Plugin,
+			Tier:          string(f.Tier),
+			PinnedHash:    f.PinnedHash,
+			CurrentHash:   f.CurrentHash,
+			LaunchFailure: f.Reason,
+			Reachable:     false,
+			Syncing:       syncing[f.Instance],
+			LastStatus:    run.Status,
+			LastSyncUnix:  run.FinishedUnix,
+			// LastError carries the kernel's own named failure message
+			// (instance/binary/pinned-vs-current hash), never the
+			// recorded sync_runs row's error — a source that never
+			// launched has no sync history of its own to report.
+			LastError: f.Message,
+		})
+	}
+
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Name < statuses[j].Name })
 
 	return statuses, nil

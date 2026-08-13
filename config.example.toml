@@ -98,6 +98,56 @@ path = "~/.local/share/topos/index.db"
 # before expecting a plugin-side code change to take effect.
 dir = "plugins"
 
+# external_dir: the SECOND, UNTRUSTED plugin directory (Phase 11,
+# PLUG-06/07) — a peer of "dir" above, scanned alongside it. A binary
+# resolved from here is tagged tier "external" everywhere the kernel's
+# HTTP API and UI report trust (GET /api/sources' "tier" field,
+# GET /api/config/plugin-types' "plugin_type_tiers"); a binary resolved
+# from "dir" above is always "trusted". Trust is derived EXCLUSIVELY from
+# which directory a binary's bytes resolved from at launch time — never
+# from anything the binary itself declares. If a binary of the same
+# filename exists in BOTH directories, the trusted copy always wins and
+# the kernel logs a named warning identifying the shadowed external copy.
+# Default: unset, which resolves to a per-OS platform data directory with
+# no config required — "$XDG_DATA_HOME/topos/plugins-external" (falling
+# back to "~/.local/share/topos/plugins-external") on Linux,
+# "~/Library/Application Support/topos/plugins-external" on macOS,
+# "%LOCALAPPDATA%\topos\plugins-external" on Windows. A relative value
+# here resolves relative to the running "topos" executable, exactly like
+# "dir" above; an absolute value is used verbatim.
+# Validation: none at config-load time; a missing directory here is a
+# legitimate, unremarkable empty external tier, not an error — the
+# kernel never creates it. See docs/plugin-contract.md's "Trust tiers"
+# section for the full shape.
+# external_dir = "plugins-external"
+
+# [plugins.pins] — content-hash pins for the EXTERNAL tier only (D-01/
+# D-02/D-03/D-04, Phase 11 PLUG-07). Each key is an external-tier plugin
+# BINARY name (e.g. "topos-plugin-example"); each value is the lowercase
+# hex SHA-256 digest of that binary's exact bytes, recorded the first
+# time an operator adds a source using it and RE-VERIFIED before every
+# subsequent launch — a binary whose on-disk bytes no longer match its
+# pin is refused launch entirely (never executed), surfacing as that
+# source's own "launch_failure": "pin_mismatch" on GET /api/sources
+# rather than taking down any other configured source.
+#
+# The kernel's own UI writes and repairs this table for you as part of
+# adding an external source and the "Trust updated binary" re-pin action
+# — hand-editing it is never required, though a hand-edited entry is
+# honored exactly like any other config key. A trusted-tier binary
+# (resolved from "dir" above) is NEVER pinned, even if it happens to
+# share a name with an entry here — pins apply to the external tier
+# exclusively, since a trusted binary is rebuilt constantly by
+# "make build"/"make dev" and pinning it would false-alarm on every
+# rebuild.
+# Validation: a key not shaped like a plugin binary name, or a value that
+# isn't exactly 64 lowercase hex characters, fails config load, naming
+# the offending key. A pin only proves the bytes are unchanged since you
+# accepted them — not who published them; verify a publisher's own
+# checksum yourself before first adding a source, if one is offered.
+# [plugins.pins]
+# topos-plugin-example = "3f2a9c1e5b7d0f4a8c6e2b1d9f3a7c5e0b4d8f2a6c1e9b3d7f5a0c4e8b2d6f1a"
+
 [sync]
 # interval: how often the background scheduler refreshes every configured
 # source (KERN-04). Each source's FIRST refresh happens immediately at
@@ -161,6 +211,26 @@ token = "${PAPERLESS_TOKEN}"
 # Validation: none enforced; an incompatible version will surface as an
 # HTTP error from paperless-ngx itself at sync time.
 api_version = "10"
+
+# [sources.paperless.extras] — OPTIONAL per-instance table of
+# provider-specific settings this plugin's own Describe RPC may declare
+# expecting, beyond the built-in base_url/token/api_version fields above
+# (D-12/D-13, Phase 11 PLUG-09). Every value is a string; a ${VAR}
+# reference inside one expands from the environment exactly like
+# base_url/token do. Reaches the plugin subprocess nested inside
+# WEBSPACES_SOURCE_CONFIG as an "extras" object — omitted entirely (no
+# key at all) when this table is absent, so a plugin's own JSON decode
+# sees an unambiguous "no extras configured", never an empty object.
+# paperless doesn't itself declare or read any extras key today; this
+# block is left commented as the worked shape for a plugin that does —
+# see docs/plugin-contract.md's "Configuration" and "Describe" sections
+# for the full contract, including the optional Describe-side field
+# declaration (key/label/required/secret/placeholder) a plugin may use to
+# drive the kernel's own add-source form.
+# Validation: an empty key, or one outside [A-Za-z_][A-Za-z0-9_.-]*, fails
+# config load, naming the offending source instance and key.
+# [sources.paperless.extras]
+# region = "${PAPERLESS_REGION}"
 
 [sources.silverbullet]
 # plugin: the plugin binary's filename, resolved inside [plugins] dir.

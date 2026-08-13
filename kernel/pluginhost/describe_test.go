@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // TestDescribePluginType_LaunchFailureWrapsErrorWithoutASubprocess proves
@@ -46,5 +47,23 @@ func TestDescribePluginType_RealPlugin_ReturnsDescribeInfoAndKillsBeforeReturnin
 	}
 	if len(info.MatchVocabulary) == 0 {
 		t.Error("expected a non-empty MatchVocabulary")
+	}
+}
+
+// TestFilterExtras_DropsEntryWithEmptyKey is 11-03-PLAN.md Task 2's own
+// acceptance criterion: a declared extras field carrying an empty key is
+// dropped — a plugin must not be able to inject a nameless field into the
+// operator's add-source form via a malformed Describe response.
+func TestFilterExtras_DropsEntryWithEmptyKey(t *testing.T) {
+	in := []*toposv1.ExtrasField{
+		{Key: "region", Label: "Region"},
+		{Key: "", Label: "Nameless"},
+	}
+	out := filterExtras(in)
+	if len(out) != 1 {
+		t.Fatalf("expected exactly 1 surviving field, got %d: %+v", len(out), out)
+	}
+	if out[0].Key != "region" {
+		t.Errorf("expected the surviving field to be %q, got %q", "region", out[0].Key)
 	}
 }

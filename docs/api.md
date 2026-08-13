@@ -434,10 +434,26 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
   "schema_version": 1,
   "sources": [
     {
+      "name": "example",
+      "source_type": "",
+      "display_name": "Example (external)",
+      "plugin": "topos-plugin-example",
+      "tier": "external",
+      "pinned_hash": "aaaa...",
+      "current_hash": "bbbb...",
+      "launch_failure": "pin_mismatch",
+      "reachable": false,
+      "syncing": false,
+      "last_status": "",
+      "last_sync_unix": 0,
+      "last_error": "pluginhost: instance \"example\" binary \"topos-plugin-example\" hash mismatch: pinned=aaaa... current=bbbb..."
+    },
+    {
       "name": "paperless",
       "source_type": "paperless",
       "display_name": "paperless-ngx",
       "plugin": "topos-plugin-paperless",
+      "tier": "trusted",
       "reachable": true,
       "syncing": false,
       "last_status": "ok",
@@ -449,6 +465,7 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
       "source_type": "silverbullet",
       "display_name": "SilverBullet",
       "plugin": "topos-plugin-silverbullet",
+      "tier": "trusted",
       "reachable": false,
       "syncing": false,
       "last_status": "error",
@@ -471,6 +488,47 @@ chip green. `last_status: ""` (with `last_sync_unix: 0` and `last_error:
 a sync — render this as a neutral indicator, never as a green "ok". One
 plugin's probe failing never fails the whole response: it becomes that
 source's own `reachable: false`, never a `500`.
+
+**`tier`, `pinned_hash`, `current_hash`, `launch_failure` (Phase 11,
+`PLUG-06`/`PLUG-07`/`PLUG-08`) — the trust facts the kernel derives, never
+the browser.** Every field below is a kernel-computed fact the client only
+ever renders; none of them is decided client-side.
+
+- **`tier`** is `"trusted"` or `"external"` — this instance's launched
+  binary's launch-time provenance (`docs/plugin-contract.md`'s "Trust
+  tiers"), never anything the plugin itself asserts.
+- **`pinned_hash`** is the SHA-256 this instance's binary is currently
+  pinned to in `[plugins.pins]` — populated for EVERY external-tier
+  entry, whether healthy or pin-mismatched (empty for `tier: "trusted"`,
+  which is never pinned).
+- **`current_hash`** is the on-disk SHA-256 of a pin-mismatched instance's
+  binary — the value an operator would be re-pinning to. Empty except on
+  a `launch_failure` entry.
+- **`launch_failure`** is a **CLOSED-VOCABULARY** field, empty or
+  `"pin_mismatch"` today, naming why this instance never launched at all
+  — as opposed to `reachable: false`, which means the instance DID
+  launch but is currently unreachable. **A client MUST branch on
+  `launch_failure`, never on parsing `last_error`'s free text** — the
+  message string is for a human to read, and a copy edit to it must never
+  change what the UI offers to do.
+
+**A configured instance that never launched at all still produces a real
+entry here — never a silent omission.** Before this phase, a source
+refused launch (e.g. a pin mismatch) was structurally absent from this
+response; as of Phase 11 it appears exactly like any other entry, named,
+with `reachable: false`, a populated `launch_failure`, and
+`last_error` carrying the kernel's own named refusal message (never a
+value from `sync_runs` — a source that never launched has no sync history
+of its own). `source_type` is the one field left empty on a
+`launch_failure` entry: `Describe` never ran (there is no live subprocess
+to call it on), so the kernel never learned it. If the SAME instance id
+somehow appears in both the live probe result and the launch-failure set
+(a narrow reconcile race), the probe result always wins and exactly one
+entry is emitted — never two.
+
+Every field this section adds is `omitempty`/optional and additive to the
+pre-Phase-11 shape — `schema_version` stays `1` (see "Envelope
+convention", above).
 
 ### `POST /api/sources/{name}/refresh` and `POST /api/sync`
 
@@ -574,6 +632,26 @@ non-empty `unknown_keys` list blocks **every** `PUT /api/config` outright
 unrecognised key: the kernel refuses to write a canonical rewrite that
 would silently drop content it doesn't understand (`D-01`'s
 lossless-rewrite prohibition).
+
+**Phase 11's three new config keys, all documented in full in
+`config.example.toml` and `docs/plugin-contract.md`'s "Trust tiers" /
+"Pinning" sections:**
+
+- **`[plugins] external_dir`** — the second, untrusted plugin directory
+  (a peer of the pre-existing `[plugins] dir`, which stays the trusted
+  directory). Omitted, it resolves to a per-OS platform data directory
+  with no config required.
+- **`[plugins.pins]`** — a table mapping an external-tier plugin BINARY
+  name to the lowercase-hex SHA-256 digest of its bytes, re-verified at
+  every launch. The kernel's own UI writes and repairs this table for
+  you as part of the add-source and "Trust updated binary" flows —
+  hand-editing it is never required, though a hand-edited entry is
+  honored exactly like any other config key.
+- **`[sources.<id>.extras]`** — a per-instance table of provider-specific
+  settings the kernel has no built-in field for, string-valued, `${VAR}`-
+  expanded exactly like `base_url`/`token`. Reaches the plugin subprocess
+  nested inside `WEBSPACES_SOURCE_CONFIG` as an `extras` object (see
+  `docs/plugin-contract.md`).
 
 ### `PUT /api/config`
 
@@ -681,13 +759,36 @@ discipline, extended here to discovery).
 
 ```
 $ curl -s http://127.0.0.1:7777/api/config/plugin-types | jq
-{ "schema_version": 1, "plugin_types": ["topos-plugin-paperless", "topos-plugin-proton", "topos-plugin-silverbullet"] }
+{
+  "schema_version": 1,
+  "plugin_types": ["topos-plugin-example", "topos-plugin-paperless", "topos-plugin-proton", "topos-plugin-silverbullet"],
+  "plugin_type_tiers": {
+    "topos-plugin-example": "external",
+    "topos-plugin-mock": "trusted",
+    "topos-plugin-paperless": "trusted",
+    "topos-plugin-proton": "trusted",
+    "topos-plugin-silverbullet": "trusted"
+  }
+}
 ```
 
 `plugin_types` is sorted and never includes `topos-plugin-mock` — the
 developer/reference fixture PLUG-05's third-party-implementer proof
 builds against, deliberately excluded from the picker so a real
 deployment can never accidentally enable a fixed set of fake demo items.
+
+**`plugin_type_tiers` (Phase 11, `PLUG-06`/`PLUG-07`) is an ADDITIVE
+sibling field** — a tier lookup table (`"trusted"`/`"external"`) spanning
+EVERY binary discovered in EITHER directory, keyed by binary name. Unlike
+`plugin_types`, this table deliberately **includes** `topos-plugin-mock`
+and every other excluded fixture name: `plugin_types` is a picker's
+"offer this as new" list (UI policy), while `plugin_type_tiers` is a
+lookup table for a name a caller already holds — most commonly, resolving
+the tier of an already-configured instance's own binary, which may
+legitimately be an excluded fixture. No `schema_version` bump accompanies
+this addition: `plugin_types`' own element shape (a bare string) is
+unchanged, and a caller that doesn't know about `plugin_type_tiers`
+simply never reads it.
 
 ### `POST /api/config/describe-plugin`
 
@@ -725,7 +826,16 @@ from the request body echoed back:
 $ curl -s -X POST http://127.0.0.1:7777/api/config/describe-plugin \
     -H 'Content-Type: application/json' \
     -d '{"plugin":"topos-plugin-paperless","source":{"base_url":"https://paperless.example.lan","token":"unverified"}}' | jq
-{ "schema_version": 1, "source_type": "paperless", "plugin_display_name": "paperless-ngx", "match_vocabulary": ["tags"] }
+{
+  "schema_version": 1,
+  "source_type": "paperless",
+  "plugin_display_name": "paperless-ngx",
+  "match_vocabulary": ["tags"],
+  "tier": "trusted",
+  "binary_hash": "",
+  "env_var_names": [],
+  "extras": []
+}
 ```
 
 **This route persists nothing, registers nothing, and reaches no RPC
@@ -735,6 +845,33 @@ kernel's plugin host, and `pluginhost.DescribePluginType`'s own body is
 pinned by an AST test to reach no `Match`/`Fetch` call (`T-07-10`,
 `PLUG-02`) — the trial-launch path can never become a general
 plugin-invocation surface for request-supplied input.
+
+**`tier`, `binary_hash`, `env_var_names`, `extras` (Phase 11,
+`PLUG-08`/`PLUG-09`) — the same kernel-derived-facts discipline
+`GET /api/sources` follows, learned here BEFORE anything is saved:**
+
+- **`tier`** is `"trusted"` or `"external"` — this trial-launched binary's
+  provenance (`docs/plugin-contract.md`'s "Trust tiers"), the same fact
+  `GET /api/sources` publishes per instance, available here before the
+  source is ever added.
+- **`binary_hash`** is the SHA-256 the kernel itself computed from the
+  resolved binary this trial launch actually ran — non-empty only for
+  `tier: "external"` (nothing is pinned for the trusted tier). This is
+  the EXACT value a confirming save writes to `[plugins.pins]` — the
+  add-source flow's confirm interstitial shows this hash so the operator
+  knows precisely what they are about to pin.
+- **`env_var_names`** lists every `${VAR}`/`$VAR` name referenced
+  anywhere in the SUBMITTED `source` (including inside `extras`), sorted
+  and de-duplicated — **NAMES only, never a value** (`D-05`): this
+  response boundary carries references and booleans, never secret
+  values, exactly like `GET /api/config`'s `env_vars` field.
+- **`extras`** mirrors the plugin's own `Describe`-declared extras field
+  declarations (`docs/plugin-contract.md`'s `ExtrasField`), in
+  declaration order — `[]`, never `null`, when the plugin declares none:
+
+  ```json
+  { "key": "region", "label": "Region", "required": true, "secret": false, "placeholder": "eu-west" }
+  ```
 
 **Failure modes:** `404 plugin_binary_not_found` (above), or `502
 plugin_describe_failed` when the trial launch or the `Describe` call
