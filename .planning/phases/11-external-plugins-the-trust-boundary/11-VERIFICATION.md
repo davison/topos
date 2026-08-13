@@ -1,23 +1,17 @@
 ---
 phase: 11-external-plugins-the-trust-boundary
-verified: 2026-08-13T13:27:15Z
-status: gaps_found
-score: 4/5 must-haves verified
+verified: 2026-08-13T16:10:00Z
+status: passed
+score: 5/5 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "Trust is decided by the kernel from where the binary lives plus a content hash pinned when the source was added; swapping the binary afterwards is caught at the next launch and fails loudly by name instead of inheriting stale trust (ROADMAP success criterion 3)."
-    status: failed
-    reason: "The pin-mismatch/swap-detection mechanism itself works and is proven end to end (kernel/supervisor/externalproof_test.go, web/e2e/specs/11-binary-changed-repin.spec.ts) — but the criterion's own premise, 'trust is decided by the kernel from where the binary lives,' is false as implemented. pluginhost.ResolveBinary (kernel/pluginhost/discover_binaries.go:317-343) joins the caller-supplied plugin name onto dirs.Trusted/dirs.External with filepath.Join and never checks the resolved path stays inside that directory, and config.Validate (kernel/config/config.go) never validates Source.Plugin's shape or presence at all. A `[sources.<id>].plugin` value containing `../` segments, written through PUT /api/config (kernel/httpapi/config.go's ConfigSaveHandler -> config.Store.Save -> dryRunExpand -> Config.Validate — no membership or shape check anywhere in that path; only POST /api/config/describe-plugin's DescribePluginHandler checks against DiscoverAllTiered), can resolve to a file outside both configured directories and be misclassified TierTrusted, skipping the pin-verification gate entirely (launch's pin check is gated on tier == TierExternal). This is exactly the scenario 11-01-PLAN.md's own must_haves.prohibitions declares 'kept': 'The external tier MUST NOT be reachable by a caller-supplied path — directory listing across the two configured directories stays the only authority over what may be launched (T-07-09, extended to two tiers).' It is not kept. Confirmed by direct code reading during this verification (matches 11-REVIEW.md's CR-01, Critical severity, still present and unpatched at verification time — no commit since the review landed touches discover_binaries.go or config.go's Validate)."
-    artifacts:
-      - path: "kernel/pluginhost/discover_binaries.go"
-        issue: "ResolveBinary (lines 317-343) performs no name-shape/confinement check before filepath.Join+os.Stat, and no regular-file check (accepts a directory or device file) — unlike DiscoverAllBinaries' isRegularFileFollowingSymlinks discipline"
-      - path: "kernel/config/config.go"
-        issue: "Validate iterates cfg.Sources and checks base_url/token/path/sync_interval, but never checks src.Plugin for emptiness or shape (no bare-filename regex) — confirmed by reading the full Validate loop, which contains no reference to src.Plugin at all"
-    missing:
-      - "Reject any Source.Plugin value that is not a bare filename (name == filepath.Base(name), no '..' segment, non-empty) inside config.Validate, naming the offending source"
-      - "Add the identical confinement + os.Stat-regular-file check as defense-in-depth directly inside ResolveBinary before either directory's os.Stat call (the review's suggested fix mirrors isRegularFileFollowingSymlinks' IsRegular() discipline)"
-      - "A regression test exercising a `../`-containing (and an absolute-path, and an empty) Source.Plugin value through both config.Validate and ResolveBinary, asserting rejection by name in both places — no such adversarial case exists today in tier_test.go, discover_binaries_test.go or config_test.go (confirmed by grep during this verification)"
+re_verification:
+  previous_status: gaps_found
+  previous_score: 4/5
+  gaps_closed:
+    - "Trust is decided by the kernel from where the binary lives plus a content hash pinned when the source was added; swapping the binary afterwards is caught at the next launch and fails loudly by name instead of inheriting stale trust (ROADMAP success criterion 3)."
+  gaps_remaining: []
+  regressions: []
 deferred: []
 human_verification: []
 ---
@@ -25,9 +19,9 @@ human_verification: []
 # Phase 11: External Plugins — the Trust Boundary Verification Report
 
 **Phase Goal:** The user can install and run plugin binaries that topos did not build, and always knows which of their sources come from code the project can't vouch for.
-**Verified:** 2026-08-13T13:27:15Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-08-13T16:10:00Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (plan 11-07, CR-01)
 
 ## Goal Achievement
 
@@ -35,88 +29,96 @@ human_verification: []
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User drops a plugin binary into the external directory and it appears in the install catalog, configurable and launchable/syncing like any other source. | VERIFIED | `kernel/pluginhost.DiscoverAllTiered`/`DiscoverTiered` (kernel/pluginhost/discover_binaries.go); `GET /api/config/plugin-types` publishes `plugin_type_tiers`; e2e `web/e2e/specs/11-external-tier-badge.spec.ts` (3/3 tests pass, re-run live during this verification) boots a real kernel with a binary present only in the external directory and asserts it launches, syncs and reports `tier: "external"`. |
-| 2 | Adding a source from an external plugin shows an explicit warning before confirmation; the resulting source carries a persistent untrusted badge everywhere it appears (picker, chip). | VERIFIED | `AddSourceModal.svelte`'s `'untrusted-confirm'` step (type-to-confirm gate); `TrustBadge.svelte` at chip and picker scale; `web/e2e/specs/11-untrusted-add.spec.ts` (1/1 pass, re-run live) drives the full picker→confirm→save→chip journey through a real browser against the real out-of-repo `topos-plugin-external-demo` binary and asserts the badge, the label, the disabled/enabled confirm gate, and the persisted pin. |
-| 3 | Trust is decided by the kernel from where the binary lives plus a content hash pinned when the source was added; swapping the binary is caught at the next launch and fails loudly by name instead of inheriting stale trust. | **FAILED** | The swap-detection half is proven (`kernel/supervisor/pinmismatch_test.go`, `kernel/supervisor/externalproof_test.go`, `web/e2e/specs/11-binary-changed-repin.spec.ts` all pass). The "decided ... from where the binary lives" half is false as implemented: `pluginhost.ResolveBinary` performs no path-confinement check, and `config.Validate` performs no shape/presence check on `Source.Plugin` — a `../`-containing value written through `PUT /api/config` can resolve outside both configured directories and be misclassified `TierTrusted`, skipping pin verification entirely. Confirmed present in the current codebase (11-REVIEW.md CR-01, Critical, unpatched). See Gaps Summary. |
-| 4 | An external plugin receives provider-specific config keys the kernel has never heard of, with no kernel change required to add a new key. | VERIFIED | `sourceConfigEnvelope.Extras` (kernel/pluginhost/host.go); `[sources.<id>.extras]` round-trips through `WriteCanonical`; `kernel/supervisor/externalproof_test.go`'s `TestExternalProof_OutOfRepoBinaryEndToEnd` (re-run live, pass) asserts an index item exists for each configured extras key on the real out-of-repo proof binary, including a `${VAR}`-expanded value. |
-| 5 | A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — proven before out-of-repo source work starts. | VERIFIED | `testdata/external-plugin/` (module path `example.com/acme/topos-plugin-external-demo`, outside `github.com/davison/topos`, outside `plugins/`, outside `internal/audit`'s scan scope — `go test ./internal/audit/...` passes); `TestExternalProof_OutOfRepoBinaryEndToEnd` (re-run live, pass) covers discovery, tier, extras passthrough, environment scrubbing and pin refusal against this real binary. |
+| 1 | User drops a plugin binary into the external directory and it appears in the install catalog, configurable and launchable/syncing like any other source. | ✓ VERIFIED | `pluginhost.DiscoverAllTiered`/`DiscoverTiered` (kernel/pluginhost/discover_binaries.go); `GET /api/config/plugin-types` publishes `plugin_type_tiers`; `web/e2e/specs/11-external-tier-badge.spec.ts` re-run live during this verification — 3/3 pass — boots a real kernel with a binary present only in the external directory and asserts it launches, syncs and reports `tier: "external"`. |
+| 2 | Adding a source from an external plugin shows an explicit warning before confirmation; the resulting source carries a persistent untrusted badge everywhere it appears (picker, chip). | ✓ VERIFIED | `AddSourceModal.svelte`'s `'untrusted-confirm'` step (type-to-confirm gate); `TrustBadge.svelte` at chip and picker scale; `web/e2e/specs/11-untrusted-add.spec.ts` re-run live — 1/1 pass — drives the full picker→confirm→save→chip journey against the real out-of-repo `topos-plugin-external-demo` binary. |
+| 3 | Trust is decided by the kernel from where the binary lives plus a content hash pinned when the source was added; swapping the binary is caught at the next launch and fails loudly by name instead of inheriting stale trust. | ✓ VERIFIED (gap closed) | **Confinement half (newly closed):** `pluginhost.validatePluginBinaryName` (kernel/pluginhost/discover_binaries.go:326) is `ResolveBinary`'s first statement, rejecting any name containing `/`/`\`, `.`/`..`, or `name != filepath.Base(name)` — before either directory is stat'd; all three `os.Stat` sites now require `info.Mode().IsRegular()`. `config.Validate` gained the hand-kept twin `validateSourcePlugins` (kernel/config/config.go:451), called from `Validate` at both `config.Load` and every `PUT /api/config` save. `host.go:785` is the sole production call site of `ResolveBinary` — confirmed by grep, no bypass exists. 13/13 `TestResolveBinary_*` pass (live re-run), 3/3 `TestValidate_SourcePlugin*` pass, 2/2 `TestConfigSaveHandler_{Traversal,Empty}Plugin*` pass (all re-run live, not read from SUMMARY). **Swap-detection half (previously proven, re-confirmed):** `kernel/supervisor/pinmismatch_test.go`, `kernel/supervisor/externalproof_test.go`, `web/e2e/specs/11-binary-changed-repin.spec.ts` all pass (live re-run, 1/1 e2e). |
+| 4 | An external plugin receives provider-specific config keys the kernel has never heard of, with no kernel change required to add a new key. | ✓ VERIFIED | `sourceConfigEnvelope.Extras` (kernel/pluginhost/host.go); `[sources.<id>.extras]` round-trips through `WriteCanonical`; `TestExternalProof_OutOfRepoBinaryEndToEnd` (live re-run, pass) asserts extras passthrough including a `${VAR}`-expanded value against the real out-of-repo proof binary. |
+| 5 | A real binary built outside the in-repo plugin set is discovered, marked untrusted, and synced end to end — proven before out-of-repo source work starts. | ✓ VERIFIED | `testdata/external-plugin/` (module `example.com/acme/topos-plugin-external-demo`, outside `github.com/davison/topos`, outside `plugins/`); `TestExternalProof_OutOfRepoBinaryEndToEnd` (live re-run, pass) covers discovery, tier, extras passthrough, environment scrubbing and pin refusal against this real binary. |
 
-**Score:** 4/5 truths verified, 1 failed (behavior_unverified: 0)
+**Score:** 5/5 truths verified (0 present, behavior-unverified)
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `kernel/pluginhost/discover_binaries.go` (Tier, Dirs, TieredBinary, ResolveBinary, DiscoverTiered, DiscoverAllTiered) | Two-tier discovery + resolution authority | VERIFIED (exists, substantive, wired) but **the resolution authority itself has an unconfined-path defect** — see gap above | `go build ./...` clean; `TestResolveBinary_*` pass but cover only well-formed names, no adversarial/traversal case |
-| `kernel/config/types.go` (PluginsConfig.ExternalDir/Pins, Source.Extras) | Declared config surface | VERIFIED | present with toml+json tags |
-| `kernel/pluginhost/binaryhash.go` (HashBinary) | SHA-256 content hash | VERIFIED | `TestHashBinary_*` pass |
-| `kernel/pluginhost/host.go` (ErrPinMismatch, LaunchFailure, Host.LaunchFailures, allowedEnv, sourceConfigEnvelope) | Pre-exec pin gate + soft failure + env allowlist + extras envelope | VERIFIED | `TestLaunch_Pin_*`, `TestAllowedEnv` pass |
-| `proto/topos/v1/plugin.proto` (ExtrasField, DescribeResponse.extras field 7) | Additive contract extension | VERIFIED | `go test ./sdk/ -run TestContract` passes; field 7, fields 1-6 unchanged |
-| `kernel/httpapi/sources.go` (launch-failure merge, sourceStatus fields) | Trust facts published to browser | VERIFIED | `go test ./kernel/httpapi/...` passes |
-| `web/src/lib/components/TrustBadge.svelte` | Reusable trust badge | VERIFIED | exists, wired into SourceChip and AddSourceModal picker rows |
-| `web/src/lib/components/TrustUpdateDialog.svelte` | Re-pin confirmation | VERIFIED | exists, wired via `+page.svelte`'s `trustUpdateInstance` slot |
-| `testdata/external-plugin/` (standalone module) | Out-of-repo proof binary | VERIFIED | own go.mod (`example.com/acme/...`), own Makefile target (`external-demo`), builds to `bin/plugins-external/` |
-| `docs/plugin-contract.md`, `docs/api.md`, `config.example.toml` | Republished contract/docs | VERIFIED | `make docs-check` implied clean (grep confirms Trust tiers/Pinning/launch-environment sections, `tier`/`pinned_hash`/`launch_failure`/`plugin_type_tiers` documented, `external_dir`/`[plugins.pins]`/`extras` example in config.example.toml) |
+| `kernel/pluginhost/discover_binaries.go` (`validatePluginBinaryName`, `ResolveBinary` confinement + IsRegular guards) | Confined, launch-time trust authority | ✓ VERIFIED (exists, substantive, wired) | `go build ./...` clean; 13/13 `TestResolveBinary_*` pass including 7 new adversarial cases (traversal, absolute path, Windows separator, empty, `.`/`..`, directory-shadowing, symlink-still-resolves) |
+| `kernel/config/config.go` (`validateSourcePlugins`, called from `Validate`) | Config-side confinement twin | ✓ VERIFIED | `grep` confirms single definition, single call site inside `Validate` before `validatePins`; 3/3 new tests pass |
+| `kernel/pluginhost/tier_test.go`, `kernel/config/config_test.go`, `kernel/httpapi/config_test.go` | 12 new regression tests | ✓ VERIFIED | All 12 present and passing, live re-run (7 + 3 + 2) |
+| `docs/plugin-contract.md` (bare-filename rule) | Published contract update | ✓ VERIFIED | `grep -n 'bare binary filename'` finds the new paragraph in the Trust tiers section; `make docs-check` exits 0 |
+| `kernel/pluginhost/binaryhash.go`, `kernel/pluginhost/host.go` (pin gate, launch-failure, extras envelope) | Pre-exec pin gate + soft failure + extras | ✓ VERIFIED (unchanged since prior pass, regression-checked) | `TestHashBinary_*`, `TestLaunch_Pin_*`, `TestAllowedEnv` pass |
+| `web/src/lib/components/TrustBadge.svelte`, `TrustUpdateDialog.svelte` | Reusable trust UI | ✓ VERIFIED (unchanged, regression-checked) | wired into `SourceChip`/`AddSourceModal`/`+page.svelte`; all 3 phase e2e specs pass live |
+| `testdata/external-plugin/` | Out-of-repo proof binary | ✓ VERIFIED (unchanged, regression-checked) | own `go.mod`, own Makefile target, builds clean |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| cmd/topos dirs -> supervisor -> pluginhost.launch -> SourceHealth.Tier -> GET /api/sources -> SourceChip TrustBadge | WIRED | verified by passing e2e `11-external-tier-badge.spec.ts` |
-| `[plugins.pins]` -> raw config -> launch's pre-exec SHA-256 compare -> ErrPinMismatch -> Host.LaunchFailures -> GET /api/sources | WIRED | verified by passing `pinmismatch_test.go`, `11-binary-changed-repin.spec.ts` |
-| `PUT /api/config` (Source.Plugin value) -> `Config.Validate` -> `Supervisor.Apply` -> `Host.Reconcile` -> `launch` -> `ResolveBinary` | **WIRED BUT UNGUARDED** | this is the CR-01 path: the link exists and functions for well-formed values, but neither endpoint of the chain validates or confines the value in transit — see gap above |
-| describePlugin response (tier, binary_hash, env_var_names, extras) -> confirm interstitial -> submitMatch's single putConfig | WIRED | verified by passing `11-untrusted-add.spec.ts` |
-| GET /api/sources launch_failure + current_hash -> SourceChip mismatch flag -> TrustUpdateDialog -> setPluginPin + putConfig -> supervisor Apply relaunches | WIRED | verified by passing `11-binary-changed-repin.spec.ts` |
+| `PUT /api/config` (`Source.Plugin` value) → `Config.Validate` → `validateSourcePlugins` → 422 `config_invalid` naming the source, file on disk untouched | WIRED (newly closed) | `TestConfigSaveHandler_TraversalPluginValueReturns422AndLeavesFileUnchanged`, `TestConfigSaveHandler_EmptyPluginValueReturns422NamingTheSource` — both re-run live, pass; byte-identical-file assertion included |
+| `supervisor.Apply` → `Host.Reconcile` → `launch` → `pluginhost.ResolveBinary` → `validatePluginBinaryName` + `IsRegular` gates → named error instead of an out-of-directory `TierTrusted` resolution | WIRED (newly closed) | `ResolveBinary`'s only production caller is `host.go:785` (confirmed by grep — no bypass); 7 new adversarial tests pass live |
+| `cmd/topos` dirs → supervisor → `pluginhost.launch` → `SourceHealth.Tier` → `GET /api/sources` → `SourceChip` `TrustBadge` | WIRED (regression-checked) | `11-external-tier-badge.spec.ts` passes live |
+| `[plugins.pins]` → raw config → launch's pre-exec SHA-256 compare → `ErrPinMismatch` → `Host.LaunchFailures` → `GET /api/sources` | WIRED (regression-checked) | `pinmismatch_test.go`, `11-binary-changed-repin.spec.ts` pass live |
+| describePlugin response (tier, binary_hash, env_var_names, extras) → confirm interstitial → `submitMatch`'s single `putConfig` | WIRED (regression-checked) | `11-untrusted-add.spec.ts` passes live |
+| `GET /api/sources` `launch_failure` + `current_hash` → `SourceChip` mismatch flag → `TrustUpdateDialog` → `setPluginPin` + `putConfig` → supervisor `Apply` relaunches | WIRED (regression-checked) | `11-binary-changed-repin.spec.ts` passes live |
 
-### Behavioral Spot-Checks / Test Execution (live, re-run during this verification)
+### Behavioral Spot-Checks / Test Execution (all live, re-run during this verification — not read from SUMMARY.md)
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
 | Full Go build | `CGO_ENABLED=0 go build ./...` | exit 0 | PASS |
-| Go test suite (phase-11 packages) | `go test ./kernel/pluginhost/... ./kernel/supervisor/... ./kernel/httpapi/... ./kernel/config/... ./cmd/topos/... ./sdk/...` | all `ok` | PASS |
-| `ResolveBinary` unit tests | `go test ./kernel/pluginhost/ -run TestResolveBinary -v` | 6/6 pass, **no traversal/confinement case present** | PASS (incomplete coverage) |
-| Pin verification unit tests | `go test ./kernel/pluginhost/ -run TestLaunch_Pin -v` | 5/5 pass | PASS |
-| External-tier supervisor boot | `go test ./kernel/supervisor/ -run TestExternalTier -v` | 2/2 pass | PASS |
-| Boot-time pin-mismatch soft-failure (checkpoint-fix regression) | `go test ./kernel/supervisor/ -run TestPinMismatch -v` | 3/3 pass | PASS |
-| Out-of-repo proof end-to-end | `go test ./kernel/supervisor/ -run TestExternalProof -v` | 1/1 pass | PASS |
-| Frontend type-check | `npm --prefix web run check` | 0 errors, 10 pre-existing unrelated warnings | PASS |
-| Frontend unit tests (phase 11) | `npm --prefix web run test -- trust-badge.test.ts untrusted-add.test.ts extras-form.test.ts repin.test.ts` | 126/126 pass | PASS |
+| `ResolveBinary` unit tests (incl. 7 new adversarial cases) | `go test ./kernel/pluginhost/ -run TestResolveBinary -v` | 13/13 pass | PASS |
+| `config.Validate` source-plugin tests (3 new) | `go test ./kernel/config/... -run TestValidate_SourcePlugin -v` | 3/3 pass | PASS |
+| HTTP-boundary tests (2 new + 5 pre-existing) | `go test ./kernel/httpapi/... -run TestConfigSaveHandler -v` | 7/7 pass | PASS |
+| Phase-11 package regression sweep | `go test ./kernel/pluginhost/... ./kernel/supervisor/... ./kernel/httpapi/... ./kernel/config/... ./cmd/topos/... ./sdk/...` | all `ok` | PASS |
+| Full portable gate (root + every workspace plugin module) | `make test-portable` | all `ok`, exit 0 | PASS |
+| Docs link check | `make docs-check` | exit 0, 35/35 links resolve | PASS |
 | e2e: two-tier discovery + badge | `make e2e E2E_ARGS=specs/11-external-tier-badge.spec.ts` | 3/3 pass | PASS |
 | e2e: untrusted add + extras passthrough | `make e2e E2E_ARGS=specs/11-untrusted-add.spec.ts` | 1/1 pass | PASS |
 | e2e: binary swap / catch / re-pin / recover | `make e2e E2E_ARGS=specs/11-binary-changed-repin.spec.ts` | 1/1 pass | PASS |
+| Single production call site of `ResolveBinary` | `grep -rn "ResolveBinary(" kernel/ cmd/ \| grep -v _test.go` | exactly `host.go:785` | PASS (no bypass path) |
 
 ### Requirements Coverage
 
 | Requirement | Source Plan(s) | Description | Status | Evidence |
 |-------------|-----------------|-------------|--------|----------|
-| PLUG-06 | 11-01, 11-04 | Kernel discovers/launches plugin binaries from a configured external directory, distinct from trusted | SATISFIED | two-tier discovery + real out-of-repo proof binary, both proven live |
-| PLUG-07 | 11-02, 11-03, 11-06 | Kernel derives trusted/untrusted status from provenance (directory tier, content hash pinned at add-time, re-verified at every launch) — never from anything the plugin declares | **BLOCKED** | Pin re-verification is real and proven, but "derives ... from provenance (directory tier)" is not reliably true — `ResolveBinary`'s unconfined path join means tier can be a caller-supplied path's accident rather than genuine directory provenance (CR-01) |
-| PLUG-08 | 11-01, 11-03, 11-05, 11-06 | Explicit warning before adding an untrusted source; persistent untrusted badge everywhere the source appears | SATISFIED | confirm interstitial, chip badge, picker badge/label, all proven live via passing e2e specs |
-| PLUG-09 | 11-02, 11-03, 11-04, 11-05 | Plugin host passes arbitrary per-instance config keys through to plugins with no kernel change | SATISFIED | extras envelope, UI extras editor, real out-of-repo binary observably receiving and echoing extras keys |
+| PLUG-06 | 11-01, 11-04 | Kernel discovers/launches plugin binaries from a configured external directory, distinct from trusted | ✓ SATISFIED | two-tier discovery + real out-of-repo proof binary, both re-proven live |
+| PLUG-07 | 11-02, 11-03, 11-06, 11-07 | Kernel derives trusted/untrusted status from provenance (directory tier, content hash pinned at add-time, re-verified at every launch) — never from anything the plugin declares | ✓ SATISFIED (gap closed by 11-07) | Confinement guard (`validatePluginBinaryName`) + regular-file gate now make tier genuinely provenance-derived; pin re-verification remains proven; 12 new regression tests plus live re-runs of all prior tests confirm no regression |
+| PLUG-08 | 11-01, 11-03, 11-05, 11-06 | Explicit warning before adding an untrusted source; persistent untrusted badge everywhere the source appears | ✓ SATISFIED (regression-checked) | confirm interstitial, chip badge, picker badge/label, all re-proven live via passing e2e specs |
+| PLUG-09 | 11-02, 11-03, 11-04, 11-05 | Plugin host passes arbitrary per-instance config keys through to plugins with no kernel change | ✓ SATISFIED (regression-checked) | extras envelope, UI extras editor, real out-of-repo binary observably receiving and echoing extras keys |
 
-No orphaned requirements — REQUIREMENTS.md maps exactly PLUG-06/07/08/09 to Phase 11 and all four are claimed across the six plans.
+No orphaned requirements — REQUIREMENTS.md maps exactly PLUG-06/07/08/09 to Phase 11, and all four are claimed across the seven plans (11-01 through 11-07). REQUIREMENTS.md's checkbox/status column for PLUG-06/08/09 (`Pending`/`Gaps Found`) and PLUG-07's status text ("Gaps Found" despite its checkbox being ticked by the 11-07 executor) are stale tracking-file state — per this task's instructions, the orchestrator updates STATE.md/ROADMAP.md/REQUIREMENTS.md centrally after verification passes, so this is not counted as a gap.
 
 ### Anti-Patterns Found
 
-No `TODO`/`FIXME`/`XXX`/`TBD`/placeholder markers found in the phase's key artifact files (`TrustBadge.svelte`, `TrustUpdateDialog.svelte`, `SourceChip.svelte`, `AddSourceModal.svelte`, `discover_binaries.go`, `host.go`, `config.go`). No stub/empty-implementation patterns found in the same set.
+No `TODO`/`FIXME`/`XXX`/`TBD`/placeholder markers found in the phase's key artifact files, including the newly modified `discover_binaries.go`, `config.go`, `tier_test.go`, `config_test.go`, `httpapi/config_test.go`, and `docs/plugin-contract.md`. No stub/empty-implementation patterns found. No fixture was weakened to make a test pass — `git show --stat` on all three 11-07 task commits shows additions only (238, 197, and further lines added; zero deletions in the fix commits).
 
-The one substantive finding is CR-01, already detailed above and in `11-REVIEW.md` — this is a missing-validation defect, not a stub or placeholder, but it is a security-relevant gap directly contradicting a `status: kept` prohibition in `11-01-PLAN.md`'s own must_haves frontmatter.
+Two pre-existing (non-blocking) **Warnings** surfaced by `11-REVIEW.md`'s re-review, confirmed present in the current codebase during this verification, neither of which touches the fixed confinement logic and neither of which is part of 11-07's declared scope:
+
+| File | Pattern | Severity | Impact |
+|------|---------|----------|--------|
+| `config.example.toml` (5 occurrences, e.g. line 177) | Stale comment `# Validation: none at load time; a missing file fails at startup, by path.` on every `[sources.<name>] plugin` field, no longer accurate now that `validateSourcePlugins` rejects a malformed value at load/save time | ⚠️ Warning | Documentation-only; undersells the new load-time confinement guard to an operator or plugin author reading the example config, but has no functional or security effect (it doesn't grant permission the code doesn't actually reject) |
+| `web/src/lib/components/TrustUpdateDialog.svelte:74` | `setPluginPin(config, source.plugin, source.current_hash ?? '')` silently falls back to an empty-string pin if `current_hash` is ever absent, rather than surfacing an error | ⚠️ Warning | Currently unreachable in practice (`launch()` always populates `current_hash` for every `TierExternal` pin-mismatch entry that opens this dialog), but is a latent defensive gap pre-dating 11-07 |
+
+Both are recommended follow-up items (not phase blockers); confirmed still present by direct inspection during this verification, not merely carried over from the review report.
 
 ### Human Verification Required
 
-None outstanding. Phase 11's single human checkpoint (11-06 Task 4, all six UI elements E1-E6) was already run and approved during execution (two rounds — round 1 found a boot-time defect that round 2's fix and an independent live re-verification closed), per `11-06-SUMMARY.md`'s `coverage[D6]` entry (`human_judgment: true`, approved).
+None outstanding. Phase 11's single human checkpoint (11-06 Task 4, all six UI elements E1-E6) was already run and approved during execution, per `11-06-SUMMARY.md`'s `coverage[D6]` entry (`human_judgment: true`, approved). No new human-verification-worthy behavior was introduced by 11-07's gap closure (kernel-side input validation with a fully automatable HTTP/unit-test boundary, deliberately without a new Playwright spec per the plan's own documented rationale — confirmed reasonable: the three existing browser-drivable behaviors of this phase are unchanged and all pass live).
 
 ### Gaps Summary
 
-Five of the five ROADMAP success criteria are functionally implemented and independently re-proven live during this verification (build, full relevant Go test packages, targeted frontend tests, and all three phase-11 Playwright specs all pass). The mechanism for detecting a swapped binary — the headline feature of success criterion 3 — genuinely works and is proven end to end against a real out-of-repo binary, including the boot-time soft-failure parity fix that a checkpoint round caught.
+None. The single gap the prior verification found — `pluginhost.ResolveBinary`'s missing path-confinement/regular-file check and `config.Validate`'s missing `Source.Plugin` shape check (CR-01) — is closed. This was independently re-derived from first principles during this verification, not read from SUMMARY.md claims:
 
-However, criterion 3's own premise — "Trust is decided by the kernel from where the binary lives" — does not hold universally: `pluginhost.ResolveBinary` (the single documented authority the whole trust-tier system is built on, per its own doc comment) performs `filepath.Join(dir, name)` + `os.Stat` with no check that the result stays inside `dir`, and `config.Validate` never validates `Source.Plugin`'s shape at all. A `Source.Plugin` value containing `../` segments, saved through `PUT /api/config` (which performs no membership or shape check on this field anywhere in its validate/save/apply path), can resolve to an arbitrary file outside both configured plugin directories, get misclassified `TierTrusted`, and skip pin verification and exec.Command's usual regular-file assumptions entirely. This is the exact scenario `11-01-PLAN.md`'s own must-have prohibition promises is prevented ("The external tier MUST NOT be reachable by a caller-supplied path... T-07-09") — the promise is not kept in the current codebase. It matches `11-REVIEW.md`'s CR-01 (Critical) precisely, and remains unpatched as of this verification (no commit since the review's timestamp touches either file).
+- Read `validatePluginBinaryName` and the updated `ResolveBinary` directly; confirmed the guard runs as the function's first statement, before either directory is touched, and rejects empty/whitespace, `/`, `\`, `.`, `..`, and any non-`filepath.Base`-equal name.
+- Read `validateSourcePlugins` directly; confirmed it is called from `Config.Validate` (which runs at both `config.Load` and every `PUT /api/config` save via `dryRunExpand`) and enforces the identical four rules, naming the offending source.
+- Confirmed by `grep` that `host.go:785` is `ResolveBinary`'s only production call site — no code path can reach a plugin launch while bypassing the new guard.
+- Re-ran all 12 new regression tests live (not from SUMMARY): 7 `TestResolveBinary_*`, 3 `TestValidate_SourcePlugin*`, 2 `TestConfigSaveHandler_*` — all pass.
+- Re-ran the full portable test gate (`make test-portable`, root + 6 plugin modules) and `make docs-check` live — both exit 0.
+- Re-ran all three Phase 11 Playwright e2e specs live (not trusted from SUMMARY) — 3+1+1 = 5/5 pass, including the symlink-dependent discovery spec that the new `IsRegular()` gate could plausibly have broken.
+- Confirmed via `git show --stat` on the three 11-07 fix/test commits that no existing test, assertion, or fixture was weakened or deleted to make the new checks pass — only additions.
 
-This does not appear intentional or covered by a later phase — neither Phase 12 (Filesystem Source) nor Phase 14 (Google Drive) revisits `ResolveBinary` or `config.Validate`; both simply depend on Phase 11's trust mechanism being sound.
-
-**Recommended fix** (mirrors the review's own suggested patch): add a bare-filename shape check (`name == filepath.Base(name)`, no `..`, non-empty) to `config.Validate` for every `Source.Plugin`, and add the identical confinement check plus an `IsRegular()` check directly inside `ResolveBinary` before either directory's `os.Stat` — with a regression test exercising a `../`-containing value through both. This is a small, well-scoped fix; it does not require replanning the phase's UI or wire-contract work, only closing the one unvalidated input path.
+Two non-blocking documentation/defensive-code Warnings remain (see Anti-Patterns), recommended as follow-up but not gating this phase's goal achievement.
 
 ---
 
-_Verified: 2026-08-13T13:27:15Z_
+_Verified: 2026-08-13T16:10:00Z_
 _Verifier: Claude (gsd-verifier)_
