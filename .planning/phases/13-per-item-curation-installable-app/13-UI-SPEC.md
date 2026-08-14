@@ -1,7 +1,7 @@
 ---
 phase: 13
 slug: per-item-curation-installable-app
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, Tailwind v4 (unchanged since Phase 1 — components.json present at web/components.json, no re-init this phase; every rendered color comes from web/src/app.css's hand-authored hex tokens, not the CLI's own slate defaults)"
 created: 2026-08-14
@@ -251,7 +251,7 @@ Both extend `SourceChip.svelte`'s existing `isPinMismatch`-style branch (`source
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: **21 explicit, 3 backstop, 0 unresolved** — across E1–E6 (E7/E8 are build-time/native-browser surfaces with no client-rendered state machine of their own beyond E8's "kernel unreachable" row, already covered below).
+Probe run (ui-consideration-probe, post-verification): **47 applicable considerations across E1–E8 — 29 resolved explicit, 3 resolved backstop, 15 dismissed with recorded reasons, 0 unresolved.** Detected element kinds confirmed complete by the user; batch resolution (researcher-authored coverage + orchestrator dispositions for the probe's remainder) adopted by the user this session.
 
 ### Resolved — explicit
 
@@ -278,6 +278,17 @@ Applicable state considerations resolved: **21 explicit, 3 backstop, 0 unresolve
 | error (advisory) | E6 (`shadowed`) | ✅ covered | Warning-tone dot + named tooltip, deliberately distinct from destructive — per E6's spec and the `isAdvisoryOnly` precedence chain. |
 | zero-one-many | E6 (multiple sources simultaneously affected by either state) | ✅ covered | Each chip renders its own state independently — the mechanism is per-source, identical to how `pin_mismatch` already scales across multiple affected chips today. |
 | long-text | E6 tooltip (`display_name` substituted in) | ✅ covered | Native `title`/`TooltipContent` wrapping behavior, same as every other chip tooltip in this app — no fixed-width truncation concern. |
+| overflow | E1 (checkbox slot vs. row layout) | ✅ covered | The leading checkbox slot is a fixed `size-9` block before the thumbnail — no data-dependent width; every other row element keeps its existing clamp/truncation behavior untouched. |
+| long-text | E1 (row title/snippet) | ✅ covered | Title/snippet truncation is `StreamRow`'s existing line-clamp, unchanged this phase — the new checkbox slot does not alter the text columns' available width rules. |
+| long-text | E2 (bar strings) | ✅ covered | All three segments are fixed-shape strings (`{N} selected`, `Exclude`/`Include`, `Clear`); only the digit count of N varies, absorbed by the bar's intrinsic sizing. |
+| long-text | E3 (toast bodies) | ✅ covered | Every toast body is a fixed enumerated string from the Copywriting Contract; only `{N}` (integer) substitutes — no user-authored or data-dependent text ever renders in a toast. |
+| loading | E4 (bucket flip fetch) | ✅ covered | Flipping views re-issues the stream fetch through the existing `StreamList` load path — the same loading treatment every webspace stream load already has (D-05 wholesale reuse). |
+| error | E4 (excluded-bucket fetch fails) | ✅ covered | Same wholesale reuse: a failed excluded-bucket fetch renders the existing `StreamError.svelte` exactly as a failed normal-stream fetch does — no new error surface. |
+| overflow | E4 (toggle in header trailing group) | ✅ covered | The toggle lives in `WebspaceHeader`'s trailing reserved group, outside both measured-overflow chip rows — it never participates in, or perturbs, the chip rows' overflow measurement. |
+| loading | E5 (single-item write in flight) | ✅ covered | The detail-pane button inherits E2's disable-during-write discipline (same write path, N=1) — no double-fire from a second click while the request is in flight. |
+| error | E5 (single-item write fails) | ✅ covered | Failure surfaces the same destructive write-failure toast (E3.2, N=1) and the button re-enables — identical retry model to the bulk path. |
+| long-text | E5 (button labels) | ✅ covered | Fixed label strings (`Exclude from webspace` / `Include in webspace`), no substitution — existing `Button` sizing accommodates both without truncation. |
+| loading | E8 (update reload) | ✅ covered | The `autoUpdate` reload is browser-native; after it the app boots through its normal load path and the E3.3 toast explains the refresh — no custom update interstitial or progress surface exists to design. |
 
 ### Resolved — backstop
 
@@ -292,6 +303,14 @@ Applicable state considerations resolved: **21 explicit, 3 backstop, 0 unresolve
 |---------|----------------------|--------|
 | E1 checkbox (mobile/touch) | populated, loading, error | Deliberately absent below 768px (desktop-pointer-only, per D-01's own "desktop-standard" framing) — there is no touch-surface state to specify because the control never renders there; E5's detail-pane button is the sole mobile exclude/include path, already covered above. |
 | E7 (PWA manifest/icons) | populated, loading, error, empty | Build-time-generated, native-browser-rendered artifact (install prompt, splash screen) — no client-side Svelte component owns any of these states; nothing in this app's own render tree can be empty/loading/erroring here. |
+| E1 (selection toggling) | loading, error | Ctrl/shift-click selection is pure client-side state — no async operation occurs until the E2/E5 write, whose loading/error states are covered above; there is no failure mode in toggling a local set. |
+| E3 (toast layer at rest) | empty | No toasts queued means the Sonner mount renders nothing — an invisible portal host, not an empty-state surface needing copy. |
+| E3 (toast content) | partial | A toast is an atomic message — it either renders whole or not at all; no partial-content state exists. |
+| E4 (bucket switch) | partial | The toggle is a binary view switch; the server returns exactly one bucket per request — no mixed/partial bucket render is reachable. |
+| E5 (button presence) | empty | The button renders whenever the detail pane has an open item; no item open means no detail pane at all (existing behavior) — there is no empty variant of the button itself. |
+| E5 (button geometry) | overflow, zero-one-many | Fixed icon+label control in the existing header layout (no data-dependent size); inherently a single-item (N=1) action — plurality lives entirely in the shared toast copy helper. |
+| E7 (manifest strings) | long-text | `name`/`short_name`/`description` are fixed short strings rendered by browser chrome, not by this app. |
+| E8 (kernel-down shell) | overflow, long-text | The shell state is `StreamError.svelte` with fixed reused copy — no variable-length or overflowing content is rendered in this state. |
 
 ---
 
@@ -309,11 +328,11 @@ No third-party (non-shadcn-official, non-`@lucide/svelte`) frontend component re
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: FLAG (non-blocking — action-bar CTAs are bare verbs `Exclude`/`Include`; the count label provides context; fuller forms exist on the detail-pane buttons)
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 2026-08-14 — 5 PASS, 1 non-blocking FLAG)
