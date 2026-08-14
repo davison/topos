@@ -2,15 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Plugin Ecosystem
+current_phase: 13
+current_phase_name: Per-Item Curation & Installable App
 status: planning
-last_updated: "2026-08-14T14:23:34.436Z"
-last_activity: 2026-08-14 — Phase 12 complete, transitioned to Phase 13
+stopped_at: Phase 13 UI-SPEC approved
+last_updated: "2026-08-14T15:35:22.796Z"
+last_activity: 2026-08-14
+last_activity_desc: "Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim"
 progress:
-  total_phases: 5
+  total_phases: 4
   completed_phases: 2
   total_plans: 18
   completed_plans: 18
-  percent: 40
+  percent: 50
 ---
 
 # Project State
@@ -182,9 +186,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-14T14:23:34.428Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-per-item-curation-installable-app/13-CONTEXT.md
+Last session: 2026-08-14T15:35:22.784Z
+Stopped at: Phase 13 UI-SPEC approved
+Resume file: .planning/phases/13-per-item-curation-installable-app/13-UI-SPEC.md
 
 ## Operator Next Steps
 
