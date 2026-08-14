@@ -29,6 +29,7 @@
 		filterItemsBySource
 	} from '$lib/format';
 	import { setWebspaceFilter, removeSourceFromWebspace } from '$lib/config-edit';
+	import { markSuccessToast, markFailureToast } from '$lib/toast';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import StreamDateMarkers from '$lib/components/StreamDateMarkers.svelte';
@@ -90,16 +91,18 @@
 		}
 	}
 
-	// markBusy/handleExclude (KERN-09, 13-01-PLAN.md Task 1): the
-	// detail-pane single-item exclude write. markBusy disables the
-	// control for the duration of the request (prevents a double-fire);
-	// on success the detail pane closes (the excluded item can no longer
-	// be shown from the normal stream, D-03) and the stream refetches so
-	// the item disappears on the very next render. Failure handling here
-	// is deliberately bare — no toast yet, Task 3 wires markFailureToast
-	// — the item is simply left in place and markBusy clears in the
-	// finally, matching this task's own scope line ("the toast surface
-	// arrives in Task 3").
+	// markBusy/handleExclude/handleInclude (KERN-09/KERN-10, 13-01-PLAN.md
+	// Tasks 1 and 3): the detail-pane single-item exclude/include write,
+	// the exact mirror of each other. markBusy disables the control for
+	// the duration of the request (prevents a double-fire); on success
+	// the detail pane closes (an excluded item can no longer be shown
+	// from the normal stream, D-03 — and today's DetailPane render site
+	// only ever wires onexclude, never oninclude, since the excluded
+	// view a later plan adds is the only place `excluded` is ever true)
+	// and the stream refetches so the change is visible on the very next
+	// render; the success/failure toast fires via the shared toast.ts
+	// helpers, so this and the later bulk action-bar path can never drift
+	// in wording (E3.1).
 	let markBusy = $state(false);
 
 	async function handleExclude(id: string) {
@@ -108,9 +111,37 @@
 			await setItemMarks(webspace, 'add', [id]);
 			closeDetail();
 			await load(navGeneration);
+			markSuccessToast({
+				verb: 'Excluded',
+				count: 1,
+				onUndo: async () => {
+					await setItemMarks(webspace, 'remove', [id]);
+					await load(navGeneration);
+				}
+			});
 		} catch {
-			// Task 3 wires the write-failure toast; this task leaves the
-			// item exactly where it was on a failed write.
+			markFailureToast({ verb: 'exclude', count: 1 });
+		} finally {
+			markBusy = false;
+		}
+	}
+
+	async function handleInclude(id: string) {
+		markBusy = true;
+		try {
+			await setItemMarks(webspace, 'remove', [id]);
+			closeDetail();
+			await load(navGeneration);
+			markSuccessToast({
+				verb: 'Included',
+				count: 1,
+				onUndo: async () => {
+					await setItemMarks(webspace, 'add', [id]);
+					await load(navGeneration);
+				}
+			});
+		} catch {
+			markFailureToast({ verb: 'include', count: 1 });
 		} finally {
 			markBusy = false;
 		}
@@ -1260,6 +1291,7 @@
 					{searchQuery}
 					onback={closeDetail}
 					onexclude={() => handleExclude(selectedItem.id)}
+					oninclude={() => handleInclude(selectedItem.id)}
 					{markBusy}
 				/>
 			</div>

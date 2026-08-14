@@ -8,6 +8,7 @@
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Eye from '@lucide/svelte/icons/eye';
 	import { detailPaneState, detailBodyVariant, formatItemDate, highlightText } from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
@@ -23,13 +24,18 @@
 	// (the sandboxed iframe is an opaque origin, so this is the only
 	// channel into that document; see rendition.go's own doc comment).
 	//
-	// onexclude/markBusy (KERN-09, 13-01-PLAN.md Task 1): the single-item
-	// exclude control's write callback and its own in-flight guard —
-	// both optional so this component stays renderable in any context
-	// that hasn't wired the marks surface yet (e.g. an existing test
-	// fixture). markBusy disables the control for the duration of the
-	// write, the same discipline the bulk action bar (a later plan) will
-	// also follow, so a second click can never double-fire the write.
+	// onexclude/oninclude/excluded/markBusy (KERN-09/KERN-10, 13-01-PLAN.md
+	// Tasks 1 and 3): the single-item exclude/include control's write
+	// callbacks, its current-item state, and its own in-flight guard — all
+	// optional so this component stays renderable in any context that
+	// hasn't wired the marks surface yet (e.g. an existing test fixture).
+	// excluded is only ever true while viewing the excluded bucket (a
+	// later plan, E4) — an excluded item never appears in the normal
+	// stream (D-03), so the "Include" branch below has exactly one
+	// reachable context. markBusy disables the control for the duration
+	// of the write, the same discipline the bulk action bar (a later
+	// plan) will also follow, so a second click can never double-fire the
+	// write.
 	let {
 		item,
 		displayName,
@@ -37,6 +43,8 @@
 		searchQuery,
 		onback,
 		onexclude,
+		oninclude,
+		excluded = false,
 		markBusy = false
 	}: {
 		item: StreamItem;
@@ -45,6 +53,8 @@
 		searchQuery: string;
 		onback: () => void;
 		onexclude?: () => void;
+		oninclude?: () => void;
+		excluded?: boolean;
 		markBusy?: boolean;
 	} = $props();
 
@@ -122,23 +132,28 @@
 			{/each}
 		</p>
 		<OpenInSource link={item.link} {displayName} iconOnly />
-		<!-- Exclude control, mobile icon-only instance (E5, 13-UI-SPEC.md):
-		     same size-11 touch target and trailing position as
-		     OpenInSource's own iconOnly instance above — never confirm-
-		     gated (D-02), never variant="destructive" (Exclude is
-		     trivially reversible). Rendered only when the caller has wired
-		     a write path — a caller that omits onexclude gets no control,
-		     not a disabled one. -->
-		{#if onexclude}
+		<!-- Exclude/Include control, mobile icon-only instance (E5,
+		     13-UI-SPEC.md): same size-11 touch target and trailing
+		     position as OpenInSource's own iconOnly instance above —
+		     never confirm-gated (D-02), never variant="destructive"
+		     (both directions are trivially reversible). Rendered only
+		     when the caller has wired the write path for the current
+		     state — a caller that omits onexclude/oninclude gets no
+		     control, not a disabled one. -->
+		{#if excluded ? oninclude : onexclude}
 			<Button
 				variant="ghost"
 				class="size-11 shrink-0 rounded-md"
-				aria-label="Exclude from webspace"
-				title="Exclude from webspace"
-				onclick={onexclude}
+				aria-label={excluded ? 'Include in webspace' : 'Exclude from webspace'}
+				title={excluded ? 'Include in webspace' : 'Exclude from webspace'}
+				onclick={excluded ? oninclude : onexclude}
 				disabled={markBusy}
 			>
-				<EyeOff class="size-4 shrink-0" />
+				{#if excluded}
+					<Eye class="size-4 shrink-0" />
+				{:else}
+					<EyeOff class="size-4 shrink-0" />
+				{/if}
 			</Button>
 		{/if}
 	</div>
@@ -170,14 +185,25 @@
 			</div>
 			<div class="max-md:hidden flex items-center gap-2">
 				<OpenInSource link={item.link} {displayName} />
-				<!-- Exclude control, desktop header instance (E5,
+				<!-- Exclude/Include control, desktop header instance (E5,
 				     13-UI-SPEC.md): icon+label, Button variant="ghost"
-				     size="sm" — never variant="destructive" (Exclude is
-				     instant and trivially reversible, D-02). -->
-				{#if onexclude}
-					<Button variant="ghost" size="sm" onclick={onexclude} disabled={markBusy}>
-						<EyeOff class="size-4 shrink-0" />
-						Exclude from webspace
+				     size="sm" — never variant="destructive" (both
+				     directions are instant and trivially reversible,
+				     D-02). -->
+				{#if excluded ? oninclude : onexclude}
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={excluded ? oninclude : onexclude}
+						disabled={markBusy}
+					>
+						{#if excluded}
+							<Eye class="size-4 shrink-0" />
+							Include in webspace
+						{:else}
+							<EyeOff class="size-4 shrink-0" />
+							Exclude from webspace
+						{/if}
 					</Button>
 				{/if}
 			</div>

@@ -173,14 +173,15 @@ describe('the fixed hash-conflict copy is a single exported constant, never a du
 	});
 });
 
-describe('no toast anywhere in web/src/lib/components/ — every component imports only from the known ui/ primitive list', () => {
+describe('every ui/ import across web/src resolves to a known, reviewed primitive', () => {
 	// The known set of ui/ primitive directories this app has ever
 	// introduced (07-UI-SPEC.md Registry Safety table, cumulative across
-	// Phases 1/2/5/6/7) — deliberately an allowlist, not a "toast" denylist:
-	// a future primitive this list doesn't yet know about fails this test
-	// outright until it's a deliberate addition, which is what would also
-	// catch a toast/sonner primitive the moment it's wired in, not only
-	// today's absence of one.
+	// Phases 1/2/5/6/7, plus 13-UI-SPEC.md E3's deliberate 'sonner'
+	// addition — the app's first toast primitive) — deliberately an
+	// allowlist, not a denylist: a future primitive this list doesn't yet
+	// know about fails this test outright until it's a deliberate,
+	// reviewed addition, exactly the discipline that caught this phase's
+	// own toast primitive before it landed unreviewed.
 	const KNOWN_UI_PRIMITIVES = [
 		'alert',
 		'alert-dialog',
@@ -195,6 +196,7 @@ describe('no toast anywhere in web/src/lib/components/ — every component impor
 		'scroll-area',
 		'separator',
 		'skeleton',
+		'sonner',
 		'tooltip'
 	];
 
@@ -212,14 +214,29 @@ describe('no toast anywhere in web/src/lib/components/ — every component impor
 		}
 		expect(
 			offenders,
-			`found an import from an unrecognised ui/ primitive directory — this app has never had a toast and must not silently acquire one: ${offenders.join(', ')}`
+			`found an import from an unrecognised ui/ primitive directory — a new primitive must be a deliberate, reviewed addition to this allowlist: ${offenders.join(', ')}`
 		).toEqual([]);
 	});
 
-	it('the known-primitive allowlist itself contains no toast/sonner/snackbar entry', () => {
-		for (const primitive of KNOWN_UI_PRIMITIVES) {
-			expect(/toast|sonner|snackbar/i.test(primitive)).toBe(false);
+	it('the known-primitive allowlist contains exactly one toast-shaped entry ("sonner") — no second, competing toast library', () => {
+		const toastShaped = KNOWN_UI_PRIMITIVES.filter((primitive) => /toast|sonner|snackbar/i.test(primitive));
+		expect(toastShaped).toEqual(['sonner']);
+	});
+
+	it('the toast primitive is mounted in exactly one place (root layout)', () => {
+		const offenders: string[] = [];
+		for (const path of allSourceFiles) {
+			if (path.includes(join('components', 'ui', 'sonner'))) continue; // the wrapper's own definition
+			if (path.endsWith('save-state.test.ts')) continue; // this test's own literal string, not a real render site
+			const source = stripComments(readFileSync(path, 'utf-8'));
+			if (/<Toaster\b/.test(source)) {
+				offenders.push(relative(srcRoot, path));
+			}
 		}
+		expect(
+			offenders,
+			`expected <Toaster /> to be mounted in exactly one place (routes/+layout.svelte), found: ${offenders.join(', ')}`
+		).toEqual([join('routes', '+layout.svelte')]);
 	});
 });
 

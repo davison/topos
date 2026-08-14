@@ -254,6 +254,12 @@ describe('T-07-SC: web/package.json gained no new dependency for these three pri
 			'smol-toml',
 			'svelte',
 			'svelte-check',
+			// svelte-sonner (13-01-PLAN.md Task 3): the app's first toast
+			// primitive, installed via the shadcn-svelte official
+			// `sonner` block — not a regression of this test's own scope
+			// (dialog/dropdown-menu/alert-dialog stay bits-ui-only), same
+			// documented-evolution pattern as the e2e harness deps above.
+			'svelte-sonner',
 			'tailwindcss',
 			'typescript',
 			'vite',

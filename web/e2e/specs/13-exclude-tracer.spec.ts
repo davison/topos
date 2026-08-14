@@ -68,4 +68,32 @@ test.describe('13-01 Task 1: exclude one item from one webspace — one path onl
 		const stream = (await streamRes.json()) as { items: Array<{ id: string }> };
 		expect(stream.items.some((it) => it.id === firstRowId)).toBe(false);
 	});
+
+	test('the undo toast fires the contract-exact copy and Undo restores the row (13-01-PLAN.md Task 3)', async ({
+		page,
+		kernel
+	}) => {
+		await waitForFirstSync(kernel.baseURL, [SOURCE_ID], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+
+		const rows = page.locator('[data-item-id]');
+		await expect(rows.first()).toBeVisible();
+		const rowCountBefore = await rows.count();
+		const firstRowId = await rows.first().getAttribute('data-item-id');
+
+		await rows.first().click();
+		await page.getByRole('button', { name: 'Exclude from webspace' }).click();
+		await expect(page.locator(`[data-item-id="${firstRowId}"]`)).toHaveCount(0);
+
+		// Copywriting Contract (13-UI-SPEC.md): the toast body is exactly
+		// "Excluded 1 item" — singular, not the plural fallback.
+		await expect(page.getByText('Excluded 1 item', { exact: true })).toBeVisible();
+
+		await page.getByRole('button', { name: 'Undo' }).click();
+
+		// The undo re-issues the mirror write for the same item id — the
+		// row returns to the stream.
+		await expect(page.locator(`[data-item-id="${firstRowId}"]`)).toHaveCount(1);
+		await expect(rows).toHaveCount(rowCountBefore);
+	});
 });

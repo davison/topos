@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import { Toaster } from '$lib/components/ui/sonner/index.js';
 
 	let { children } = $props();
 
@@ -20,6 +21,12 @@
 <svelte:head>
 	<link rel="icon" type="image/png" href="/app-icon.png" />
 </svelte:head>
+
+<!-- Sonner mount (13-UI-SPEC.md E3): the app's first toast primitive,
+     mounted exactly ONCE here at the root layout, regardless of route —
+     the undo/failure toast (Task 3) and the PWA update notice (a later
+     plan) both fire through this single mount. -->
+<Toaster />
 
 {#if webspace}
 	<div class="flex h-screen flex-col">
