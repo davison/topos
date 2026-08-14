@@ -157,6 +157,11 @@ None - no external service configuration required.
 - 12-10-PLAN.md (the `web/src/` advisory UI surface) runs next wave, also untouched by this plan.
 - Full verification suite green: `plugins/filesystem` package tests (including the three new + one extended `TestFolderLabels_*` cases), `go vet`, `make test-portable` (all Go modules), `go test ./internal/audit/`, `bash scripts/check-doc-links.sh`, and the full `make e2e` (116/116 specs, including all four pre-existing filesystem specs plus this plan's new one) all pass with no regressions.
 
+## Self-Check: PASSED
+
+- All 5 changed files confirmed present on disk (item.go, item_test.go, docs/plugins/filesystem.md, config.example.toml, the new e2e spec).
+- All 3 task commits (`6dae168`, `5c6117e`, `de61379`) confirmed present in `git log --oneline --all`.
+
 ---
 *Phase: 12-filesystem-source*
 *Completed: 2026-08-14*
