@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Plugin Ecosystem
 current_phase: 13
-current_phase_name: Per-Item Curation & Installable App
+current_phase_name: per-item-curation-installable-app
 status: executing
 stopped_at: Phase 13 UI-SPEC approved
-last_updated: "2026-08-14T16:50:11.096Z"
+last_updated: "2026-08-14T16:58:13.857Z"
 last_activity: 2026-08-14
 last_activity_desc: "Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim"
 progress:
@@ -24,15 +24,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-14 after Phase 12 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 13 — Per-Item Curation & Installable App
+**Current focus:** Phase 13 — per-item-curation-installable-app
 
 ## Current Position
 
-Phase: 13 — Per-Item Curation & Installable App
-Plan: Not started
-Status: Ready to execute
+Phase: 13 (per-item-curation-installable-app) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 13
 Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
-Last activity: 2026-08-14 - Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim
+Last activity: 2026-08-14 — Phase 13 execution started
 
 ## Performance Metrics
 

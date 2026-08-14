@@ -150,13 +150,13 @@ Plans:
   4. After the kernel is upgraded, the installed app never serves a stale UI — the user lands on the new build rather than a cached one.
   5. The mobile/LAN install limitation (browsers require a secure context) is documented, along with the recommended user-provided HTTPS workarounds.
 
-**Plans**: 6 plans
+**Plans**: 2/6 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 13-01-PLAN.md — Tracer: item_marks table, mark write/read API, shared exclusion filter, toast layer (wave 1)
-- [ ] 13-05-PLAN.md — Trust hardening: link-time build-provenance manifest, reordered build, refuse-to-load launch gate (wave 1)
+- [x] 13-01-PLAN.md — Tracer: item_marks table, mark write/read API, shared exclusion filter, toast layer (wave 1)
+- [x] 13-05-PLAN.md — Trust hardening: link-time build-provenance manifest, reordered build, refuse-to-load launch gate (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -196,7 +196,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
-| 13. Per-Item Curation & Installable App | v1.1.0 | 0/TBD | Not started | - |
+| 13. Per-Item Curation & Installable App | v1.1.0 | 2/6 | In Progress|  |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
 ## Backlog
