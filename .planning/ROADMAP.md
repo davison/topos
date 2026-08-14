@@ -93,7 +93,7 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: 10/10 plans executed (4 waves + 3 gap-closure waves)
+**Plans**: 10/11 plans executed (4 waves + 4 gap-closure waves)
 Plans:
 **Wave 1**
 
@@ -130,6 +130,12 @@ Plans:
 **Wave 2** *(blocked on 12-09)*
 
 - [x] 12-10-PLAN.md — The advisory becomes visible: warning-tone source chip with the kernel's text, exact-match hint in the shared match form, browser gate over the user's exact config
+
+**Gap closure 4** *(from the 2026-08-14T11:05 re-verification + 12-REVIEW.md — CR-01: 12-10's own tooltip advisory branch gates on `last_status` alone, so an unreachable source with a stale ok status and a leftover notice reads as a benign advisory; SRC-04)*
+
+**Wave 1**
+
+- [ ] 12-11-PLAN.md — The tooltip gate defers to healthTone's precedence (`isAdvisoryOnly`), a branch-selection matrix replaces tone-only coverage, and the launch-failure `last_notice` contract is recorded and pinned
 
 ### Phase 13: Per-Item Curation & Installable App
 
