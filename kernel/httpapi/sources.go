@@ -214,6 +214,15 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			// (instance/binary/pinned-vs-current hash), never the
 			// recorded sync_runs row's error — a source that never
 			// launched has no sync history of its own to report.
+			//
+			// LastNotice (12-11-PLAN.md, WR-01 gap closure): deliberately
+			// NOT copied from run.Notice either, for the identical reason.
+			// docs/api.md's last_notice bullet already publishes that this
+			// field is empty for an instance that never launched — an
+			// instance with no sync of its own has nothing to advise
+			// about, so widening this field here would contradict shipped
+			// documentation rather than fix an oversight. Pinned by
+			// TestSourcesHandler_LaunchFailedEntryCarriesNoLastNotice.
 			LastError: f.Message,
 		})
 	}

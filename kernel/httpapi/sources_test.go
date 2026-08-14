@@ -180,6 +180,106 @@ func TestSourcesHandler_MergesLaunchFailureIntoSourcesResponse(t *testing.T) {
 	}
 }
 
+// TestSourcesHandler_LaunchFailedEntryCarriesNoLastNotice pins WR-01
+// (12-11-PLAN.md gap closure): docs/api.md's last_notice bullet already
+// publishes that this field is empty for an instance that never launched
+// — this test records a COMPLETED sync run carrying a non-empty notice for
+// an instance, then proves the launch-failure merge deliberately omits
+// that notice from the response while still copying the run's
+// last_status/last_sync_unix (proving the merge genuinely saw the
+// recorded run, so an empty last_notice here is a real contract rather
+// than a vacuous pass over a run the merge never looked at).
+func TestSourcesHandler_LaunchFailedEntryCarriesNoLastNotice(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	const recordedNotice = "webspace 'test': match value 'swapped.folders=*' matched no items"
+	runID, err := store.StartSyncRun(ctx, "swapped")
+	if err != nil {
+		t.Fatalf("StartSyncRun: %v", err)
+	}
+	if err := store.FinishSyncRunWithNotice(ctx, runID, "ok", "", recordedNotice, 3); err != nil {
+		t.Fatalf("FinishSyncRunWithNotice: %v", err)
+	}
+
+	prober := &fakeProber{
+		failures: []pluginhost.LaunchFailure{
+			{
+				Instance:    "swapped",
+				Plugin:      "topos-plugin-example",
+				DisplayName: "Swapped Source",
+				Tier:        pluginhost.TierExternal,
+				Reason:      pluginhost.LaunchFailurePinMismatch,
+				PinnedHash:  "aaaa",
+				CurrentHash: "bbbb",
+				Message:     `pluginhost: instance "swapped" binary "topos-plugin-example" hash mismatch: pinned=aaaa current=bbbb`,
+			},
+		},
+	}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/sources: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert against the raw decoded JSON body first — proving the wire
+	// tag itself, not only the Go field — matching
+	// TestSources_ZeroMatchNoticeTravelsFromCorrelateToTheSourcesAPI's own
+	// technique.
+	var raw map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	sources, _ := raw["sources"].([]any)
+	var rawEntry map[string]any
+	for _, s := range sources {
+		m, _ := s.(map[string]any)
+		if m["name"] == "swapped" {
+			rawEntry = m
+			break
+		}
+	}
+	if rawEntry == nil {
+		t.Fatalf("expected a 'swapped' entry in raw sources, got: %+v", raw["sources"])
+	}
+	if rawEntry["last_notice"] != "" {
+		t.Errorf("expected last_notice exactly empty for a launch-failed entry (WR-01, docs/api.md's published contract), got %v", rawEntry["last_notice"])
+	}
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal typed: %v", err)
+	}
+	var swapped *sourceStatus
+	for i := range resp.Sources {
+		if resp.Sources[i].Name == "swapped" {
+			swapped = &resp.Sources[i]
+			break
+		}
+	}
+	if swapped == nil {
+		t.Fatalf("expected a 'swapped' entry in the typed response, got: %+v", resp.Sources)
+	}
+	if swapped.LastNotice != "" {
+		t.Errorf("expected LastNotice exactly empty for a launch-failed entry, got %q", swapped.LastNotice)
+	}
+	// last_status/last_sync_unix DO still come from the recorded run —
+	// proving this test genuinely recorded a run the merge saw, so the
+	// empty LastNotice assertion above means something.
+	if swapped.LastStatus != "ok" {
+		t.Errorf("expected LastStatus %q from the recorded run, got %q", "ok", swapped.LastStatus)
+	}
+	if swapped.LastSyncUnix == 0 {
+		t.Error("expected a non-zero LastSyncUnix from the recorded run")
+	}
+	if swapped.LaunchFailure != "pin_mismatch" {
+		t.Errorf("expected launch_failure %q, got %q", "pin_mismatch", swapped.LaunchFailure)
+	}
+}
+
 // TestSourcesHandler_ProbeResultWinsOverLaunchFailureForSameInstance proves
 // an instance present in BOTH the probe result and the launch-failure set
 // yields exactly one entry — the probe result, since it describes what is

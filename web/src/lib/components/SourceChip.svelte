@@ -23,7 +23,13 @@
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
 	import TrustBadge from '$lib/components/TrustBadge.svelte';
 	import { cn } from '$lib/utils.js';
-	import { healthTone, formatRelativeTime, shortHash, type HealthTone } from '$lib/format';
+	import {
+		healthTone,
+		formatRelativeTime,
+		shortHash,
+		isAdvisoryOnly,
+		type HealthTone
+	} from '$lib/format';
 	import { WHATSAPP_SOURCE_TYPE } from '$lib/plugin-fields';
 	import type { SourceStatus } from '$lib/api';
 
@@ -123,6 +129,12 @@
 	// here).
 	let advisory = $derived((source.last_notice ?? '').trim());
 
+	// advisoryOnly (12-11-PLAN.md, CR-01 gap closure): defers to format.ts's
+	// isAdvisoryOnly rather than re-deriving the tooltip gate's own narrower
+	// condition — see that function's docstring for the full precedence
+	// reasoning and the tone === 'success' trap it exists to avoid.
+	let advisoryOnly = $derived(isAdvisoryOnly(source));
+
 	// hashCopied (E5): a lightweight, silent copy confirmation — the Copy
 	// icon swaps to a check for ~1.5s, then reverts. No toast/alert; a
 	// clipboard-API failure leaves this false and changes nothing visible,
@@ -197,12 +209,25 @@
 	// component's Copywriting Contract guard (source-chip-tooltip.test.ts)
 	// stay byte-identical; an external-tier source with an advisory
 	// correctly gets both, the same composition rule Phase 11 established.
+	//
+	// 12-11-PLAN.md (CR-01 gap closure): the advisory branch's gate now
+	// defers to format.ts's `isAdvisoryOnly` (via the `advisoryOnly`
+	// derived above) rather than testing `last_status` itself. The old
+	// condition consulted neither `source.reachable` nor this file's own
+	// computed `tone`, so a source that had gone unreachable while still
+	// carrying a stale successful `last_status` and a leftover notice read
+	// as a benign "synced … — advisory" tooltip while its own health dot
+	// was red. `advisory !== ''` is kept alongside `advisoryOnly` only to
+	// preserve today's pre-existing, out-of-scope whitespace-only-notice
+	// behaviour (advisory trims to empty here while healthTone reads a
+	// whitespace notice as non-empty) — that inconsistency is unchanged by
+	// this plan in either direction.
 	let tooltipText = $derived.by(() => {
 		const base = (() => {
 			if (source.syncing) return `${source.display_name} — syncing…`;
 			if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
 			const relative = formatRelativeTime(source.last_sync_unix);
-			if (advisory !== '' && source.last_status !== 'error') {
+			if (advisory !== '' && advisoryOnly) {
 				return `${source.display_name} — synced ${relative} — ${advisory}`;
 			}
 			switch (tone) {
