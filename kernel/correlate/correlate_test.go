@@ -617,3 +617,209 @@ func TestSyncSource_DeallowlistedInstanceRowsCleared(t *testing.T) {
 		t.Fatalf("expected the de-allowlisted instance's rows to be cleared, got: %+v", items)
 	}
 }
+
+// --- 12-09-PLAN.md Task 2: the zero-match notice's boundaries ---
+
+// TestSyncSource_ExplicitMatchBlockThatMatchedNothingRecordsANotice proves
+// the G-12-1/G-12-3 gap closure fires for an explicit ws.Match block that
+// matched zero items across an otherwise-healthy sync, and that the rule
+// is plugin-agnostic: a filesystem-shaped instance (a "path" field, the
+// reported failure's own shape) and a differently-shaped instance (a
+// "labels" field, mirroring the debug session's second dead instance
+// "test-ext") both get the same treatment.
+func TestSyncSource_ExplicitMatchBlockThatMatchedNothingRecordsANotice(t *testing.T) {
+	t.Run("filesystem-shaped: a path field matching a doublestar pattern", func(t *testing.T) {
+		store := newTestStore(t)
+		src := &fakeSource{
+			name: "files", sourceType: "filesystem", vocabulary: []string{"path"},
+			matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+				return &toposv1.MatchResponse{}, nil
+			},
+		}
+		cfg := &config.Config{Webspaces: map[string]config.Webspace{
+			"test": {Match: map[string]config.MatchBlock{
+				"files": {"path": {"/nonexistent/**"}},
+			}},
+		}}
+		engine := &Engine{Store: store, Config: cfg}
+
+		results, rejections := engine.SyncSource(context.Background(), src)
+		if rejections != "" {
+			t.Fatalf("unexpected rejections: %q", rejections)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected exactly 1 result, got %d: %+v", len(results), results)
+		}
+		r := results[0]
+		if r.ItemCount != 0 || r.Err != nil {
+			t.Fatalf("expected ItemCount 0 and no error, got: %+v", r)
+		}
+		if !strings.Contains(r.Notice, "test") || !strings.Contains(r.Notice, "path") || !strings.Contains(r.Notice, "/nonexistent/**") {
+			t.Errorf("expected the notice to name the webspace, field and value, got %q", r.Notice)
+		}
+	})
+
+	t.Run("plugin-agnostic: a labels field matching nothing (mirrors the debug session's test-ext instance)", func(t *testing.T) {
+		store := newTestStore(t)
+		src := &fakeSource{
+			name: "test-ext", sourceType: "example", vocabulary: []string{"labels"},
+			matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+				return &toposv1.MatchResponse{}, nil
+			},
+		}
+		cfg := &config.Config{Webspaces: map[string]config.Webspace{
+			"test": {Match: map[string]config.MatchBlock{
+				"test-ext": {"labels": {"untrust"}},
+			}},
+		}}
+		engine := &Engine{Store: store, Config: cfg}
+
+		results, rejections := engine.SyncSource(context.Background(), src)
+		if rejections != "" {
+			t.Fatalf("unexpected rejections: %q", rejections)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected exactly 1 result, got %d: %+v", len(results), results)
+		}
+		r := results[0]
+		if r.ItemCount != 0 || r.Err != nil {
+			t.Fatalf("expected ItemCount 0 and no error, got: %+v", r)
+		}
+		if !strings.Contains(r.Notice, "test") || !strings.Contains(r.Notice, "labels") || !strings.Contains(r.Notice, "untrust") {
+			t.Errorf("expected the notice to name the webspace, field and value even for a non-filesystem instance, got %q", r.Notice)
+		}
+	})
+}
+
+// TestSyncSource_ExplicitMatchBlockWithItemsRecordsNoNotice proves an
+// explicit match block that DID match something never gets a notice.
+func TestSyncSource_ExplicitMatchBlockWithItemsRecordsNoNotice(t *testing.T) {
+	store := newTestStore(t)
+	src := &fakeSource{
+		name: "files", sourceType: "filesystem", vocabulary: []string{"path"},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "1", Title: "Doc", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "file:///x", TimestampUnix: 100},
+			}}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"test": {Match: map[string]config.MatchBlock{
+			"files": {"path": {"/home/**"}},
+		}},
+	}}
+	engine := &Engine{Store: store, Config: cfg}
+
+	results, _ := engine.SyncSource(context.Background(), src)
+	if len(results) != 1 || results[0].Notice != "" {
+		t.Fatalf("expected no notice when the explicit block matched something, got: %+v", results)
+	}
+}
+
+// TestSyncSource_KeywordsFallbackThatMatchedNothingRecordsNoNotice proves
+// the fallback path — fanned across every source and legitimately
+// matching nothing for most of them — never produces a notice, unlike the
+// explicit-block path.
+func TestSyncSource_KeywordsFallbackThatMatchedNothingRecordsNoNotice(t *testing.T) {
+	store := newTestStore(t)
+	src := &fakeSource{
+		name: "paperless", sourceType: "paperless",
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"ws": {Keywords: []string{"nonexistent-keyword"}},
+	}}
+	engine := &Engine{Store: store, Config: cfg}
+
+	results, _ := engine.SyncSource(context.Background(), src)
+	if len(results) != 1 || results[0].Notice != "" {
+		t.Fatalf("expected no notice for a keywords-fallback zero match, got: %+v", results)
+	}
+}
+
+// TestSyncSource_EveryItemRejectedReportsRejectionsNotAZeroMatchNotice
+// proves PLUG-03 rejections and the zero-match notice never conflate: the
+// plugin DID return something (tested via resp.GetItems(), before
+// validation), so emptiness here is a rejection, never a match-config
+// problem.
+func TestSyncSource_EveryItemRejectedReportsRejectionsNotAZeroMatchNotice(t *testing.T) {
+	store := newTestStore(t)
+	src := &fakeSource{
+		name: "files", sourceType: "filesystem", vocabulary: []string{"path"},
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{Items: []*toposv1.Item{
+				{SourceId: "bad", Title: "Missing link", Fidelity: toposv1.LinkFidelity_LINK_FIDELITY_EXACT, DeepLink: "", TimestampUnix: 100},
+			}}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"test": {Match: map[string]config.MatchBlock{
+			"files": {"path": {"/home/**"}},
+		}},
+	}}
+	engine := &Engine{Store: store, Config: cfg}
+
+	results, rejections := engine.SyncSource(context.Background(), src)
+	if rejections == "" || !strings.Contains(rejections, "bad") {
+		t.Fatalf("expected the rejections string to name the rejected item, got: %q", rejections)
+	}
+	if len(results) != 1 || results[0].ItemCount != 0 {
+		t.Fatalf("expected ItemCount 0, got: %+v", results)
+	}
+	if results[0].Notice != "" {
+		t.Errorf("expected NO notice when the plugin returned an item (even if every item was rejected), got %q", results[0].Notice)
+	}
+}
+
+// TestZeroMatchNotice_GlobShapedValueAlsoStatesTheExactMatchRule proves a
+// glob-metacharacter-bearing value additionally states the exact-match
+// rule in the same sentence, while a plain value gets the report-values
+// clause instead.
+func TestZeroMatchNotice_GlobShapedValueAlsoStatesTheExactMatchRule(t *testing.T) {
+	globCases := []string{"*", "**", "?", "[abc]"}
+	for _, v := range globCases {
+		t.Run(v, func(t *testing.T) {
+			got := zeroMatchNotice("test", map[string][]string{"path": {v}})
+			if !strings.Contains(got, "never as glob patterns") {
+				t.Errorf("expected the glob-metacharacter clause for value %q, got: %q", v, got)
+			}
+		})
+	}
+
+	got := zeroMatchNotice("test", map[string][]string{"path": {"plain-value"}})
+	if strings.Contains(got, "never as glob patterns") {
+		t.Errorf("expected NO glob clause for a plain value, got: %q", got)
+	}
+	if !strings.Contains(got, "compared exactly against the values this source reports") {
+		t.Errorf("expected the report-values clause for a plain value, got: %q", got)
+	}
+}
+
+// TestZeroMatchNotice_RendersEveryFieldSortedWithQuotedValues proves the
+// rendered field order is deterministic (sorted by field name regardless
+// of map iteration order) and every value is quoted, and that repeated
+// calls on identical input are byte-identical.
+func TestZeroMatchNotice_RendersEveryFieldSortedWithQuotedValues(t *testing.T) {
+	fields := map[string][]string{
+		"zebra": {"z-value"},
+		"alpha": {"a-value"},
+	}
+
+	got := zeroMatchNotice("ws", fields)
+
+	alphaIdx := strings.Index(got, "alpha")
+	zebraIdx := strings.Index(got, "zebra")
+	if alphaIdx == -1 || zebraIdx == -1 || alphaIdx > zebraIdx {
+		t.Errorf("expected fields rendered in sorted order (alpha before zebra), got: %q", got)
+	}
+	if !strings.Contains(got, `"a-value"`) || !strings.Contains(got, `"z-value"`) {
+		t.Errorf("expected every value quoted, got: %q", got)
+	}
+
+	again := zeroMatchNotice("ws", fields)
+	if got != again {
+		t.Errorf("expected zeroMatchNotice to be deterministic across repeated calls, got %q then %q", got, again)
+	}
+}

@@ -1231,3 +1231,70 @@ func TestDeleteSyncRuns_ClearsOnlyThatSourcesHistory(t *testing.T) {
 		t.Errorf("expected silverbullet's sync_runs history to survive DeleteSyncRuns(\"paperless\") untouched")
 	}
 }
+
+// TestFinishSyncRunWithNotice_PersistsTheNoticeBesideTheOutcome proves a
+// run finished with both an error message and a notice reads back with
+// both intact and independent through every reader (12-09-PLAN.md,
+// G-12-1/G-12-3), and that a run finished through the plain FinishSyncRun
+// spelling reads back with an empty notice.
+func TestFinishSyncRunWithNotice_PersistsTheNoticeBesideTheOutcome(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	withNoticeID, err := s.StartSyncRun(ctx, "files")
+	if err != nil {
+		t.Fatalf("StartSyncRun(files): %v", err)
+	}
+	if err := s.FinishSyncRunWithNotice(ctx, withNoticeID, "ok", "some rejection", "some notice", 3); err != nil {
+		t.Fatalf("FinishSyncRunWithNotice: %v", err)
+	}
+
+	plainID, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, plainID, "ok", "", 1); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	// LatestSyncRunPerSource
+	perSource, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	filesRun, ok := perSource["files"]
+	if !ok {
+		t.Fatal("expected a recorded run for files")
+	}
+	if filesRun.Error != "some rejection" || filesRun.Notice != "some notice" {
+		t.Errorf("expected error and notice both intact and independent, got: %+v", filesRun)
+	}
+	paperlessRun, ok := perSource["paperless"]
+	if !ok {
+		t.Fatal("expected a recorded run for paperless")
+	}
+	if paperlessRun.Notice != "" {
+		t.Errorf("expected a run finished through the plain FinishSyncRun spelling to read back with an empty notice, got %q", paperlessRun.Notice)
+	}
+
+	// LatestSyncRun
+	latest, ok, err := s.LatestSyncRun(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRun: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected a latest run")
+	}
+	if latest.Source == "files" && latest.Notice != "some notice" {
+		t.Errorf("expected LatestSyncRun to carry the notice when the latest run is the notice-bearing one, got: %+v", latest)
+	}
+
+	// SyncRunsForSourceForTesting
+	history, err := s.SyncRunsForSourceForTesting(ctx, "files")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting: %v", err)
+	}
+	if len(history) != 1 || history[0].Error != "some rejection" || history[0].Notice != "some notice" {
+		t.Errorf("expected the files run's full history to carry both error and notice, got: %+v", history)
+	}
+}

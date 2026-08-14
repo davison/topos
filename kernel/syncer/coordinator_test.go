@@ -409,3 +409,196 @@ func TestRefresh_CancelledContextStillFinalisesSyncRun(t *testing.T) {
 		t.Errorf("expected the interrupted run to be finalised with an outcome and a finished time, got: %+v", run)
 	}
 }
+
+// --- 12-09-PLAN.md Task 2: aggregation and isolation ---
+
+// TestSyncOne_ZeroMatchNoticeLeavesStatusOKAndErrorEmpty proves that,
+// through a real store + engine + coordinator, a zero-matching explicit
+// match block leaves Status exactly "ok" and Error exactly empty while
+// recording a non-empty Notice — both on the returned RunResult and on
+// the persisted sync_runs row.
+func TestSyncOne_ZeroMatchNoticeLeavesStatusOKAndErrorEmpty(t *testing.T) {
+	store := newTestStore(t)
+	src := &fakeSource{
+		name: "files", sourceType: "filesystem",
+		matchFunc: func() (*toposv1.MatchResponse, error) {
+			return &toposv1.MatchResponse{}, nil
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"test": {Match: map[string]config.MatchBlock{
+			"files": {"keywords": {"nonexistent"}},
+		}},
+	}}
+	engine := &correlate.Engine{Store: store, Config: cfg}
+	coord := NewCoordinator(store, engine, []correlate.Source{src})
+
+	result, err := coord.Refresh(context.Background(), "files")
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Errorf("expected Status exactly \"ok\", got %q", result.Status)
+	}
+	if result.Error != "" {
+		t.Errorf("expected Error exactly empty, got %q", result.Error)
+	}
+	if result.Notice == "" {
+		t.Error("expected a non-empty Notice")
+	}
+
+	runs, err := store.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	run, ok := runs["files"]
+	if !ok {
+		t.Fatal("expected a recorded run for files")
+	}
+	if run.Status != "ok" || run.Error != "" || run.Notice == "" {
+		t.Errorf("expected the persisted run's status ok, error empty, notice non-empty, got: %+v", run)
+	}
+}
+
+// boomOnKeywordSource is a fakeSource-shaped test double that fails Match
+// for exactly the webspace whose resolved "keywords" field is "boom" and
+// answers zero items for every other webspace — used by
+// TestSyncOne_NoticeNeverMasksASyncError to give one source two
+// different, deterministic per-webspace outcomes in the same sync cycle
+// (fakeSource's shared matchFunc ignores the fields argument, so it can't
+// vary by webspace on its own).
+type boomOnKeywordSource struct {
+	name       string
+	sourceType string
+}
+
+func (s *boomOnKeywordSource) Name() string              { return s.name }
+func (s *boomOnKeywordSource) SourceType() string        { return s.sourceType }
+func (s *boomOnKeywordSource) MatchVocabulary() []string { return []string{"keywords"} }
+func (s *boomOnKeywordSource) Match(_ context.Context, fields map[string][]string) (*toposv1.MatchResponse, error) {
+	kw := fields["keywords"]
+	if len(kw) > 0 && kw[0] == "boom" {
+		return nil, errors.New("connection refused")
+	}
+	return &toposv1.MatchResponse{}, nil
+}
+
+// TestSyncOne_NoticeNeverMasksASyncError proves a notice and a genuine
+// sync error coexist without either being dropped: a config with two
+// webspaces, one whose Match genuinely errors and one whose explicit
+// match block matches nothing, must report Status "error" with the
+// failure named in Error AND a non-empty Notice — an advisory neither
+// replaces an error nor is swallowed by one.
+func TestSyncOne_NoticeNeverMasksASyncError(t *testing.T) {
+	store := newTestStore(t)
+	src := &boomOnKeywordSource{name: "files", sourceType: "filesystem"}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"broken": {Match: map[string]config.MatchBlock{
+			"files": {"keywords": {"boom"}},
+		}},
+		"empty": {Match: map[string]config.MatchBlock{
+			"files": {"keywords": {"nonexistent"}},
+		}},
+	}}
+	engine := &correlate.Engine{Store: store, Config: cfg}
+	coord := NewCoordinator(store, engine, []correlate.Source{src})
+
+	result, err := coord.Refresh(context.Background(), "files")
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if result.Status != "error" {
+		t.Errorf("expected Status \"error\" (a genuine Match failure), got %q", result.Status)
+	}
+	if !strings.Contains(result.Error, "connection refused") {
+		t.Errorf("expected Error to name the genuine failure, got %q", result.Error)
+	}
+	if result.Notice == "" {
+		t.Error("expected the zero-match webspace's Notice to still be recorded alongside the error")
+	}
+
+	runs, err := store.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	run, ok := runs["files"]
+	if !ok {
+		t.Fatal("expected a recorded run for files")
+	}
+	if run.Status != "error" || !strings.Contains(run.Error, "connection refused") || run.Notice == "" {
+		t.Errorf("expected the persisted run to carry BOTH the error and the notice, got: %+v", run)
+	}
+}
+
+// alwaysZeroMatchSource answers every Match call with zero items and no
+// error, regardless of the fields it receives — used by
+// TestSyncOne_NoticesFromSeveralWebspacesJoinSortedAndBounded to build a
+// fixture with many zero-matching explicit-block webspaces.
+type alwaysZeroMatchSource struct {
+	name       string
+	sourceType string
+}
+
+func (s *alwaysZeroMatchSource) Name() string              { return s.name }
+func (s *alwaysZeroMatchSource) SourceType() string        { return s.sourceType }
+func (s *alwaysZeroMatchSource) MatchVocabulary() []string { return []string{"keywords"} }
+func (s *alwaysZeroMatchSource) Match(context.Context, map[string][]string) (*toposv1.MatchResponse, error) {
+	return &toposv1.MatchResponse{}, nil
+}
+
+// TestSyncOne_NoticesFromSeveralWebspacesJoinSortedAndBounded proves
+// joinNotices' determinism and bound end to end: enough zero-matching
+// webspaces to exceed maxJoinedNotices produces a persisted notice
+// listing the first entries in sorted webspace order, naming the number
+// suppressed, and byte-identical across repeated runs of the same
+// fixture.
+func TestSyncOne_NoticesFromSeveralWebspacesJoinSortedAndBounded(t *testing.T) {
+	buildWebspaces := func() map[string]config.Webspace {
+		out := map[string]config.Webspace{}
+		for _, name := range []string{"ws-g", "ws-f", "ws-e", "ws-d", "ws-c", "ws-b", "ws-a"} {
+			out[name] = config.Webspace{Match: map[string]config.MatchBlock{
+				"files": {"keywords": {"nonexistent-" + name}},
+			}}
+		}
+		return out
+	}
+
+	src := &alwaysZeroMatchSource{name: "files", sourceType: "filesystem"}
+
+	store1 := newTestStore(t)
+	engine1 := &correlate.Engine{Store: store1, Config: &config.Config{Webspaces: buildWebspaces()}}
+	coord1 := NewCoordinator(store1, engine1, []correlate.Source{src})
+	result1, err := coord1.Refresh(context.Background(), "files")
+	if err != nil {
+		t.Fatalf("Refresh (fixture 1): %v", err)
+	}
+
+	store2 := newTestStore(t)
+	engine2 := &correlate.Engine{Store: store2, Config: &config.Config{Webspaces: buildWebspaces()}}
+	coord2 := NewCoordinator(store2, engine2, []correlate.Source{src})
+	result2, err := coord2.Refresh(context.Background(), "files")
+	if err != nil {
+		t.Fatalf("Refresh (fixture 2): %v", err)
+	}
+
+	if result1.Notice != result2.Notice {
+		t.Errorf("expected byte-identical notices across repeated runs of the same fixture, got %q vs %q", result1.Notice, result2.Notice)
+	}
+	if !strings.Contains(result1.Notice, "ws-a") {
+		t.Errorf("expected the first sorted webspace name present, got %q", result1.Notice)
+	}
+	if strings.Contains(result1.Notice, "ws-g") || strings.Contains(result1.Notice, "ws-f") {
+		t.Errorf("expected the 6th/7th sorted webspace names suppressed (bounded at maxJoinedNotices=5), got %q", result1.Notice)
+	}
+	if !strings.Contains(result1.Notice, "2 more") {
+		t.Errorf("expected the suppressed count named, got %q", result1.Notice)
+	}
+
+	runs, err := store1.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if runs["files"].Notice != result1.Notice {
+		t.Errorf("expected the persisted notice to match the returned RunResult's notice, got %q vs %q", runs["files"].Notice, result1.Notice)
+	}
+}
