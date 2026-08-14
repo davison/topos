@@ -93,7 +93,7 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: 7/10 plans executed (4 waves + 3 gap-closure waves)
+**Plans**: 9/10 plans executed (4 waves + 3 gap-closure waves)
 Plans:
 **Wave 1**
 
@@ -124,8 +124,8 @@ Plans:
 
 **Wave 1**
 
-- [ ] 12-08-PLAN.md — "Everything from this instance" made expressible (root base name labels every file at every depth) plus docs/config that state match values are never globs
-- [ ] 12-09-PLAN.md — The zero-match diagnostic: an explicit match block that matched nothing is named on the sync run and published as `last_notice`
+- [x] 12-08-PLAN.md — "Everything from this instance" made expressible (root base name labels every file at every depth) plus docs/config that state match values are never globs
+- [x] 12-09-PLAN.md — The zero-match diagnostic: an explicit match block that matched nothing is named on the sync run and published as `last_notice`
 
 **Wave 2** *(blocked on 12-09)*
 
@@ -169,7 +169,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
-| 12. Filesystem Source | v1.1.0 | 7/10 | Gap Closure | 2026-08-14 |
+| 12. Filesystem Source | v1.1.0 | 9/10 | In Progress|  |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 0/TBD | Not started | - |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
