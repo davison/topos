@@ -11,6 +11,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CreateWebspaceModal from '$lib/components/CreateWebspaceModal.svelte';
+	import StreamError from '$lib/components/StreamError.svelte';
 
 	// 'loading' while the redirect decision is being made (renders the
 	// existing Skeleton treatment, unchanged from the retired page, so a
@@ -28,7 +29,15 @@
 	let configResponse = $state<ConfigResponse | null>(null);
 	let createOpen = $state(false);
 
-	onMount(async () => {
+	// loadConfig is onMount's original body, unchanged in structure and
+	// extracted verbatim so the checkpoint-B2 fix (13-04-PLAN.md Task 4
+	// follow-up) can give the 'error' phase a working Retry action without
+	// duplicating this logic — StreamError's onretry prop calls this exact
+	// same function again. The isolation discipline the comment below
+	// describes is unaffected: onretry re-runs the WHOLE function, so the
+	// fetch is still the only thing inside the catch on every call, retried
+	// or not.
+	async function loadConfig() {
 		// This is the ONLY catch on this route, and it wraps ONLY the
 		// request itself — nothing else goes inside it (07-12-PLAN.md Task
 		// 2). A downstream bug in the processing below (reading the
@@ -64,7 +73,25 @@
 			return;
 		}
 		phase = 'empty';
-	});
+	}
+
+	onMount(loadConfig);
+
+	// Checkpoint-B2 fix (13-04-PLAN.md Task 4 follow-up, UI-SPEC E8): the
+	// installed PWA's manifest start_url is '/' (13-UI-SPEC.md E7), so THIS
+	// route — not /w/[webspace] — is the first thing a user launching the
+	// installed app with the kernel down actually sees. Before this fix its
+	// 'error' phase rendered a bespoke, retry-less paragraph; it now reuses
+	// StreamError.svelte (the same component/copy/Retry button
+	// /w/[webspace]'s own error state already uses), so "kernel not
+	// running" behaves identically everywhere a user can land on it,
+	// matching E8's own "explicit reuse, not new UI" framing. Retrying
+	// re-enters the loading phase and re-runs the exact same request +
+	// redirect-decision path a fresh mount would.
+	function handleRetry() {
+		phase = 'loading';
+		void loadConfig();
+	}
 
 	async function handleCreated(name: string) {
 		createOpen = false;
@@ -87,12 +114,8 @@
 		</div>
 	</main>
 {:else if phase === 'error'}
-	<main class="mx-auto max-w-3xl px-6 py-12">
-		<h1 class="text-[28px] leading-[1.2] font-semibold text-foreground">topos</h1>
-		<p class="mt-6 text-[16px] text-muted-foreground">
-			Couldn't load this webspace — the topos service didn't respond. Check that it's running,
-			then retry.
-		</p>
+	<main class="h-screen">
+		<StreamError onretry={handleRetry} />
 	</main>
 {:else}
 	<!--

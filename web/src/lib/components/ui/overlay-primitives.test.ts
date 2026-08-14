@@ -263,6 +263,13 @@ describe('T-07-SC: web/package.json gained no new dependency for these three pri
 			'tailwindcss',
 			'typescript',
 			'vite',
+			// vite-plugin-pwa, @vite-pwa/sveltekit, @vite-pwa/assets-generator
+			// (13-04-PLAN.md Task 1): the PWA build tooling — not a
+			// regression of this test's own scope, same documented-evolution
+			// pattern as the e2e harness deps and svelte-sonner above.
+			'vite-plugin-pwa',
+			'@vite-pwa/sveltekit',
+			'@vite-pwa/assets-generator',
 			'vitest'
 		].sort();
 

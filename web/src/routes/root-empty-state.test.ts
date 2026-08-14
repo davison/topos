@@ -28,6 +28,18 @@
 // `extractBetween`/balanced-brace scoping so a match elsewhere in the file
 // can never satisfy or trip an assertion by accident, and one
 // consequence-describing message per assertion.
+//
+// 13-04-PLAN.md Task 4 checkpoint-B2 fix (UI-SPEC E8, component-test half):
+// the onMount body was extracted into a standalone `loadConfig` function so
+// StreamError's `onretry` prop can call the exact same request +
+// redirect-decision path a fresh mount would, and the error branch now
+// renders `<StreamError onretry={handleRetry} />` (giving it a working
+// Retry button) instead of a bespoke, retry-less paragraph that duplicated
+// StreamError.svelte's own copy. This guard was updated to scope against
+// `async function loadConfig` instead of the old inline `onMount(async`,
+// and its last describe block now asserts the error branch delegates to
+// StreamError (verifying the copy lives in the ONE place it's supposed to,
+// rather than re-asserting a second, driftable copy of the same string).
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -37,6 +49,8 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const pagePath = join(here, '+page.svelte');
 const rawPage = readFileSync(pagePath, 'utf-8');
+const streamErrorPath = join(here, '..', 'lib', 'components', 'StreamError.svelte');
+const rawStreamError = readFileSync(streamErrorPath, 'utf-8');
 
 // Block comments replaced first (so a line-comment marker inside a block
 // comment can't truncate the block-comment strip), then HTML and line
@@ -52,6 +66,7 @@ function stripComments(source: string): string {
 }
 
 const stripped = stripComments(rawPage);
+const strippedStreamError = stripComments(rawStreamError);
 
 // Extracts the text from `source[openIndex]` (which must be '{') through
 // its matching close brace, tracking only brace depth — correct for the
@@ -75,15 +90,16 @@ describe('root-empty-state guard: found a non-empty comment-stripped source', ()
 	});
 });
 
-const onMountIndex = stripped.indexOf('onMount(async');
+const onMountIndex = stripped.indexOf('async function loadConfig');
 const catchKeywordIndex = stripped.indexOf('catch', onMountIndex);
 const catchBraceOpenIndex = stripped.indexOf('{', catchKeywordIndex);
 
 describe('found the structural markers this guard scopes against', () => {
-	it('onMount, then a single catch, then that catch block’s opening brace', () => {
-		expect(onMountIndex, 'expected to find onMount(async in +page.svelte').toBeGreaterThanOrEqual(
-			0
-		);
+	it('loadConfig, then a single catch, then that catch block’s opening brace', () => {
+		expect(
+			onMountIndex,
+			'expected to find async function loadConfig in +page.svelte'
+		).toBeGreaterThanOrEqual(0);
 		expect(catchKeywordIndex, 'expected to find a catch clause after onMount').toBeGreaterThan(
 			onMountIndex
 		);
@@ -186,15 +202,71 @@ describe('the empty-state branch still renders the CTA the user found missing', 
 	});
 });
 
-describe('the service-unreachable copy still appears verbatim in the error branch', () => {
-	it('carries the exact "service didn’t respond" wording, unchanged', () => {
+describe('loadConfig is actually mounted, and the error branch delegates to StreamError', () => {
+	it('onMount is called with loadConfig', () => {
 		expect(
-			stripped.includes("Couldn't load this webspace"),
-			'expected the error branch’s existing heading copy to be unchanged'
+			stripped.includes('onMount(loadConfig)'),
+			'expected onMount(loadConfig) — a fresh mount must run the exact same request + redirect-decision path Retry re-runs'
+		).toBe(true);
+	});
+
+	it('the error branch renders <StreamError onretry={handleRetry} />, not a bespoke paragraph', () => {
+		const errorBranchIndex = stripped.indexOf("phase === 'error'");
+		const nextBranchIndex = stripped.indexOf('{:else', errorBranchIndex + 1);
+		expect(errorBranchIndex, 'expected to find the error branch in the template').toBeGreaterThanOrEqual(
+			0
+		);
+		expect(nextBranchIndex, 'expected a following branch closing the error branch').toBeGreaterThan(
+			errorBranchIndex
+		);
+		const errorBranch = stripped.slice(errorBranchIndex, nextBranchIndex);
+
+		expect(
+			errorBranch.includes('<StreamError'),
+			'expected the error branch to render <StreamError — 13-04-PLAN.md Task 4 checkpoint-B2: a bespoke copy-only paragraph has no Retry affordance, StreamError already does'
 		).toBe(true);
 		expect(
-			stripped.includes("the topos service didn't respond"),
-			'expected the error branch’s existing body copy to be unchanged — this plan changes which condition reaches this state, never what it says'
+			errorBranch.includes('onretry={handleRetry}'),
+			'expected StreamError to be wired with onretry={handleRetry} — an unwired StreamError renders a Retry button that does nothing'
+		).toBe(true);
+	});
+
+	it('handleRetry resets to loading and calls loadConfig again', () => {
+		const handleRetryIndex = stripped.indexOf('function handleRetry');
+		const braceOpenIndex = stripped.indexOf('{', handleRetryIndex);
+		const handleRetryBody = extractBalancedBraces(stripped, braceOpenIndex);
+
+		expect(
+			handleRetryBody.includes("phase = 'loading'"),
+			'expected handleRetry to reset phase to loading — otherwise a retry attempt has no visible feedback while it is in flight'
+		).toBe(true);
+		expect(
+			handleRetryBody.includes('loadConfig()'),
+			'expected handleRetry to call loadConfig() — the same function a fresh mount runs, so retry and initial load can never drift apart'
+		).toBe(true);
+	});
+});
+
+describe('StreamError.svelte itself still carries the exact copy and a real Retry button', () => {
+	it('carries the exact "service didn’t respond" wording, unchanged', () => {
+		expect(
+			strippedStreamError.includes("Couldn't load this webspace"),
+			'expected StreamError’s existing heading copy to be unchanged'
+		).toBe(true);
+		expect(
+			strippedStreamError.includes("The topos service didn't respond"),
+			'expected StreamError’s existing body copy to be unchanged'
+		).toBe(true);
+	});
+
+	it('renders a Button labelled Retry, wired to the onretry prop', () => {
+		expect(
+			strippedStreamError.includes('onclick={onretry}'),
+			'expected the Retry button to be wired to the onretry prop — copy alone is not an affordance'
+		).toBe(true);
+		expect(
+			/<Button[^>]*>\s*Retry\s*<\/Button>/.test(strippedStreamError),
+			'expected a <Button>Retry</Button> — the exact control the checkpoint report found missing on the root route'
 		).toBe(true);
 	});
 });
