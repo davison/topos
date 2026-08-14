@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
@@ -81,6 +82,13 @@ func TestFileDeepLink_BuildsFileSchemeURIOverRootJoinedWithSourceID(t *testing.T
 
 func TestResolvePath_JoinsRootAndSourceID(t *testing.T) {
 	root := t.TempDir()
+	// Fail-closed resolution (CR-02, 12-06-PLAN.md Task 1) means resolvePath
+	// now reaches filepath.EvalSymlinks, which requires a real fixture file
+	// rather than a merely lexical join — fixture correction, not assertion
+	// loosening.
+	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	got, err := resolvePath(root, "invoice.pdf")
 	if err != nil {
 		t.Fatalf("resolvePath: %v", err)
@@ -95,6 +103,64 @@ func TestResolvePath_RefusesEscapeViaDotDotSegments(t *testing.T) {
 	root := t.TempDir()
 	if _, err := resolvePath(root, "../../etc/passwd"); err == nil {
 		t.Fatal("expected resolvePath to refuse a path escaping the root, got nil error")
+	}
+}
+
+// TestResolvePath_SymlinkSwapOutsideRootIsRefused proves CR-02 is closed:
+// a file indexed as legitimate and then swapped on disk for a symlink
+// pointing outside the configured root is refused by resolvePath even
+// though the source_id string itself contains no ".." segment and the
+// lexical check alone would pass cleanly.
+func TestResolvePath_SymlinkSwapOutsideRootIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("top secret"), 0o644); err != nil {
+		t.Fatalf("write outside fixture: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "notes.md")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	got, err := resolvePath(root, "notes.md")
+	if err == nil {
+		t.Fatal("expected resolvePath to refuse a post-index symlink swap outside the root, got nil error")
+	}
+	if got != "" {
+		t.Errorf("expected an empty path on refusal, got %q", got)
+	}
+}
+
+// TestResolvePath_SymlinkedRootStillResolvesAnInRootFile proves the
+// resolved-root comparison does not turn a legitimate symlinked root (the
+// common dotfile-manager `~/Documents` -> `~/dotfiles/Documents` pattern,
+// WR-01) into a false containment failure.
+func TestResolvePath_SymlinkedRootStillResolvesAnInRootFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir real: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "doc.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write doc.md: %v", err)
+	}
+	linkRoot := filepath.Join(tmp, "linkroot")
+	if err := os.Symlink(real, linkRoot); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	got, err := resolvePath(linkRoot, "doc.md")
+	if err != nil {
+		t.Fatalf("resolvePath: %v", err)
+	}
+	want := filepath.Join(linkRoot, "doc.md")
+	if got != want {
+		t.Fatalf("expected the lexical join under linkroot %q, got %q", want, got)
 	}
 }
 

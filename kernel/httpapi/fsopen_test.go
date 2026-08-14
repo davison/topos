@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -78,6 +80,13 @@ func decodeError(t *testing.T, rec *httptest.ResponseRecorder) errorEnvelope {
 // item's own source_id, and the response is 200 with opened: true.
 func TestFilesystemOpen_HappyPathOpensTheJoinedAbsolutePath(t *testing.T) {
 	root := t.TempDir()
+	// Fail-closed symlink resolution (CR-02, 12-06-PLAN.md Task 1) means the
+	// containment check now reaches filepath.EvalSymlinks, which requires a
+	// real fixture file rather than a merely lexical join — fixture
+	// correction, not assertion loosening.
+	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	cfg := &config.Config{Sources: map[string]config.Source{
 		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: root},
 	}}
@@ -117,8 +126,22 @@ func TestFilesystemOpen_TildeInConfiguredPathIsExpandedBeforeTheJoin(t *testing.
 	if err != nil {
 		t.Skipf("could not resolve current user home dir: %v", err)
 	}
+	// Fail-closed symlink resolution (CR-02, 12-06-PLAN.md Task 1) means the
+	// fixture directory must genuinely exist under the current user's home
+	// rather than being a hardcoded, never-created path — fixture
+	// correction, not assertion loosening. This test also incidentally
+	// proves a home directory behind a symlink no longer breaks containment
+	// (the WR-01 class).
+	fixtureDir, err := os.MkdirTemp(home, "topos-fsopen-fixture-")
+	if err != nil {
+		t.Skipf("could not create fixture dir under home: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(fixtureDir) })
+	if err := os.WriteFile(filepath.Join(fixtureDir, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	cfg := &config.Config{Sources: map[string]config.Source{
-		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: "~/topos-fsopen-fixture"},
+		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: "~/" + filepath.Base(fixtureDir)},
 	}}
 	opener := &recordingOpener{}
 	router, seed := newFsopenTestRouter(t, cfg, opener)
@@ -132,7 +155,7 @@ func TestFilesystemOpen_TildeInConfiguredPathIsExpandedBeforeTheJoin(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	want := filepath.Join(home, "topos-fsopen-fixture", "invoice.pdf")
+	want := filepath.Join(fixtureDir, "invoice.pdf")
 	if opener.calledWith != want {
 		t.Errorf("expected the tilde expanded before the join: expected %q, got %q", want, opener.calledWith)
 	}
@@ -219,6 +242,13 @@ func TestFilesystemOpen_NonFileSchemeDeepLinkAnswersItemNotFound(t *testing.T) {
 // returns an error produces open_failed carrying the opener's own message.
 func TestFilesystemOpen_OpenerErrorAnswersOpenFailed(t *testing.T) {
 	root := t.TempDir()
+	// Fail-closed symlink resolution (CR-02, 12-06-PLAN.md Task 1) means the
+	// containment check now reaches filepath.EvalSymlinks, which requires a
+	// real fixture file rather than a merely lexical join — fixture
+	// correction, not assertion loosening.
+	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
 	cfg := &config.Config{Sources: map[string]config.Source{
 		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: root},
 	}}
@@ -240,6 +270,76 @@ func TestFilesystemOpen_OpenerErrorAnswersOpenFailed(t *testing.T) {
 	}
 	if envelope.Error.Message != opener.err.Error() {
 		t.Errorf("expected the opener's own message %q, got %q", opener.err.Error(), envelope.Error.Message)
+	}
+}
+
+// TestFilesystemOpen_SymlinkSwappedAfterIndexingAnswersInvalidPathAndNeverOpens
+// proves CR-02 is closed at the exec site: a file indexed as legitimate and
+// then swapped on disk for a symlink pointing outside the configured root
+// is refused before opener is ever called.
+func TestFilesystemOpen_SymlinkSwappedAfterIndexingAnswersInvalidPathAndNeverOpens(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.pdf"), []byte("top secret"), 0o644); err != nil {
+		t.Fatalf("write outside fixture: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.pdf"), filepath.Join(root, "invoice.pdf")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: root},
+	}}
+	opener := &recordingOpener{}
+	router, seed := newFsopenTestRouter(t, cfg, opener)
+	seed.put(t, item.Item{
+		ID: "docs-folder:invoice.pdf", Source: "docs-folder", SourceID: "invoice.pdf",
+		Fidelity: item.FidelityExact, DeepLink: "file://" + filepath.Join(root, "invoice.pdf"),
+	})
+
+	rec := doOpen(router, "docs-folder:invoice.pdf")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if envelope := decodeError(t, rec); envelope.Error.Code != "invalid_path" {
+		t.Errorf("expected code invalid_path, got %q", envelope.Error.Code)
+	}
+	if opener.called {
+		t.Error("expected the opener to never be called for a post-index symlink swap outside the root")
+	}
+}
+
+// TestFilesystemOpen_VanishedFileAnswersItemNotFoundAndNeverOpens proves an
+// indexed item whose file was deleted from an otherwise valid root answers
+// 404 item_not_found rather than a false 200 opened: true, and the opener
+// is never called.
+func TestFilesystemOpen_VanishedFileAnswersItemNotFoundAndNeverOpens(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: root},
+	}}
+	opener := &recordingOpener{}
+	router, seed := newFsopenTestRouter(t, cfg, opener)
+	seed.put(t, item.Item{
+		ID: "docs-folder:invoice.pdf", Source: "docs-folder", SourceID: "invoice.pdf",
+		Fidelity: item.FidelityExact, DeepLink: "file://" + filepath.Join(root, "invoice.pdf"),
+	})
+	// No fixture file is written — the item is indexed but its file has
+	// since vanished from an otherwise valid root.
+
+	rec := doOpen(router, "docs-folder:invoice.pdf")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if envelope := decodeError(t, rec); envelope.Error.Code != "item_not_found" {
+		t.Errorf("expected code item_not_found, got %q", envelope.Error.Code)
+	}
+	if opener.called {
+		t.Error("expected the opener to never be called for a vanished file")
 	}
 }
 

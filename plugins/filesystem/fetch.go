@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 
 	"google.golang.org/grpc/codes"
@@ -64,12 +66,24 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 // fetchByKind re-validates sourceID resolves inside the configured root
 // BEFORE any file is opened (defense-in-depth, mirroring
 // kernel/httpapi/fsopen.go's identical guard) — this rejects a source_id
-// escape attempt before classify or any I/O runs. It then re-derives the
-// classification fresh from classify.go and dispatches to the matching
-// per-kind fetch helper.
+// escape attempt, including a post-index symlink swap (CR-02,
+// 12-06-PLAN.md Task 1), before classify or any I/O runs. resolvePath can
+// now fail for two materially different reasons: a vanished file
+// (errors.Is(err, fs.ErrNotExist)) answers the same codes.NotFound message
+// statForFetch already produces for a missing file elsewhere in this file —
+// a deliberate honesty improvement, since a metadata-only-kind item whose
+// file has since vanished now answers NotFound rather than
+// available: false, because the resolution step now runs ahead of the kind
+// dispatch for every kind. Every other resolvePath failure (a genuine
+// containment escape, or an unresolvable symlink chain) keeps the existing
+// codes.InvalidArgument. It then re-derives the classification fresh from
+// classify.go and dispatches to the matching per-kind fetch helper.
 func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, error) {
 	full, err := resolvePath(p.root, sourceID)
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
+		}
 		return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
 	}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -221,6 +222,45 @@ func TestFetch_OversizeFileIsUnavailableWithSizeReasonAndBytesNeverRead(t *testi
 	}
 	if len(resp.GetData()) != 0 {
 		t.Error("expected no bytes to have been read for an oversize file")
+	}
+}
+
+// TestFetch_SymlinkSwappedAfterIndexingIsRefusedBeforeAnyBytesAreServed
+// proves CR-02 is closed at the byte-serving site: a file indexed as
+// legitimate and then swapped on disk for a symlink pointing outside the
+// configured root is refused by Fetch, and none of the outside target's
+// bytes ever appear in the outcome — the gap being closed is a disclosure,
+// so the assertion checks for the absence of the secret bytes, not merely
+// the error code.
+func TestFetch_SymlinkSwappedAfterIndexingIsRefusedBeforeAnyBytesAreServed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	secretBody := []byte("this must never be served")
+	writeFixture(t, outside, "secret.txt", secretBody)
+	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "notes.md")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	p := NewSourcePlugin(root, nil, false)
+
+	resp, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
+		SourceId: "notes.md",
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a post-index symlink swap outside the configured root")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.InvalidArgument {
+		t.Fatalf("expected codes.InvalidArgument, got %v", err)
+	}
+	if resp != nil {
+		t.Fatalf("expected a nil response, got %+v", resp)
+	}
+	if strings.Contains(err.Error(), string(secretBody)) {
+		t.Fatalf("expected the secret body to appear nowhere in the outcome, got error %q", err.Error())
 	}
 }
 
