@@ -9,11 +9,14 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hashicorp/go-hclog"
 
 	"github.com/davison/topos/kernel/config"
+	"github.com/davison/topos/kernel/correlate"
 	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/pluginhost"
 	"github.com/davison/topos/kernel/syncer"
+	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 // fakeProber is a test double satisfying httpapi.HealthProber without
@@ -662,5 +665,130 @@ func TestStreamHandler_SyncStatusErrorWhenOneOfTwoSourcesFailed(t *testing.T) {
 	}
 	if resp.Sync.Status != "error" {
 		t.Errorf("expected stream sync.status 'error' when one of two participating sources failed, got %q", resp.Sync.Status)
+	}
+}
+
+// zeroItemMatchSource is the minimal correlate.Source fake
+// TestSources_ZeroMatchNoticeTravelsFromCorrelateToTheSourcesAPI needs
+// locally: a plugin whose Match answers with no items and no error — "the
+// plugin filtered everything out," exactly what the filesystem plugin did
+// in the reported failure (.planning/debug/filesystem-items-missing-from-stream.md).
+type zeroItemMatchSource struct {
+	name       string
+	sourceType string
+	vocabulary []string
+}
+
+func (z *zeroItemMatchSource) Name() string              { return z.name }
+func (z *zeroItemMatchSource) SourceType() string        { return z.sourceType }
+func (z *zeroItemMatchSource) MatchVocabulary() []string { return z.vocabulary }
+func (z *zeroItemMatchSource) Match(context.Context, map[string][]string) (*toposv1.MatchResponse, error) {
+	return &toposv1.MatchResponse{}, nil
+}
+
+// TestSources_ZeroMatchNoticeTravelsFromCorrelateToTheSourcesAPI is the
+// end-to-end proof for the SECOND `missing:` item of G-12-1/G-12-3
+// (12-09-PLAN.md): a webspace's explicit match block that matched zero
+// items across a healthy sync is named, by webspace and offending value,
+// all the way to GET /api/sources's last_notice — while last_status stays
+// "ok" and last_error stays empty, so the advisory is never mistaken for
+// a failure. Wires a real index.Store, a real correlate.Engine, and a
+// real syncer.Coordinator behind Router (modelled on agent_test.go's
+// newAgentTestRouter and coordinator_test.go's real-stack tests), with no
+// fake between them except the source plugin itself.
+func TestSources_ZeroMatchNoticeTravelsFromCorrelateToTheSourcesAPI(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+
+	cfg := &config.Config{
+		Sources: map[string]config.Source{
+			"files": {Plugin: "topos-plugin-filesystem"},
+		},
+		Webspaces: map[string]config.Webspace{
+			"test": {
+				Match: map[string]config.MatchBlock{
+					"files": {"path": {"/nonexistent/**"}},
+				},
+			},
+		},
+	}
+
+	src := &zeroItemMatchSource{name: "files", sourceType: "filesystem", vocabulary: []string{"path"}}
+	engine := &correlate.Engine{Store: store, Config: cfg}
+	coord := syncer.NewCoordinator(store, engine, []correlate.Source{src})
+
+	prober := &fakeProber{healths: []pluginhost.SourceHealth{
+		{Name: "files", SourceType: "filesystem", DisplayName: "Files", Reachable: true, Tier: pluginhost.TierTrusted},
+	}}
+
+	router, _ := Router(store, config.NewStoreForTesting(cfg), &fakeFetcher{}, prober, coord, &fakeApplier{}, &fakeSuspender{}, &fakePluginIconProvider{}, pluginhost.Dirs{Trusted: "testdata-unused-plugins-dir"}, hclog.NewNullLogger())
+
+	refreshReq := httptest.NewRequest(http.MethodPost, "/api/sources/files/refresh", nil)
+	refreshRec := httptest.NewRecorder()
+	router.ServeHTTP(refreshRec, refreshReq)
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("POST /api/sources/files/refresh: expected 200, got %d: %s", refreshRec.Code, refreshRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/sources: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Decode from the raw JSON body (map[string]any), not only the Go
+	// struct, so the wire tag "last_notice" itself is proven — not merely
+	// that the Go field exists.
+	var raw map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	if schemaVersion, _ := raw["schema_version"].(float64); schemaVersion != 1 {
+		t.Errorf("expected schema_version 1 (last_notice is additive), got %v", raw["schema_version"])
+	}
+	sources, _ := raw["sources"].([]any)
+	var entry map[string]any
+	for _, s := range sources {
+		m, _ := s.(map[string]any)
+		if m["name"] == "files" {
+			entry = m
+			break
+		}
+	}
+	if entry == nil {
+		t.Fatalf("expected a 'files' entry in raw sources, got: %+v", raw["sources"])
+	}
+	if entry["last_status"] != "ok" {
+		t.Errorf("expected last_status exactly \"ok\", got %v", entry["last_status"])
+	}
+	if entry["last_error"] != "" {
+		t.Errorf("expected last_error exactly empty, got %v", entry["last_error"])
+	}
+	rawNotice, _ := entry["last_notice"].(string)
+	if rawNotice == "" {
+		t.Fatal("expected a non-empty last_notice")
+	}
+	if !strings.Contains(rawNotice, "test") || !strings.Contains(rawNotice, "path") || !strings.Contains(rawNotice, "/nonexistent/**") {
+		t.Errorf("expected last_notice to name the webspace, field and value, got %q", rawNotice)
+	}
+
+	// Also assert through the typed struct, proving both the wire tag and
+	// the Go field agree.
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal typed: %v", err)
+	}
+	var typedEntry *sourceStatus
+	for i := range resp.Sources {
+		if resp.Sources[i].Name == "files" {
+			typedEntry = &resp.Sources[i]
+			break
+		}
+	}
+	if typedEntry == nil {
+		t.Fatal("expected a 'files' entry in the typed response")
+	}
+	if typedEntry.LastStatus != "ok" || typedEntry.LastError != "" || typedEntry.LastNotice == "" {
+		t.Errorf("expected LastStatus ok, LastError empty, LastNotice non-empty, got: %+v", typedEntry)
 	}
 }

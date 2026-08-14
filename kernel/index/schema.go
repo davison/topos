@@ -6,9 +6,9 @@ package index
 // writing a data migration (D-07) — every row here is re-derivable from a
 // fresh sync, so there is nothing worth migrating. Bump this whenever a
 // schema change (like this phase's items.source / sync_runs.source
-// addition) makes previously-indexed rows structurally incompatible with
-// the new shape.
-const schemaVersion = 2
+// addition, or 12-09-PLAN.md's sync_runs.notice column below) makes
+// previously-indexed rows structurally incompatible with the new shape.
+const schemaVersion = 3
 
 // schema is applied on every Open. Statements are idempotent (CREATE TABLE
 // IF NOT EXISTS / CREATE INDEX IF NOT EXISTS) so opening an existing index
@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS sync_runs (
   finished_unix INTEGER,
   status        TEXT NOT NULL,          -- "running" | "ok" | "error"
   error         TEXT NOT NULL DEFAULT '',
-  item_count    INTEGER NOT NULL DEFAULT 0
+  item_count    INTEGER NOT NULL DEFAULT 0,
+  notice        TEXT NOT NULL DEFAULT ''  -- non-fatal advisory recorded alongside an otherwise-successful run (12-09-PLAN.md, G-12-1/G-12-3) — distinct from the error column, never written by a genuine sync failure
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_chrono

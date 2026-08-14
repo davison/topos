@@ -393,7 +393,7 @@ func TestMatchFieldsFor_ExplicitBlockReplacesFallback(t *testing.T) {
 		},
 	}
 
-	fields, participates := matchFieldsFor(ws, src)
+	fields, participates, _ := matchFieldsFor(ws, src)
 	if !participates {
 		t.Fatal("expected instance with an explicit block to participate")
 	}
@@ -412,7 +412,7 @@ func TestMatchFieldsFor_FallbackFansAcrossTwoFieldVocabulary(t *testing.T) {
 	src := &fakeSource{name: "wiki", vocabulary: []string{"tags", "pages"}}
 	ws := config.Webspace{Keywords: []string{"house"}}
 
-	fields, participates := matchFieldsFor(ws, src)
+	fields, participates, _ := matchFieldsFor(ws, src)
 	if !participates {
 		t.Fatal("expected instance relying on the fallback to participate")
 	}
@@ -435,7 +435,7 @@ func TestMatchFieldsFor_DeallowlistedInstanceDoesNotParticipate(t *testing.T) {
 	src := &fakeSource{name: "personal-signal", vocabulary: []string{"conversations"}}
 	ws := config.Webspace{Keywords: []string{"house"}, Sources: []string{"work-email"}}
 
-	fields, participates := matchFieldsFor(ws, src)
+	fields, participates, _ := matchFieldsFor(ws, src)
 	if participates {
 		t.Fatalf("expected de-allowlisted instance to not participate, got fields %+v", fields)
 	}
@@ -457,7 +457,7 @@ func TestMatchFieldsFor_NoBlockAndNoKeywordsDoesNotParticipate(t *testing.T) {
 	src := &fakeSource{name: "home-email", vocabulary: []string{"folders"}}
 	ws := config.Webspace{}
 
-	fields, participates := matchFieldsFor(ws, src)
+	fields, participates, _ := matchFieldsFor(ws, src)
 	if participates {
 		t.Fatalf("expected an instance with no block and no keywords fallback to not participate, got fields %+v", fields)
 	}
@@ -543,7 +543,7 @@ func TestParticipatesIn_ResolutionShapes(t *testing.T) {
 			// against a source whose vocabulary is non-empty — the two
 			// definitions can never diverge without this failing.
 			src := &fakeSource{name: tc.instance, vocabulary: []string{"folders"}}
-			_, participates := matchFieldsFor(tc.ws, src)
+			_, participates, _ := matchFieldsFor(tc.ws, src)
 			if participates != tc.want {
 				t.Errorf("matchFieldsFor(%+v, %q) participates = %v, want %v (must agree with ParticipatesIn)", tc.ws, tc.instance, participates, tc.want)
 			}

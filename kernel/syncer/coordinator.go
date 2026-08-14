@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -41,11 +42,16 @@ const finishRunTimeout = 5 * time.Second
 // RunResult is the caller-facing outcome of one Refresh call — a summary
 // of a sync run that may have coalesced into an already in-flight one.
 type RunResult struct {
-	Source       string // instance id (config name, correlate.Source.Name()) — the identity key (D-08)
-	SourceType   string // Describe-learned plugin kind — descriptive only, published alongside Source
-	Status       string // "ok" | "error"
-	ItemCount    int
-	Error        string
+	Source     string // instance id (config name, correlate.Source.Name()) — the identity key (D-08)
+	SourceType string // Describe-learned plugin kind — descriptive only, published alongside Source
+	Status     string // "ok" | "error"
+	ItemCount  int
+	Error      string
+	// Notice is this run's aggregated, non-fatal advisory (12-09-PLAN.md,
+	// G-12-1/G-12-3) — see joinNotices. Never changes Status and is never
+	// folded into Error: a notice and a genuine error can coexist without
+	// either masking the other.
+	Notice       string
 	Coalesced    bool // true when this call joined an already-in-flight run rather than starting a fresh one
 	StartedUnix  int64
 	FinishedUnix int64
@@ -159,6 +165,8 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 		totalItems += r.ItemCount
 	}
 
+	notice := joinNotices(results)
+
 	status := "ok"
 	errMsg := ""
 	switch {
@@ -171,6 +179,12 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 		// the correlation boundary — recorded, not silently dropped.
 		errMsg = rejections
 	}
+	// notice is deliberately NEVER folded into status or errMsg above —
+	// unlike the adjacent rejections branch, which DOES write to errMsg,
+	// a zero-match advisory occupies its own column/field
+	// (FinishSyncRunWithNotice, RunResult.Notice) so it can never be
+	// mistaken for, or mask, a genuine sync error (T-12-41,
+	// 12-09-PLAN.md).
 
 	finished := time.Now().Unix()
 
@@ -191,7 +205,7 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 	finishCtx, cancelFinish := context.WithTimeout(context.WithoutCancel(ctx), finishRunTimeout)
 	defer cancelFinish()
 
-	if err := c.store.FinishSyncRun(finishCtx, runID, status, errMsg, totalItems); err != nil {
+	if err := c.store.FinishSyncRunWithNotice(finishCtx, runID, status, errMsg, notice, totalItems); err != nil {
 		// A failure to record the finished run is worse than a normal
 		// sync error — surface it in preference to the sync's own outcome.
 		return RunResult{Source: src.Name(), SourceType: sourceType, Status: "error", Error: fmt.Sprintf("finish sync run: %v", err), StartedUnix: started, FinishedUnix: finished}
@@ -203,7 +217,42 @@ func (c *Coordinator) syncOne(ctx context.Context, src correlate.Source) RunResu
 		Status:       status,
 		ItemCount:    totalItems,
 		Error:        errMsg,
+		Notice:       notice,
 		StartedUnix:  started,
 		FinishedUnix: finished,
 	}
+}
+
+// maxJoinedNotices bounds joinNotices' output regardless of how many
+// webspaces one source participates in (T-12-40, 12-09-PLAN.md): a
+// source fanned across many zero-matching explicit-block webspaces must
+// never grow sync_runs.notice, or a chip tooltip, without bound.
+const maxJoinedNotices = 5
+
+// joinNotices deterministically aggregates every non-empty
+// correlate.WebspaceResult.Notice from one syncOne call into a single
+// bounded string (12-09-PLAN.md, G-12-1/G-12-3). results arrive in the
+// order correlate.Engine.SyncSource iterates e.Config.Webspaces, a Go
+// map — an unsorted join would therefore produce a different string on
+// every run and a perpetually-changing tooltip, so this sorts before
+// joining. At most maxJoinedNotices entries are joined with "; "; any
+// remainder is counted rather than silently dropped.
+func joinNotices(results []correlate.WebspaceResult) string {
+	var notices []string
+	for _, r := range results {
+		if r.Notice != "" {
+			notices = append(notices, r.Notice)
+		}
+	}
+	if len(notices) == 0 {
+		return ""
+	}
+	sort.Strings(notices)
+
+	if len(notices) <= maxJoinedNotices {
+		return strings.Join(notices, "; ")
+	}
+	shown := notices[:maxJoinedNotices]
+	suppressed := len(notices) - maxJoinedNotices
+	return fmt.Sprintf("%s; and %d more", strings.Join(shown, "; "), suppressed)
 }

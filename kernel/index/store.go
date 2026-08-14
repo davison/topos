@@ -678,17 +678,24 @@ type SyncRun struct {
 	Status       string // "ok" | "error"
 	Error        string
 	ItemCount    int
+	// Notice is a non-fatal, human-readable advisory recorded alongside
+	// this run's own outcome (12-09-PLAN.md, G-12-1/G-12-3) — see
+	// kernel/correlate.WebspaceResult.Notice and
+	// kernel/syncer.joinNotices for where it comes from. Empty for any
+	// run finished through the plain FinishSyncRun spelling. Never an
+	// error, and never touched by a genuine sync failure.
+	Notice string
 }
 
 // LatestSyncRun returns the most recently recorded sync run across all
 // sources, or ok=false if none has been recorded yet.
 func (s *Store) LatestSyncRun(ctx context.Context) (run SyncRun, ok bool, err error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT source, started_unix, finished_unix, status, error, item_count
+SELECT source, started_unix, finished_unix, status, error, item_count, notice
 FROM sync_runs ORDER BY id DESC LIMIT 1
 `)
 	var finished sql.NullInt64
-	if scanErr := row.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount); scanErr != nil {
+	if scanErr := row.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount, &run.Notice); scanErr != nil {
 		if scanErr == sql.ErrNoRows {
 			return SyncRun{}, false, nil
 		}
@@ -723,10 +730,28 @@ INSERT INTO sync_runs (source, started_unix, status) VALUES (?, unixepoch(), 'ru
 // FinishSyncRun updates the sync_runs row started by StartSyncRun (runID)
 // with its outcome — it never inserts a new row, so a source's sync
 // leaves exactly one row per attempt, running-then-finished, never two.
+//
+// This spelling delegates to FinishSyncRunWithNotice with an empty
+// notice, keeping its own signature and behaviour byte-identical for its
+// roughly twenty-five existing callers — mirroring the sibling-method
+// shape kernel/pluginhost/matchconfig.go's ValidateMatchConfig /
+// ValidateMatchConfigWithSuspended already establish in this repo:
+// FinishSyncRun is for a caller with no notice to report (which is every
+// caller except one); FinishSyncRunWithNotice is for
+// kernel/syncer.Coordinator, the only caller that ever has one.
 func (s *Store) FinishSyncRun(ctx context.Context, runID int64, status, errMsg string, itemCount int) error {
+	return s.FinishSyncRunWithNotice(ctx, runID, status, errMsg, "", itemCount)
+}
+
+// FinishSyncRunWithNotice is FinishSyncRun's sibling (12-09-PLAN.md,
+// G-12-1/G-12-3): it additionally records a non-fatal advisory in the
+// SAME single UPDATE as status, error and item_count, so a run's outcome
+// and its advisory can never be half-recorded by a write interrupted
+// between the two.
+func (s *Store) FinishSyncRunWithNotice(ctx context.Context, runID int64, status, errMsg, notice string, itemCount int) error {
 	_, err := s.db.ExecContext(ctx, `
-UPDATE sync_runs SET finished_unix = unixepoch(), status = ?, error = ?, item_count = ? WHERE id = ?
-`, status, errMsg, itemCount, runID)
+UPDATE sync_runs SET finished_unix = unixepoch(), status = ?, error = ?, item_count = ?, notice = ? WHERE id = ?
+`, status, errMsg, itemCount, notice, runID)
 	if err != nil {
 		return fmt.Errorf("index: finish sync run %d: %w", runID, err)
 	}
@@ -772,7 +797,7 @@ WHERE status = 'running' AND finished_unix IS NULL
 // FinishedUnix 0, exactly as LatestSyncRun already does.
 func (s *Store) LatestSyncRunPerSource(ctx context.Context) (map[string]SyncRun, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT source, started_unix, finished_unix, status, error, item_count
+SELECT source, started_unix, finished_unix, status, error, item_count, notice
 FROM sync_runs
 WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source)
 `)
@@ -785,7 +810,7 @@ WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source)
 	for rows.Next() {
 		var run SyncRun
 		var finished sql.NullInt64
-		if err := rows.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount); err != nil {
+		if err := rows.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount, &run.Notice); err != nil {
 			return nil, fmt.Errorf("index: scan latest sync run per source row: %w", err)
 		}
 		run.FinishedUnix = finished.Int64
@@ -826,7 +851,7 @@ WHERE id IN (SELECT MAX(id) FROM sync_runs GROUP BY source)
 // same instance before Apply returns.
 func (s *Store) SyncRunsForSourceForTesting(ctx context.Context, source string) ([]SyncRun, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT source, started_unix, finished_unix, status, error, item_count
+SELECT source, started_unix, finished_unix, status, error, item_count, notice
 FROM sync_runs
 WHERE source = ?
 ORDER BY id
@@ -840,7 +865,7 @@ ORDER BY id
 	for rows.Next() {
 		var run SyncRun
 		var finished sql.NullInt64
-		if err := rows.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount); err != nil {
+		if err := rows.Scan(&run.Source, &run.StartedUnix, &finished, &run.Status, &run.Error, &run.ItemCount, &run.Notice); err != nil {
 			return nil, fmt.Errorf("index: scan sync run row for source %s: %w", source, err)
 		}
 		run.FinishedUnix = finished.Int64
