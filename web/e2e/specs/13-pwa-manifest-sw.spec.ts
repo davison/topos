@@ -75,6 +75,46 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 		expect(new URL(scope).pathname).toBe('/');
 	});
 
+	test('a window focus event triggers a ServiceWorker update check (checkpoint defect 1)', async ({
+		page,
+		kernel
+	}) => {
+		// Patches ServiceWorkerRegistration.prototype.update BEFORE any
+		// navigation/registration happens, so the count below reflects
+		// every call scheduleUpdateChecks (web/src/lib/pwa-update.ts)
+		// makes, including the eventual periodic one it schedules. This
+		// proves the checkpoint-B defect 1 fix wires a REAL update check
+		// to a REAL window event, in a REAL browser — the unit tests in
+		// pwa-update.test.ts already prove the wiring logic itself
+		// against fakes; this proves the fakes match reality.
+		await page.addInitScript(() => {
+			(window as unknown as { __updateCalls: number }).__updateCalls = 0;
+			const originalUpdate = ServiceWorkerRegistration.prototype.update;
+			ServiceWorkerRegistration.prototype.update = function (
+				this: ServiceWorkerRegistration,
+				...args: []
+			) {
+				(window as unknown as { __updateCalls: number }).__updateCalls++;
+				return originalUpdate.apply(this, args);
+			};
+		});
+
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+		await page.evaluate(async () => {
+			await navigator.serviceWorker.ready;
+		});
+
+		const before = await page.evaluate(
+			() => (window as unknown as { __updateCalls: number }).__updateCalls
+		);
+
+		await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+		await expect
+			.poll(async () => page.evaluate(() => (window as unknown as { __updateCalls: number }).__updateCalls))
+			.toBeGreaterThan(before);
+	});
+
 	test('after a page load and a stream fetch, no Cache Storage entry has a /api/ request URL', async ({
 		page,
 		kernel
@@ -110,5 +150,45 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 			cachedApiUrls,
 			`expected zero Cache Storage entries under /api/, found: ${JSON.stringify(cachedApiUrls)}`
 		).toEqual([]);
+	});
+
+	test('a toast renders with visible contrast against the page background (checkpoint defect 2)', async ({
+		page,
+		kernel
+	}) => {
+		await waitForFirstSync(kernel.baseURL, ['mock'], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+
+		// Fires the shared markSuccessToast helper — the same untyped
+		// toast() call and --normal-* styling pwaUpdatedToast() uses, so
+		// this exercises the exact surface the checkpoint's "close to
+		// invisible" report was about without needing a real kernel
+		// upgrade to trigger the PWA-specific toast.
+		const rows = page.locator('[data-item-id]');
+		await expect(rows.first()).toBeVisible();
+		await rows.first().click();
+		await page.getByRole('button', { name: 'Exclude from webspace' }).click();
+
+		const toast = page.locator('[data-sonner-toast]').first();
+		await expect(toast).toBeVisible();
+
+		const styles = await toast.evaluate((el) => {
+			const cs = getComputedStyle(el);
+			return { background: cs.backgroundColor, borderColor: cs.borderColor, boxShadow: cs.boxShadow };
+		});
+		const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+		expect(
+			styles.background,
+			'expected the toast background to differ from the page background — otherwise it visually disappears'
+		).not.toBe(bodyBg);
+		expect(
+			styles.borderColor,
+			'expected a distinct border color from the toast fill — a border indistinguishable from its own background gives no visible edge'
+		).not.toBe(styles.background);
+		expect(
+			styles.boxShadow,
+			'expected a real box-shadow, not the "none" a fully-transparent/absent shadow would report'
+		).not.toBe('none');
 	});
 });

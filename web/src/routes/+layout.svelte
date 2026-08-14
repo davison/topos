@@ -4,6 +4,7 @@
 	import { browser } from '$app/environment';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import { pwaUpdatedToast } from '$lib/toast';
+	import { scheduleUpdateChecks } from '$lib/pwa-update';
 
 	let { children } = $props();
 
@@ -59,6 +60,33 @@
 					onNeedReload() {
 						sessionStorage.setItem(PWA_UPDATED_FLAG, '1');
 						window.location.reload();
+					},
+					// Checkpoint fix (13-04-PLAN.md Task 4, defect 1): without
+					// this, a standalone installed window that never navigates
+					// never triggers the browser's own SW update check, so
+					// onNeedReload above never had anything to react to —
+					// registration.update() (a plain SW-script refetch/compare,
+					// never an /api call) is what actually asks the question;
+					// this only widens WHEN it gets asked.
+					onRegisteredSW(_swScriptUrl, registration) {
+						if (!registration) return;
+						try {
+							scheduleUpdateChecks(registration, {
+								windowTarget: window,
+								documentTarget: document,
+								// Bound to window: a bare `{ setInterval, clearInterval }`
+								// detaches these from their required `this` (native
+								// timer methods throw "Illegal invocation" when called
+								// with any other receiver) — verified via a real
+								// browser this session, not assumed.
+								timers: {
+									setInterval: window.setInterval.bind(window),
+									clearInterval: window.clearInterval.bind(window)
+								}
+							});
+						} catch (err) {
+							console.error('failed to schedule PWA update checks', err);
+						}
 					}
 				});
 			})
