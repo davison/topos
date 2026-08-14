@@ -93,7 +93,7 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: 6/6 plans executed (4 waves + 1 gap-closure wave)
+**Plans**: 6/7 plans executed (4 waves + 2 gap-closure waves)
 Plans:
 **Wave 1**
 
@@ -115,6 +115,10 @@ Plans:
 **Gap closure** *(from 12-VERIFICATION.md — G-12-1 / criterion 3, G-12-2 / source-root containment; SRC-04)*
 
 - [x] 12-06-PLAN.md — Symlink-resolving containment at the Fetch and Open sites, an xdg-open child that outlives the request, and the resolved-root walk fix
+
+**Gap closure 2** *(from the 2026-08-14 re-verification — G-12-3: Fetch ignored the include_glob scope that admitted the item; SRC-04)*
+
+- [ ] 12-07-PLAN.md — Fetch classifies through the instance's own scope (honest metadata-only preview, no false 404), resolved-path reads/exec, the missing source_system provenance key
 
 ### Phase 13: Per-Item Curation & Installable App
 
