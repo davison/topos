@@ -128,6 +128,22 @@ export type HealthTone = 'success' | 'warning' | 'destructive' | 'unknown';
  * `warning` for exactly this reason: in this system amber already means
  * "synced, but attend to this," which is precisely the advisory's
  * meaning, so no new design token is warranted.
+ *
+ * 13-06-PLAN.md (D-12/D-13/D-14, PLUG-07) adds two more inputs to this
+ * SAME chain, never a parallel gate:
+ *  - `launch_failure === 'manifest_unverified'` is checked immediately
+ *    beside the existing pin-mismatch check, for the identical reason: a
+ *    trusted-directory binary refused at launch by the build-provenance
+ *    manifest never got a chance to sync either, and must not fall into
+ *    the neutral 'unknown' branch below.
+ *  - `launch_advisory === 'shadowed'` occupies the SAME position the
+ *    `last_notice` branch above does — last among the problem states,
+ *    immediately before the success return — for the identical reason: a
+ *    same-named trusted-directory binary shadowing a pinned external
+ *    plugin is an ambiguity advisory, not a failure, and must never
+ *    displace a real problem (pin mismatch, manifest-unverified,
+ *    never-synced, unreachable, errored). Reuses the existing `warning`
+ *    tone, same rationale as the advisory branch above.
  */
 export function healthTone(source: SourceStatus): HealthTone {
 	// Phase 11 (11-UI-SPEC.md E4, D-03): a source refused launch on a pin
@@ -138,10 +154,21 @@ export function healthTone(source: SourceStatus): HealthTone {
 	// below. Extends the existing branch chain; never a parallel tone
 	// system.
 	if (source.launch_failure === 'pin_mismatch') return 'destructive';
+	// 13-06-PLAN.md (D-12/D-13): identical reasoning to the pin-mismatch
+	// check immediately above — a trusted-directory binary that failed
+	// build-manifest verification never launched, and never sees a chance
+	// to sync.
+	if (source.launch_failure === 'manifest_unverified') return 'destructive';
 	if (source.last_status === '') return 'unknown';
 	if (!source.reachable) return 'destructive';
 	if (source.last_status === 'error') return 'warning';
 	if ((source.last_notice ?? '') !== '') return 'warning';
+	// 13-06-PLAN.md (D-14): same position as the last_notice branch above
+	// — last among the problem states, immediately before success — so a
+	// real problem (pin mismatch, manifest-unverified, never-synced,
+	// unreachable, errored, or a last_notice advisory) always outranks
+	// this one.
+	if (source.launch_advisory === 'shadowed') return 'warning';
 	return 'success';
 }
 
@@ -166,10 +193,20 @@ export function healthTone(source: SourceStatus): HealthTone {
  * satisfy `healthTone(source) === 'success'`. Gating a consumer on the
  * chip's own already-computed `tone` value being `'success'` would
  * therefore make an advisory-gated branch unreachable dead code.
+ *
+ * 13-06-PLAN.md (D-14) widens this to a SECOND input, `launch_advisory`:
+ * the early return now answers `false` only when BOTH `last_notice` and
+ * `launch_advisory` are empty, and BOTH are cleared together when
+ * re-asking `healthTone` — clearing only one would leave the other's
+ * branch permanently reachable-but-never-`success`, the identical
+ * dead-code trap this function's own doc comment already warns about, now
+ * applied to the second advisory source.
  */
 export function isAdvisoryOnly(source: SourceStatus): boolean {
-	if ((source.last_notice ?? '') === '') return false;
-	return healthTone({ ...source, last_notice: '' }) === 'success';
+	const hasNotice = (source.last_notice ?? '') !== '';
+	const hasShadowed = source.launch_advisory === 'shadowed';
+	if (!hasNotice && !hasShadowed) return false;
+	return healthTone({ ...source, last_notice: '', launch_advisory: '' }) === 'success';
 }
 
 /**

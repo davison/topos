@@ -300,7 +300,27 @@ export interface SourceStatus {
 	// and the chip menu's re-pin action.
 	pinned_hash?: string;
 	current_hash?: string;
-	launch_failure?: '' | 'pin_mismatch';
+	// launch_failure's closed vocabulary widened (13-06-PLAN.md, D-12/D-13):
+	// 'manifest_unverified' names a trusted-directory binary absent from, or
+	// hashed differently than, the kernel's link-time build manifest — it
+	// never launched at all, exactly like 'pin_mismatch', and carries the
+	// identical "client MUST branch on the field, never parse last_error's
+	// text" discipline. There is deliberately no remedial action for this
+	// value beyond the existing external-tier consent-and-pin flow — unlike
+	// 'pin_mismatch', it never drives the chip menu's re-pin action.
+	launch_failure?: '' | 'pin_mismatch' | 'manifest_unverified';
+	// launch_advisory (13-06-PLAN.md, D-14) is a CLOSED-VOCABULARY field,
+	// distinct from launch_failure: it is populated ONLY on an instance
+	// that DID launch (never alongside a populated launch_failure on the
+	// same entry, and never on a launch_failure entry at all) — the
+	// published contract's "never launched at all" meaning for
+	// launch_failure is unchanged. 'shadowed' means this trusted-tier
+	// instance's binary name also exists as a regular file in the
+	// external directory; the trusted copy won the launch, but the
+	// plugin an operator separately consented to pin is not the one
+	// actually running. A client MUST branch on this field alone, never
+	// on parsing any free text.
+	launch_advisory?: '' | 'shadowed';
 	reachable: boolean;
 	syncing: boolean;
 	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown

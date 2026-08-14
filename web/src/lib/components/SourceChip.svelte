@@ -121,6 +121,17 @@
 	let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch');
 	let isExternal = $derived(source.tier === 'external');
 
+	// isManifestUnverified/isShadowed (13-06-PLAN.md, D-12/D-13/D-14) mirror
+	// isPinMismatch's shape exactly — keyed on the kernel-published
+	// launch_failure/launch_advisory fields alone, never on a last_error
+	// string match, same T-11-32 discipline. isManifestUnverified never
+	// gates the chip menu's re-pin action (that stays isPinMismatch-only,
+	// D-13's "verification never demotes-and-runs" rule) and gains no new
+	// menu item, dialog, or interstitial — the tooltip below is the entire
+	// new surface.
+	let isManifestUnverified = $derived(source.launch_failure === 'manifest_unverified');
+	let isShadowed = $derived(source.launch_advisory === 'shadowed');
+
 	// advisory (12-10-PLAN.md, G-12-1/G-12-3): the trimmed kernel-published
 	// last_notice — today, a webspace's explicit match block that matched
 	// none of this source's items. Keyed on the kernel-published field
@@ -222,13 +233,35 @@
 	// behaviour (advisory trims to empty here while healthTone reads a
 	// whitespace notice as non-empty) — that inconsistency is unchanged by
 	// this plan in either direction.
+	//
+	// 13-06-PLAN.md (D-12/D-13/D-14) adds two more branches to this exact
+	// chain:
+	//  - `isManifestUnverified` sits in the PROBLEM group, immediately
+	//    beside `isPinMismatch` — a trusted-directory binary refused at
+	//    launch by the build manifest is exactly the same class of fact
+	//    (never launched at all), so it gets its own contract-exact
+	//    sentence at the same precedence position.
+	//  - `isShadowed` sits in the ADVISORY group, gated on `advisoryOnly`
+	//    exactly like the `last_notice` branch immediately above it —
+	//    checked AFTER the notice branch so a source carrying both reads
+	//    the notice's sentence (today's only specified coexistence order;
+	//    the two advisories are not specified to combine). Neither new
+	//    branch changes the trailing external-tier append below: a
+	//    manifest-unverified or shadowed source is always `tier: "trusted"`
+	//    (the manifest gate and the shadow rule are both trusted-tier-only
+	//    facts), so that append's condition never fires for either.
 	let tooltipText = $derived.by(() => {
 		const base = (() => {
 			if (source.syncing) return `${source.display_name} — syncing…`;
 			if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
+			if (isManifestUnverified)
+				return `${source.display_name} — binary not in the trusted build manifest`;
 			const relative = formatRelativeTime(source.last_sync_unix);
 			if (advisory !== '' && advisoryOnly) {
 				return `${source.display_name} — synced ${relative} — ${advisory}`;
+			}
+			if (isShadowed && advisoryOnly) {
+				return `${source.display_name} — a same-named trusted-directory binary is shadowing this pinned plugin`;
 			}
 			switch (tone) {
 				case 'success':

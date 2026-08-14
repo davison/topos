@@ -86,6 +86,31 @@ describe('tooltipText structure: exact template per branch (Fix 3 Copywriting Co
 	});
 });
 
+// 13-06-PLAN.md (D-12/D-13/D-14): the two new named chip states' contract
+// sentences (13-UI-SPEC.md Copywriting Contract), asserted byte-for-byte
+// against the real component source — the behavioural precedence coverage
+// (which branch is chosen for which combination of inputs) lives in
+// match-advisory.test.ts; this file's own job is the exact wording.
+describe('tooltipText structure: the two new 13-06-PLAN.md branches (D-12/D-13/D-14)', () => {
+	it('manifest-unverified branch reads the contract-exact sentence', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — binary not in the trusted build manifest`;'
+			),
+			'expected the manifest-unverified branch to read exactly "{display_name} — binary not in the trusted build manifest"'
+		).toBe(true);
+	});
+
+	it('shadowed branch reads the contract-exact sentence', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — a same-named trusted-directory binary is shadowing this pinned plugin`;'
+			),
+			'expected the shadowed branch to read exactly "{display_name} — a same-named trusted-directory binary is shadowing this pinned plugin"'
+		).toBe(true);
+	});
+});
+
 // Mirrors the exact branch templates proven present above — this function
 // is intentionally the same shape as SourceChip.svelte's own tooltipText
 // switch, so evaluating it against formatRelativeTime's REAL output proves

@@ -116,6 +116,72 @@ describe('healthTone: a source carrying a zero-match advisory', () => {
 	});
 });
 
+// --- 13-06-PLAN.md (D-12/D-13/D-14, PLUG-07): manifest_unverified / shadowed ---
+
+describe('healthTone: manifest_unverified (D-12/D-13)', () => {
+	it('launch_failure manifest_unverified -> destructive, regardless of sync history', () => {
+		expect(healthTone(makeSource({ launch_failure: 'manifest_unverified' }))).toBe('destructive');
+	});
+
+	it('launch_failure manifest_unverified + reachable: true + last_status ok -> still destructive (never launched, so sync history is irrelevant)', () => {
+		expect(
+			healthTone(
+				makeSource({ launch_failure: 'manifest_unverified', reachable: true, last_status: 'ok' })
+			)
+		).toBe('destructive');
+	});
+});
+
+describe('healthTone: shadowed advisory (D-14)', () => {
+	it('reachable + last_status ok + launch_advisory shadowed -> warning', () => {
+		expect(healthTone(makeSource({ launch_advisory: 'shadowed' }))).toBe('warning');
+	});
+
+	it('reachable: false + launch_advisory shadowed -> destructive (a real unreachable problem outranks the shadowed advisory)', () => {
+		expect(healthTone(makeSource({ reachable: false, launch_advisory: 'shadowed' }))).toBe(
+			'destructive'
+		);
+	});
+
+	it('last_status "" (never synced) + launch_advisory shadowed -> unknown (no sync history outranks the shadowed advisory)', () => {
+		expect(
+			healthTone(
+				makeSource({ last_status: '', last_sync_unix: 0, launch_advisory: 'shadowed' })
+			)
+		).toBe('unknown');
+	});
+
+	it('last_status error + launch_advisory shadowed -> warning (an advisory never displaces the warning tone the error already gets)', () => {
+		expect(
+			healthTone(makeSource({ last_status: 'error', launch_advisory: 'shadowed' }))
+		).toBe('warning');
+	});
+
+	it('launch_failure pin_mismatch + launch_advisory shadowed -> destructive (a pin mismatch outranks the shadowed advisory, same precedence as the last_notice case)', () => {
+		expect(
+			healthTone(makeSource({ launch_failure: 'pin_mismatch', launch_advisory: 'shadowed' }))
+		).toBe('destructive');
+	});
+
+	it('launch_failure manifest_unverified + launch_advisory shadowed -> destructive (manifest-unverified also outranks the shadowed advisory)', () => {
+		expect(
+			healthTone(
+				makeSource({ launch_failure: 'manifest_unverified', launch_advisory: 'shadowed' })
+			)
+		).toBe('destructive');
+	});
+
+	it('launch_advisory EMPTY STRING -> success (not shadowed)', () => {
+		expect(healthTone(makeSource({ launch_advisory: '' }))).toBe('success');
+	});
+
+	it('launch_advisory ABSENT (undefined) -> success, never throws', () => {
+		const source = makeSource();
+		delete (source as Partial<SourceStatus>).launch_advisory;
+		expect(healthTone(source)).toBe('success');
+	});
+});
+
 // --- 12-11-PLAN.md (CR-01): isAdvisoryOnly behavioural matrix ---
 
 describe('isAdvisoryOnly: would this source be plain healthy with no advisory at all?', () => {
@@ -151,6 +217,78 @@ describe('isAdvisoryOnly: would this source be plain healthy with no advisory at
 		const source = makeSource();
 		delete (source as Partial<SourceStatus>).last_notice;
 		expect(isAdvisoryOnly(source)).toBe(false);
+	});
+});
+
+// --- 13-06-PLAN.md (D-14): isAdvisoryOnly's second input, launch_advisory ---
+
+describe('isAdvisoryOnly: launch_advisory shadowed (D-14, the second advisory input)', () => {
+	it('reachable + last_status ok + launch_advisory shadowed -> true (the feature; also proves the branch is not dead code)', () => {
+		expect(isAdvisoryOnly(makeSource({ launch_advisory: 'shadowed' }))).toBe(true);
+	});
+
+	it('reachable: false + launch_advisory shadowed -> false — the shadowed-source analogue of the CR-01 case', () => {
+		expect(isAdvisoryOnly(makeSource({ reachable: false, launch_advisory: 'shadowed' }))).toBe(
+			false
+		);
+	});
+
+	it('last_status error + launch_advisory shadowed -> false (a real error outranks the shadowed advisory)', () => {
+		expect(
+			isAdvisoryOnly(makeSource({ last_status: 'error', launch_advisory: 'shadowed' }))
+		).toBe(false);
+	});
+
+	it('last_status "" (never synced) + launch_advisory shadowed -> false', () => {
+		expect(
+			isAdvisoryOnly(
+				makeSource({ last_status: '', last_sync_unix: 0, launch_advisory: 'shadowed' })
+			)
+		).toBe(false);
+	});
+
+	it('launch_failure pin_mismatch + launch_advisory shadowed -> false', () => {
+		expect(
+			isAdvisoryOnly(makeSource({ launch_failure: 'pin_mismatch', launch_advisory: 'shadowed' }))
+		).toBe(false);
+	});
+
+	it('launch_failure manifest_unverified + launch_advisory shadowed -> false', () => {
+		expect(
+			isAdvisoryOnly(
+				makeSource({ launch_failure: 'manifest_unverified', launch_advisory: 'shadowed' })
+			)
+		).toBe(false);
+	});
+
+	it('launch_advisory EMPTY STRING -> false', () => {
+		expect(isAdvisoryOnly(makeSource({ launch_advisory: '' }))).toBe(false);
+	});
+
+	it('launch_advisory ABSENT (undefined) -> false, never throws', () => {
+		const source = makeSource();
+		delete (source as Partial<SourceStatus>).launch_advisory;
+		expect(isAdvisoryOnly(source)).toBe(false);
+	});
+
+	it('both last_notice and launch_advisory shadowed present, source otherwise healthy -> true (clearing only one input would leave this a dead branch)', () => {
+		expect(
+			isAdvisoryOnly(makeSource({ last_notice: NOTICE, launch_advisory: 'shadowed' }))
+		).toBe(true);
+	});
+});
+
+describe('healthTone / isAdvisoryOnly coupling: manifest_unverified and shadowed', () => {
+	it('for a manifest-unverified source, healthTone returns destructive AND isAdvisoryOnly returns false — a launch refusal is never advisory-only', () => {
+		const source = makeSource({ launch_failure: 'manifest_unverified' });
+		expect(healthTone(source)).toBe('destructive');
+		expect(isAdvisoryOnly(source)).toBe(false);
+	});
+
+	it('for the healthy-and-shadowed source, healthTone returns warning AND isAdvisoryOnly returns true at the same time — the anti-dead-code guard, extended to the second advisory input', () => {
+		const source = makeSource({ launch_advisory: 'shadowed' });
+		expect(healthTone(source)).toBe('warning');
+		expect(isAdvisoryOnly(source)).toBe(true);
 	});
 });
 
@@ -277,6 +415,87 @@ describe('tooltipText structure: branch ORDER (syncing -> pin-mismatch -> adviso
 		const switchIdx = strippedChip.indexOf('switch (tone)');
 		expect(advisoryIdx).toBeLessThan(switchIdx);
 	});
+
+	// 13-06-PLAN.md (D-12/D-13/D-14): the two new branches slot into this
+	// same ordered chain — manifest-unverified beside pin-mismatch in the
+	// problem group, shadowed after the last_notice advisory gate (so a
+	// source carrying both reads the notice's sentence) and before the
+	// tone switch.
+	it('the pin-mismatch check runs before the manifest-unverified check', () => {
+		const pinMismatchIdx = strippedChip.indexOf('if (isPinMismatch)');
+		const manifestIdx = strippedChip.indexOf('if (isManifestUnverified)');
+		expect(manifestIdx, 'expected the manifest-unverified check to be present').toBeGreaterThanOrEqual(
+			0
+		);
+		expect(pinMismatchIdx).toBeLessThan(manifestIdx);
+	});
+
+	it('the manifest-unverified check runs before the advisory gate', () => {
+		const manifestIdx = strippedChip.indexOf('if (isManifestUnverified)');
+		const advisoryIdx = strippedChip.indexOf("advisory !== '' && advisoryOnly");
+		expect(manifestIdx).toBeLessThan(advisoryIdx);
+	});
+
+	it('the last_notice advisory gate runs before the shadowed gate', () => {
+		const advisoryIdx = strippedChip.indexOf("advisory !== '' && advisoryOnly");
+		const shadowedIdx = strippedChip.indexOf('if (isShadowed && advisoryOnly)');
+		expect(shadowedIdx, 'expected the shadowed gate to be present').toBeGreaterThanOrEqual(0);
+		expect(advisoryIdx).toBeLessThan(shadowedIdx);
+	});
+
+	it('the shadowed gate runs before the tone switch', () => {
+		const shadowedIdx = strippedChip.indexOf('if (isShadowed && advisoryOnly)');
+		const switchIdx = strippedChip.indexOf('switch (tone)');
+		expect(shadowedIdx).toBeLessThan(switchIdx);
+	});
+});
+
+describe('tooltipText structure: the two new 13-06-PLAN.md branches (D-12/D-13/D-14)', () => {
+	it('the manifest-unverified derived value is keyed on launch_failure alone', () => {
+		expect(
+			strippedChip.includes(
+				"let isManifestUnverified = $derived(source.launch_failure === 'manifest_unverified');"
+			)
+		).toBe(true);
+	});
+
+	it('the shadowed derived value is keyed on launch_advisory alone', () => {
+		expect(
+			strippedChip.includes("let isShadowed = $derived(source.launch_advisory === 'shadowed');")
+		).toBe(true);
+	});
+
+	it('the manifest-unverified sentence is contract-exact', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — binary not in the trusted build manifest`;'
+			)
+		).toBe(true);
+	});
+
+	it('the shadowed sentence is contract-exact', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — a same-named trusted-directory binary is shadowing this pinned plugin`;'
+			)
+		).toBe(true);
+	});
+
+	it('the chip menu re-pin action stays gated on isPinMismatch alone — never extended to isManifestUnverified', () => {
+		const menuStart = strippedChip.indexOf('<DropdownMenuContent>');
+		const menuEnd = strippedChip.indexOf('</DropdownMenuContent>');
+		expect(menuStart, 'expected to find the chip menu content block').toBeGreaterThanOrEqual(0);
+		expect(menuEnd).toBeGreaterThan(menuStart);
+		const menuBlock = strippedChip.slice(menuStart, menuEnd);
+		expect(
+			menuBlock.includes('{#if isPinMismatch}'),
+			'expected the re-pin item to remain gated on isPinMismatch'
+		).toBe(true);
+		expect(
+			menuBlock.includes('isManifestUnverified'),
+			'expected the chip menu to reference isManifestUnverified nowhere — no new remedial action for this state'
+		).toBe(false);
+	});
 });
 
 // --- 12-11-PLAN.md (CR-01): tooltipText BRANCH-SELECTION matrix ---
@@ -296,10 +515,17 @@ function mirrorTooltipText(source: SourceStatus): string {
 	if (source.syncing) return `${source.display_name} — syncing…`;
 	const isPinMismatch = source.launch_failure === 'pin_mismatch';
 	if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
+	const isManifestUnverified = source.launch_failure === 'manifest_unverified';
+	if (isManifestUnverified) return `${source.display_name} — binary not in the trusted build manifest`;
 	const relative = formatRelativeTime(source.last_sync_unix);
 	const advisory = (source.last_notice ?? '').trim();
-	if (advisory !== '' && isAdvisoryOnly(source)) {
+	const advisoryOnly = isAdvisoryOnly(source);
+	if (advisory !== '' && advisoryOnly) {
 		return `${source.display_name} — synced ${relative} — ${advisory}`;
+	}
+	const isShadowed = source.launch_advisory === 'shadowed';
+	if (isShadowed && advisoryOnly) {
+		return `${source.display_name} — a same-named trusted-directory binary is shadowing this pinned plugin`;
 	}
 	switch (healthTone(source)) {
 		case 'success':
@@ -369,6 +595,64 @@ describe('tooltipText BRANCH-SELECTION matrix: the exact string produced per pre
 
 	it('syncing: true + reachable: false + non-empty last_notice -> the syncing sentence (ordering above everything else is unchanged)', () => {
 		const source = makeSource({ syncing: true, reachable: false, last_notice: NOTICE });
+		expect(mirrorTooltipText(source)).toBe('Household Docs — syncing…');
+	});
+
+	// 13-06-PLAN.md (D-12/D-13/D-14) matrix additions.
+	it('launch_failure manifest_unverified -> the contract-exact manifest sentence, regardless of sync history', () => {
+		const source = makeSource({ launch_failure: 'manifest_unverified' });
+		expect(mirrorTooltipText(source)).toBe('Household Docs — binary not in the trusted build manifest');
+	});
+
+	it('launch_failure manifest_unverified + launch_advisory shadowed -> the manifest sentence (a launch refusal outranks the shadowed advisory)', () => {
+		const source = makeSource({
+			launch_failure: 'manifest_unverified',
+			launch_advisory: 'shadowed'
+		});
+		expect(mirrorTooltipText(source)).toBe('Household Docs — binary not in the trusted build manifest');
+	});
+
+	it('reachable + last_status ok + launch_advisory shadowed -> the contract-exact shadowed sentence', () => {
+		const source = makeSource({
+			last_sync_unix: Math.floor(Date.now() / 1000) - 5 * 60,
+			launch_advisory: 'shadowed'
+		});
+		expect(mirrorTooltipText(source)).toBe(
+			'Household Docs — a same-named trusted-directory binary is shadowing this pinned plugin'
+		);
+	});
+
+	it('reachable: false + launch_advisory shadowed -> the unreachable-since sentence, carrying no shadowed wording (a real problem outranks the advisory)', () => {
+		const source = makeSource({
+			reachable: false,
+			last_sync_unix: Math.floor(Date.now() / 1000) - 60 * 60,
+			launch_advisory: 'shadowed'
+		});
+		const text = mirrorTooltipText(source);
+		expect(text).toBe('Household Docs — unreachable since 1 hour ago');
+		expect(text).not.toContain('shadowing');
+	});
+
+	it('launch_failure pin_mismatch + launch_advisory shadowed -> the binary-changed sentence, not the shadowing sentence', () => {
+		const source = makeSource({ launch_failure: 'pin_mismatch', launch_advisory: 'shadowed' });
+		const text = mirrorTooltipText(source);
+		expect(text).toBe('Household Docs — binary changed since it was trusted');
+		expect(text).not.toContain('shadowing');
+	});
+
+	it('both last_notice and launch_advisory shadowed present, source otherwise healthy -> the last_notice sentence (today\'s specified coexistence order)', () => {
+		const source = makeSource({
+			last_sync_unix: Math.floor(Date.now() / 1000) - 5 * 60,
+			last_notice: NOTICE,
+			launch_advisory: 'shadowed'
+		});
+		const text = mirrorTooltipText(source);
+		expect(text).toBe(`Household Docs — synced 5 minutes ago — ${NOTICE}`);
+		expect(text).not.toContain('shadowing');
+	});
+
+	it('syncing: true + launch_advisory shadowed -> the syncing sentence (ordering above everything else is unchanged)', () => {
+		const source = makeSource({ syncing: true, launch_advisory: 'shadowed' });
 		expect(mirrorTooltipText(source)).toBe('Household Docs — syncing…');
 	});
 });
