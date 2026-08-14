@@ -4,14 +4,14 @@ milestone: v1.1.0
 milestone_name: Plugin Ecosystem
 current_phase: 12
 current_phase_name: filesystem-source
-status: ready_to_plan
-stopped_at: Phase 12 complete (7/7) — ready to discuss Phase 13
-last_updated: 2026-08-14T01:21:53.037Z
+status: gap_closure
+stopped_at: Phase 12 UAT found gaps (G-12-1/G-12-3) — fix plans 12-08..12-10 ready to execute
+last_updated: 2026-08-14T09:03:35.000Z
 last_activity: 2026-08-14
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 14
+  completed_phases: 1
+  total_plans: 17
   completed_plans: 14
   percent: 50
 ---
@@ -23,7 +23,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-13 after Phase 11 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 13 — per item curation & installable app
+**Current focus:** Phase 12 — UAT gap closure (match-all expressibility, zero-match diagnostic, docs)
 
 ## Current Position
 
