@@ -30,6 +30,7 @@
 	} from '$lib/format';
 	import { setWebspaceFilter, removeSourceFromWebspace } from '$lib/config-edit';
 	import { markSuccessToast, markFailureToast } from '$lib/toast';
+	import { toggleSelection, selectRange, clearSelection } from '$lib/selection';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
 	import StreamList from '$lib/components/StreamList.svelte';
 	import StreamDateMarkers from '$lib/components/StreamDateMarkers.svelte';
@@ -146,6 +147,93 @@
 			markBusy = false;
 		}
 	}
+
+	// Bulk selection (13-UI-SPEC.md E1/E2, KERN-09/KERN-10's desktop-standard
+	// multi-select) — bulkSelection is the ONLY mode indicator (SelectionActionBar
+	// renders whenever it's non-empty; a separate mode flag would be a second
+	// source of truth, per this plan's own key_links). bulkAnchor tracks the
+	// most recently ctrl-clicked row, so a subsequent shift-click ranges from
+	// there — reset to null only by handleBulkClear and the per-webspace
+	// effect below, never implicitly by a plain click (D-01: a plain click on
+	// an unrelated row must never clear an existing bulk selection).
+	let bulkSelection = $state(new Set<string>());
+	let bulkAnchor = $state<string | null>(null);
+	let bulkBusy = $state(false);
+	let bulkModeActive = $derived(bulkSelection.size > 0);
+
+	// currentBulkAnchor resolves 13-UI-SPEC.md E1's full shift-click anchor
+	// fallback chain: the most recently ctrl-clicked row, else the
+	// currently-open item (no ctrl-click has happened yet this session),
+	// else the first rendered row (neither exists) — never null while any
+	// row is rendered, so a shift-click as the very first bulk-select
+	// action still resolves to a sensible range instead of a single-id
+	// fallback inside selectRange.
+	function currentBulkAnchor(): string | null {
+		if (bulkAnchor !== null) return bulkAnchor;
+		if (selectedId !== null) return selectedId;
+		return visibleStreamItems.length > 0 ? visibleStreamItems[0].id : null;
+	}
+
+	function handleBulkToggle(id: string, mode: 'toggle' | 'range') {
+		if (mode === 'toggle') {
+			bulkSelection = toggleSelection(bulkSelection, id);
+			bulkAnchor = id;
+			return;
+		}
+		const orderedIds = visibleStreamItems.map((item) => item.id);
+		bulkSelection = selectRange(orderedIds, currentBulkAnchor(), id);
+		bulkAnchor = id;
+	}
+
+	function handleBulkClear() {
+		bulkSelection = clearSelection();
+		bulkAnchor = null;
+	}
+
+	// handleBulkPrimary (D-02: no confirm dialog) mirrors handleExclude/
+	// handleInclude above at N items instead of 1 — same busy-disable
+	// discipline, same setItemMarks call, same shared toast helpers (so
+	// the single-item and bulk paths can never drift in wording). action
+	// is unconditionally 'add' (Exclude) until this plan's Task 2 wires
+	// the excluded-view toggle, at which point it becomes view-driven
+	// (remove/Include while viewing the excluded bucket).
+	async function handleBulkPrimary() {
+		const ids = [...bulkSelection];
+		const count = ids.length;
+		if (count === 0) return;
+		bulkBusy = true;
+		try {
+			await setItemMarks(webspace, 'add', ids);
+			handleBulkClear();
+			await load(navGeneration);
+			markSuccessToast({
+				verb: 'Excluded',
+				count,
+				onUndo: async () => {
+					await setItemMarks(webspace, 'remove', ids);
+					await load(navGeneration);
+				}
+			});
+		} catch {
+			markFailureToast({ verb: 'exclude', count });
+		} finally {
+			bulkBusy = false;
+		}
+	}
+
+	// Esc clears the bulk selection (D-01: Esc and the action bar's own
+	// Clear button are the only two paths that empty the selection) —
+	// registered globally rather than scoped to a row/bar element, since
+	// the action bar itself may not have focus when the user presses Esc.
+	$effect(() => {
+		function handleGlobalKeydown(event: KeyboardEvent) {
+			if (event.key === 'Escape' && bulkSelection.size > 0) {
+				handleBulkClear();
+			}
+		}
+		window.addEventListener('keydown', handleGlobalKeydown);
+		return () => window.removeEventListener('keydown', handleGlobalKeydown);
+	});
 
 	// Deliberately a plain `let`, NOT `$state` — writing it inside the
 	// effect below must not retrigger that same effect. This open-to-
@@ -1046,6 +1134,10 @@
 		filterError = null;
 		headerCollapsed = false;
 		lastStreamScrollTop = 0;
+		// Bulk selection is per-webspace, transient UI state — never
+		// persisted, never meaningful across a webspace switch.
+		bulkSelection = clearSelection();
+		bulkAnchor = null;
 		if (suppressScrollHandlingTimer !== null) {
 			clearTimeout(suppressScrollHandlingTimer);
 			suppressScrollHandlingTimer = null;
@@ -1259,6 +1351,13 @@
 						staleSources={staleInstances}
 						{selectedSources}
 						{sourcesByInstance}
+						bulkSelected={bulkSelection}
+						{bulkModeActive}
+						onbulktoggle={handleBulkToggle}
+						primaryLabel="Exclude"
+						{bulkBusy}
+						onbulkprimary={handleBulkPrimary}
+						onbulkclear={handleBulkClear}
 					/>
 				{/if}
 			</div>

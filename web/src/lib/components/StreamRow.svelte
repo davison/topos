@@ -6,6 +6,7 @@
 		TooltipProvider,
 		TooltipTrigger
 	} from '$lib/components/ui/tooltip/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import Thumbnail from './Thumbnail.svelte';
 	import PluginIcon from './PluginIcon.svelte';
 	import { formatItemDate, parseSnippet, highlightText } from '$lib/format';
@@ -27,6 +28,17 @@
 	// amber treatment the detail pane and the kernel rendition iframe use,
 	// not a bolder font weight (03-UI-SPEC.md's retired weight-only rule,
 	// superseded by this plan).
+	// bulkSelected/bulkModeActive/onbulktoggle (13-UI-SPEC.md E1, KERN-09/
+	// KERN-10): the desktop-only multi-select axis, deliberately orthogonal
+	// to selected/onselect above — a row can be simultaneously the open
+	// item AND bulk-selected, rendering both signals additively (fill+
+	// checkbox vs. left-border accent), never conflicting. onbulktoggle is
+	// optional so a caller that has no bulk-select surface at all (e.g.
+	// SearchResults.svelte, out of this plan's scope) gets ordinary
+	// plain-click behaviour with no extra branch to opt out of — a
+	// modifier-click with no handler wired is simply a no-op, never an
+	// error and never a fallback to onselect (D-01: only a plain click
+	// opens the detail pane).
 	let {
 		item,
 		selected = false,
@@ -35,7 +47,10 @@
 		sourceDisplayName = '',
 		plugin = '',
 		snippet,
-		searchQuery = ''
+		searchQuery = '',
+		bulkSelected = false,
+		bulkModeActive = false,
+		onbulktoggle
 	}: {
 		item: StreamItem;
 		selected?: boolean;
@@ -55,7 +70,49 @@
 		plugin?: string;
 		snippet?: string;
 		searchQuery?: string;
+		bulkSelected?: boolean;
+		bulkModeActive?: boolean;
+		onbulktoggle?: (id: string, mode: 'toggle' | 'range') => void;
 	} = $props();
+
+	// The three-way click/keyboard branch (13-UI-SPEC.md E1 "Trigger
+	// rule"): shared by both onclick and onkeydown below so Enter/Space on
+	// a focused row (native <button> activation) and a real pointer click
+	// resolve identically — a KeyboardEvent carries the same
+	// ctrlKey/metaKey/shiftKey modifier-state properties a MouseEvent does,
+	// so one function serves both without branching on event type.
+	function handleActivate(modifiers: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) {
+		if (modifiers.ctrlKey || modifiers.metaKey) {
+			onbulktoggle?.(item.id, 'toggle');
+			return;
+		}
+		if (modifiers.shiftKey) {
+			onbulktoggle?.(item.id, 'range');
+			return;
+		}
+		onselect();
+	}
+
+	function handleRowClick(event: MouseEvent) {
+		handleActivate(event);
+	}
+
+	// Manual Enter/Space activation (13-UI-SPEC.md E1 deviation, Rule 1):
+	// the row's root element below is a `<div role="button">`, not a real
+	// `<button>` — bits-ui's stock Checkbox (added by this plan) renders
+	// its own real `<button role="checkbox">`, and a `<button>` must never
+	// contain another interactive `<button>` descendant (invalid HTML;
+	// also breaks click-event semantics, since the inner button's click
+	// would bubble straight into the outer button's own handler with no
+	// way to distinguish "the user clicked the checkbox" from "the user
+	// clicked the row"). A native `<button>` fires `click` on Enter/Space
+	// automatically; a plain `<div>` does not, so this restores that one
+	// piece of behaviour explicitly.
+	function handleRowKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		handleActivate(event);
+	}
 </script>
 
 <!--
@@ -81,18 +138,59 @@
   render with the Badge "secondary" variant (neutral palette), the
   metadata text uses the neutral muted-foreground token, and the D-10
   stale marker below uses the dedicated --warning token — never accent.
+
+  13-UI-SPEC.md E1: this row's root is a `<div role="button">`, not a
+  `<button>` — see handleRowKeydown's doc comment above for why (the
+  leading Checkbox slot below is itself a real interactive <button>, and
+  a <button> may never contain another). `group` enables the checkbox
+  slot's hover/focus-reveal below, the same discipline SourceChip.svelte's
+  own overflow-menu trigger already establishes in this codebase.
+  bg-secondary/60 (new when bulkSelected) and the pre-existing
+  border-l-primary (when selected) render ADDITIVELY — different visual
+  channels (fill vs. border), so a row that is simultaneously open and
+  bulk-selected shows both without either one masking the other.
 -->
-<button
-	type="button"
-	onclick={onselect}
+<div
+	role="button"
+	tabindex="0"
+	onclick={handleRowClick}
+	onkeydown={handleRowKeydown}
 	aria-pressed={selected}
 	data-item-id={item.id}
 	class={cn(
-		'stream-row-surface flex w-full items-start gap-4 overflow-hidden rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-card/80 max-md:h-[60px] max-md:gap-0 max-md:p-1',
+		'group stream-row-surface flex w-full items-start gap-4 overflow-hidden rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-card/80 max-md:h-[60px] max-md:gap-0 max-md:p-1',
 		'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
-		selected && 'border-l-primary border-l-2'
+		selected && 'border-l-primary border-l-2',
+		bulkSelected && 'bg-secondary/60'
 	)}
 >
+	<!-- Leading checkbox slot (13-UI-SPEC.md E1): desktop/pointer-only
+	     (max-md:hidden, matching the thumbnail's own breakpoint below),
+	     opacity-0 at rest and revealed on row hover/focus or whenever
+	     bulkModeActive is true (any item anywhere in the stream is
+	     selected) — the same hover/focus-revealed-affordance discipline
+	     SourceChip.svelte's own overflow menu already establishes.
+	     onclick stopPropagation is load-bearing: without it, a click on
+	     the checkbox bubbles into this row's own onclick above (since the
+	     checkbox is a nested <button>, not merely decorative markup),
+	     which would ALSO fire handleActivate's plain-click branch and open
+	     the detail pane on every checkbox click. -->
+	<div
+		class={cn(
+			'flex size-9 shrink-0 items-center justify-center transition-opacity max-md:hidden',
+			bulkModeActive
+				? 'opacity-100'
+				: 'opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100'
+		)}
+	>
+		<Checkbox
+			checked={bulkSelected}
+			onCheckedChange={() => onbulktoggle?.(item.id, 'toggle')}
+			onclick={(event: MouseEvent) => event.stopPropagation()}
+			aria-label={`Select ${item.title}`}
+		/>
+	</div>
+
 	<div class="max-md:hidden">
 		<Thumbnail {item} />
 	</div>
@@ -216,4 +314,4 @@
 			</p>
 		{/if}
 	</div>
-</button>
+</div>

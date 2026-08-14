@@ -5,6 +5,7 @@
 	import StreamMissing from './StreamMissing.svelte';
 	import StreamSyncDegraded from './StreamSyncDegraded.svelte';
 	import StreamLoadingSkeleton from './StreamLoadingSkeleton.svelte';
+	import SelectionActionBar from './SelectionActionBar.svelte';
 	import { filterItemsBySource, streamVariant } from '$lib/format';
 	import type { StreamResponse, SourceStatus } from '$lib/api';
 
@@ -14,6 +15,15 @@
 	// state (the kernel answered 404, not 200), so there is nothing to
 	// derive streamVariant from. webspace is the name to render inside
 	// StreamMissing; it plays no role in any other branch.
+	//
+	// bulkSelected/bulkModeActive/onbulktoggle (13-UI-SPEC.md E1) thread
+	// straight through to every StreamRow render site below, unchanged
+	// from row to row — the caller (+page.svelte) owns the selection Set
+	// itself, this component only renders from it. primaryLabel/bulkBusy/
+	// onbulkprimary/onbulkclear (E2) drive SelectionActionBar, rendered
+	// inside THIS component's own populated-stream branch (not by the
+	// route) so it sticks to the stream pane's scroll region rather than
+	// the viewport (E2's "Where").
 	let {
 		state,
 		response,
@@ -23,7 +33,14 @@
 		onretry,
 		staleSources,
 		selectedSources,
-		sourcesByInstance
+		sourcesByInstance,
+		bulkSelected,
+		bulkModeActive,
+		onbulktoggle,
+		primaryLabel,
+		bulkBusy,
+		onbulkprimary,
+		onbulkclear
 	}: {
 		state: 'loading' | 'error' | 'not-found' | 'ready';
 		response: StreamResponse | null;
@@ -34,6 +51,13 @@
 		staleSources: Set<string>;
 		selectedSources: Set<string>;
 		sourcesByInstance: Map<string, SourceStatus>;
+		bulkSelected: Set<string>;
+		bulkModeActive: boolean;
+		onbulktoggle: (id: string, mode: 'toggle' | 'range') => void;
+		primaryLabel: 'Exclude' | 'Include';
+		bulkBusy: boolean;
+		onbulkprimary: () => void;
+		onbulkclear: () => void;
 	} = $props();
 
 	// streamVariant (format.ts) is the single, pure, unit-tested decision
@@ -94,7 +118,17 @@
 				sourceDisplayName={sourcesByInstance.get(item.source)?.display_name ??
 					item.source_display_name}
 				plugin={sourcesByInstance.get(item.source)?.plugin ?? ''}
+				bulkSelected={bulkSelected.has(item.id)}
+				{bulkModeActive}
+				{onbulktoggle}
 			/>
 		{/each}
 	</div>
+	<SelectionActionBar
+		count={bulkSelected.size}
+		{primaryLabel}
+		busy={bulkBusy}
+		onprimary={onbulkprimary}
+		onclear={onbulkclear}
+	/>
 {/if}
