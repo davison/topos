@@ -150,7 +150,7 @@ Plans:
   4. After the kernel is upgraded, the installed app never serves a stale UI — the user lands on the new build rather than a cached one.
   5. The mobile/LAN install limitation (browsers require a secure context) is documented, along with the recommended user-provided HTTPS workarounds.
 
-**Plans**: 6/7 plans executed (13-07 is gap closure for 13-VERIFICATION.md)
+**Plans**: 7/7 plans executed (13-07 is gap closure for 13-VERIFICATION.md)
 
 Plans:
 **Wave 1**
@@ -173,7 +173,7 @@ Plans:
 
 **Wave 5** *(gap closure — blocked on Wave 4 completion)*
 
-- [ ] 13-07-PLAN.md — Undo toast targets the toast-creation webspace, not the current one; cross-webspace-switch regression spec (wave 5)
+- [x] 13-07-PLAN.md — Undo toast targets the toast-creation webspace, not the current one; cross-webspace-switch regression spec (wave 5)
 
 **UI hint**: yes
 
@@ -200,7 +200,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
-| 13. Per-Item Curation & Installable App | v1.1.0 | 6/6 | In Progress|  |
+| 13. Per-Item Curation & Installable App | v1.1.0 | 7/7 | In Progress|  |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
 ## Backlog
