@@ -115,6 +115,14 @@
 	let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch');
 	let isExternal = $derived(source.tier === 'external');
 
+	// advisory (12-10-PLAN.md, G-12-1/G-12-3): the trimmed kernel-published
+	// last_notice — today, a webspace's explicit match block that matched
+	// none of this source's items. Keyed on the kernel-published field
+	// alone, never on a string match against last_error (the T-11-32
+	// discipline isPinMismatch above already documents, applying verbatim
+	// here).
+	let advisory = $derived((source.last_notice ?? '').trim());
+
 	// hashCopied (E5): a lightweight, silent copy confirmation — the Copy
 	// icon swaps to a check for ~1.5s, then reverts. No toast/alert; a
 	// clipboard-API failure leaves this false and changes nothing visible,
@@ -175,11 +183,28 @@
 	// wording). This branch supplies its own complete Copywriting Contract
 	// string and is exempt from the trailing "— untrusted external
 	// plugin" append below — the exact E4 copy carries no such suffix.
+	//
+	// 12-10-PLAN.md (G-12-1/G-12-3): a fifth branch, placed after the
+	// relative-time constant below and BEFORE the tone switch — a source
+	// that synced successfully (never for an errored last_status, so a
+	// real error's own copy is never displaced) but carries an advisory
+	// gets the display name, the synced-relative phrase, and the
+	// kernel's own advisory text, joined by the same em-dash-with-spaces
+	// separator every other branch uses. Yields to the syncing and
+	// pin-mismatch checks above it — both are more immediate facts than
+	// an advisory about an otherwise-successful run. The four switch
+	// branches below, the trailing external-tier append, and this
+	// component's Copywriting Contract guard (source-chip-tooltip.test.ts)
+	// stay byte-identical; an external-tier source with an advisory
+	// correctly gets both, the same composition rule Phase 11 established.
 	let tooltipText = $derived.by(() => {
 		const base = (() => {
 			if (source.syncing) return `${source.display_name} — syncing…`;
 			if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
 			const relative = formatRelativeTime(source.last_sync_unix);
+			if (advisory !== '' && source.last_status !== 'error') {
+				return `${source.display_name} — synced ${relative} — ${advisory}`;
+			}
 			switch (tone) {
 				case 'success':
 					return `${source.display_name} — synced ${relative}`;
