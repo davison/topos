@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto, pushState } from '$app/navigation';
 	import {
@@ -1163,32 +1164,53 @@
 	// 07-03-PLAN.md Task 3) so the root route's redirect always lands here
 	// next time — every visit updates the memory, not only navigation via
 	// the switcher.
+	//
+	// 13-03-PLAN.md Task 2 deviation (Rule 1 — bug): this effect's ONLY
+	// intended reactive dependency is `webspace` (its own doc comment
+	// above says so) — but `++navGeneration` both READS and WRITES
+	// navGeneration inside the effect body, which makes Svelte's
+	// dependency tracker treat navGeneration as a tracked source too.
+	// Every OTHER call site that reads navGeneration (load(), handleBulk-
+	// Primary(), handleToggleView(), …) does so from inside an event
+	// handler, never inside a tracked reactive context, so those reads
+	// alone can't explain a re-run — but confirmed live (13-excluded-
+	// view.spec.ts) that this effect DOES re-run 1-2 extra times shortly
+	// after a view-toggle interaction, each time resetting `view` back to
+	// 'included' and re-issuing a stale-view fetch that clobbers the
+	// freshly-toggled 'excluded' one moments after it lands. Wrapping
+	// every read/write below in untrack() makes `webspace` the ONLY
+	// tracked read, matching the doc comment's own stated intent, and
+	// closes the clobber (verified: the toggle round trip is stable
+	// across repeated runs after this fix).
 	$effect(() => {
-		const gen = ++navGeneration;
-		selectedId = null;
-		searchQuery = '';
-		searchState = 'idle';
-		searchResults = [];
-		filterError = null;
-		headerCollapsed = false;
-		lastStreamScrollTop = 0;
-		// Bulk selection is per-webspace, transient UI state — never
-		// persisted, never meaningful across a webspace switch.
-		bulkSelection = clearSelection();
-		bulkAnchor = null;
-		// view (13-UI-SPEC.md E4): every fresh webspace visit starts on
-		// the normal stream — the excluded view is never sticky across a
-		// switch.
-		view = 'included';
-		if (suppressScrollHandlingTimer !== null) {
-			clearTimeout(suppressScrollHandlingTimer);
-			suppressScrollHandlingTimer = null;
-		}
-		suppressScrollHandling = false;
-		writeLastWebspace(webspace);
-		load(gen);
-		loadSources();
-		loadConfig(gen);
+		const ws = webspace;
+		untrack(() => {
+			const gen = ++navGeneration;
+			selectedId = null;
+			searchQuery = '';
+			searchState = 'idle';
+			searchResults = [];
+			filterError = null;
+			headerCollapsed = false;
+			lastStreamScrollTop = 0;
+			// Bulk selection is per-webspace, transient UI state — never
+			// persisted, never meaningful across a webspace switch.
+			bulkSelection = clearSelection();
+			bulkAnchor = null;
+			// view (13-UI-SPEC.md E4): every fresh webspace visit starts
+			// on the normal stream — the excluded view is never sticky
+			// across a switch.
+			view = 'included';
+			if (suppressScrollHandlingTimer !== null) {
+				clearTimeout(suppressScrollHandlingTimer);
+				suppressScrollHandlingTimer = null;
+			}
+			suppressScrollHandling = false;
+			writeLastWebspace(ws);
+			load(gen);
+			loadSources();
+			loadConfig(gen);
+		});
 	});
 </script>
 

@@ -393,6 +393,30 @@ binary rather than a mock.
   events for another client's writes) is accepted as documented fact
   rather than independently re-verified here.
 
+## `web/e2e/specs/13-multi-select-bulk-exclude.spec.ts` / `13-excluded-view.spec.ts` — per-item curation, real end to end
+
+Phase 13's KERN-09/KERN-10 user-facing half (13-03-PLAN.md), driven
+entirely from the real UI against a real booted kernel and the
+`topos-plugin-mock` reference plugin's fixed four-item corpus (see
+`13-exclude-tracer.spec.ts`, the single-item tracer this plan's bulk/view
+specs build on).
+
+- **`13-multi-select-bulk-exclude.spec.ts`** — proves the desktop
+  multi-select round trip in one continuous walk: ctrl-click and
+  shift-click compose a contiguous selection (replacing, never unioning,
+  per 13-UI-SPEC.md E1); a plain click on an unrelated row opens the
+  detail pane and leaves an existing selection untouched — pinning D-01's
+  rule that only Esc and the action bar's own Clear button may empty it;
+  Esc empties it; and a bulk Exclude removes both rows with the
+  contract-exact `Excluded 2 items` toast, with Undo restoring them.
+- **`13-excluded-view.spec.ts`** — proves the excluded-items view toggle
+  is fully absent (not disabled) at zero exclusions (D-06), appears
+  reading `Excluded (1)` once an item is excluded via the detail pane,
+  reuses the stream surface wholesale when flipped (D-05), and
+  auto-flips back to the normal stream — with the toggle disappearing
+  again — the instant its one item is un-excluded via the bulk action
+  bar's Include button (E4's "no sustained empty-excluded-view state").
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
