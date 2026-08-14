@@ -6,10 +6,12 @@
 //
 // 12-01-PLAN.md Task 2 (the phase's tracer slice) implemented the thinnest
 // complete path — top-level PDF files, no recursion, no extras-driven
-// scope widening/narrowing. 12-02-PLAN.md Task 2 widens Match's document
+// scope widening/narrowing. 12-02-PLAN.md Task 2 widened Match's document
 // scope via extras-driven include/exclude globs (D-03); this bootstrap
-// now decodes and forwards those extras, but still does not expand
-// recursion — that remains a later plan's work.
+// decodes and forwards those extras. 12-03-PLAN.md then wired subfolder
+// recursion fully: sourceConfig.Recursive (below) is decoded here and
+// handed to NewSourcePlugin a few lines down, with walk.go as its sole
+// consumer — recursion is not future work, it has shipped since 12-03.
 package main
 
 import (

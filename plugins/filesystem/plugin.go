@@ -173,7 +173,14 @@ func labelMatchesAny(labels, values []string) bool {
 // stat'd by walk. Title is the file's own base name (never the full
 // relative path — a nested file's directory context lives in Labels, not
 // the title); deep_link is the file:// URI the kernel rewrites at serve
-// time (Task 1 checkpoint, option-a); fidelity is always EXACT.
+// time (Task 1 checkpoint, option-a); fidelity is always EXACT. Provenance
+// carries all five plugin-populated keys docs/plugin-contract.md's
+// "Provenance" section documents — source_type, source_system, source_id,
+// plugin and contract_version — the complete set, not an arbitrary subset
+// (WR-01, 12-07-PLAN.md Task 3): source_system is p.root, the filesystem
+// analog of paperless/silverbullet's p.baseURL and signal's p.configDir —
+// this instance's own address. synced_at_unix is deliberately never set
+// here: the kernel's index layer owns that key and overwrites it anyway.
 func (p *SourcePlugin) toItem(sourceID string, info os.FileInfo) *toposv1.Item {
 	full := filepath.Join(p.root, filepath.FromSlash(sourceID))
 	modUnix := info.ModTime().Unix()
@@ -189,6 +196,7 @@ func (p *SourcePlugin) toItem(sourceID string, info os.FileInfo) *toposv1.Item {
 		Labels:                 folderLabels(p.root, full),
 		Provenance: map[string]string{
 			"source_type":      sourceType,
+			"source_system":    p.root,
 			"source_id":        sourceID,
 			"plugin":           "topos-plugin-filesystem",
 			"contract_version": contractVersion,

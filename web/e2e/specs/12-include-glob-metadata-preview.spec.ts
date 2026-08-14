@@ -66,6 +66,11 @@ test.describe('12-07 Task 1: include_glob-admitted unknown extension previews ho
 		);
 		const streamItem = stream.items[0];
 		expect(streamItem.source_id).toBe(ZIP_FILENAME);
+		// WR-01 (12-07-PLAN.md Task 3): every plugin-populated provenance key,
+		// including source_system, republished verbatim through the stream —
+		// proves the key genuinely reaches a client, not merely that the
+		// plugin sets it in memory.
+		expect(streamItem.provenance?.source_system).toBe(corpusDir);
 
 		// GET /api/items/{id} (CONTENT_VARIANT_FULL) — under the pre-fix code
 		// this was a false 404 item_not_found for a file the stream itself

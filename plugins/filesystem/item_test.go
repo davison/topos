@@ -246,6 +246,46 @@ func TestMatch_TopLevelPDFYieldsExactFidelityAndEmptyPreview(t *testing.T) {
 // extensions (D-03), so a plain .txt file is now legitimately included —
 // only an extension genuinely outside classify.go's extensionTable stays
 // ignored with no extras configured.
+// TestMatch_ItemProvenanceCarriesTheFivePluginOwnedKeys proves toItem
+// publishes all five plugin-populated provenance keys docs/plugin-
+// contract.md's "Provenance" section documents (WR-01, 12-07-PLAN.md
+// Task 3), including source_system — the gap the fresh code review found.
+// Asserts against the package's own constants where they exist, rather than
+// re-typing their string values, so a future contract-version bump cannot
+// leave a stale expectation behind.
+func TestMatch_ItemProvenanceCarriesTheFivePluginOwnedKeys(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("%PDF-1.4"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	p := NewSourcePlugin(root, nil, false)
+	resp, err := p.Match(t.Context(), &toposv1.MatchRequest{})
+	if err != nil {
+		t.Fatalf("Match: %v", err)
+	}
+	if len(resp.GetItems()) != 1 {
+		t.Fatalf("expected exactly 1 item, got %d", len(resp.GetItems()))
+	}
+
+	want := map[string]string{
+		"source_type":      sourceType,
+		"source_system":    root,
+		"source_id":        "invoice.pdf",
+		"plugin":           "topos-plugin-filesystem",
+		"contract_version": contractVersion,
+	}
+	got := resp.GetItems()[0].GetProvenance()
+	if len(got) != len(want) {
+		t.Fatalf("expected exactly %d provenance keys, got %d: %v", len(want), len(got), got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("expected provenance[%q] = %q, got %q", k, v, got[k])
+		}
+	}
+}
+
 func TestMatch_ExtensionOutsideDefaultAllowlistIsIgnored(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "archive.zip"), []byte("not a document"), 0o644); err != nil {
