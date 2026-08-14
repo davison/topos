@@ -4,6 +4,15 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<!-- 13-04-PLAN.md Task 1 (UI-13/UI-SPEC E7): SvelteKitPWA doesn't
+		     transform app.html the way vite-plugin-pwa transforms a plain
+		     Vite index.html, so the manifest link and theme-color meta are
+		     added here by hand. theme-color matches the manifest's own
+		     theme_color/background_color — both are this app's --background
+		     token (web/src/app.css) — so the launch splash never flashes an
+		     unstyled light background. -->
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="theme-color" content="#020617" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
