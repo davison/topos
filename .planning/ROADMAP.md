@@ -150,7 +150,16 @@ Plans:
   4. After the kernel is upgraded, the installed app never serves a stale UI — the user lands on the new build rather than a cached one.
   5. The mobile/LAN install limitation (browsers require a secure context) is documented, along with the recommended user-provided HTTPS workarounds.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — Tracer: item_marks table, mark write/read API, shared exclusion filter, toast layer (wave 1)
+- [ ] 13-02-PLAN.md — Excluded-bucket view param, excluded_count, orphan prune sweep, API docs (wave 2)
+- [ ] 13-03-PLAN.md — Multi-select, floating action bar, excluded-view toggle, include mirror, e2e specs (wave 3)
+- [ ] 13-04-PLAN.md — PWA manifest/icons/ServiceWorker, never-stale update flow, UI-14 docs (wave 2)
+- [ ] 13-05-PLAN.md — Trust hardening: link-time build-provenance manifest, reordered build, refuse-to-load launch gate (wave 1)
+- [ ] 13-06-PLAN.md — Trust hardening UI states, browser specs, republished plugin contract and Signal guidance (wave 4)
+
 **UI hint**: yes
 
 ### Phase 14: Google Drive Source, Built Out-of-Repo
