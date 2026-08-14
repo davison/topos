@@ -11,6 +11,35 @@ E2E_PROJECT ?= chromium
 E2E_PW_INSTALL_FLAGS ?=
 E2E_ARGS ?=
 
+# MANIFEST_PLUGIN_BINARIES / MANIFEST_PLUGIN_BINARIES_PORTABLE /
+# MANIFEST_E2E_BINARIES name, in exactly one place each, the plugin binary
+# PATHS the matching recipe builds — the explicit list
+# cmd/topos-manifest's own generator hashes into the kernel's link-time
+# trust manifest (D-12). Never a bin/plugins/* glob: a stale binary left
+# in bin/plugins/ from an earlier `make plugins` run must never silently
+# enter a `make build-portable` manifest (RESEARCH Pitfall 6) — the
+# recipe's own explicit binary list is the only authority over what gets
+# hashed, mirroring the discipline plugins-portable's own comment already
+# states for its six binary names.
+MANIFEST_PLUGIN_BINARIES := bin/plugins/topos-plugin-paperless bin/plugins/topos-plugin-silverbullet bin/plugins/topos-plugin-proton bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-whatsapp bin/plugins/topos-plugin-filesystem bin/plugins/topos-plugin-signal
+MANIFEST_PLUGIN_BINARIES_PORTABLE := bin/plugins/topos-plugin-paperless bin/plugins/topos-plugin-silverbullet bin/plugins/topos-plugin-proton bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-whatsapp bin/plugins/topos-plugin-filesystem
+MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-mockstrict bin/plugins/topos-plugin-filesystem
+
+# MANIFEST_GEN_PLUGINS / _PORTABLE / _E2E are the ONE-PLACE-ONLY generator
+# invocation for each binary list above — build, build-portable, dev, and
+# e2e all reference these instead of re-typing "go run
+# ./cmd/topos-manifest ..." at each call site, so the invocation and its
+# binary list can never drift apart independently.
+MANIFEST_GEN_PLUGINS = go run ./cmd/topos-manifest $(MANIFEST_PLUGIN_BINARIES)
+MANIFEST_GEN_PLUGINS_PORTABLE = go run ./cmd/topos-manifest $(MANIFEST_PLUGIN_BINARIES_PORTABLE)
+MANIFEST_GEN_E2E = go run ./cmd/topos-manifest $(MANIFEST_E2E_BINARIES)
+
+# MANIFEST_LDFLAGS_VAR is the ONE place the -ldflags -X path is written —
+# every recipe below that links bin/topos passes
+# "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST", so the Go symbol path can never
+# drift out of sync between recipes.
+MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
+
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
 # `dev` recipe's pre-flight port guard and readiness gate below. The
 # default MUST match web/vite.config.ts's hardcoded proxy target and
@@ -32,8 +61,16 @@ DEV_READY_TIMEOUT ?= 60
 # recipe hermetically with fake children instead of a real kernel and a
 # real Vite server. Overriding them changes WHICH children run — it
 # never disables any guard; the pre-flight port check and readiness
-# gate run identically regardless of what these point at.
-DEV_KERNEL_CMD ?= go run ./cmd/topos serve
+# gate run identically regardless of what these point at. The default
+# reads $$TOPOS_DEV_MANIFEST — an environment variable the `dev` recipe
+# body exports right before starting this command (never read here at
+# Make-parse time, since the manifest doesn't exist yet at this point in
+# the file) — at shell expansion time, so the dev-loop kernel links in a
+# real manifest of the plugin binaries `plugins` (this target's own
+# prerequisite) just built. An overridden DEV_KERNEL_CMD simply ignores
+# the variable — dev-guard-smoke.sh's fake children ARE such an override,
+# and remain completely unaffected by this.
+DEV_KERNEL_CMD ?= go run -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$TOPOS_DEV_MANIFEST" ./cmd/topos serve
 # --host exposes the Vite dev server on all interfaces (including the
 # tailscale one); vite.config.ts allowlists *.ts.net Host headers so the
 # MagicDNS name works too. Raw-IP access (100.x.y.z:5173) needs no allowlist.
@@ -59,32 +96,44 @@ plugins-portable:
 	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 
 # build-portable is the cgo-free sibling of "build" — it runs the same
-# SPA-build and kernel-build steps "build" runs, then delegates to
-# plugins-portable (above) instead of plugins, so the resulting
-# artifact set never requires a C toolchain or the system sqlcipher
-# package. This is the entry point CI's release/nightly workflows use.
+# SPA-build step "build" runs, then delegates to plugins-portable
+# (above) instead of plugins, so the resulting artifact set never
+# requires a C toolchain or the system sqlcipher package, THEN links the
+# kernel — plugins now build BEFORE the kernel (reversed from this
+# target's pre-manifest order), because bin/topos's own build embeds a
+# link-time manifest (D-12) of the plugin binaries plugins-portable just
+# built; hashing binaries that don't exist yet is not possible, so the
+# kernel build can no longer come first. This is the entry point CI's
+# release/nightly workflows use.
 build-portable:
 	npm --prefix web ci
 	npm --prefix web run build
-	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	$(MAKE) plugins-portable
+	MANIFEST="$$($(MANIFEST_GEN_PLUGINS_PORTABLE))" && \
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
-# the kernel binary, and the plugin binaries — topos-plugin-paperless,
+# the plugin binaries — topos-plugin-paperless,
 # topos-plugin-silverbullet, topos-plugin-proton,
 # topos-plugin-mock (the reference plugin PLUG-05 validates
-# docs/plugin-contract.md against), and topos-plugin-signal (built by
-# the "signal" target below — the first cgo-enabled plugin in this repo)
-# — in that order. The kernel embed directive needs kernel/webui/build
-# populated before `go build` runs to embed anything beyond the committed
-# .gitkeep placeholder. The plugin set itself is built by the "plugins"
-# target below so `dev` and `build` share one definition and can never
-# drift apart.
+# docs/plugin-contract.md against), topos-plugin-whatsapp, topos-plugin-
+# filesystem, and topos-plugin-signal (built by the "signal" target
+# below — the first cgo-enabled plugin in this repo) — and finally the
+# kernel binary itself, in that order. The kernel embed directive needs
+# kernel/webui/build populated before `go build` runs to embed anything
+# beyond the committed .gitkeep placeholder. The plugin set itself is
+# built by the "plugins" target below so `dev` and `build` share one
+# definition and can never drift apart. Plugins now build BEFORE the
+# kernel (reversed from this target's pre-manifest order): bin/topos's
+# own build embeds a link-time manifest (D-12) of the plugin binaries
+# `plugins` just built — hashing binaries that don't exist yet is not
+# possible, so the plugin build must complete first.
 build:
 	npm --prefix web ci
 	npm --prefix web run build
-	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	$(MAKE) plugins
+	MANIFEST="$$($(MANIFEST_GEN_PLUGINS))" && \
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
 # plugins builds the full plugin set — the five CGO_ENABLED=0 binaries
 # (now including topos-plugin-whatsapp, pure Go — SRC-03) plus the cgo
@@ -205,27 +254,33 @@ docs-check:
 dev-check:
 	./scripts/dev-guard-smoke.sh
 
-# e2e builds a fresh SPA, embeds it into a freshly built kernel binary,
-# builds ONLY the mock and mockstrict plugins (deliberately NOT the
-# "plugins" target's full real-plugin set — this target does not depend
-# on "plugins" at all, because that target chains to the cgo "signal"
-# target, which needs the system sqlcipher library, and this harness is
-# cgo-free by design, D-07), ensures the requested Playwright browser is
-# installed, then runs the suite against the built artifact. The SPA
-# build MUST precede the Go build: bin/topos go:embeds kernel/webui/build
-# at compile time (see the "build" target's own comment above), so
-# building the kernel first would embed whatever stale SPA happens to be
-# on disk and the whole suite would then test yesterday's UI while
-# reporting green. topos-plugin-mockstrict is built HERE and nowhere
-# else: it exists only for this browser harness (07.1-02-PLAN.md D-06).
-# Shipping it into the "plugins" target would still be wrong, but keeping
-# it out of that target is NOT what protects the operator's own "+ New …"
-# picker — this target writes both fixture binaries into bin/plugins/,
-# the same directory `make build`/`make dev` populate and a real
-# `[plugins] dir` can point at, so any developer who has run `make e2e`
-# has them there too. The actual guarantee is
-# kernel/pluginhost.ExcludedPluginBinaries (quick task 260811-r5d),
-# which excludes both fixture binaries from the picker's catalog listing
+# e2e builds a fresh SPA, builds ONLY the mock, mockstrict, and filesystem
+# plugins (deliberately NOT the "plugins" target's full real-plugin set —
+# this target does not depend on "plugins" at all, because that target
+# chains to the cgo "signal" target, which needs the system sqlcipher
+# library, and this harness is cgo-free by design, D-07), links those
+# three binaries into the kernel's own manifest, embeds the freshly built
+# SPA into that freshly built kernel binary, ensures the requested
+# Playwright browser is installed, then runs the suite against the built
+# artifact. The SPA build MUST precede the Go build: bin/topos go:embeds
+# kernel/webui/build at compile time (see the "build" target's own
+# comment above), so building the kernel first would embed whatever
+# stale SPA happens to be on disk and the whole suite would then test
+# yesterday's UI while reporting green. The three plugin binaries and the
+# manifest step now ALSO precede the kernel build (reversed from this
+# target's pre-manifest order) for the identical D-12 reason "build" and
+# "build-portable" reorder above: bin/topos's own build embeds a
+# link-time manifest of the plugin binaries this target just built, which
+# is not possible before they exist. topos-plugin-mockstrict is built
+# HERE and nowhere else: it exists only for this browser harness
+# (07.1-02-PLAN.md D-06). Shipping it into the "plugins" target would
+# still be wrong, but keeping it out of that target is NOT what protects
+# the operator's own "+ New …" picker — this target writes both fixture
+# binaries into bin/plugins/, the same directory `make build`/`make dev`
+# populate and a real `[plugins] dir` can point at, so any developer who
+# has run `make e2e` has them there too. The actual guarantee is
+# kernel/pluginhost.ExcludedPluginBinaries (quick task 260811-r5d), which
+# excludes both fixture binaries from the picker's catalog listing
 # unconditionally, regardless of what happens to be sitting in
 # bin/plugins/.
 #
@@ -237,12 +292,13 @@ dev-check:
 e2e:
 	npm --prefix web ci
 	npm --prefix web run build
-	CGO_ENABLED=0 go build -o bin/topos ./cmd/topos
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
 	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) external-demo
+	MANIFEST="$$($(MANIFEST_GEN_E2E))" && \
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
@@ -276,6 +332,7 @@ dev: plugins
 		echo "make dev: stop that process, or re-run with DEV_PORT=<a different port>" >&2; \
 		exit 1; \
 	fi; \
+	export TOPOS_DEV_MANIFEST="$$($(MANIFEST_GEN_PLUGINS))"; \
 	trap 'kill 0' INT TERM; \
 	$(DEV_KERNEL_CMD) & \
 	KPID=$$!; \
