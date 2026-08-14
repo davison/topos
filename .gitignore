@@ -23,6 +23,7 @@ kernel/webui/build/*
 /plugins/mockstrict/mockstrict
 /plugins/whatsapp/whatsapp
 /paperless
+/topos-manifest
 
 # Playwright e2e artifacts (traces, screenshots, html report) — never
 # committed; make e2e regenerates them on every run.
