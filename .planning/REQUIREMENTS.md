@@ -28,8 +28,8 @@ Requirements for this milestone. Each maps to roadmap phases. REQ-ID numbering c
 
 ### Web App
 
-- [x] **UI-13**: App installs as a PWA on desktop (manifest, ServiceWorker, icons) with an update flow that never serves a stale UI against an upgraded kernel
-- [x] **UI-14**: Mobile/LAN install limitation (secure-context requirement) is documented, with the recommended user-provided HTTPS workarounds
+- [ ] **UI-13**: App installs as a PWA on desktop (manifest, ServiceWorker, icons) with an update flow that never serves a stale UI against an upgraded kernel
+- [ ] **UI-14**: Mobile/LAN install limitation (secure-context requirement) is documented, with the recommended user-provided HTTPS workarounds
 
 ## Future Requirements
 
@@ -80,8 +80,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRC-06 | Phase 14 | Pending |
 | KERN-09 | Phase 13 | Pending |
 | KERN-10 | Phase 13 | Pending |
-| UI-13 | Phase 13 | Complete |
-| UI-14 | Phase 13 | Complete |
+| UI-13 | Phase 13 | Gaps Found |
+| UI-14 | Phase 13 | Gaps Found |
 
 **Coverage:**
 
