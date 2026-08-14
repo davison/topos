@@ -95,7 +95,7 @@ func TestStreamItems_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	itemsA, err := s.StreamItems(ctx, "ws-a", nil)
+	itemsA, err := s.StreamItems(ctx, "ws-a", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws-a): %v", err)
 	}
@@ -103,7 +103,7 @@ func TestStreamItems_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Fatalf("expected ws-a to carry exactly [%s] after excluding %s, got %v", newer.ID, older.ID, idsOf(itemsA))
 	}
 
-	itemsB, err := s.StreamItems(ctx, "ws-b", nil)
+	itemsB, err := s.StreamItems(ctx, "ws-b", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws-b): %v", err)
 	}
@@ -134,7 +134,7 @@ func TestStreamItems_ExcludedItemOrderingPreservedAmongSurvivors(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestItemMarks_SurviveIndexRebuild(t *testing.T) {
 
 	// (a) items/webspace_items rows are gone — the ordinary rebuild
 	// behavior, unaffected by this phase's addition.
-	items, err := reopened.StreamItems(ctx, "ws", nil)
+	items, err := reopened.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems after rebuild: %v", err)
 	}
@@ -294,12 +294,113 @@ func TestItemMarks_SurviveIndexRebuild(t *testing.T) {
 	if err := reopened.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
 		t.Fatalf("re-insert after rebuild: %v", err)
 	}
-	itemsAfterReinsert, err := reopened.StreamItems(ctx, "ws", nil)
+	itemsAfterReinsert, err := reopened.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems after re-insert: %v", err)
 	}
 	if len(itemsAfterReinsert) != 0 {
 		t.Fatalf("the rebuild ate the mark: expected the surviving mark to still filter %s after it re-entered the index, got %v", it.ID, idsOf(itemsAfterReinsert))
+	}
+}
+
+// TestStreamItems_ViewExcludedReturnsExactlyMarkedItems proves the
+// ViewExcluded branch (13-02-PLAN.md Task 1): it returns exactly the
+// items carrying an excluded mark for the webspace, in the same
+// timestamp_unix DESC ordering ViewIncluded uses, and never an unmarked
+// survivor.
+func TestStreamItems_ViewExcludedReturnsExactlyMarkedItems(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	newest := sampleItem("1", 300)
+	excluded := sampleItem("2", 200)
+	oldest := sampleItem("3", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{newest, excluded, oldest}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{excluded.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	got, err := s.StreamItems(ctx, "ws", nil, ViewExcluded)
+	if err != nil {
+		t.Fatalf("StreamItems(ViewExcluded): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != excluded.ID {
+		t.Fatalf("expected ViewExcluded to carry exactly [%s], got %v", excluded.ID, idsOf(got))
+	}
+}
+
+// TestStreamItems_IncludedAndExcludedViewsAreComplements proves the two
+// views partition a webspace's full item set with no overlap and no gap:
+// len(included) + len(excluded) equals the unfiltered item count.
+func TestStreamItems_IncludedAndExcludedViewsAreComplements(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	a := sampleItem("1", 400)
+	b := sampleItem("2", 300)
+	c := sampleItem("3", 200)
+	d := sampleItem("4", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{a, b, c, d}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{b.ID, d.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	included, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems(ViewIncluded): %v", err)
+	}
+	excluded, err := s.StreamItems(ctx, "ws", nil, ViewExcluded)
+	if err != nil {
+		t.Fatalf("StreamItems(ViewExcluded): %v", err)
+	}
+
+	if len(included)+len(excluded) != 4 {
+		t.Fatalf("expected len(included)+len(excluded) == 4 (the unfiltered item count), got %d + %d", len(included), len(excluded))
+	}
+	seen := map[string]bool{}
+	for _, it := range append(append([]item.Item{}, included...), excluded...) {
+		if seen[it.ID] {
+			t.Errorf("item %s appeared in both views — the partition must have no overlap", it.ID)
+		}
+		seen[it.ID] = true
+	}
+	for _, id := range []string{a.ID, b.ID, c.ID, d.ID} {
+		if !seen[id] {
+			t.Errorf("item %s missing from both views — the partition must have no gap", id)
+		}
+	}
+}
+
+// TestStreamItems_ZeroMarksExcludedViewReturnsEmpty proves a webspace with
+// zero marks returns the full stream for ViewIncluded and an empty slice
+// (not an error) for ViewExcluded.
+func TestStreamItems_ZeroMarksExcludedViewReturnsEmpty(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	included, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems(ViewIncluded): %v", err)
+	}
+	if len(included) != 1 {
+		t.Fatalf("expected ViewIncluded to carry the full stream with zero marks, got %v", idsOf(included))
+	}
+
+	excluded, err := s.StreamItems(ctx, "ws", nil, ViewExcluded)
+	if err != nil {
+		t.Fatalf("StreamItems(ViewExcluded): %v", err)
+	}
+	if len(excluded) != 0 {
+		t.Fatalf("expected ViewExcluded to be empty with zero marks, got %v", idsOf(excluded))
 	}
 }
 
@@ -331,7 +432,7 @@ func TestSetItemMarks_MarkForUnindexedItemOutranksLaterMatch(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}

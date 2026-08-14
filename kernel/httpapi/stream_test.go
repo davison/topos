@@ -390,6 +390,142 @@ func TestStreamHandler_IndexOnlyWebspaceReportsZeroValueSyncDespiteOtherFailure(
 	}
 }
 
+// --- ?view= and excluded_count (13-02-PLAN.md Task 1) ---
+
+// TestStreamHandler_ViewExcludedReturnsOnlyMarkedItems proves ?view=excluded
+// returns exactly the marked item and excluded_count reflects it, while the
+// default (no view) request still returns only the unmarked item.
+func TestStreamHandler_ViewExcludedReturnsOnlyMarkedItems(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	kept := item.Item{ID: "paperless:1", Source: "paperless", SourceType: "paperless", SourceID: "1", Title: "kept", Fidelity: item.FidelityExact, DeepLink: "http://x/1", TimestampUnix: 200}
+	excluded := item.Item{ID: "paperless:2", Source: "paperless", SourceType: "paperless", SourceID: "2", Title: "excluded", Fidelity: item.FidelityExact, DeepLink: "http://x/2", TimestampUnix: 100}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept, excluded}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := store.SetItemMarks(ctx, "ws", index.MarkKindExcluded, []string{excluded.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	router := newTestRouter(store)
+
+	// Default view (no ?view=) — only the unmarked item.
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].ID != kept.ID {
+		t.Fatalf("expected default view to carry exactly [%s], got %+v", kept.ID, resp.Items)
+	}
+	if resp.ExcludedCount != 1 {
+		t.Errorf("expected excluded_count 1 on the default view, got %d", resp.ExcludedCount)
+	}
+
+	// ?view=excluded — only the marked item.
+	req = httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream?view=excluded", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].ID != excluded.ID {
+		t.Fatalf("expected ?view=excluded to carry exactly [%s], got %+v", excluded.ID, resp.Items)
+	}
+	if resp.ExcludedCount != 1 {
+		t.Errorf("expected excluded_count 1 on the excluded view too, got %d", resp.ExcludedCount)
+	}
+}
+
+// TestStreamHandler_ViewExcludedZeroMarksReturns200EmptyArrayWithZeroCount
+// proves a known webspace with zero marks answers ?view=excluded with 200,
+// an empty items array, and excluded_count 0 — never a 404.
+func TestStreamHandler_ViewExcludedZeroMarksReturns200EmptyArrayWithZeroCount(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	router := newTestRouter(store)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream?view=excluded", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a zero-mark webspace's excluded view, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Items == nil {
+		t.Error("expected items to be an empty array, not null")
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("expected zero items, got %d", len(resp.Items))
+	}
+	if resp.ExcludedCount != 0 {
+		t.Errorf("expected excluded_count 0, got %d", resp.ExcludedCount)
+	}
+}
+
+// TestStreamHandler_ViewBogusReturns400InvalidRequest proves a view value
+// that is neither "included" nor "excluded" is rejected 400 invalid_request,
+// never silently coerced to either bucket.
+func TestStreamHandler_ViewBogusReturns400InvalidRequest(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	router := newTestRouter(store)
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream?view=bogus", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal error envelope: %v", err)
+	}
+	if envelope.Error.Code != "invalid_request" {
+		t.Errorf("expected code invalid_request, got %q", envelope.Error.Code)
+	}
+}
+
+// TestStreamHandler_ViewExcludedUnknownWebspaceReturns404 proves the
+// webspaceIsKnown gate runs BEFORE the view parse: an unknown webspace with
+// ?view=excluded still answers 404 webspace_not_found, never a 400.
+func TestStreamHandler_ViewExcludedUnknownWebspaceReturns404(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/does-not-exist/stream?view=excluded", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal error envelope: %v", err)
+	}
+	if envelope.Error.Code != "webspace_not_found" {
+		t.Errorf("expected code webspace_not_found (the existence gate must run before the view parse), got %q", envelope.Error.Code)
+	}
+}
+
 // --- resolveStreamLinkURL (12-01-PLAN.md Task 2, D-06): the file://-scheme rewrite ---
 
 // TestStreamLink_FileSchemeDeepLinkIsRewrittenToTheOpenRoute proves an

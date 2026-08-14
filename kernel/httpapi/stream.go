@@ -52,6 +52,11 @@ type streamResponse struct {
 	Webspace      string       `json:"webspace"`
 	Sync          syncStatus   `json:"sync"`
 	Items         []streamItem `json:"items"`
+	// ExcludedCount is the webspace's LIVE total of items carrying an
+	// excluded mark (13-02-PLAN.md Task 1, 13-UI-SPEC.md E4) — populated
+	// on EVERY stream request, in both views, so the excluded-view toggle
+	// never needs a second round trip to learn its own count.
+	ExcludedCount int `json:"excluded_count"`
 }
 
 // StreamHandler serves GET /api/webspaces/{webspace}/stream — a free
@@ -81,7 +86,29 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 			return
 		}
 
-		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter)
+		// view is parsed AFTER the webspaceIsKnown gate (13-02-PLAN.md
+		// Task 1): an unknown webspace must still answer 404
+		// webspace_not_found regardless of the view value, never a 400 for
+		// a bad view masking the real "this webspace doesn't exist"
+		// answer.
+		view, ok := parseStreamView(r.URL.Query().Get("view"))
+		if !ok {
+			WriteError(w, http.StatusBadRequest, "invalid_request", "view must be \"included\" or \"excluded\"")
+			return
+		}
+
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, view)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+
+		// ExcludedCount is read fresh on EVERY request, in both views
+		// (13-02-PLAN.md Task 1) — the excluded-view toggle's own live
+		// count (13-UI-SPEC.md E4), never derived from len(items) so a
+		// client viewing the included bucket still learns the excluded
+		// count without a second request.
+		excludedCount, err := store.CountItemMarks(ctx, name, index.MarkKindExcluded)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
@@ -91,6 +118,7 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 			SchemaVersion: schemaVersion,
 			Webspace:      name,
 			Items:         make([]streamItem, len(items)),
+			ExcludedCount: excludedCount,
 		}
 
 		if runs, err := store.LatestSyncRunPerSource(ctx); err == nil {
@@ -102,6 +130,27 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 		}
 
 		WriteJSON(w, http.StatusOK, resp)
+	}
+}
+
+// parseStreamView resolves the stream route's ?view= query value to an
+// index.MarkView (13-02-PLAN.md Task 1): an absent or empty value is
+// treated as "included" (unchanged pre-Phase-13 behavior — every existing
+// caller that never sends ?view= at all sees byte-identical output), and
+// only "included"/"excluded" are accepted otherwise. ok=false signals any
+// other value — the caller rejects with 400 invalid_request naming both
+// allowed values, never silently coercing an unrecognized value to either
+// bucket.
+func parseStreamView(raw string) (view index.MarkView, ok bool) {
+	switch raw {
+	case "":
+		return index.ViewIncluded, true
+	case string(index.ViewIncluded):
+		return index.ViewIncluded, true
+	case string(index.ViewExcluded):
+		return index.ViewExcluded, true
+	default:
+		return "", false
 	}
 }
 

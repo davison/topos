@@ -330,17 +330,54 @@ func (s *Store) DeleteSyncRuns(ctx context.Context, source string) error {
 const MarkKindExcluded = "excluded"
 
 // markFilterClause is the ONE shared SQL fragment that excludes a
-// webspace's marked-excluded items — appended, unchanged, to both
-// StreamItems query variants below and to searchQuery, always with
-// webspaceName bound as the LAST parameter of the call. This single
-// composition site is what makes the /agent/v1 stream mirror inherit the
-// filter for free: kernel/httpapi/agent.go's two stream call sites both
-// call StreamItems directly rather than reimplementing their own query
-// (verified against agent.go before this phase's plan was written), so an
-// excluded item becomes invisible to an agent grant the instant it
-// becomes invisible to the human UI, with no separate change required
-// there (D-03/PD-01, 13-01-PLAN.md).
+// webspace's marked-excluded items — appended, unchanged, to searchQuery
+// (which stays permanently on this NOT IN branch, PD-06: search never
+// surfaces excluded items in any view) and used as StreamItems' own
+// ViewIncluded branch, always with webspaceName bound as the LAST
+// parameter of the call. This single composition site is what makes the
+// /agent/v1 stream mirror inherit the filter for free: kernel/httpapi/
+// agent.go's two stream call sites both call StreamItems directly rather
+// than reimplementing their own query (verified against agent.go before
+// this phase's plan was written), so an excluded item becomes invisible to
+// an agent grant the instant it becomes invisible to the human UI, with no
+// separate change required there (D-03/PD-01, 13-01-PLAN.md).
 const markFilterClause = `AND items.id NOT IN (SELECT item_id FROM item_marks WHERE webspace_name = ? AND kind = 'excluded')`
+
+// markFilterClauseExcluded is markFilterClause's IN-subquery complement —
+// StreamItems' ViewExcluded branch (13-02-PLAN.md Task 1). Same subquery
+// shape, same single bound webspaceName parameter, inverted membership
+// test: only items CARRYING the mark survive.
+const markFilterClauseExcluded = `AND items.id IN (SELECT item_id FROM item_marks WHERE webspace_name = ? AND kind = 'excluded')`
+
+// MarkView selects which bucket StreamItems returns for a webspace:
+// ViewIncluded (the ordinary, unmarked stream) or ViewExcluded (exactly
+// the marked-excluded items, in the same chronological order). The two
+// views are complements of the unfiltered item set for any webspace.
+type MarkView string
+
+const (
+	// ViewIncluded is StreamItems' default view — every item NOT carrying
+	// an excluded mark for the webspace. The zero value of MarkView
+	// ("") also resolves to this view (see streamMarkFilterClause), so a
+	// caller that never sets view explicitly (every pre-13-02 call site)
+	// behaves byte-identically to before this type existed.
+	ViewIncluded MarkView = "included"
+	// ViewExcluded is the excluded bucket — exactly the items carrying an
+	// excluded mark for the webspace, in StreamItems' same ORDER BY.
+	ViewExcluded MarkView = "excluded"
+)
+
+// streamMarkFilterClause resolves view to the SQL fragment StreamItems
+// composes into its query: ViewExcluded gets the IN-subquery branch,
+// every other value (ViewIncluded, and critically the MarkView zero value
+// "") gets the NOT IN branch — an unset/unrecognized view can therefore
+// never accidentally surface the excluded bucket.
+func streamMarkFilterClause(view MarkView) string {
+	if view == ViewExcluded {
+		return markFilterClauseExcluded
+	}
+	return markFilterClause
+}
 
 // SetItemMarks marks each of itemIDs with kind in webspaceName, in one
 // transaction. INSERT OR IGNORE per id makes re-marking an already-marked
@@ -442,16 +479,22 @@ SELECT COUNT(*) FROM item_marks WHERE webspace_name = ? AND kind = ?
 // StreamItems returns webspaceName's items in chronological order
 // (newest first), optionally narrowed to only those matching every term in
 // filterTerms (D-16/D-18: a webspace's saved permanent filter — an AND-ed
-// FTS query-time narrowing, never a sync-time one). With no surviving
-// terms, this runs the identical SQL Phase 1-6 always ran, so a webspace
-// with no filter key streams byte-identically to its pre-Phase-7 output.
-// With terms, the query joins through items_fts exactly like Search does,
-// but keeps StreamItems' own chronological ORDER BY (never bm25 rank) and
-// no LIMIT — the filtered view is still the whole stream, just narrower.
-// An FTS5-hostile filter term degrades to an empty slice with a nil error,
+// FTS query-time narrowing, never a sync-time one), and to exactly one
+// mark-view bucket (view — 13-02-PLAN.md Task 1): ViewIncluded (or the
+// MarkView zero value) returns the unmarked items, ViewExcluded returns
+// exactly the marked ones. Both views share this same ORDER BY, and for
+// any webspace they are exact complements of the unfiltered item set. With
+// no surviving filter terms, the ViewIncluded branch runs the identical
+// SQL Phase 1-6 always ran, so a webspace with no filter key and no view
+// argument streams byte-identically to its pre-Phase-13 output. With
+// terms, the query joins through items_fts exactly like Search does, but
+// keeps StreamItems' own chronological ORDER BY (never bm25 rank) and no
+// LIMIT — the filtered view is still the whole bucket, just narrower. An
+// FTS5-hostile filter term degrades to an empty slice with a nil error,
 // mirroring Search's own fts5-error degradation, rather than a 500.
-func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string) ([]item.Item, error) {
+func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string, view MarkView) ([]item.Item, error) {
 	match := BuildMatchQuery(filterTerms, "")
+	markClause := streamMarkFilterClause(view)
 
 	const baseColumns = `
 SELECT items.id, items.source, items.source_type, items.source_id, items.title, items.preview,
@@ -463,22 +506,22 @@ SELECT items.id, items.source, items.source_type, items.source_id, items.title, 
 	var rows *sql.Rows
 	var err error
 	if match == "" {
-		const q = baseColumns + `
+		q := baseColumns + `
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
-` + markFilterClause + `
+` + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
 		rows, err = s.db.QueryContext(ctx, q, webspaceName, webspaceName)
 	} else {
-		const q = baseColumns + `
+		q := baseColumns + `
 FROM items_fts
 JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
-` + markFilterClause + `
+` + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
 		rows, err = s.db.QueryContext(ctx, q, webspaceName, match, webspaceName)

@@ -125,7 +125,10 @@ func agentSourcesHandler(store *index.Store, cfgStore *config.Store, prober Heal
 // (the same read StreamHandler/agentStreamHandler use) rather than adding
 // a new Store method outside this plan's scope.
 func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool, filterTerms []string) (int, error) {
-	items, err := store.StreamItems(ctx, webspaceName, filterTerms)
+	// index.ViewIncluded, explicit: the agent mirror has no excluded view
+	// (13-02-PLAN.md Task 1) — an agent grant can never surface the
+	// excluded bucket.
+	items, err := store.StreamItems(ctx, webspaceName, filterTerms, index.ViewIncluded)
 	if err != nil {
 		return 0, err
 	}
@@ -225,7 +228,10 @@ func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober Healt
 
 		granted := grantedSources(cfg)
 
-		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter)
+		// index.ViewIncluded, explicit: the agent mirror has no excluded
+		// view (13-02-PLAN.md Task 1) — an agent grant can never surface
+		// the excluded bucket.
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, index.ViewIncluded)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

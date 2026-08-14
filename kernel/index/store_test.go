@@ -70,7 +70,7 @@ func TestReplaceWebspaceSourceItems_OtherSourceRowsUntouched(t *testing.T) {
 		t.Fatalf("replace silverbullet: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -128,11 +128,11 @@ func TestReplaceWebspaceSourceItems_TwoWebspacesShareItemNoCollision(t *testing.
 		t.Fatalf("ReplaceWebspaceItems webspace-b: %v", err)
 	}
 
-	itemsA, err := s.StreamItems(ctx, "webspace-a", nil)
+	itemsA, err := s.StreamItems(ctx, "webspace-a", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems webspace-a: %v", err)
 	}
-	itemsB, err := s.StreamItems(ctx, "webspace-b", nil)
+	itemsB, err := s.StreamItems(ctx, "webspace-b", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems webspace-b: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestStreamItems_TotalOrderingWithTieBreak(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestStreamItems_UnknownWebspaceReturnsEmpty(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	items, err := s.StreamItems(ctx, "does-not-exist", nil)
+	items, err := s.StreamItems(ctx, "does-not-exist", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestReplaceWebspaceSourceItems_Idempotent(t *testing.T) {
 	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", items); err != nil {
 		t.Fatalf("first sync: %v", err)
 	}
-	first, err := s.StreamItems(ctx, "ws", nil)
+	first, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestReplaceWebspaceSourceItems_Idempotent(t *testing.T) {
 	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", items); err != nil {
 		t.Fatalf("second sync: %v", err)
 	}
-	second, err := s.StreamItems(ctx, "ws", nil)
+	second, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestStreamItems_OrdersByPrimaryTimestampDescendingAcrossInsertOrder(t *test
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestStreamItems_TiesOnBothTimestampsBreakByIDAscending(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil)
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -952,7 +952,7 @@ func TestStreamItems_FilterTermCarriesNoTrailingStar(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", []string{"boiler"})
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler"}, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -976,11 +976,11 @@ func TestStreamItems_EmptyFilterReturnsIdenticalRowsAndOrder(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	withNilFilter, err := s.StreamItems(ctx, "ws", nil)
+	withNilFilter, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(nil): %v", err)
 	}
-	withEmptyFilter, err := s.StreamItems(ctx, "ws", []string{})
+	withEmptyFilter, err := s.StreamItems(ctx, "ws", []string{}, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems([]string{}): %v", err)
 	}
@@ -1012,7 +1012,7 @@ func TestStreamItems_SingleTermFilterNarrowsToMatchingRowsChronological(t *testi
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", []string{"boiler"})
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler"}, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -1039,7 +1039,7 @@ func TestStreamItems_TwoTermFilterRequiresBoth(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", []string{"boiler", "quote"})
+	items, err := s.StreamItems(ctx, "ws", []string{"boiler", "quote"}, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -1066,7 +1066,7 @@ func TestStreamItems_HostileFilterTermNeverErrors(t *testing.T) {
 	}
 
 	for _, term := range []string{`"`, `*`, `(`, `)`, `NEAR`, `AND OR NOT`} {
-		if _, err := s.StreamItems(ctx, "ws", []string{term}); err != nil {
+		if _, err := s.StreamItems(ctx, "ws", []string{term}, ViewIncluded); err != nil {
 			t.Fatalf("StreamItems([]string{%q}): expected a nil error regardless of what the filter term contains, got: %v", term, err)
 		}
 	}
@@ -1157,7 +1157,7 @@ func TestDeleteSourceItems_RemovesOnlyThatInstancesRowsEverywhere(t *testing.T) 
 	}
 
 	for _, ws := range []string{"house-move", "work"} {
-		items, err := s.StreamItems(ctx, ws, nil)
+		items, err := s.StreamItems(ctx, ws, nil, ViewIncluded)
 		if err != nil {
 			t.Fatalf("StreamItems(%s): %v", ws, err)
 		}
@@ -1347,7 +1347,7 @@ func TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice(t *testi
 	// The rebuild observably happened: the row written before the
 	// rollback is absent afterwards, not merely that Open returned no
 	// error.
-	items, err := reopened.StreamItems(context.Background(), "ws", nil)
+	items, err := reopened.StreamItems(context.Background(), "ws", nil, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems after rebuild: %v", err)
 	}

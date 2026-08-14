@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 
+	"github.com/davison/topos/kernel/index"
 	"github.com/davison/topos/kernel/pluginhost"
 )
 
@@ -105,7 +106,7 @@ keywords = ["demo"]
 	// Status alone would pass even if the retry succeeded against an empty
 	// result — the gap's user-visible symptom was an empty stream under a
 	// failure banner, so assert the items themselves persisted too.
-	items, err := idx.StreamItems(ctx, "demo", nil)
+	items, err := idx.StreamItems(ctx, "demo", nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(demo): %v", err)
 	}
