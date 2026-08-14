@@ -98,17 +98,39 @@ simply has no inline rendition, by design, not by omission.
 
 ## Folder-vocabulary match values (`folders`)
 
-A top-level file (directly inside the configured `path`) carries exactly
-one `folders` label: the configured root folder's own base name (e.g.
-`path = "~/Documents/household"` gives every top-level file the label
-`household`).
+**What every file reports.** Every file this source contributes carries
+the configured `path`'s own base name as a label, at every depth (e.g.
+`path = "~/Documents/household"` gives every file — top-level or nested —
+the label `household`). A nested file (`recursive = true` only)
+additionally carries one label per containing-directory path segment, plus
+the cumulative relative directory path. So a file at
+`receipts/2026/invoice.pdf` under `path = "~/Documents/household"` reports
+`household`, `receipts`, `2026`, and `receipts/2026`, in that order. A
+subfolder whose name equals the root's own (e.g. a `household/household/`
+nesting) reports that value once, not twice.
 
-A nested file (`recursive = true` only) carries one label per
-containing-directory path segment, plus the cumulative relative directory
-path — so a file at `receipts/2026/invoice.pdf` under a root named `docs`
-carries the labels `receipts`, `2026`, and `receipts/2026`, letting a
-webspace's `match`/`keywords` name either a bare subfolder or a full
-relative path.
+**How to match everything from this instance.** Name the configured
+folder's base name and nothing else:
+
+```toml
+[webspaces.house-move.match.docs]
+folders = ["household"]
+```
+
+This is the correct — and only — way to express "everything from this
+instance" for a filesystem source. There is no wildcard for it.
+
+**Match values are literals, and this page's globs are not.** A `folders`
+value is compared as an exact, case-insensitive string against the labels
+above — **never as glob patterns** — deliberately different from the
+`include_glob`/`exclude_glob` extras documented above on this same page,
+which ARE doublestar patterns. A value of a bare asterisk (`*`), or a
+doubled asterisk (`**`), is therefore treated as a literal folder name,
+matches no label, and yields an empty stream for that source while
+`Health` and the sync both stay green. See `docs/plugin-contract.md`'s
+own match rule (rule 2, "Match exact and case-insensitive, never
+substring or prefix", D-04) — this exact-match discipline is a
+cross-plugin invariant, not something specific to this plugin.
 
 ## Symlink and dot-file policy
 
