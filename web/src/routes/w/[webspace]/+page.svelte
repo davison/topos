@@ -110,21 +110,28 @@
 	// and the stream refetches so the change is visible on the very next
 	// render; the success/failure toast fires via the shared toast.ts
 	// helpers, so this and the later bulk action-bar path can never drift
-	// in wording (E3.1).
+	// in wording (E3.1). ws/gen (13-07-PLAN.md, WR-01 gap closure) are
+	// captured at entry because markSuccessToast's Undo action can fire up
+	// to 5000ms later, by which time a WebspaceSwitcher navigation may
+	// have changed the route's derived webspace/navGeneration bindings —
+	// the same discipline writeFilter and handleSearch already apply for
+	// their own, shorter, delay windows.
 	let markBusy = $state(false);
 
 	async function handleExclude(id: string) {
+		const ws = webspace;
+		const gen = navGeneration;
 		markBusy = true;
 		try {
-			await setItemMarks(webspace, 'add', [id]);
+			await setItemMarks(ws, 'add', [id]);
 			closeDetail();
-			await load(navGeneration);
+			await load(gen);
 			markSuccessToast({
 				verb: 'Excluded',
 				count: 1,
 				onUndo: async () => {
-					await setItemMarks(webspace, 'remove', [id]);
-					await load(navGeneration);
+					await setItemMarks(ws, 'remove', [id]);
+					await load(gen);
 				}
 			});
 		} catch {
@@ -135,17 +142,19 @@
 	}
 
 	async function handleInclude(id: string) {
+		const ws = webspace;
+		const gen = navGeneration;
 		markBusy = true;
 		try {
-			await setItemMarks(webspace, 'remove', [id]);
+			await setItemMarks(ws, 'remove', [id]);
 			closeDetail();
-			await load(navGeneration);
+			await load(gen);
 			markSuccessToast({
 				verb: 'Included',
 				count: 1,
 				onUndo: async () => {
-					await setItemMarks(webspace, 'add', [id]);
-					await load(navGeneration);
+					await setItemMarks(ws, 'add', [id]);
+					await load(gen);
 				}
 			});
 		} catch {
@@ -206,6 +215,8 @@
 	// same view value StreamList's own primaryLabel prop reads, so the
 	// button's label and the write it fires can never disagree.
 	async function handleBulkPrimary() {
+		const ws = webspace;
+		const gen = navGeneration;
 		const ids = [...bulkSelection];
 		const count = ids.length;
 		if (count === 0) return;
@@ -216,15 +227,15 @@
 		const failureVerb: 'exclude' | 'include' = excludedView ? 'include' : 'exclude';
 		bulkBusy = true;
 		try {
-			await setItemMarks(webspace, action, ids);
+			await setItemMarks(ws, action, ids);
 			handleBulkClear();
-			await load(navGeneration);
+			await load(gen);
 			markSuccessToast({
 				verb,
 				count,
 				onUndo: async () => {
-					await setItemMarks(webspace, undoAction, ids);
-					await load(navGeneration);
+					await setItemMarks(ws, undoAction, ids);
+					await load(gen);
 				}
 			});
 		} catch {
