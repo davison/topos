@@ -239,7 +239,7 @@ proxy (`13-05-PLAN.md`, `D-12`/`D-13`).** Which directory a binary sits
 in still decides which tier it's a CANDIDATE for (the two directories
 above remain real install conveniences — `D-16` — and are unchanged),
 but a trusted-DIRECTORY binary must additionally verify against a
-link-time build manifest before it is ever launched: at kernel build
+link-time **build-provenance manifest** before it is ever launched: at kernel build
 time, `cmd/topos-manifest` hashes the exact plugin binaries that build
 just produced and links the resulting name→SHA-256 table into the kernel
 binary itself via `-ldflags -X`. At launch time, the kernel re-hashes the
@@ -260,7 +260,23 @@ takes are `make build`/`make build-portable`/`make dev` (which rebuild
 every trusted plugin binary and regenerate the manifest before linking
 the kernel, every time) and a manually invoked bare `go build` (which
 carries no manifest and therefore launches no trusted-tier plugin at
-all) — there is no supported path in between.
+all) — there is no supported path in between. See
+[`docs/plugins/signal.md`](plugins/signal.md#local-builds-and-the-build-manifest)
+for a worked example from the one plugin an operator routinely rebuilds
+locally against a release kernel — the exact shape that hits this
+refusal in practice, and the consent-and-pin path out of it.
+
+**A manifest match is an integrity control, not publisher authentication
+— be honest about what it proves.** A matching SHA-256 tells you "the
+bytes on disk are the exact bytes this kernel was built alongside," and
+nothing more: there is no signature, no publisher identity, no
+supply-chain attestation anywhere in this mechanism (mirroring
+`kernel/pluginhost/binaryhash.go`'s own doc comment — "narrowly an
+integrity control, not a cryptographic authentication feature"). It does
+not prove who wrote the plugin's source code, that the source code is
+trustworthy, or that the binary does what its name implies — it proves
+only that these are the same bytes a build you already trust produced.
+Do not read "verified by the build manifest" as "verified safe."
 
 **`[sources.<id>] plugin` must be a bare binary filename.** The value
 resolves directly inside one of the two configured directories above and

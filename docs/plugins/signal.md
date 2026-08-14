@@ -57,6 +57,57 @@ reference block; this page summarises it and does not reproduce it.
 - This plugin binary is not published as a prebuilt artifact; `make
   signal` is the local build path (see Install Requirements, above).
 
+## Local builds and the build manifest
+
+**A locally-built Signal binary dropped next to a release kernel refuses
+to launch — this is the trust system working correctly, not a bug and
+not a special case for Signal.** See
+[`docs/plugin-contract.md`'s "Trust tiers"](../plugin-contract.md#trust-tiers)
+for the full mechanism; this section is the worked example from the one
+plugin whose local build path routinely hits it.
+
+**Why this plugin, specifically, hits the refusal.** `topos-plugin-signal`
+is this repository's only cgo build (`docs/releasing.md`'s "The Signal
+plugin binary") — every other published binary is a static
+`CGO_ENABLED=0` build that runs anywhere, so it ships in every release
+artifact. This one dynamically links the system `sqlcipher` library and
+carries no such portability guarantee, so it is deliberately excluded
+from every published artifact; a Signal user builds it locally with `make
+signal` instead. It follows directly that a release kernel's link-time
+build manifest can never contain a locally-built Signal binary's hash —
+that binary did not exist yet when the release kernel was linked. Drop it
+into the release kernel's trusted plugin directory and the kernel refuses
+to launch it (`launch_failure: "manifest_unverified"`), by name, on
+`GET /api/sources`, exactly as it would for any other trusted-directory
+binary the manifest doesn't recognize.
+
+**The fix, step by step:**
+
+1. Build the plugin locally: `make signal` (see Install Requirements,
+   above).
+2. Place the built `topos-plugin-signal` binary in the **external**
+   plugin directory (`[plugins] external_dir`), not the trusted one.
+3. Add it through the app's untrusted-add consent flow — the same
+   explicit consent-and-pin path any other external, unverified binary
+   goes through (`docs/plugin-contract.md`'s "Pinning").
+4. It now runs pinned, badged untrusted. Re-running `make signal` later
+   produces new bytes and requires re-accepting the changed binary through
+   the chip's own re-pin flow — exactly like any other pinned external
+   plugin whose bytes changed.
+
+**Whoever builds the whole repository together is unaffected.** `make
+build` and `make dev` both build the Signal plugin as part of their own
+`plugins` target (which requires the system `sqlcipher` package — see
+Install Requirements, above) and generate the trust manifest from that
+exact build's own binaries in the same invocation — the Signal binary's
+hash is already in that kernel's own manifest, so it launches trusted, no
+consent flow needed. (`make build-portable`, by contrast, never builds
+Signal at all — see `docs/releasing.md`'s "The Signal plugin binary" —
+so this refusal never applies to it either.) The refusal above is
+specific to a locally-built Signal binary paired with a DIFFERENT,
+already-linked kernel — a downloaded release, most commonly — never to a
+from-source build of the whole project with `make build`/`make dev`.
+
 ## Security & Privacy Notes
 
 - **Read-only:** this plugin never writes to Signal Desktop's database. It

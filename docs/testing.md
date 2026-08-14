@@ -417,6 +417,36 @@ specs build on).
   again — the instant its one item is un-excluded via the bulk action
   bar's Include button (E4's "no sustained empty-excluded-view state").
 
+## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` — the two new trust states, real binaries
+
+Phase 13's own trust-tier hardening (13-06-PLAN.md, D-12/D-13/D-14),
+proving both bypass paths the folded todo
+(`2026-08-13-plugin-trust-tier-is-directory-location-not-provenance.md`)
+documented are now closed by real kernel code and a real browser, not
+only by `kernel/pluginhost`'s own unit tests
+(`manifestgate_test.go`). Neither spec builds a new plugin binary —
+both are driven entirely by binaries the existing `make e2e` recipe
+already produces.
+
+- **`13-manifest-unverified.spec.ts`** (D-12/D-13) — links
+  `bin/plugins-external/topos-plugin-external-demo` (the real out-of-repo
+  proof binary `make e2e`'s own `external-demo` dependency builds) into
+  the hermetic kernel's TRUSTED directory under its own name — a name
+  that never enters `MANIFEST_E2E_BINARIES` (Makefile), so the kernel's
+  link-time build manifest has no entry for it. Proves the destructive
+  chip, the contract-exact `binary not in the trusted build manifest`
+  tooltip, an unreachable source, no re-pin menu action, and — pinning
+  D-13's log-AND-UI requirement — that the refusal is also named in the
+  kernel's own captured log output, not only rendered in the browser.
+- **`13-shadowed-advisory.spec.ts`** (D-14) — links
+  `bin/plugins/topos-plugin-mock` into BOTH the hermetic trusted and
+  external directories under the identical name, with a real pin
+  recorded for the external copy. The trusted copy wins the launch (the
+  shadow rule is unchanged) and verifies against the manifest, so the
+  instance launches and syncs normally; the spec proves its chip renders
+  the WARNING tone — explicitly asserting it is NOT the destructive tone
+  — with the contract-exact shadowing tooltip.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
