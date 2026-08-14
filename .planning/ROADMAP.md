@@ -150,7 +150,7 @@ Plans:
   4. After the kernel is upgraded, the installed app never serves a stale UI — the user lands on the new build rather than a cached one.
   5. The mobile/LAN install limitation (browsers require a secure context) is documented, along with the recommended user-provided HTTPS workarounds.
 
-**Plans**: 6/6 plans executed
+**Plans**: 6/7 plans executed (13-07 is gap closure for 13-VERIFICATION.md)
 
 Plans:
 **Wave 1**
@@ -170,6 +170,10 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 13-06-PLAN.md — Trust hardening UI states, browser specs, republished plugin contract and Signal guidance (wave 4)
+
+**Wave 5** *(gap closure — blocked on Wave 4 completion)*
+
+- [ ] 13-07-PLAN.md — Undo toast targets the toast-creation webspace, not the current one; cross-webspace-switch regression spec (wave 5)
 
 **UI hint**: yes
 
