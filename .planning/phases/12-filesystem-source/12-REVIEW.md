@@ -64,10 +64,10 @@ files_reviewed_list:
   - web/src/lib/plugin-fields.test.ts
   - web/src/lib/plugin-fields.ts
 findings:
-  critical: 2
-  warning: 1
-  info: 0
-  total: 3
+  critical: 1
+  warning: 2
+  info: 1
+  total: 4
 status: issues_found
 ---
 
@@ -80,258 +80,272 @@ status: issues_found
 
 ## Summary
 
-Phase 12 adds the filesystem source plugin (read-only folder indexing with
-recursion, glob-based scope, per-preview-kind `Fetch`), the kernel-side
-`file://` deep-link rewrite to a loopback `POST /api/items/{id}/open`
-route that execs `xdg-open`, a checkbox connection-form field kind, and an
-external-plugin-tier rehearsal for the new plugin. The code is unusually
-well-documented and the test suite is extensive (AST guards for
-read-only-ness and route scoping, negative controls on the read-only
-scanner, symlink/`..`-escape unit tests, an external-tier rehearsal spec).
-Path-traversal-via-`..`-segments is correctly closed on both the kernel
-and plugin sides, and the read-only guarantee is mechanically enforced.
+This report supersedes the prior 12-REVIEW.md, which predates the phase's
+gap-closure plan (12-06-PLAN.md). That plan's commits fixed the prior
+report's two blockers — I re-verified both fixes hold rather than
+re-reporting them:
 
-Two BLOCKER-level defects were found, both in the two areas the phase's
-own threat model explicitly calls the sharpest surfaces (the loopback
-`xdg-open` exec route, and path containment against the configured
-root):
+- **CR-01 (xdg-open killed by request-context cancellation):** fixed.
+  `newXDGOpener` (`kernel/httpapi/fsopen.go:39-52`) now builds the child
+  with plain `exec.Command("xdg-open", path)` and `cmd.Start()`, never
+  `exec.CommandContext`. `FilesystemOpenHandler` hands the opener
+  `context.WithoutCancel(ctx)` (`fsopen.go:167`), and an AST test
+  (`TestNewXDGOpener_ChildIsNotBoundToACallerContext`, `fsopen_test.go`)
+  mechanically pins that `newXDGOpener`'s closure takes a blank-identifier
+  context parameter and its body contains no `CommandContext` selector.
+- **CR-02 (lexical-only containment check, TOCTOU symlink escape):**
+  fixed. Both `kernel/httpapi/fsopen.go` (`FilesystemOpenHandler`,
+  lines 142-155) and `plugins/filesystem/item.go` (`resolvePath`,
+  lines 99-116) now call `filepath.EvalSymlinks` on the joined path and
+  on the configured root, and compare the *resolved* pair before ever
+  reading a byte or exec'ing `xdg-open` — matching `walk.go`'s own
+  discipline. Both fail closed (an unresolvable path — including a
+  vanished target — is refused, mapped to `item_not_found` for
+  `fs.ErrNotExist`, `invalid_path` otherwise). Regression tests exist on
+  both sides (`TestFilesystemOpen_SymlinkSwappedAfterIndexingAnswersInvalidPathAndNeverOpens`,
+  `TestFetch_SymlinkSwappedAfterIndexingIsRefusedBeforeAnyBytesAreServed`).
+- **WR-01 (symlinked-root containment compared against the unresolved
+  root):** fixed. `walk.go` now resolves the configured root once via a
+  shared `resolveRoot` helper before the walk begins and before the
+  in-tree symlink comparison, with matching regression coverage
+  (`TestWalk_InTreeSymlinkUnderASymlinkedRootIsStillIncluded`,
+  `TestResolvePath_SymlinkedRootStillResolvesAnInRootFile`).
 
-1. The kernel's `xdg-open` invocation is wired to the HTTP request's own
-   `context.Context`, which Go cancels as soon as the handler returns —
-   this races (and, for many file associations, reliably loses against)
-   the just-launched application, silently killing it moments after
-   "opening" it. No existing test can catch this: the unit tests stub the
-   `Opener` entirely, and the e2e suite explicitly, and reasonably,
-   declines to assert on real desktop-handler behavior — but this bug is
-   a kernel-side process-lifecycle defect, not a desktop-environment
-   variance the e2e suite was right to exclude.
-2. The path-containment re-validation that runs immediately before a byte
-   is read (`plugins/filesystem/fetch.go`, via `item.go`'s `resolvePath`)
-   and immediately before `xdg-open` is exec'd (`kernel/httpapi/fsopen.go`)
-   is purely lexical (`filepath.Join` + `strings.HasPrefix`) and never
-   calls `filepath.EvalSymlinks` — unlike the Match-time walk, which does.
-   A file indexed as legitimate can later be swapped for a symlink
-   pointing outside the configured root (a realistic TOCTOU on a shared
-   or network-writable mount) and both routes will follow it, contradicting
-   the documented guarantee that the open route "re-validates the joined
-   path stays inside the configured root before ever exec'ing anything."
-
-One WARNING (a related, non-security correctness bug in the same
-symlink-containment code, opposite direction: legitimate in-tree symlinks
-under a symlinked root are silently dropped from the corpus).
+Tracing the new plugin's own logic end to end (Match → walk/scope →
+Fetch) surfaced one new BLOCKER: `Fetch`'s per-preview-kind dispatch
+re-derives a file's classification through a code path that ignores the
+same `extras`-driven `include_glob` scope `Match` used to decide the file
+belongs in the index at all — so a class of item that `Match`
+legitimately returns, and that the UI legitimately lists in the stream,
+404s when opened. Two WARNINGs and one INFO item round out the findings
+below.
 
 ## Critical Issues
 
-### CR-01: `xdg-open` subprocess is killed by HTTP request-context cancellation
+### CR-01: `Fetch` re-derives classification without the scope/extras that admitted the item, breaking `include_glob`-only files
 
-**File:** `kernel/httpapi/fsopen.go:27-40` (`newXDGOpener`), invoked from `FilesystemOpenHandler` at `kernel/httpapi/fsopen.go:98`
+**File:** `plugins/filesystem/fetch.go:81-93` (`fetchByKind`)
 
-**Issue:** `newXDGOpener` builds the child process with
-`exec.CommandContext(ctx, "xdg-open", path)`, where `ctx` is the
-*HTTP request's own* `context.Context` (`FilesystemOpenHandler` sets
-`ctx := r.Context()`). Per the documented `net/http.Request.Context()`
-contract, a per-request context is canceled "when the ServeHTTP method
-returns" — and Go's `net/http` server implementation cancels it
-essentially synchronously with the handler function returning (it calls
-`cancelCtx()` immediately after `ServeHTTP` completes for that request).
-`FilesystemOpenHandler` calls `opener(ctx, full)` (which only `Start()`s
-the process and returns) and then immediately calls `WriteJSON` and
-returns — so the request context is canceled within microseconds of the
-child process being started.
+**Issue:** `Match` (`plugins/filesystem/plugin.go:126-154`) delegates
+inclusion/classification to `walk.go`'s `walk`, which in turn calls
+`scope.includes` (`scope.go:58-87`) — the function that implements the
+documented precedence rule (`docs/plugins/filesystem.md`'s "Resolution
+order"): exclude first, then **include-if-declared, which REPLACES the
+default extension allowlist entirely**. When `include_glob` matches a
+file whose extension is *not* in the built-in `extensionTable`,
+`scope.includes` deliberately returns `included=true` with
+`classification{kind: previewKindMetadataOnly}` — proven directly by
+`scope_test.go`'s `TestScope_UnknownExtensionIncludedByGlobIsMetadataOnly`
+and `walk_test.go`'s `TestScope_IncludeGlobWidensPastTheDefaultAllowlist`.
+Such a file is a completely legitimate `Match` result: it appears in the
+index and in the UI's stream exactly like any other item.
 
-`exec.CommandContext` installs a watchdog goroutine (started inside
-`Cmd.Start()`) that races `ctx.Done()` against the process's own exit
-(observed only once `Cmd.Wait()` — called here in a background goroutine
-— actually returns, i.e. once the OS process has genuinely exited). If
-`ctx.Done()` fires first, the default `Cmd.Cancel` behavior sends the
-process a `Kill` (SIGKILL). Since the handler's background goroutine only
-calls `cmd.Wait()` to *reap* the process (it does not, and structurally
-cannot, make the process exit any faster), the almost-immediate context
-cancellation will race — and very often lose — against xdg-open actually
-handing off to (and, for handlers that `exec()` in place of forking,
-*becoming*) the target application. The practical effect: the desktop
-application launches and is then SIGKILLed a few milliseconds later,
-after the kernel has already returned `200 {"opened": true}` to the
-browser. This is not a rare race for any file-association handler that
-doesn't self-daemonize away from being a descendant of the `xdg-open`
-invocation (a very common shape).
-
-The code's own comment ("T-12-05: the child is reaped by a background
-wait") shows the *intent* was correctly "don't block the HTTP response on
-the child's exit" — but tying the child's `exec.CommandContext` context to
-the request achieves the opposite: it makes the child's survival
-contingent on the request's own (very short) lifetime.
-
-This is untested: `kernel/httpapi/fsopen_test.go` stubs `Opener` entirely
-(by design, per its own doc comment), and `docs/testing.md` explicitly
-scopes real `xdg-open` behavior out of the e2e suite ("Whether `xdg-open`
-genuinely hands a file to the desktop's own handler is a live,
-machine-dependent fact a hermetic browser harness cannot assert on") —
-reasonably, for desktop-environment variance, but this bug reproduces
-regardless of desktop environment; it is a pure Go process-lifecycle
-defect in the kernel's own code.
-
-**Fix:** Decouple the child process's lifetime from the request context —
-use `context.Background()` (optionally with its own generous, fixed
-timeout unrelated to the request) for `exec.CommandContext`, never
-`r.Context()`:
+`fetchByKind`, however, never builds a `*scope` from `p.extras` at all —
+it calls the bare package-level `classify(sourceID)` (`classify.go:94-98`)
+directly:
 
 ```go
-func newXDGOpener(logger hclog.Logger) Opener {
-	return func(_ context.Context, path string) error {
-		// Deliberately NOT the caller's context: an HTTP request context is
-		// canceled the instant the handler returns, which would otherwise
-		// race (and often lose against) xdg-open actually handing off to
-		// the target application. The subprocess's lifetime must outlive
-		// this one request.
-		cmd := exec.Command("xdg-open", path)
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		go func() {
-			if err := cmd.Wait(); err != nil {
-				logger.Warn("filesystem open: xdg-open exited with error", "path", path, "error", err.Error())
-			}
-		}()
-		return nil
-	}
+c, ok := classify(sourceID)
+if !ok {
+    return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
 }
 ```
 
----
+`classify` only ever consults the fixed `extensionTable` — it has no
+knowledge of `include_glob`/`exclude_glob` and cannot reproduce
+`scope.includes`'s "unknown extension admitted by glob → metadata-only"
+branch. For any item that only exists in the index *because*
+`include_glob` widened scope past an unrecognized extension (e.g. an
+operator configuring `include_glob = "**/*.epub"` to pull in an ebook
+collection, or any extension outside the fixed table), `classify` returns
+`ok=false`, and `fetchByKind` answers `codes.NotFound` — mapped by the
+kernel to `404 item_not_found` on both `GET /api/items/{id}` and
+`GET /api/items/{id}/content` (`kernel/httpapi/item.go`'s
+`writeFetchError`).
 
-### CR-02: Path-containment re-validation is lexical-only — TOCTOU symlink escape at Fetch/Open time
+The user-visible effect: the item renders correctly in the stream (Match
+never consulted `classify` either — it has no gate at all), but opening it
+produces a false "not found" error for a file that is present on disk and
+was legitimately synced — instead of the documented, correct outcome
+(`available: false`, `unavailable_reason: "preview not supported for this
+file type; open in source"`, exactly like a `.docx` file gets today).
+This directly contradicts `docs/plugins/filesystem.md`'s own documented
+behavior: *"A file matching an include pattern is included even if its
+extension is outside the default allowlist below (classified
+metadata-only if the extension is unrecognized, never guessing a MIME
+type)"* — the classification happens at `Match`/index time, but is lost
+and re-derived incorrectly at `Fetch` time.
 
-**Files:**
-`kernel/httpapi/fsopen.go:90-96` (the kernel's own re-resolution before exec'ing `xdg-open`),
-`plugins/filesystem/item.go:70-77` (`resolvePath`, called from `plugins/filesystem/fetch.go:71`'s `fetchByKind` before any file is opened)
+No existing test catches this: `fetch_test.go`'s fixtures only cover
+extensions already in `extensionTable` (`.pdf`, `.png`, `.md`, `.txt`,
+`.docx`, `.svg`) plus a genuinely-missing file; none exercises `Fetch`
+against a `NewSourcePlugin(root, extras, ...)` instance with a
+non-default `include_glob` for an unrecognized extension — the exact gap
+`scope_test.go`'s `TestScope_UnknownExtensionIncludedByGlobIsMetadataOnly`
+proves exists at the `Match` layer but that no test carries through to
+`Fetch`.
 
-**Issue:** Both the kernel-side open-route containment check and the
-plugin-side `Fetch`-time containment check are purely **lexical**:
-
-```go
-// kernel/httpapi/fsopen.go
-full := filepath.Join(root, filepath.FromSlash(it.SourceID))
-if full != root && !strings.HasPrefix(full, root+string(filepath.Separator)) { ... }
-```
-```go
-// plugins/filesystem/item.go
-full := filepath.Join(cleanRoot, filepath.FromSlash(sourceID))
-if full != cleanRoot && !strings.HasPrefix(full, cleanRoot+string(filepath.Separator)) { ... }
-```
-
-Neither calls `filepath.EvalSymlinks` — unlike `plugins/filesystem/walk.go`'s
-Match-time symlink check (`walk.go:135-144`), which correctly resolves an
-in-tree symlink and refuses to include it as an item if the resolved
-target falls outside the configured root (T-12-12). Because the two
-places that actually **touch bytes or exec a program** — `fetchByKind`
-(reads the file and serves its bytes back to the requester) and
-`FilesystemOpenHandler` (execs `xdg-open` against the resolved path) — only
-re-check the *string shape* of the joined path, an attacker with write
-access to the watched folder (a realistic threat on a shared network
-mount, or any multi-writer directory) can:
-
-1. Place (or wait for the operator to place) a legitimate file that gets
-   indexed normally at sync time.
-2. Replace that file on disk with a symlink pointing outside the
-   configured root (e.g. at `/etc/passwd`, `~/.ssh/id_rsa`, or any file
-   the kernel/plugin process can read) — a classic TOCTOU window between
-   one sync and the next `Fetch`/`Open` call.
-3. Trigger `GET /api/items/{id}` (or click "Open in …" in the UI) for
-   that item's still-valid, unchanged `source_id`.
-
-The lexical `filepath.Join`+`HasPrefix` check passes unchanged (the
-`source_id` string never contained a `..` segment), so:
-- `plugins/filesystem/fetch.go`'s `fetchBytesRendition`/
-  `fetchMarkdownRendition`/`fetchPlainTextRendition` will `os.ReadFile`/
-  `os.Open` the **symlink target** and serve those bytes back to the
-  browser — a disclosure of any file readable by the kernel/plugin
-  process, from outside the folder the operator consented to expose.
-- `kernel/httpapi/fsopen.go`'s `FilesystemOpenHandler` will `exec.Start`
-  `xdg-open` against the same escaped path.
-
-This directly contradicts the guarantee `docs/plugin-contract.md`
-publishes for third-party plugin authors: *"The kernel's own
-re-resolution on the open route re-validates the joined path stays
-inside the configured root before ever exec'ing anything"* — that
-re-validation exists, but does not actually resolve symlinks, so the
-guarantee is honored only at Match/walk time, not at either of the two
-places where it is load-bearing. No existing test covers this: both
-`TestFetch_SourceIDEscapingTheRootIsRefusedBeforeAnyFileIsOpened`
-(`plugins/filesystem/fetch_test.go`) and
-`TestFilesystemOpen_PathEscapeAnswersInvalidPath`
-(`kernel/httpapi/fsopen_test.go`) only exercise `..`-segment traversal,
-never a symlink swap — the symlink coverage that does exist
-(`plugins/filesystem/walk_test.go`'s `TestWalk_SymlinkToFileOutsideRootIsExcluded`)
-only proves the *indexing*-time guard, not the *serving*-time one.
-
-**Fix:** Resolve the joined path with `filepath.EvalSymlinks` (falling
-back to the lexical path when resolution fails, e.g. for the item-open
-route's happy path where the target may legitimately not exist yet is
-never expected here, but should still fail safe) before the containment
-comparison, in both `resolvePath` (`plugins/filesystem/item.go`) and
-`fsopen.go`'s inline check — mirroring `walk.go`'s own discipline:
+**Fix:** Build a `*scope` from `p.extras` in `fetchByKind` and classify
+through it — the same path `Match`/`walk` already use — instead of
+calling the bare `classify` helper directly:
 
 ```go
-func resolvePath(root, sourceID string) (string, error) {
-	cleanRoot := filepath.Clean(root)
-	full := filepath.Join(cleanRoot, filepath.FromSlash(sourceID))
-	if full != cleanRoot && !strings.HasPrefix(full, cleanRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("resolved path escapes source root")
-	}
-	// Re-resolve any symlink in the final path component (or an ancestor)
-	// and re-check containment against the RESOLVED path — the lexical
-	// check above cannot see that a file legitimately indexed earlier has
-	// since been swapped for a symlink pointing outside root.
-	real, err := filepath.EvalSymlinks(full)
+func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, error) {
+	full, err := resolvePath(p.root, sourceID)
 	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
+		}
+		return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
 	}
-	if real != cleanRoot && !strings.HasPrefix(real, cleanRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("resolved path escapes source root")
+
+	sc := newScope(p.extras)
+	c, included, err := sc.includes(sourceID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "filesystem: %v", err)
 	}
-	return full, nil
+	if !included {
+		return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
+	}
+
+	switch c.kind {
+	// ...unchanged
+	}
 }
 ```
 
-Apply the identical resolve-then-recheck step in `kernel/httpapi/fsopen.go`
-before calling `opener`.
+(`included=false` still correctly maps to `NotFound` for a `source_id`
+that is on disk but genuinely outside this instance's configured scope —
+e.g. scope narrowed since the item was indexed — matching today's
+behavior for that case.)
 
 ## Warnings
 
-### WR-01: In-tree symlink containment check compares against the unresolved root
+### WR-01: Filesystem plugin's `Item.Provenance` omits the documented `source_system` key
 
-**File:** `plugins/filesystem/walk.go:77` (`cleanRoot`), used at `walk.go:140`
+**File:** `plugins/filesystem/plugin.go:190-195` (`toItem`)
 
-**Issue:** The in-tree symlink check (`walk.go:122-145`) correctly calls
-`filepath.EvalSymlinks(path)` to resolve a symlinked file's real target,
-but compares the result against `cleanRoot`, which is only
-`filepath.Clean(root)` — never itself resolved through `EvalSymlinks`. If
-the *configured root* sits behind a symlink or bind mount (not unusual:
-a dotfile-manager symlink such as `~/Documents` → `~/dotfiles/Documents`,
-or a container/flatpak bind mount), then `EvalSymlinks` on any
-legitimately in-tree symlinked file resolves through the root's own
-symlink chain as well, producing a real path that will never share
-`cleanRoot`'s literal prefix even though the file is genuinely inside the
-folder the operator configured. The check at `walk.go:140` then
-(incorrectly) treats every such file as "resolves outside root" and
-silently drops it from the corpus (`return nil`, no log, `skipped` not
-even incremented since this isn't a stat/permission error) — an
-under-inclusion bug an operator would observe only as "my symlinked
-documents never appear in the stream," with nothing pointing at the
-cause.
+**Issue:** `docs/plugin-contract.md`'s "Provenance" section documents six
+provenance keys the kernel's HTTP API publishes on every item
+(`docs/api.md`), five of which "a plugin is responsible for populating":
+`source_type`, `source_system`, `source_id`, `plugin`, `contract_version`
+(`synced_at_unix` is filled in by the kernel's index layer). Every other
+in-repo plugin follows this: `plugins/paperless/plugin.go:129-135`,
+`plugins/silverbullet/plugin.go:237-243`, and
+`plugins/signal/plugin.go:259-265` all set `"source_system"` (to their
+own `base_url`/`configDir`). `plugins/filesystem/plugin.go`'s `toItem`
+does not:
 
-This is the inverse of CR-02 (over-restriction instead of
-under-restriction), so it's not a security defect, but it is a real
-functional regression risk for a common desktop pattern (symlinked
-document directories), and it degrades trust in the "resolves outside
-root" refusal — an operator hitting this will reasonably suspect a
-security false-positive rather than the actual cause.
+```go
+Provenance: map[string]string{
+    "source_type":      sourceType,
+    "source_id":        sourceID,
+    "plugin":           "topos-plugin-filesystem",
+    "contract_version": contractVersion,
+},
+```
 
-**Fix:** Resolve `root` itself once via `filepath.EvalSymlinks` (falling
-back to `cleanRoot` if resolution fails, e.g. because `root` doesn't
-exist) and compare `real` against that resolved value, not the merely
-lexically-cleaned one.
+`kernel/httpapi/stream.go`'s `toStreamItemFor` copies `it.Provenance`
+verbatim (adding only `synced_at_unix`) — it never synthesizes
+`source_system` on a plugin's behalf
+(`grep -rn "source_system" kernel/` finds it referenced only inside
+`contract_test.go`'s own hand-built fixture). The result: every
+filesystem-sourced item's `GET /api/items/{id}` (and
+`GET /api/webspaces/{ws}/stream`) response is missing the
+`provenance.source_system` field entirely, silently breaking the
+documented "every item carries these keys" contract and the AGENT-02
+"republish provenance verbatim" guarantee for this one source type. The
+frontend's `SourceConfig`/item type already marks the field optional
+(`web/src/lib/api.ts:31`), so nothing currently crashes on its absence —
+but this is a genuine, silent contract regression with no test coverage
+anywhere in this phase (no filesystem-specific provenance assertion
+exists in `plugin_test.go`/`item_test.go`).
+
+**Fix:** Add the missing key, using the configured root (the "source
+instance" address a filesystem source's items came from, mirroring
+`p.baseURL`/`p.configDir` in the sibling plugins):
+
+```go
+Provenance: map[string]string{
+    "source_type":      sourceType,
+    "source_system":    p.root,
+    "source_id":        sourceID,
+    "plugin":            "topos-plugin-filesystem",
+    "contract_version": contractVersion,
+},
+```
+
+### WR-02: Symlink-containment revalidation is discarded before the actual read/exec — narrow TOCTOU window remains
+
+**Files:** `plugins/filesystem/item.go:99-116` (`resolvePath`), consumed
+by `plugins/filesystem/fetch.go`'s `fetchBytesRendition`/
+`fetchMarkdownRendition`/`fetchPlainTextRendition`/`statForFetch`;
+`kernel/httpapi/fsopen.go:127-170` (`FilesystemOpenHandler`)
+
+**Issue:** Both `resolvePath` and `FilesystemOpenHandler` correctly
+resolve the joined path with `filepath.EvalSymlinks` and compare the
+*resolved* value against the *resolved* root for containment (closing the
+prior CR-02) — but both then discard that resolved value and perform the
+actual I/O (`os.Stat`/`os.ReadFile`/`os.Open` in `fetch.go`, or
+`opener(ctx, full)` → `exec.Command("xdg-open", full)` in `fsopen.go`)
+against the original **lexical** `full` path, not the resolved one:
+
+```go
+// item.go resolvePath — validates `resolved`, returns the lexical `full`
+resolved, err := filepath.EvalSymlinks(full)
+// ...containment check against resolved...
+return full, nil   // <- the unresolved path is what callers actually read
+```
+
+Because the path handed to `os.ReadFile`/`xdg-open` is a plain filesystem
+path (not a file descriptor opened at validation time, and not
+re-validated a second time immediately before the syscall), a symlink
+swapped into place in the interval between `EvalSymlinks`'s validation and
+the subsequent read/exec — a narrow but real window, on a filesystem an
+operator has already indicated may be a shared/network mount with other
+writers (`docs/plugins/filesystem.md`'s own NFS/SMB framing) — is followed
+transparently rather than caught. This is the same class of gap CR-02
+closed for the *indexed-then-swapped-before-next-request* case, just
+narrowed to a race within a single request rather than across two.
+
+Given the project's stated threat model (`docs/plugin-contract.md`: "only
+run plugin binaries you built yourself or whose source you trust"; the
+kernel already trusts arbitrary local file reads by design) and that
+`xdg-open` fundamentally consumes a path rather than a descriptor, this is
+a lower-priority hardening item rather than a fresh exploitable path this
+phase introduced — but it does mean the CR-02 fix's own stated guarantee
+("fails closed... before ever exec'ing anything") is not quite complete:
+the window is narrowed from "any time after indexing" to "microseconds
+around the syscall," not eliminated.
+
+**Fix:** Where practical, read via the already-resolved path/descriptor
+rather than re-walking symlinks a second time implicitly on the read call
+(e.g. open the file once via `os.Open` immediately after
+`EvalSymlinks` succeeds and reuse that handle for both the size check and
+the read, rather than re-resolving on every subsequent `os.Stat`/
+`os.ReadFile`/`os.Open` call against the bare path string). For
+`xdg-open`, which has no descriptor-based invocation, documenting this as
+an accepted residual risk (rather than implying the guarantee is
+airtight) is a reasonable alternative to a code change.
+
+## Info
+
+### IN-01: `plugins/filesystem/main.go`'s package doc comment is stale
+
+**File:** `plugins/filesystem/main.go:7-12`
+
+**Issue:** The package doc comment still describes the 12-01/12-02
+tracer-era state: *"this bootstrap now decodes and forwards those extras,
+but still does not expand recursion — that remains a later plan's
+work."* Recursion has since been implemented and shipped (12-03-PLAN.md,
+`walk.go`'s `recursive` parameter, `sourceConfig.Recursive` decoded and
+passed to `NewSourcePlugin` a few lines below this very comment). The
+comment now contradicts the code directly beneath it.
+
+**Fix:** Update or remove the stale sentence; a brief note that recursion
+is fully wired (matching `docs/plugins/filesystem.md`'s current
+documentation) would keep the file's own history accurate for a future
+reader.
 
 ---
 
