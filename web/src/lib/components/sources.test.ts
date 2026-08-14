@@ -56,6 +56,10 @@ function makeResponse(overrides: Partial<StreamResponse> = {}): StreamResponse {
 		webspace: 'house-move',
 		sync: { status: 'ok', finished_unix: 1700000000, error: '' },
 		items: [],
+		// excluded_count (13-03-PLAN.md Task 2): this file's own fixture
+		// never exercises the excluded-view toggle, so a fixed 0 keeps
+		// every pre-existing call site here byte-identical in behavior.
+		excluded_count: 0,
 		...overrides
 	};
 }

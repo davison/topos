@@ -67,6 +67,12 @@ export interface StreamResponse {
 	webspace: string;
 	sync: SyncStatus;
 	items: StreamItem[];
+	// excluded_count (13-03-PLAN.md Task 2, KERN-10) is the webspace's LIVE
+	// total excluded-item count, populated on EVERY stream request in
+	// BOTH views (kernel/httpapi/stream.go's streamResponse.ExcludedCount)
+	// — this is the one field the excluded-items view toggle (E4) reads;
+	// no separate count-only round trip.
+	excluded_count: number;
 }
 
 // SearchResult extends StreamItem so it is directly usable anywhere a
@@ -220,9 +226,21 @@ export function listWebspaces(): Promise<WebspacesResponse> {
 	return getJSON<WebspacesResponse>('/api/webspaces');
 }
 
-/** GET /api/webspaces/{webspace}/stream */
-export function getStream(webspace: string): Promise<StreamResponse> {
-	return getJSON<StreamResponse>(`/api/webspaces/${encodeURIComponent(webspace)}/stream`);
+/**
+ * GET /api/webspaces/{webspace}/stream, optionally widened to the
+ * excluded bucket (13-03-PLAN.md Task 2, KERN-10). `view` defaults to
+ * omitted — a call with no second argument (every pre-Phase-13 call site)
+ * produces a byte-identical request to before this parameter existed;
+ * only `view === 'excluded'` appends `?view=excluded`. The kernel itself
+ * treats an omitted/`'included'` value identically (docs/api.md), so
+ * `'included'` is never appended even when passed explicitly.
+ */
+export function getStream(
+	webspace: string,
+	view?: 'included' | 'excluded'
+): Promise<StreamResponse> {
+	const path = `/api/webspaces/${encodeURIComponent(webspace)}/stream`;
+	return getJSON<StreamResponse>(view === 'excluded' ? `${path}?view=excluded` : path);
 }
 
 /** GET /api/webspaces/{webspace}/search?q= */

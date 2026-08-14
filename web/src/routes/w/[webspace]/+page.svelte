@@ -49,6 +49,12 @@
 	let webspace = $derived(page.params.webspace ?? '');
 
 	let response = $state<StreamResponse | null>(null);
+	// view (13-UI-SPEC.md E4, KERN-10): which stream bucket is currently
+	// showing — 'included' (the normal stream, the default) or 'excluded'
+	// (the excluded-items view toggle). Threaded into load()'s own
+	// getStream call and reset to 'included' in the per-webspace effect
+	// below, alongside every other transient per-webspace UI state.
+	let view = $state<'included' | 'excluded'>('included');
 	// Named loadState, not `state` — a local variable literally named
 	// `state` collides with the `$state()` rune's auto-subscription
 	// parsing (Svelte tries to treat `$state(...)` as a store
@@ -194,31 +200,50 @@
 	// handleInclude above at N items instead of 1 — same busy-disable
 	// discipline, same setItemMarks call, same shared toast helpers (so
 	// the single-item and bulk paths can never drift in wording). action
-	// is unconditionally 'add' (Exclude) until this plan's Task 2 wires
-	// the excluded-view toggle, at which point it becomes view-driven
-	// (remove/Include while viewing the excluded bucket).
+	// is view-driven (13-UI-SPEC.md E2/E4): 'add' (Exclude) in the normal
+	// stream, 'remove' (Include) while viewing the excluded bucket — the
+	// same view value StreamList's own primaryLabel prop reads, so the
+	// button's label and the write it fires can never disagree.
 	async function handleBulkPrimary() {
 		const ids = [...bulkSelection];
 		const count = ids.length;
 		if (count === 0) return;
+		const excludedView = view === 'excluded';
+		const action = excludedView ? 'remove' : 'add';
+		const undoAction = excludedView ? 'add' : 'remove';
+		const verb: 'Excluded' | 'Included' = excludedView ? 'Included' : 'Excluded';
+		const failureVerb: 'exclude' | 'include' = excludedView ? 'include' : 'exclude';
 		bulkBusy = true;
 		try {
-			await setItemMarks(webspace, 'add', ids);
+			await setItemMarks(webspace, action, ids);
 			handleBulkClear();
 			await load(navGeneration);
 			markSuccessToast({
-				verb: 'Excluded',
+				verb,
 				count,
 				onUndo: async () => {
-					await setItemMarks(webspace, 'remove', ids);
+					await setItemMarks(webspace, undoAction, ids);
 					await load(navGeneration);
 				}
 			});
 		} catch {
-			markFailureToast({ verb: 'exclude', count });
+			markFailureToast({ verb: failureVerb, count });
 		} finally {
 			bulkBusy = false;
 		}
+	}
+
+	// handleToggleView (13-UI-SPEC.md E4): flips the stream's own bucket,
+	// clearing both the bulk selection and the open item (an item open
+	// from one bucket has no meaning once the OTHER bucket is showing —
+	// mirrors the per-webspace effect's own reset discipline) before
+	// refetching through the same load() path every other webspace fetch
+	// uses, so the toggle inherits the identical loading/error treatment.
+	async function handleToggleView() {
+		view = view === 'excluded' ? 'included' : 'excluded';
+		handleBulkClear();
+		selectedId = null;
+		await load(navGeneration);
 	}
 
 	// Esc clears the bulk selection (D-01: Esc and the action bar's own
@@ -838,8 +863,21 @@
 		const quiet = options?.quiet ?? false;
 		if (!quiet) loadState = 'loading';
 		try {
-			const res = await getStream(webspace);
+			const res = await getStream(webspace, view);
 			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
+			// Auto-flip (13-UI-SPEC.md E4): the excluded view emptied while
+			// it was showing (the last item was un-excluded, undone, or
+			// pruned elsewhere) — flip back to the normal stream and
+			// refetch exactly once. Guarded structurally, not by a
+			// counter: `view` is reset to 'included' BEFORE the recursive
+			// call, so this branch can never be true on that recursive
+			// call — the recursion terminates after at most one extra
+			// fetch, never a loop.
+			if (view === 'excluded' && res.items.length === 0) {
+				view = 'included';
+				await load(gen, options);
+				return;
+			}
 			response = res;
 			loadState = 'ready';
 		} catch (err) {
@@ -1138,6 +1176,10 @@
 		// persisted, never meaningful across a webspace switch.
 		bulkSelection = clearSelection();
 		bulkAnchor = null;
+		// view (13-UI-SPEC.md E4): every fresh webspace visit starts on
+		// the normal stream — the excluded view is never sticky across a
+		// switch.
+		view = 'included';
 		if (suppressScrollHandlingTimer !== null) {
 			clearTimeout(suppressScrollHandlingTimer);
 			suppressScrollHandlingTimer = null;
@@ -1191,6 +1233,9 @@
 			onsourceadded={handleSourceAdded}
 			onedit={handleChipEdit}
 			collapsed={headerCollapsed}
+			excludedCount={response?.excluded_count ?? 0}
+			{view}
+			ontoggleview={handleToggleView}
 		/>
 	</div>
 
@@ -1354,7 +1399,7 @@
 						bulkSelected={bulkSelection}
 						{bulkModeActive}
 						onbulktoggle={handleBulkToggle}
-						primaryLabel="Exclude"
+						primaryLabel={view === 'excluded' ? 'Include' : 'Exclude'}
 						{bulkBusy}
 						onbulkprimary={handleBulkPrimary}
 						onbulkclear={handleBulkClear}
@@ -1392,6 +1437,7 @@
 					onexclude={() => handleExclude(selectedItem.id)}
 					oninclude={() => handleInclude(selectedItem.id)}
 					{markBusy}
+					excluded={view === 'excluded'}
 				/>
 			</div>
 		{/if}

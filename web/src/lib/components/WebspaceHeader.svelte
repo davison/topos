@@ -57,7 +57,10 @@
 		envVars,
 		onsourceadded,
 		onedit,
-		collapsed = false
+		collapsed = false,
+		excludedCount,
+		view,
+		ontoggleview
 	}: {
 		webspace: string;
 		// webspaces backs the WebspaceSwitcher's menu list (D-10) — the
@@ -165,6 +168,17 @@
 		// an unexpected `true` at desktop width is still a no-op — belt
 		// and braces alongside the caller's own width-gated listener.
 		collapsed?: boolean;
+		// excludedCount/view/ontoggleview (13-UI-SPEC.md E4, KERN-10): the
+		// excluded-items view toggle, rendered in this component's own
+		// existing trailing reserved group (alongside Refresh all) —
+		// excludedCount sources from the SAME stream response that drives
+		// the stream itself (StreamResponse.excluded_count), never a
+		// separate round trip. view is the caller's own current bucket
+		// ('included' | 'excluded'); ontoggleview flips it. The toggle is
+		// absent entirely (not disabled) when excludedCount is 0 (D-06).
+		excludedCount: number;
+		view: 'included' | 'excluded';
+		ontoggleview: () => void;
 	} = $props();
 
 	let showSourceRows = $derived(shouldShowSourceRows(sourcesState, sources));
@@ -549,6 +563,27 @@
 					<Button variant="ghost" size="sm" onclick={onclearfilters}>
 						<X class="size-4" aria-hidden="true" />
 						Clear filters
+					</Button>
+				{/if}
+				<!-- Excluded-items view toggle (13-UI-SPEC.md E4, D-06):
+				     absent entirely — not disabled/greyed — while
+				     excludedCount is 0, so a webspace with no exclusions
+				     looks exactly like it did before this phase. Pressed
+				     state mirrors the existing selected-chip accent
+				     treatment (SourceChip.svelte), never a new toggle
+				     style. Lives in this reserved trailing group, never
+				     inside either measured chip row above, so it can
+				     never participate in or perturb their overflow
+				     measurement. -->
+				{#if excludedCount > 0}
+					<Button
+						variant="outline"
+						size="sm"
+						aria-pressed={view === 'excluded'}
+						onclick={ontoggleview}
+						class={cn(view === 'excluded' && 'border-primary text-primary')}
+					>
+						Excluded ({excludedCount})
 					</Button>
 				{/if}
 				<Button variant="outline" size="sm" onclick={onrefreshall}>Refresh all</Button>
