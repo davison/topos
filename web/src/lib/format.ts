@@ -146,6 +146,33 @@ export function healthTone(source: SourceStatus): HealthTone {
 }
 
 /**
+ * 12-11-PLAN.md (CR-01 gap closure): answers exactly one question — "would
+ * this source be plain healthy if it carried no advisory at all?" —
+ * `healthTone`'s own advisory branch (above) is only ever reached after
+ * every earlier problem branch (pin mismatch, never-synced, unreachable,
+ * errored) has already declined, so re-asking `healthTone` with the notice
+ * removed reuses that precedence chain instead of re-deriving a narrower
+ * copy of it. Any surface that needs to know whether the advisory is the
+ * most important thing to say about this source (e.g. SourceChip.svelte's
+ * tooltip gate) calls this rather than inventing its own condition — that
+ * is what stops the tooltip's copy and the dot's tone from drifting apart,
+ * which is exactly how CR-01 shipped: the old gate checked `last_status`
+ * directly and never consulted `reachable`, so an unreachable source with a
+ * stale successful status and a leftover notice read as a benign advisory
+ * while its own dot was red.
+ *
+ * The trap: in the advisory state `healthTone` itself returns `warning`,
+ * never `success` — a source carrying a non-empty `last_notice` can never
+ * satisfy `healthTone(source) === 'success'`. Gating a consumer on the
+ * chip's own already-computed `tone` value being `'success'` would
+ * therefore make an advisory-gated branch unreachable dead code.
+ */
+export function isAdvisoryOnly(source: SourceStatus): boolean {
+	if ((source.last_notice ?? '') === '') return false;
+	return healthTone({ ...source, last_notice: '' }) === 'success';
+}
+
+/**
  * Formats a hex hash (SHA-256 or otherwise) into its fixed, display-only
  * short form: the first 12 characters plus an ellipsis (11-UI-SPEC.md E5's
  * "short to look at, complete when copied/compared" rule, reused by E4's
