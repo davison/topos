@@ -79,6 +79,12 @@ declare module 'node:fs' {
 	// original symlink target's 0o755).
 	export function chmodSync(path: string, mode: number): void;
 	export function readdirSync(path: string): string[];
+	// unlinkSync (12-03-PLAN.md Task 2, the filesystem-recursion spec):
+	// removes the single nested file so the next sync can prove the item
+	// drops out of the stream. The block's existing rmSync is a
+	// directory-shaped recursive removal, not the right tool for deleting
+	// one leaf file, hence this distinct member.
+	export function unlinkSync(path: string): void;
 }
 
 declare module 'node:path' {
