@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
@@ -59,10 +60,98 @@ func TestFolderLabels_SubdirectoryFileIsContainingDirectoryBaseName(t *testing.T
 	full := filepath.Join(root, "receipts", "invoice.pdf")
 
 	got := folderLabels(root, full)
-	want := []string{"receipts"}
-	if len(got) != 1 || got[0] != want[0] {
+	want := []string{filepath.Base(root), "receipts"}
+	if !slicesEqual(got, want) {
 		t.Fatalf("expected labels %v, got %v", want, got)
 	}
+}
+
+// TestFolderLabels_NestedFileAlsoCarriesTheRootBaseName proves the first
+// missing: item of G-12-1/G-12-3 is closed: a nested file now also carries
+// the configured root's own base name, FIRST, so one folders value can
+// match every file of a recursive source at every depth — the three labels
+// 12-03-PLAN.md shipped follow in their existing order, unchanged.
+func TestFolderLabels_NestedFileAlsoCarriesTheRootBaseName(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "household-docs")
+	if err := os.MkdirAll(filepath.Join(root, "receipts", "2026"), 0o755); err != nil {
+		t.Fatalf("mkdir nested dirs: %v", err)
+	}
+	full := filepath.Join(root, "receipts", "2026", "invoice.pdf")
+
+	got := folderLabels(root, full)
+	want := []string{"household-docs", "receipts", "2026", "receipts/2026"}
+	if !slicesEqual(got, want) {
+		t.Fatalf("expected labels %v, got %v", want, got)
+	}
+}
+
+// TestFolderLabels_RootBaseNameEqualToASubfolderSegmentIsNotDuplicated
+// proves dedupeLabels collapses a subfolder whose name equals the
+// configured root's own base name to a single label, and that the dedupe
+// is case-insensitive with the FIRST occurrence's own spelling winning.
+func TestFolderLabels_RootBaseNameEqualToASubfolderSegmentIsNotDuplicated(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "docs")
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+		t.Fatalf("mkdir nested docs dir: %v", err)
+	}
+	full := filepath.Join(root, "docs", "invoice.pdf")
+
+	got := folderLabels(root, full)
+	want := []string{"docs"}
+	if !slicesEqual(got, want) {
+		t.Fatalf("expected labels %v, got %v", want, got)
+	}
+
+	caseRoot := filepath.Join(t.TempDir(), "Docs")
+	if err := os.MkdirAll(filepath.Join(caseRoot, "docs"), 0o755); err != nil {
+		t.Fatalf("mkdir nested docs dir: %v", err)
+	}
+	caseFull := filepath.Join(caseRoot, "docs", "invoice.pdf")
+
+	gotCase := folderLabels(caseRoot, caseFull)
+	wantCase := []string{"Docs"}
+	if !slicesEqual(gotCase, wantCase) {
+		t.Fatalf("expected case-insensitive dedupe to keep the root's own spelling %v, got %v", wantCase, gotCase)
+	}
+}
+
+// TestFolderLabels_NoLabelNamesADirectoryAboveTheConfiguredRoot proves the
+// root-base-name widening never leaks an ancestor of the configured root:
+// every label is derived from the cleaned root itself or from
+// filepath.Rel(root, dir), never from anything above root.
+func TestFolderLabels_NoLabelNamesADirectoryAboveTheConfiguredRoot(t *testing.T) {
+	outer := filepath.Join(t.TempDir(), "outer")
+	root := filepath.Join(outer, "household-docs")
+	if err := os.MkdirAll(filepath.Join(root, "receipts"), 0o755); err != nil {
+		t.Fatalf("mkdir nested dirs: %v", err)
+	}
+	full := filepath.Join(root, "receipts", "invoice.pdf")
+
+	got := folderLabels(root, full)
+	for _, label := range got {
+		if label == "outer" {
+			t.Fatalf("expected no label to name the root's parent directory, got %v", got)
+		}
+		if strings.Contains(label, "outer") {
+			t.Fatalf("expected no label to contain the root's parent directory name, got %v", got)
+		}
+	}
+}
+
+// slicesEqual is a small ordered-slice comparison — folderLabels' ordering
+// is now contractual (root base name first, then segments, then the
+// cumulative path), so every case above asserts the full exact set rather
+// than only membership or only length.
+func slicesEqual(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // --- fileDeepLink: file:// URI over the root+relative-path join ---

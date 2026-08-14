@@ -20,34 +20,68 @@ func relPathSourceID(root, full string) string {
 	return filepath.ToSlash(rel)
 }
 
-// folderLabels returns the D-05 folder-vocabulary labels for full: for a
-// top-level file (directly in root), the source root's own base name;
-// for a nested file, one label per containing-directory segment's own
-// name PLUS the cumulative relative directory path — so a webspace match
-// block can name either a subfolder name alone or a full relative path
-// (12-03-PLAN.md Task 2). A file at "receipts/2026/inv.pdf" under a root
-// named "docs" carries the labels "receipts", "2026" and
-// "receipts/2026"; a file directly in the root still carries only
-// "docs", byte-identical to before recursion existed.
+// folderLabels returns the D-05 folder-vocabulary labels for full. Every
+// file — top-level or nested, at any depth — carries the configured root's
+// own base name FIRST: naming that value in a webspace's `folders` match
+// block (or the keywords fallback) is how an operator says "everything
+// from this instance", which was structurally impossible for a recursive
+// source before 12-08-PLAN.md (gap ids G-12-1, G-12-3) — no single value
+// could previously cover both a top-level file and a nested one. A
+// top-level file's label set stays byte-identical to before this change:
+// exactly one label, the root's own base name. A nested file additionally
+// carries one label per containing-directory path segment, plus the
+// cumulative relative directory path when more than one segment exists —
+// so a match block can still name a bare subfolder or a full relative path
+// exactly as 12-03-PLAN.md shipped. Ordering is part of the contract: root
+// base name first, then segments, then the cumulative path. A file at
+// "receipts/2026/inv.pdf" under a root named "household-docs" carries the
+// labels "household-docs", "receipts", "2026" and "receipts/2026". No
+// label ever names a directory ABOVE the configured root — every label is
+// derived from the cleaned root itself or from filepath.Rel(root, dir),
+// which is structurally incapable of naming an ancestor. The result passes
+// through dedupeLabels so a subfolder sharing the root's own name (e.g.
+// root "docs" containing "docs/") reports that value once, not twice.
 func folderLabels(root, full string) []string {
+	cleanRoot := filepath.Clean(root)
+	labels := []string{filepath.Base(cleanRoot)}
+
 	dir := filepath.Dir(full)
-	if dir == filepath.Clean(root) {
-		return []string{filepath.Base(root)}
+	if dir == cleanRoot {
+		return dedupeLabels(labels)
 	}
 
-	relDir, err := filepath.Rel(root, dir)
+	relDir, err := filepath.Rel(cleanRoot, dir)
 	if err != nil {
-		return []string{filepath.Base(dir)}
+		labels = append(labels, filepath.Base(dir))
+		return dedupeLabels(labels)
 	}
 	relDir = filepath.ToSlash(relDir)
 
 	segments := strings.Split(relDir, "/")
-	labels := make([]string, 0, len(segments)+1)
 	labels = append(labels, segments...)
 	if len(segments) > 1 {
 		labels = append(labels, relDir)
 	}
-	return labels
+	return dedupeLabels(labels)
+}
+
+// dedupeLabels drops later case-insensitive duplicates from labels while
+// preserving both order and the FIRST occurrence's own spelling — so a
+// subfolder named like its root (or any other label collision) reports one
+// value rather than two identical-looking chips in the UI (12-08-PLAN.md
+// Task 1, G-12-1/G-12-3).
+func dedupeLabels(labels []string) []string {
+	seen := make(map[string]struct{}, len(labels))
+	result := make([]string, 0, len(labels))
+	for _, l := range labels {
+		key := strings.ToLower(l)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, l)
+	}
+	return result
 }
 
 // fileDeepLink builds a file:// URI over the real absolute path (root
