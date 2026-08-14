@@ -1,121 +1,127 @@
 ---
 phase: 12-filesystem-source
-verified: 2026-08-14T00:30:00Z
+verified: 2026-08-14T01:15:00Z
 status: gaps_found
-score: 4/6 must-have truths verified (2 blocked by unresolved Critical code-review findings)
+score: 6/7 must-have truths verified
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: "4/6"
+  gaps_closed:
+    - "Every filesystem item deep-links back to the document in the desktop's own file handler, or declares honestly that it can only raise (CR-01: xdg-open child no longer killed by request-context cancellation)"
+    - "MUST NOT index, serve, preview, or open any file outside the configured source root (CR-02: Fetch and Open now re-validate containment against filepath.EvalSymlinks-resolved paths, not lexical-only)"
+  gaps_remaining: []
+  regressions: []
+  note: "Both previously-recorded gaps (G-12-1/CR-01, G-12-2/CR-02) are independently confirmed closed by re-reading the code and re-running the cited tests. However, a FRESH code review pass (12-REVIEW.md, re-run after 12-06's gap closure, status: issues_found) found one new, unrelated Critical defect that this verification independently reproduced live: Fetch's classification path ignores the include_glob scope that legitimately admitted an item at Match time, so a file synced into the stream only because of include_glob (with an extension outside the default allowlist) 404s when opened instead of returning the documented honest metadata-only preview. This is not a regression introduced by 12-06 (12-06 never touched scope.go, classify.go or fetchByKind's classification call) — it is a pre-existing defect in the original 12-02-PLAN.md Fetch dispatch that the fresh review surfaced and that no prior verification pass caught."
 gaps:
-  - truth: "Every filesystem item deep-links back to the document in the desktop's own file handler, or declares honestly that it can only raise (success criterion 3)"
+  - truth: "A file admitted to a filesystem source's index only because include_glob widened scope past the default extension allowlist is fetched as an honest metadata-only preview when opened — never a false 'not found' for a file that is present on disk and was legitimately synced (12-02-PLAN.md D-03; docs/plugins/filesystem.md's documented resolution-order behavior)"
     status: failed
-    reason: "kernel/httpapi/fsopen.go's newXDGOpener runs exec.CommandContext(ctx, \"xdg-open\", path) with ctx = r.Context() — the HTTP request's own context, which net/http cancels the instant the handler returns. FilesystemOpenHandler starts the opener and returns within microseconds, so the xdg-open child is routinely SIGKILLed moments after launch, before it can hand off to (or become) the target desktop application. The kernel returns 200 {\"opened\": true} to the browser regardless — the API lies about success. This is CR-01 in 12-REVIEW.md (Critical, unresolved as of the latest commit acaad5b). No test catches it: fsopen_test.go stubs Opener entirely, and the e2e suite intentionally excludes real xdg-open assertions — this is a pure Go process-lifecycle bug, not desktop-environment variance."
+    reason: "plugins/filesystem/fetch.go's fetchByKind calls the bare package-level classify(sourceID) directly instead of building a *scope from p.extras and classifying through scope.includes — the same path Match/walk already use. classify only ever consults the fixed extensionTable and has no knowledge of include_glob/exclude_glob, so it cannot reproduce scope.includes' 'unknown extension admitted by glob -> metadata-only' branch (scope_test.go's TestScope_UnknownExtensionIncludedByGlobIsMetadataOnly proves this branch exists and is intentional). For any item indexed only because include_glob widened past the default allowlist, classify returns ok=false and fetchByKind answers codes.NotFound -- surfaced by the kernel as 404 item_not_found on both GET /api/items/{id} and GET /api/items/{id}/content -- for a file the UI legitimately lists in the stream. This is CR-01 in the freshly re-run 12-REVIEW.md (Critical, unresolved as of the latest commit b2d8180, 'docs(12): add code review report' -- no fix commit follows it). Independently reproduced live in this verification pass: a temp Go test built a SourcePlugin with include_glob=\"**/*.zip\", confirmed archive.zip appears in Match's results, then called Fetch and observed 'rpc error: code = NotFound desc = filesystem: item \"archive.zip\" not found' -- the false-404 the review describes, not a hypothetical."
     artifacts:
-      - path: "kernel/httpapi/fsopen.go"
-        issue: "newXDGOpener (lines 27-40) ties the child process's lifetime to the per-request context instead of context.Background()"
+      - path: "plugins/filesystem/fetch.go"
+        issue: "fetchByKind (lines 81-93) classifies via the bare classify(sourceID) call, which has no knowledge of p.extras' include_glob/exclude_glob and cannot reproduce scope.includes' unknown-extension-admitted-by-glob branch"
     missing:
-      - "Decouple the xdg-open child's exec.CommandContext from r.Context() — use context.Background() (optionally with its own fixed timeout) so the child survives the HTTP response, per 12-REVIEW.md CR-01's suggested fix"
-      - "A regression test that proves the opener's context is NOT the request's own context (e.g. asserting the child is unaffected by request-context cancellation), since the existing stubbed-Opener tests structurally cannot catch this class of bug"
-  - truth: "MUST NOT index, serve, preview, or open any file outside the configured source root (12-01-PLAN.md hard prohibition, marked status: resolved in PLAN frontmatter)"
-    status: failed
-    reason: "Both re-validation points that actually touch bytes or exec a program — plugins/filesystem/item.go's resolvePath (called from fetch.go's fetchByKind before any file is opened) and kernel/httpapi/fsopen.go's inline containment check (before xdg-open is exec'd) — are purely lexical (filepath.Join + strings.HasPrefix) and never call filepath.EvalSymlinks, unlike walk.go's Match-time symlink check which correctly resolves and rejects. A file indexed as legitimate can later be swapped on disk for a symlink pointing outside the configured root (a realistic TOCTOU on a shared or network-writable mount); both the Fetch route (serves the symlink target's bytes to the browser) and the Open route (execs xdg-open against the escaped path) will follow it. This is CR-02 in 12-REVIEW.md (Critical, unresolved). It directly contradicts the guarantee docs/plugin-contract.md publishes to third-party plugin authors ('The kernel's own re-resolution on the open route re-validates the joined path stays inside the configured root before ever exec'ing anything') — verified still present verbatim at docs/plugin-contract.md:851-853, and not true of the shipped code."
-    artifacts:
-      - path: "plugins/filesystem/item.go"
-        issue: "resolvePath (lines 70-77) has no filepath.EvalSymlinks call before its containment comparison"
-      - path: "kernel/httpapi/fsopen.go"
-        issue: "the inline containment check (lines 92-96) has no filepath.EvalSymlinks call before its containment comparison"
-    missing:
-      - "Resolve the joined path with filepath.EvalSymlinks (failing safe on resolution error) and re-check containment against the RESOLVED path, in both resolvePath and fsopen.go's inline check — mirroring walk.go's own discipline, per 12-REVIEW.md CR-02's suggested fix"
-      - "A symlink-swap regression test at Fetch and Open time (not just Match/walk time) — the existing coverage (TestFetch_SourceIDEscapingTheRootIsRefusedBeforeAnyFileIsOpened, TestFilesystemOpen_PathEscapeAnswersInvalidPath) only exercises '..'-segment traversal, never a post-index symlink swap"
+      - "Build a *scope from p.extras inside fetchByKind (via newScope(p.extras), mirroring how Match/walk already construct one) and classify through scope.includes instead of the bare classify() call, per 12-REVIEW.md CR-01's suggested fix -- included=false should still map to NotFound for a source_id that is on disk but genuinely outside the instance's current scope (e.g. scope narrowed since the item was indexed), matching today's behavior for that case"
+      - "A regression test that Fetches an item whose only qualification is include_glob against an extension outside the default allowlist, asserting Available:false with the metadata-only unavailable_reason instead of a NotFound gRPC error -- fetch_test.go's existing fixtures only cover extensions already in extensionTable plus a genuinely-missing file, and no test exercises Fetch against a NewSourcePlugin instance with a non-default include_glob for an unrecognized extension"
 deferred: []
 ---
 
-# Phase 12: Filesystem Source Verification Report
+# Phase 12: Filesystem Source Verification Report (Re-verification)
 
 **Phase Goal:** The user can point topos at a folder — local or on a network mount — and see its documents in the right webspace.
-**Verified:** 2026-08-14T00:30:00Z
+**Verified:** 2026-08-14T01:15:00Z
 **Status:** gaps_found
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — after gap-closure plan 12-06 executed (closing G-12-1/CR-01 and G-12-2/CR-02, plus the carried-forward WR-01 symlinked-root warning); this pass also incorporates a freshly re-run code review (12-REVIEW.md) that surfaced one new, previously-uncaught Critical defect.
 
 ## Goal Achievement
 
-### Observable Truths (mapped to the 5 roadmap success criteria)
+### Observable Truths (mapped to the 5 roadmap success criteria, the cross-cutting hard prohibition, and one new truth surfaced by the fresh review)
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User adds a folder as a source from the UI, recursion on/off, documents appear in the matching webspace stream with previews | ✓ VERIFIED | `web/src/lib/plugin-fields.ts` declares the `topos-plugin-filesystem` connection row (Display Name, Local Path, Include subfolders checkbox, Sync Interval Override); `web/src/lib/components/ConnectionForm.svelte:180` has the `field.kind === 'checkbox'` render branch writing to `SourceConfig.recursive`; `web/e2e/specs/12-filesystem-add-source.spec.ts` exists as the UI-driven proof. `connection-checkbox` and `plugin-fields` vitest suites pass (57/57). Preview pipeline (classify.go/render.go/fetch.go) present and unit-tested. |
-| 2 | Files added/changed/removed are reflected on next sync, including on NFS/SMB mounts with no OS notification dependency | ✓ VERIFIED | `plugins/filesystem/walk.go` performs a full `filepath.WalkDir` re-walk every Match call, returns the complete current set (never partial), and relies on the kernel's existing full-replace persistence (`ReplaceWebspaceSourceItems`) for removal detection — no filesystem watcher anywhere in the design. Root-unreadable aborts with an error (never an empty set); per-entry permission errors skip and continue; context cancellation aborts. `plugins/filesystem` unit tests pass. |
-| 3 | Every filesystem item deep-links back to the desktop's own file handler, or declares honestly it can only raise | ✗ FAILED | **CR-01 (unresolved):** `kernel/httpapi/fsopen.go`'s `newXDGOpener` runs `exec.CommandContext(ctx, "xdg-open", path)` with `ctx = r.Context()`. Go cancels a request's context essentially synchronously with the handler returning, and `FilesystemOpenHandler` returns immediately after starting the opener — so the child is routinely SIGKILLed before the desktop handler can take over, while the kernel reports success. See gaps below. |
-| 4 | The plugin never writes to the source folder — enforced by committed guards | ✓ VERIFIED | `plugins/filesystem/readonly_test.go` is a committed Go-AST scan over every non-test file in the package, failing the build on any `os`-package write selector (`WriteFile`, `Remove`, `RemoveAll`, `Create`, `OpenFile`, `Rename`, `Mkdir`, `MkdirAll`, `Chmod`, `Chown`, `Truncate`, `Symlink`, `Link`) — mirrors the signal/paperless plugins' own precedent. `go test ./plugins/filesystem/... -count=1` passes. |
-| 5 | The filesystem binary loads/syncs identically from the external plugins directory, showing the untrusted badge, before Google Drive work begins | ✓ VERIFIED | `web/e2e/specs/12-external-rehearsal.spec.ts` exists, uses `externalPluginBinaries` to link the real `topos-plugin-filesystem` binary into the external tier and assert tier `external` + untrusted badge — a real source plugin, not a fixture-only proof binary, per 12-05-PLAN.md's stated purpose. |
-| — | (Cross-cutting) MUST NOT index/serve/preview/open any file outside the configured source root | ✗ FAILED | **CR-02 (unresolved):** both `plugins/filesystem/item.go`'s `resolvePath` (used by `Fetch`) and `kernel/httpapi/fsopen.go`'s inline check (used by `Open`) are lexical-only (`filepath.Join` + `strings.HasPrefix`), never calling `filepath.EvalSymlinks` — unlike `walk.go`'s Match-time check, which does. A post-index symlink swap escapes containment on both the byte-serving and exec-triggering paths. Contradicts the published contract guarantee in `docs/plugin-contract.md:851-853`. See gaps below. |
+| 1 | User adds a folder as a source from the UI, recursion on/off, documents appear in the matching webspace stream with previews | ✓ VERIFIED | Unchanged since prior pass: `web/src/lib/plugin-fields.ts` connection row, `ConnectionForm.svelte` checkbox branch, `web/e2e/specs/12-filesystem-add-source.spec.ts`, `web/e2e/specs/12-filesystem-recursion.spec.ts`. Preview pipeline for default-allowlist extensions (pdf/png/jpeg/gif/webp/md/txt/docx/svg) confirmed working by passing `plugins/filesystem` unit tests. (Caveat for a non-default subset covered by truth #7 below.) |
+| 2 | Files added/changed/removed are reflected on next sync, including on NFS/SMB mounts with no OS notification dependency | ✓ VERIFIED | `plugins/filesystem/walk.go` full re-walk unchanged in design; 12-06 additionally fixed `walk`'s handling of a symlinked configured root (WR-01) so it is no longer silently under-traversed. `go test ./plugins/filesystem/... -count=1` passes, including all pre-existing `TestWalk_*` cases plus the new `TestWalk_InTreeSymlinkUnderASymlinkedRootIsStillIncluded`. |
+| 3 | Every filesystem item deep-links back to the desktop's own file handler, or declares honestly it can only raise | ✓ VERIFIED (was FAILED in prior pass — CR-01 now closed) | `kernel/httpapi/fsopen.go`'s `newXDGOpener` now takes a blank-identifier context parameter and builds the child with plain `exec.Command("xdg-open", path)` — structurally impossible to bind to a caller's context (confirmed by reading the current source). `FilesystemOpenHandler` hands the opener `context.WithoutCancel(ctx)`. `grep -c 'WithoutCancel' kernel/httpapi/fsopen.go` = 1. `go test ./kernel/httpapi/ -run 'TestFilesystemOpen|TestNewXDGOpener' -count=1` passes, including `TestFilesystemOpen_OpenerContextIsDetachedFromTheRequestContext` (behavioural) and `TestNewXDGOpener_ChildIsNotBoundToACallerContext` (AST-structural). |
+| 4 | The plugin never writes to the source folder — enforced by committed guards | ✓ VERIFIED | Unchanged: `plugins/filesystem/readonly_test.go`'s committed AST scan still passes; untouched by 12-06 or the fresh review. |
+| 5 | The filesystem binary loads/syncs identically from the external plugins directory, showing the untrusted badge, before Google Drive work begins | ✓ VERIFIED | Unchanged: `web/e2e/specs/12-external-rehearsal.spec.ts` exists and is untouched by 12-06 or the fresh review's findings. |
+| — | (Cross-cutting) MUST NOT index/serve/preview/open any file outside the configured source root | ✓ VERIFIED (was FAILED in prior pass — CR-02 now closed) | `plugins/filesystem/item.go`'s `resolvePath` and `kernel/httpapi/fsopen.go`'s inline check both now call `filepath.EvalSymlinks` on the joined path and the configured root (via a hand-duplicated `resolveRoot` helper in each module) and compare the RESOLVED pair, failing closed on resolution error and mapping a vanished file to `NotFound`/`item_not_found` distinctly from a genuine containment escape (`InvalidArgument`/`invalid_path`). `grep -c EvalSymlinks` reports 3 in `item.go`, 4 in `fsopen.go`, 1 in `walk.go`. `TestFetch_SymlinkSwappedAfterIndexingIsRefusedBeforeAnyBytesAreServed` and `TestFilesystemOpen_SymlinkSwappedAfterIndexingAnswersInvalidPathAndNeverOpens` both pass. The fresh code review independently re-verified both fixes hold (12-REVIEW.md's "Summary" section). |
+| 7 (new) | A file admitted to the index only via `include_glob` widening past the default extension allowlist is fetched as an honest metadata-only preview, never a false "not found" | ✗ FAILED | **New Critical finding, fresh 12-REVIEW.md.** `fetchByKind` (`plugins/filesystem/fetch.go:81-93`) classifies via the bare `classify(sourceID)`, which has no knowledge of `p.extras`' `include_glob`/`exclude_glob` and cannot reproduce `scope.includes`' "unknown extension admitted by glob → metadata-only" branch that `Match`/`walk` already implement (`scope_test.go`'s `TestScope_UnknownExtensionIncludedByGlobIsMetadataOnly` proves the branch is intentional). Independently reproduced live in this verification pass (see Behavioral Spot-Checks). See gap below. |
 
-**Score:** 4/6 truths verified — 2 FAILED, both tracing to Critical findings from `12-REVIEW.md` that remain unresolved in the latest commit (`acaad5b`, "docs(12): add code review report" — no fix commit follows it).
+**Score:** 6/7 truths verified — the two previously-failed truths (CR-01, CR-02) are now closed; one new truth, surfaced by the freshly re-run code review and independently reproduced here, fails.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
 | `plugins/filesystem/plugin.go` | SourcePlugin Describe/Match/Fetch/Health | ✓ VERIFIED | Present, substantive, `topos.v2` contract version confirmed |
-| `plugins/filesystem/item.go` | relative-path source_id, folder labels, file:// deep link | ⚠️ PRESENT BUT UNSAFE | `resolvePath` present and wired into `fetch.go`, but lexical-only containment (CR-02) |
-| `kernel/httpapi/fsopen.go` | loopback open route, path resolved server-side from index | ⚠️ PRESENT BUT UNSAFE / BROKEN | Route exists, wired, path resolution correct in provenance (index+config, never request) but (a) containment check is lexical-only (CR-02) and (b) the opened child process is killed before handoff (CR-01) |
-| `plugins/filesystem/walk.go` | recursion-aware, symlink-safe, permission-tolerant walk | ✓ VERIFIED (with WR-01 caveat, see below) | Full re-walk, dot-file policy, symlinked-directory refusal, permission-tolerant, cap-enforced |
+| `plugins/filesystem/item.go` | relative-path source_id, folder labels, file:// deep link, symlink-resolving containment | ✓ VERIFIED (was ⚠️ PRESENT BUT UNSAFE) | `resolveRoot` + `resolvePath` now resolve symlinks before the containment comparison (CR-02 closed) |
+| `plugins/filesystem/fetch.go` | per-preview-kind dispatch honoring the scope that admitted the item | ✗ STUB-EQUIVALENT (classification path bypasses scope) | `fetchByKind` classifies via the bare `classify()` helper, not `scope.includes` — see gap |
+| `kernel/httpapi/fsopen.go` | loopback open route, symlink-resolving containment, detached opener lifetime | ✓ VERIFIED (was ⚠️ PRESENT BUT UNSAFE / BROKEN) | Containment resolves symlinks (CR-02 closed); opener context detached via `context.WithoutCancel`, `newXDGOpener` structurally cannot bind to a caller context (CR-01 closed) |
+| `plugins/filesystem/walk.go` | recursion-aware, symlink-safe, permission-tolerant walk, symlinked-root-safe | ✓ VERIFIED (WR-01 closed) | Now resolves the configured root once and walks from the resolved root; in-tree symlink comparison uses the resolved root |
 | `plugins/filesystem/readonly_test.go` | committed AST guard | ✓ VERIFIED | Present, substantive, passing |
-| `web/src/lib/components/ui/checkbox/checkbox.svelte` | shadcn-svelte Checkbox primitive | ✓ VERIFIED | Present, wired into ConnectionForm |
-| `docs/plugins/filesystem.md`, `docs/api.md`, `docs/plugin-contract.md` | operator + contract docs | ✓ VERIFIED | All updated; `docs/plugin-contract.md` documents the `file://` convention including the now-inaccurate "re-validates ... before ever exec'ing anything" guarantee (CR-02 makes this line inaccurate as shipped) |
+| `web/src/lib/components/ui/checkbox/checkbox.svelte` | shadcn-svelte Checkbox primitive | ✓ VERIFIED | Unchanged, present, wired into ConnectionForm |
+| `docs/plugins/filesystem.md`, `docs/api.md`, `docs/plugin-contract.md` | operator + contract docs | ✓ VERIFIED | All three brought back into agreement with the shipped symlink-containment code by 12-06; `docs/plugin-contract.md:824-858`'s republished guarantee is now true of the shipped code for the CR-01/CR-02 class of defect (it does not cover the new Fetch/scope defect, which is a different code path) |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|----|--------|---------|
-| `plugins/filesystem/item.go` | `kernel/httpapi/stream.go` | `file://` deep_link rewritten to loopback open route | ✓ WIRED | `resolveStreamLinkURL` keyed on scheme only, `TestStreamLink*` passing |
-| `kernel/httpapi/routes.go` | `kernel/httpapi/fsopen.go` | `POST /api/items/{id}/open` registration | ✓ WIRED | Single registration on `/api`, confirmed by grep and passing route tests |
-| `web/src/lib/components/OpenInSource.svelte` | `kernel/httpapi/fsopen.go` | fetch POST against same-origin `/api/` link | ✓ WIRED | `isLocalExecLink` branch present, vitest suite passing |
-| `web/src/lib/plugin-fields.ts` | `web/src/lib/components/ConnectionForm.svelte` | field descriptor `kind` selects render branch | ✓ WIRED | `checkbox` kind branch present and tested |
+| `plugins/filesystem/item.go` | `kernel/httpapi/stream.go` | `file://` deep_link rewritten to loopback open route | ✓ WIRED | Unchanged, `TestStreamLink*` passing |
+| `kernel/httpapi/routes.go` | `kernel/httpapi/fsopen.go` | `POST /api/items/{id}/open` registration | ✓ WIRED | Unchanged, single registration confirmed |
+| `web/src/lib/components/OpenInSource.svelte` | `kernel/httpapi/fsopen.go` | fetch POST against same-origin `/api/` link | ✓ WIRED | Unchanged |
+| `web/src/lib/plugin-fields.ts` | `web/src/lib/components/ConnectionForm.svelte` | field descriptor `kind` selects render branch | ✓ WIRED | Unchanged |
+| `plugins/filesystem/plugin.go` (Match) | `plugins/filesystem/scope.go` (`scope.includes`) | `walk.go` builds one `*scope` per Match call and classifies through it | ✓ WIRED | Confirmed by reading `walk.go` |
+| `plugins/filesystem/fetch.go` (`fetchByKind`) | `plugins/filesystem/scope.go` (`scope.includes`) | **expected but absent** | ✗ NOT WIRED | `fetchByKind` calls the bare `classify()` instead — this IS the gap |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Kernel open-route + stream-link unit tests | `go test ./kernel/httpapi/ -run 'TestFilesystemOpen\|TestStreamLink' -count=1` | ok | ✓ PASS (but does not cover CR-01/CR-02 — stubbed opener, no symlink-swap or context-cancellation case) |
-| Filesystem plugin unit tests | `cd plugins/filesystem && CGO_ENABLED=0 go test ./... -count=1` | ok | ✓ PASS |
-| internal/audit icon/provenance contract | `go test ./internal/audit/ -count=1` | ok | ✓ PASS |
-| Web checkbox + plugin-fields unit tests | `npm --prefix web run test -- connection-checkbox plugin-fields` | 57/57 passed | ✓ PASS |
-| Full repo build | `go build ./...` | clean | ✓ PASS |
+| Plugin + kernel unit suites (post gap-closure) | `CGO_ENABLED=0 go test ./plugins/filesystem/... -count=1` and `go test ./kernel/httpapi/... -run 'TestFilesystemOpen\|TestNewXDGOpener\|TestStreamLink' -count=1` | both `ok` | ✓ PASS |
+| Symlink-resolving guards present | `grep -c EvalSymlinks plugins/filesystem/item.go kernel/httpapi/fsopen.go plugins/filesystem/walk.go` | 3 / 4 / 1 | ✓ PASS |
+| Opener context detachment present | `grep -c WithoutCancel kernel/httpapi/fsopen.go` | 1 | ✓ PASS |
+| `internal/audit` contract suite | `go test ./internal/audit/ -count=1` | ok | ✓ PASS |
+| Full repo build | `go build ./...` | clean, exit 0 | ✓ PASS |
+| **Live reproduction of the new Fetch/scope defect** | A temporary test (`plugins/filesystem/zzprobe_test.go`, written for this verification, removed afterward, working tree left clean) built `NewSourcePlugin(root, map[string]string{"include_glob": "**/*.zip"}, false)`, wrote `archive.zip`, called `Match` (confirmed the item appears in results), then called `Fetch` | `Match` includes `archive.zip`; `Fetch` returns `rpc error: code = NotFound desc = filesystem: item "archive.zip" not found` instead of `Available:false` with the metadata-only reason | ✗ FAIL — confirms 12-REVIEW.md's CR-01 (fresh review) is real, not theoretical |
 
-No full e2e run was executed in this verification pass (would require booting a real kernel/browser harness); the e2e spec files were confirmed to exist and their assertions read against the described criteria, consistent with SUMMARY claims and the code review's own file-by-file read.
+No full e2e browser run was executed (would require booting a real kernel/browser harness); the e2e spec files were confirmed to exist and are unaffected by either the gap-closure work or the new finding, consistent with the prior verification pass's scope.
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|--------------|--------|----------|
-| SRC-04 | 12-01 through 12-05 (all declare `requirements: [SRC-04]`) | User can add a local/network filesystem folder as a source; documents appear with previews and deep links, synced via stat-diff polling | ⚠️ PARTIALLY SATISFIED | Add-source UI, scope/preview pipeline, and stat-diff (full-replace) sync are solid. The "deep links" clause is not actually satisfied: CR-01 breaks the open action in practice, and CR-02 means the read-only/containment guarantee the deep-link and preview machinery both depend on is violated. `REQUIREMENTS.md` already marks SRC-04 "Complete" (traceability table, line 78) — this mark is premature given the two unresolved Critical findings and should be reverted pending a gap-closure plan. |
+| SRC-04 | 12-01 through 12-06 (all declare `requirements: [SRC-04]`) | User can add a local/network filesystem folder as a source; documents appear with previews and deep links, synced via stat-diff polling | ⚠️ PARTIALLY SATISFIED | The deep-link and containment clauses that failed the previous verification pass are now genuinely fixed (CR-01, CR-02, WR-01 all confirmed closed by reading the code and re-running the cited tests). However, the "documents appear... with previews" clause is still not fully satisfied: a legitimately-synced file admitted only via `include_glob` past the default extension allowlist 404s instead of showing an honest metadata-only preview. `REQUIREMENTS.md` correctly still records SRC-04 as unchecked / "Gaps Found" (line 20, line 78) — this mark should remain until the new gap closes; it was NOT prematurely reverted to Complete in this pass. |
 
-No orphaned requirements found — SRC-04 is the only requirement mapped to Phase 12 and it is claimed by all five plans.
+No orphaned requirements found — SRC-04 is the only requirement mapped to Phase 12.
 
 ### Anti-Patterns Found
 
-None. No debt markers (`TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER`) found in any file touched by this phase. `go build ./...` is clean.
+None. No debt markers (`TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER`) found in any non-test file touched by this phase (including the files 12-06 modified). `go build ./...` is clean. The temporary probe test file created for this verification's live reproduction was removed before finishing; `git status --short` confirms no stray files remain from this verification pass.
 
-### Related, Non-Blocking Finding (carried forward from 12-REVIEW.md, not scored as a gap)
+### Related, Non-Blocking Findings (carried forward from the freshly re-run 12-REVIEW.md, not scored as gaps)
 
-**WR-01 (Warning, unresolved):** `plugins/filesystem/walk.go`'s in-tree symlink check (line 140) resolves a symlinked file's target via `filepath.EvalSymlinks` but compares it against `cleanRoot` (`filepath.Clean(root)`, never itself resolved). If the *configured root itself* sits behind a symlink or bind mount (e.g. `~/Documents` → `~/dotfiles/Documents`), every legitimately in-tree symlinked file is silently dropped from the corpus (`skipped` isn't even incremented) — an under-inclusion bug, not a security defect, but a real regression risk for a common desktop pattern. No phase must-have explicitly covers symlinked-root behavior, so this does not change the overall status, but it is a known, documented, unresolved bug in shipped code and should be closed alongside CR-01/CR-02.
+**WR-01 (new, Warning — distinct from the WR-01 12-06 already closed):** `plugins/filesystem/plugin.go`'s `toItem` omits the `source_system` provenance key that `docs/plugin-contract.md`'s "Provenance" section documents as plugin-populated, and that every sibling plugin (paperless, silverbullet, signal) sets. `kernel/httpapi/stream.go` copies `Provenance` verbatim and does not synthesize this key on a plugin's behalf, so every filesystem-sourced item's API response is silently missing `provenance.source_system`. Confirmed by reading `plugin.go`'s `toItem` function (no `source_system` key present) and confirming `internal/audit` does not currently check for it (`go test ./internal/audit/ -count=1` passes regardless). No phase must-have or roadmap success criterion explicitly names this field, so it does not change the overall status, but it is a genuine, silent contract regression that should be closed.
+
+**WR-02 (new, Warning):** Both `resolvePath` and `FilesystemOpenHandler` correctly validate containment against the `filepath.EvalSymlinks`-resolved path, but then perform the actual read/exec against the original lexical path rather than the already-resolved one — leaving a narrow, single-request TOCTOU window between validation and the syscall (distinct from and narrower than the cross-request window CR-02 closed). The review itself frames this as a lower-priority hardening item, comparable to the already-accepted T-12-23 residual risk, not a fresh exploitable path this phase introduced.
+
+**IN-01 (new, Info):** `plugins/filesystem/main.go`'s package doc comment is stale, still describing a pre-recursion tracer-era state that recursion (12-03-PLAN.md) has since superseded. Cosmetic only.
 
 ### Human Verification Required
 
-None — both blocking findings (CR-01, CR-02) are demonstrable directly from the source (process-lifecycle logic and absence of `EvalSymlinks` calls), not runtime-only behavior requiring a human to exercise a live desktop environment.
+None. All findings in this pass (the two closed gaps, the new gap, and the three non-blocking findings) are demonstrable directly from source and by running Go tests, including one live reproduction — none require exercising a live desktop environment or browser.
 
 ### Gaps Summary
 
-Phase 12 built a substantively complete filesystem source plugin: the UI flow, extension/preview classification, recursive stat-diff-style sync, read-only enforcement, and the external-plugin-tier rehearsal are all present, wired, and covered by passing tests — success criteria 1, 2, 4, and 5 hold up under inspection.
+Plan 12-06 genuinely closed both gaps this verifier previously recorded (CR-01: the kernel's `xdg-open` open action is no longer tied to the HTTP request's lifetime; CR-02: the containment re-validation on the Fetch and Open routes now resolves symlinks before comparing, rather than comparing lexically), plus the carried-forward WR-01 warning about symlinked configured roots. All of this is independently confirmed by reading the current source and re-running the specific tests that prove each property, not merely by trusting 12-06-SUMMARY.md's claims.
 
-However, the phase's own code review (`12-REVIEW.md`, committed as the latest commit on this branch, with no fix commit following it) found two unresolved Critical defects that this verification independently confirmed by reading the current source:
+However, this phase's own code-review gate re-ran after that gap closure (per the standard workflow) and found one new, unrelated Critical defect: `fetchByKind`'s classification step ignores the `include_glob`/`exclude_glob` scope that `Match` and `walk` already honor, so a file that legitimately appears in the stream *only* because `include_glob` widened past the default extension allowlist throws a false "not found" when opened, instead of the documented honest "preview not supported for this file type" response. This verification independently reproduced the defect live (not merely re-stating the review's prose) by building a `SourcePlugin` with `include_glob: "**/*.zip"`, confirming `Match` includes the file, then calling `Fetch` and observing the `NotFound` error the review describes.
 
-1. **CR-01** — the kernel's `xdg-open` open action is wired to the HTTP request's own context, so the launched application is routinely killed within milliseconds of being started, while the kernel reports success. This breaks success criterion 3 in practice for the common case.
-2. **CR-02** — the path-containment re-validation on both the Fetch and Open routes is lexical-only (no `filepath.EvalSymlinks`), so a post-index symlink swap can escape the configured source root and disclose or open files the user never consented to expose. This breaks the phase's own hard prohibition ("MUST NOT index, serve, preview, or open any file outside the configured source root") and contradicts the guarantee published in `docs/plugin-contract.md` for third-party plugin authors — a guarantee Phase 14's Google Drive plugin author would reasonably rely on for their own local-path handling.
+This is not a regression caused by 12-06 — 12-06's diff never touched `scope.go`, `classify.go`, or `fetchByKind`'s classification call — it is a pre-existing defect in the original Fetch dispatch (12-02-PLAN.md) that neither the initial verification pass nor 12-06's gap-closure work happened to exercise. Because it breaks the phase's own documented behavior for a feature this phase built (`include_glob` scope widening, D-03), and produces user-visible dishonest behavior (a false 404 for a file the UI itself lists), it must be closed before Phase 12 can be marked complete.
 
-Both findings are precisely in the two areas the phase's own threat model calls its sharpest surfaces, both have documented, concrete fixes already written out in `12-REVIEW.md`, and neither is covered by any existing test (by design/oversight, not by intentional scope exclusion). This phase should not be marked complete, and `REQUIREMENTS.md`'s existing "Complete" mark for SRC-04 should be reverted, until a closure plan lands both fixes (and, ideally, WR-01 alongside them) with regression tests that specifically exercise the request-context-cancellation and symlink-swap cases the current suite cannot catch.
+The two additional Warning-level findings (missing `source_system` provenance key; a narrower single-request TOCTOU window between symlink resolution and the actual read/exec) and one Info-level finding (a stale doc comment) do not block this verification's status but should be addressed in the same closure pass for efficiency, since they were found by the same review cycle.
 
 ---
 
-_Verified: 2026-08-14T00:30:00Z_
+_Verified: 2026-08-14T01:15:00Z_
 _Verifier: Claude (gsd-verifier)_
