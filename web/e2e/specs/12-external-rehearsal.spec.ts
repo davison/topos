@@ -17,11 +17,11 @@
 // proves exactly one new thing: a real, full-featured source plugin behaves
 // identically on the external path — same discovery, same pin
 // verification, same launch, same sync, same badge.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 // The same minimal-but-structurally-valid PDF fixture 12-filesystem-tracer
@@ -57,7 +57,7 @@ const WEBSPACE = 'household-external';
 // filesystem plugin emits for a top-level file, so the webspace below
 // participates via the ordinary keywords fallback with no explicit match
 // block, mirroring 12-filesystem-tracer.spec.ts's own convention.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-external-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-external-');
 writeFileSync(join(corpusDir, PDF_FILENAME), MINIMAL_PDF);
 writeFileSync(join(corpusDir, MARKDOWN_FILENAME), MARKDOWN_CONTENT);
 
@@ -80,10 +80,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 test.describe('12-05 Task 1: external-tier rehearsal — the real filesystem binary, loaded untrusted', () => {
 	test('GET /api/sources reports the instance reachable with tier external', async ({ kernel }) => {

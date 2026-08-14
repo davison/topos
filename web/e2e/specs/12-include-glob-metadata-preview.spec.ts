@@ -11,11 +11,11 @@
 // here; docs/testing.md already scopes real xdg-open desktop-handler
 // behaviour out of this hermetic harness, and the "open in source" affordance
 // for an unavailable rendition is unaffected by this gap.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 const ZIP_FILENAME = 'archive.zip';
@@ -27,7 +27,7 @@ const WEBSPACE = 'household';
 // allowlist — the plugin never parses its bytes, so arbitrary content is
 // fine. Its own base name is the D-05 folder-vocabulary label a top-level
 // file carries, so the webspace's keywords name it directly.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-includeglob-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-includeglob-');
 writeFileSync(join(corpusDir, ZIP_FILENAME), 'arbitrary bytes, never parsed');
 
 const configSpec: FixtureConfigSpec = {
@@ -44,10 +44,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 test.describe('12-07 Task 1: include_glob-admitted unknown extension previews honestly, never 404s', () => {
 	test('the item appears in the stream and answers an honest unavailable preview, not item_not_found', async ({

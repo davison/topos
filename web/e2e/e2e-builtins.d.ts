@@ -34,6 +34,12 @@ declare var process: {
 	env: Record<string, string | undefined>;
 	platform: string;
 	kill(pid: number, signal?: string | number): boolean;
+	// 'exit' only (fixtures/corpus.ts): the one Node hook whose lifetime is
+	// the process, which is the lifetime a spec's module-scope temp corpus
+	// actually has. Deliberately not widened to the full event union —
+	// handlers for 'exit' must be synchronous, and narrowing the event name
+	// here keeps that constraint visible at the declaration.
+	on(event: 'exit', listener: () => void): void;
 };
 
 declare function setTimeout(handler: () => void, timeoutMs?: number): NodeJS.Timeout;

@@ -627,3 +627,188 @@ stray processes across 5 runs). Mutation-checked at 10/10 against the unfixed sp
       for EOF?
 - [ ] Two tests failing in one run — do their elapsed times tell the same story? A `0.00s` and a
       `bound.00s` are two mechanisms, not one flaky package.
+
+---
+
+## KB-007 — `test.afterAll` destroys per JOB what module scope creates per PROCESS
+
+**Discovered:** 2026-08-14 · [e2e-fs-recursion-ci-flake](resolved/e2e-fs-recursion-ci-flake.md) · fix ships with this entry
+**Class:** test lifecycle / setup–teardown scope mismatch · **Severity:** CI-only hard failure, three sibling specs passing *vacuously*, and an unconditional temp-dir leak on every run — all from one cause
+
+### The pattern
+
+**Setup scope and teardown scope must be the same unit.** State is created in a spec file's module
+scope and destroyed in a test hook:
+
+```ts
+// module scope — runs ONCE PER NODE PROCESS
+const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-recursion-'));
+writeFileSync(join(corpusDir, 'receipts/nested-invoice.pdf'), …);
+
+test.afterAll(() => rmSync(corpusDir, { recursive: true, force: true }));  // runs ONCE PER JOB
+```
+
+This reads as symmetric and reviews as symmetric. It is not. Module scope is bound to the **Node
+process**; `test.afterAll` is bound to a **Playwright job**. A process can run many jobs, so the
+teardown fires while the setup that produced the state has already been permanently consumed —
+Node's module cache guarantees the module body will not run a second time in that process.
+
+Three facts from `playwright@1.62.1` make that gap the *default* path rather than an unlucky one:
+
+| Mechanism | Source | Consequence |
+|---|---|---|
+| `parallelWithHooksGroupSize = Math.ceil(tests / workers)` | `runner/index.js` `createTestGroups` | a 2-test file becomes **two jobs** at `workers>=2`, and **one job** at `workers==1` |
+| `if (!nextSuites.has(suite)) await _runAfterAllHooksForSuite(...)` | `worker/workerProcessEntry.js` | `afterAll` fires at the end of **every** job, not at the end of the file |
+| `findIndex(w => w.worker.hash() === job.workerHash)` before falling back to a fresh slot | `Dispatcher._scheduleJob` | the next job is **preferentially** handed back to the same worker — warm module cache, no re-seed |
+
+So job 1 runs, `afterAll` deletes the corpus, and the dispatcher's *preferred* choice is to run job 2
+in that same process — against a directory that no longer exists. This is not a race. There is no
+timing window and nothing to lose; it is a scheduling arrangement, which is why the repro
+(`--workers=2` over a slower single-test file plus this one) reproduced on the **first** attempt with
+the CI trace's artifact directory name matching character for character.
+
+### Why it hid — worker count changes CORRECTNESS here, not speed
+
+A 12-core dev box resolves `workers: '50%'` to 6, so the two jobs land in two *different* worker
+processes. Each re-runs module scope, each owns its own corpus, each owns its own kernel — the defect
+is structurally unreachable. A 4-vCPU CI runner resolves to 2, and co-location becomes the
+dispatcher's preferred outcome.
+
+Note the direction, because it inverts the usual intuition: `--workers=1` also *passes*, since
+`ceil(2/1) = 2` yields a single group and `afterAll` cannot fire between the two tests. The failure
+exists only in the middle of the range. **Worker count is not a performance knob for a spec written
+this way — it selects whether the file's teardown runs between its own tests.** Any reasoning of the
+form "fewer workers is just slower, more workers is just faster" is invalid the moment a file mixes
+module-scope state with `beforeAll`/`afterAll`.
+
+This is the same shape as **KB-003** and **KB-005**: a latent defect, invisible at a dev box's core
+count, surfaced by a starved CI runner, and misattributed to the most recent unrelated commit — here
+quick task `260814-mkl`, which added an ambient type declaration and nothing else. KB-005's line
+applies verbatim: a failure that is *diff-independent* is latent, not introduced, and that is a
+stronger signal than a failure correlated with a change.
+
+### The masking factor — and the three specs that passed vacuously
+
+The `kernel` fixture is declared `{ scope: 'worker' }` (`web/e2e/fixtures/kernel.ts`), a deliberate
+choice under D-02 (one kernel per spec file). So when job 2 reused the worker, it also reused a live
+kernel whose **index still held the item job 1 had synced**. Hence the failure's misleading shape:
+
+- line 124 — "the nested item is present in the stream" — **PASSED**, served from a stale index
+  describing files that had been deleted from disk;
+- line 126 — `unlinkSync(nestedFilePath)` — failed with `ENOENT`.
+
+The first observable symptom was therefore a filesystem call one line *after* the assertion that
+should have caught it. An assertion passing off cached state is not evidence the state exists.
+
+The corollary is the worse half of this entry. Four phase-12 filesystem specs split into ≥2 jobs at
+`workers>=2`, but only `12-filesystem-recursion` ever touched the corpus **from disk** in a later
+job. `12-zero-match-diagnostic`, `12-filesystem-tracer` and `12-external-rehearsal` only read through
+the kernel — so on a co-located run they were asserting against a corpus that no longer existed, and
+they **passed**. Three green specs proving nothing, and one red one. *The loud instance was the only
+reason the silent ones were found;* a fix scoped to the file that failed would have left the other
+three passing vacuously forever.
+
+> When a scheduling-dependent teardown bug surfaces in one file, enumerate every file sharing the
+> pattern and classify each by **what it reads**. Files that read only through a surviving cache
+> don't fail — they stop testing.
+
+### The second presentation: the loader process, and the tell that serial-mode was the symptom fix
+
+`/tmp` held **72** leaked corpora — roughly one per spec file per suite run, *including* the
+single-test files that are structurally immune to job splitting. A `--list` invocation (collection
+only, runs no test) took the count 13 → 14.
+
+Playwright loads every spec file in a **collection/loader process** to build the test tree. Module
+scope executes there. No test runs there, so no hook runs there, so that corpus is orphaned
+**unconditionally — on every run, including green ones**. Same root cause, second presentation:
+setup bound to process lifetime, teardown bound to a test hook.
+
+This is what settled the fix. `describe.configure({ mode: 'serial' })` would have collapsed the file
+back to one job, closed the `ENOENT`, turned CI green — **and left the loader leak completely
+untouched**, because serial mode changes job splitting and says nothing about which process runs
+module scope. A fix that resolves one presentation of a cause while a second presentation of the same
+cause carries on unchanged is a symptom fix, and the surviving presentation is how you know.
+
+### The fix shape
+
+Move the teardown to the scope the setup actually has. `process.on('exit')` is the only Node hook
+whose lifetime is the process:
+
+```ts
+// web/e2e/fixtures/corpus.ts
+export function mkdtempCorpus(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  registerCleanupOnce();                     // one process.on('exit') for all corpora
+  created.push(dir);
+  return dir;
+}
+```
+
+Every phase-12 filesystem spec routes through it and **every `test.afterAll` `rmSync` is deleted**.
+What each spec proves is unchanged, no parallelism is surrendered, and D-02 (worker-scoped kernel),
+D-03 (corpus seeded before kernel boot) and D-15 (no retries, no serial mode) are all untouched —
+deliberately. Only the scope mismatch is ours; the dispatcher's co-location and the worker-scoped
+kernel are correct, intentional behaviours and were left exactly as they were.
+
+Empirically confirmed rather than assumed — that `process.on('exit')` fires inside a Playwright
+worker was the fix's stated blind spot. A full 122-test run at `--workers=2` added **zero** corpora
+(74 before, 74 after), and the collection probe that previously leaked one per invocation now leaks
+none. It fires in worker and loader processes alike.
+
+### Gate gap this exposed
+
+Every gate was structurally blind. `make e2e` on a dev box runs at 6 workers, where the arrangement
+cannot occur; `--workers=1`, the instinctive "make it deterministic" debugging move, is *also* in the
+passing region. The failing region is only the middle, so no local invocation of the existing gate
+could reach it. As in KB-003 and KB-005, CI was the gate that caught it, and the flake was initially
+read as CI being unreliable rather than CI reporting a real defect.
+
+Worse, no *runtime* assertion can cover this class reliably: the failing arrangement is
+scheduling-dependent, and the three sibling instances fail silently by passing. A test cannot catch a
+bug whose signature is "a different test stops meaning anything."
+
+**Recurrence guard now in place:** `web/e2e/specs/spec-hygiene.spec.ts` — a **structural** spec (boots
+no kernel) that fails if any spec file calls `mkdtempSync` directly, or removes a directory inside a
+`test.afterAll` body. It covers both halves of the contract, which are the two adjacent ways to
+reintroduce the defect, and extracts hook bodies by balanced-paren scan rather than a regex a
+parenthesised body would defeat. Mutation-checked 2/2 against the pre-fix spec, naming the offending
+file in both messages, so it cannot pass vacuously. The rule is also written into `docs/testing.md`
+under "Writing a new spec" — a structural gate plus the doc that explains it, because the gate alone
+tells you *that* you broke a rule, not why it exists.
+
+### Where to watch for it in this codebase
+
+- **Any new spec doing work at module scope.** In this harness that is not an anti-pattern to remove
+  — D-03 requires corpus state to exist before the kernel boots, which is before any hook runs. The
+  requirement is that its teardown be process-scoped to match.
+- **`web/e2e/fixtures/kernel.ts`** — `configSpec` and `kernel` are both `scope: 'worker'`. Anything
+  that outlives a job can serve stale data into the next one; assertions that read only through the
+  kernel cannot detect that their fixtures were destroyed.
+- **Any spec file that grows from 1 test to 2.** `12-filesystem-add-source`,
+  `12-filesystem-root-label-match` and `12-include-glob-metadata-preview` were immune only because
+  `ceil(1/n) = 1` gives them a single job. That immunity evaporates the day someone adds a second
+  test, with no edit to the setup code that would prompt a reviewer to look.
+- **`web/playwright.config.ts`** — `fullyParallel: true` and the default `workers: '50%'` are the
+  preconditions. Changing either changes which specs are reachable by this class.
+- **Non-e2e analogues:** any Go `TestMain`/package-level fixture torn down in a `t.Cleanup`, or any
+  singleton initialised at import and released per-test.
+
+### Checklist for review
+
+- [ ] For every piece of state a test uses: **what unit creates it, and what unit destroys it?** If
+      those two names differ (module/process vs suite/job/test), that is the bug, whatever the
+      current worker count makes visible.
+- [ ] Is teardown attached to a hook while setup sits at module scope? Node runs a module body once
+      per process; no Playwright hook has process lifetime.
+- [ ] Does the spec file have ≥2 tests *and* a `beforeAll`/`afterAll` *and* run under
+      `fullyParallel`? Then it splits into multiple jobs and `afterAll` runs between its own tests.
+- [ ] Would `--workers=1` and a high worker count both pass? Then a passing run proves nothing about
+      the middle of the range — reproduce at `--workers=2` before concluding anything.
+- [ ] Does an assertion that "passed" read through a long-lived cache or worker-scoped fixture? It
+      may be describing state that has already been deleted.
+- [ ] When one file in a family fails: which sibling files share the pattern, and do they only read
+      through a surviving fixture? Those are passing vacuously — enumerate them before fixing.
+- [ ] Does the proposed fix close **every** presentation of the cause? A leak, a slow drift, or a
+      loader-process side effect that survives your fix means you fixed the symptom.
+- [ ] Before blaming the newest commit for a CI-only failure: does the defect reproduce from the
+      test's own structure with no reference to that diff? (KB-003, KB-005 — same trap, third time.)

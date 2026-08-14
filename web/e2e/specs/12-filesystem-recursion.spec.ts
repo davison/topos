@@ -11,11 +11,11 @@
 // route proves the item leaves the stream — no OS filesystem-watcher
 // dependency anywhere in this design, and the kernel's own full-replace
 // persistence is what makes the removal observable.
-import { mkdtempSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 const MINIMAL_PDF = `%PDF-1.4
@@ -46,7 +46,7 @@ const WEBSPACE = 'household-receipts';
 // boot) — a top-level document plus one nested one level down, under a
 // subfolder whose own name (`receipts`) is exactly the D-05 folder label
 // Task 2's folderLabels extension emits for it.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-recursion-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-recursion-');
 writeFileSync(join(corpusDir, TOP_LEVEL_FILENAME), MINIMAL_PDF);
 mkdirSync(join(corpusDir, NESTED_SUBFOLDER));
 const nestedFilePath = join(corpusDir, NESTED_SUBFOLDER, NESTED_FILENAME);
@@ -78,10 +78,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 interface StreamItem {
 	id: string;

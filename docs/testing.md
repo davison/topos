@@ -156,6 +156,19 @@ The fixture API that implements all of this lives in `web/e2e/fixtures/`:
   hard to write, that is often a signal the accessible name/role itself
   needs work, which is a real UI defect, not a test-authoring problem to
   route around.
+- **Create a temp corpus with `mkdtempCorpus`, never `mkdtempSync`, and
+  never tear one down in `test.afterAll`.** Module-scope code runs once
+  per Node *process*; `test.afterAll` runs once per Playwright *job*, and
+  `fullyParallel` splits a file into `ceil(tests / workers)` jobs. Pairing
+  the two means a later job runs against a corpus an earlier job already
+  deleted — and because the `kernel` fixture is worker-scoped, its index
+  keeps serving the vanished items, so the spec either fails on an
+  unrelated-looking `ENOENT` or, worse, passes green while proving
+  nothing. `mkdtempCorpus` (`web/e2e/fixtures/corpus.ts`) ties cleanup to
+  process exit, which is the lifetime the corpus actually has.
+  `web/e2e/specs/spec-hygiene.spec.ts` enforces both halves of this rule
+  mechanically, because a run on a developer machine will not reveal the
+  mistake.
 
 ## Zero-retries policy
 

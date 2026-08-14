@@ -26,11 +26,11 @@
 // xdg-open handoff, real previews on the user's own documents, and
 // NFS/SMB mount behaviour — all human-verified in UAT, never asserted
 // here.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 const MINIMAL_PDF = `%PDF-1.4
@@ -59,7 +59,7 @@ const GLOB_SHAPED_VALUE = '*';
 
 // Module-scope temp corpus directory (D-03: state is seeded before kernel
 // boot).
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-zero-match-'));
+const corpusDir = mkdtempCorpus('topos-e2e-zero-match-');
 writeFileSync(join(corpusDir, PDF_FILENAME), MINIMAL_PDF);
 
 const configSpec: FixtureConfigSpec = {
@@ -85,10 +85,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 interface SourceStatus {
 	name: string;

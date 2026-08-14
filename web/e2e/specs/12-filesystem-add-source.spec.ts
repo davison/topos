@@ -8,11 +8,11 @@
 // launched plugin subprocess: only a document one level BELOW the
 // configured root reaches the stream, and only because "Include
 // subfolders" was ticked before saving.
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 // A minimal but structurally valid single-page PDF — same fixture body
@@ -50,7 +50,7 @@ const INSTANCE_ID = 'household-docs';
 // subfolder alone, so the TOP-LEVEL document never participates — only the
 // nested one does, and only through the recursive walk the UI's checkbox
 // turns on during this spec.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-add-source-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-add-source-');
 writeFileSync(join(corpusDir, TOP_LEVEL_FILENAME), MINIMAL_PDF);
 mkdirSync(join(corpusDir, NESTED_SUBFOLDER));
 writeFileSync(join(corpusDir, NESTED_SUBFOLDER, NESTED_FILENAME), MINIMAL_PDF);
@@ -73,10 +73,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 test.describe('12-04 Task 3: adding a folder as a source through the real UI, end to end', () => {
 	test('an empty path is blocked, the checkbox starts unchecked, and saving with subfolders included brings the nested document into the stream', async ({

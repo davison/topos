@@ -25,11 +25,11 @@
 // advisory or notice field (e.g. a zero-match diagnostic) — that surface
 // does not exist in this wave; it is 12-09-PLAN.md's own gap closure and
 // would make this spec fail for a reason it is not about.
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 const MINIMAL_PDF = `%PDF-1.4
@@ -63,7 +63,7 @@ const GLOB_WEBSPACE = 'glob-value-webspace';
 // boot) — a top-level document plus one nested one level down, exactly
 // the shape the diagnosis's "and_gate" note describes as structurally
 // inexpressible before this plan.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-root-label-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-root-label-');
 writeFileSync(join(corpusDir, TOP_LEVEL_FILENAME), MINIMAL_PDF);
 mkdirSync(join(corpusDir, NESTED_SUBFOLDER));
 writeFileSync(join(corpusDir, NESTED_SUBFOLDER, NESTED_FILENAME), MINIMAL_PDF);
@@ -94,10 +94,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 interface StreamItem {
 	id: string;

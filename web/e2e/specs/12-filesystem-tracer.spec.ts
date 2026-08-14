@@ -9,11 +9,11 @@
 // topos-plugin-filesystem binary. Does NOT assert on xdg-open's own
 // behaviour — the exec is covered deterministically by the stub-opener Go
 // tests (kernel/httpapi/fsopen_test.go).
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
+import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
 
 // A minimal but structurally valid single-page PDF — a real %PDF- header,
@@ -45,7 +45,7 @@ const WEBSPACE = 'household';
 // the filesystem plugin emits for a top-level file, so a webspace whose
 // keywords name it participates via the ordinary keywords fallback with no
 // explicit match block.
-const corpusDir = mkdtempSync(join(tmpdir(), 'topos-e2e-fs-'));
+const corpusDir = mkdtempCorpus('topos-e2e-fs-');
 writeFileSync(join(corpusDir, PDF_FILENAME), MINIMAL_PDF);
 
 const configSpec: FixtureConfigSpec = {
@@ -62,10 +62,6 @@ const configSpec: FixtureConfigSpec = {
 };
 
 test.use({ configSpec });
-
-test.afterAll(() => {
-	rmSync(corpusDir, { recursive: true, force: true });
-});
 
 test.describe('12-01 Task 2: filesystem source tracer — one PDF, end to end', () => {
 	test('the stream carries exactly one item, served through the kernel open route, with a PDF rendition', async ({
