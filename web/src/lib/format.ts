@@ -114,6 +114,20 @@ export type HealthTone = 'success' | 'warning' | 'destructive' | 'unknown';
  * "render as a neutral indicator, never as a green 'ok'" rule — before
  * live reachability is even considered, since a never-synced source has
  * no sync history to be "unreachable since" either.
+ *
+ * 12-10-PLAN.md (G-12-1/G-12-3 gap closure) adds ONE more branch, LAST
+ * among the problem states, immediately before the final success return: a
+ * source carrying a non-empty `last_notice` — today, a webspace's explicit
+ * match block that matched none of this source's items — reads `warning`
+ * even though its sync genuinely succeeded. It sits last because a pin
+ * mismatch, a never-synced source, an unreachable source and a failed sync
+ * are each a bigger fact than an advisory about an otherwise-successful
+ * run: a real problem must never be displaced by "also, here's a heads
+ * up." It reuses the existing `warning` tone rather than introducing a
+ * fifth `HealthTone` — the errored-status branch above already returns
+ * `warning` for exactly this reason: in this system amber already means
+ * "synced, but attend to this," which is precisely the advisory's
+ * meaning, so no new design token is warranted.
  */
 export function healthTone(source: SourceStatus): HealthTone {
 	// Phase 11 (11-UI-SPEC.md E4, D-03): a source refused launch on a pin
@@ -127,6 +141,7 @@ export function healthTone(source: SourceStatus): HealthTone {
 	if (source.last_status === '') return 'unknown';
 	if (!source.reachable) return 'destructive';
 	if (source.last_status === 'error') return 'warning';
+	if ((source.last_notice ?? '') !== '') return 'warning';
 	return 'success';
 }
 

@@ -288,6 +288,17 @@ export interface SourceStatus {
 	last_status: '' | 'running' | 'ok' | 'error'; // '' = never run = unknown
 	last_sync_unix: number;
 	last_error: string;
+	// last_notice (12-09-PLAN.md, published on GET /api/sources) is a
+	// non-fatal, human-readable advisory the KERNEL recorded about the
+	// LAST COMPLETED sync — today, that a webspace's explicit match block
+	// matched none of this source's items. A non-empty value does NOT
+	// imply failure: it coexists with last_status: 'ok' and an empty
+	// last_error, which is exactly the "healthy but contributing nothing"
+	// shape this field exists to surface (12-10-PLAN.md). Per docs/api.md
+	// a client must never parse or branch on its text — render it and
+	// nothing more. Optional, for the same reason launch_failure is:
+	// existing fixtures build this object literally.
+	last_notice?: string;
 }
 
 export interface SourcesResponse {
