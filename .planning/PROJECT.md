@@ -17,7 +17,7 @@ Open one webspace and instantly see and grok all related information across ever
 - Webspaces are built and edited entirely from the UI (hot-apply config writes); works on mobile widths; first run bootstraps a default config
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
-- **v1.1.0 in progress**: Phase 11 complete (2026-08-13) — external plugins load behind an enforced trust boundary (provenance tiers, hash pinning, consent UI, re-pin flow); next up Phase 12 (filesystem source)
+- **v1.1.0 in progress**: Phase 12 complete (2026-08-14) — filesystem source live (local/network folders, stat-diff polling, include_glob scope widening, external-path rehearsal proven); Phase 11 landed the trust boundary it rides on; next up Phase 13 (per-item curation & installable app)
 
 ## Current Milestone: v1.1.0 Plugin Ecosystem
 
@@ -56,12 +56,12 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ WhatsApp plugin (SRC-03) — whatsmeow linked device with its own persistent message store (session + captured messages, both plugin-owned; source stores never touched), one-time QR link via terminal CLI *and* in-app QR panel (kernel link-session endpoint suspends the running instance so link mode gets the store lock), live group-subject/push-name sync (history sync alone carries neither — found by the plan's mandatory real-device spike), conversation-day digests matching group names and saved 1:1 contact names, five named health states that degrade honestly without ever emptying the stream (verified live: `401 logged out from another device`, captured rows survive), wa.me/web.whatsapp.com deep links (no `whatsapp://` handler exists on Linux), read-only + egress AST guards, hermetic Playwright coverage — Phase 8 (verified 5/5 after three gap-closure waves ending in G-08-5's supervisor lock split — a slow plugin relaunch can no longer freeze other sources' routes — confirmed by a human real-device re-link with a second source staying responsive throughout)
 
 - ✓ External plugin support with an enforced trust boundary — kernel discovers and launches out-of-repo plugin binaries from a configured external directory, tier derived from provenance (in-repo dir = trusted, external dir = untrusted); external launches gated on content-hash pins with a soft per-instance failure channel (pin mismatch names the hash change on the chip, two-click re-pin re-establishes trust), scrubbed plugin launch environment, per-instance extras threaded through the published contract, explicit informed consent before adding an untrusted source and a persistent untrusted badge everywhere it appears; `ResolveBinary` confines plugin names to bare filenames (traversal/tier-escape closed, CR-01) — Phase 11 (proven end-to-end with a real out-of-repo binary built by its own module; verified 5/5 after one gap-closure plan)
+- ✓ Filesystem source (SRC-04) — a local or network folder becomes a source via the in-repo filesystem plugin: document-scope classification with per-instance `include_glob` widening (Fetch classifies through the instance's own scope, so glob-admitted files get honest metadata-only previews, never a false 404), subfolder recursion as a typed on/off setting, stat-diff polling sync that works on NFS/SMB mounts where OS change notifications never fire, deep links open in the desktop's own file handler through the kernel's fsopen route (resolved-path read/exec discipline, WR-02), read-only behavior enforced by committed guards, full four-key provenance including `source_system`; the same binary copied into the external plugins directory loads and syncs identically under the untrusted badge — the external-path rehearsal before Google Drive — Phase 12 (verified 7/7 after two gap-closure plans)
 - ✓ Webspaces defined in a config map matching each source's *native* categorization (IMAP folders/labels, chat group and contact names, paperless-ngx tags, SilverBullet tags/pages) — v1.0 (Phases 1–4 proved keyword matching; Phase 5 upgraded to per-instance typed match blocks with keywords as fallback; Phase 8 closed the last source)
 - ✓ Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item — v1.0 (built out across Phases 1–9.1, including mobile layout and first-run bootstrap)
 
 ### Active
 
-- [ ] Local/network filesystem source plugin (docs in a folder, optional subfolders), in-repo/trusted
 - [ ] Google Drive source plugin, built out-of-repo against the published contract (dogfoods the external-plugin path)
 - [ ] User can mark individual stream entries for inclusion/exclusion in a webspace — final tier of the filter hierarchy
 - [ ] App is installable as a PWA on desktop and mobile (ServiceWorker + manifest/assets)
@@ -137,4 +137,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-13 after Phase 11 completion (external plugins & the trust boundary)*
+*Last updated: 2026-08-14 after Phase 12 completion (filesystem source)*
