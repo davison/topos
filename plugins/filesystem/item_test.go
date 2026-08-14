@@ -89,7 +89,7 @@ func TestResolvePath_JoinsRootAndSourceID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	got, err := resolvePath(root, "invoice.pdf")
+	got, _, err := resolvePath(root, "invoice.pdf")
 	if err != nil {
 		t.Fatalf("resolvePath: %v", err)
 	}
@@ -101,8 +101,47 @@ func TestResolvePath_JoinsRootAndSourceID(t *testing.T) {
 
 func TestResolvePath_RefusesEscapeViaDotDotSegments(t *testing.T) {
 	root := t.TempDir()
-	if _, err := resolvePath(root, "../../etc/passwd"); err == nil {
+	if _, _, err := resolvePath(root, "../../etc/passwd"); err == nil {
 		t.Fatal("expected resolvePath to refuse a path escaping the root, got nil error")
+	}
+}
+
+// TestResolvePath_ReturnsTheLexicalIdentityPathAndTheResolvedRealPath
+// proves resolvePath's widened signature (12-07-PLAN.md Task 2, WR-02)
+// returns two different strings naming the same file: the first is the
+// unchanged LEXICAL identity path (D-01), the second is the symlink-free
+// real path every read/exec should target.
+func TestResolvePath_ReturnsTheLexicalIdentityPathAndTheResolvedRealPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir real: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "doc.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatalf("write doc.md: %v", err)
+	}
+	linkRoot := filepath.Join(tmp, "linkroot")
+	if err := os.Symlink(real, linkRoot); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	full, resolved, err := resolvePath(linkRoot, "doc.md")
+	if err != nil {
+		t.Fatalf("resolvePath: %v", err)
+	}
+	wantFull := filepath.Join(linkRoot, "doc.md")
+	if full != wantFull {
+		t.Fatalf("expected the lexical join under linkroot %q, got %q", wantFull, full)
+	}
+	wantResolved := filepath.Join(real, "doc.md")
+	if resolved != wantResolved {
+		t.Fatalf("expected the resolved join under the real directory %q, got %q", wantResolved, resolved)
+	}
+	if full == resolved {
+		t.Fatal("expected the lexical and resolved paths to differ for a symlinked root")
 	}
 }
 
@@ -124,12 +163,15 @@ func TestResolvePath_SymlinkSwapOutsideRootIsRefused(t *testing.T) {
 		t.Fatalf("symlink: %v", err)
 	}
 
-	got, err := resolvePath(root, "notes.md")
+	full, resolved, err := resolvePath(root, "notes.md")
 	if err == nil {
 		t.Fatal("expected resolvePath to refuse a post-index symlink swap outside the root, got nil error")
 	}
-	if got != "" {
-		t.Errorf("expected an empty path on refusal, got %q", got)
+	if full != "" {
+		t.Errorf("expected an empty lexical path on refusal, got %q", full)
+	}
+	if resolved != "" {
+		t.Errorf("expected an empty resolved path on refusal, got %q", resolved)
 	}
 }
 
@@ -154,7 +196,7 @@ func TestResolvePath_SymlinkedRootStillResolvesAnInRootFile(t *testing.T) {
 		t.Fatalf("symlink: %v", err)
 	}
 
-	got, err := resolvePath(linkRoot, "doc.md")
+	got, _, err := resolvePath(linkRoot, "doc.md")
 	if err != nil {
 		t.Fatalf("resolvePath: %v", err)
 	}

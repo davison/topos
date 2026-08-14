@@ -104,7 +104,7 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 //     an in-scope item, never the membership test itself.
 //   - otherwise dispatch on the returned classification's kind, unchanged.
 func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, error) {
-	full, err := resolvePath(p.root, sourceID)
+	_, resolved, err := resolvePath(p.root, sourceID)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
@@ -121,51 +121,67 @@ func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, err
 		return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
 	}
 
+	// Every rendition helper below reads through resolved (the symlink-free
+	// real path resolvePath already validated), never the lexical full path
+	// — WR-02, 12-07-PLAN.md Task 2: the path validated and the path used
+	// must be one and the same.
 	switch c.kind {
 	case previewKindBytes:
-		return fetchBytesRendition(full, c.mime)
+		return fetchBytesRendition(resolved, c.mime)
 	case previewKindMarkdown:
-		return fetchMarkdownRendition(full)
+		return fetchMarkdownRendition(resolved)
 	case previewKindPlainText:
-		return fetchPlainTextRendition(full)
+		return fetchPlainTextRendition(resolved)
 	default: // previewKindMetadataOnly
 		return &toposv1.FetchResponse{Available: false, UnavailableReason: metadataOnlyReason}, nil
 	}
 }
 
-// statForFetch stats full, mapping a missing file to codes.NotFound (a
-// distinct outcome from an unavailable-but-known response) and any other
-// I/O failure to codes.Unavailable.
-func statForFetch(full string) (os.FileInfo, error) {
-	info, err := os.Stat(full)
+// openForFetch opens path once and stats it through the same handle,
+// mapping failures onto the existing codes exactly: a missing file to
+// codes.NotFound (a distinct outcome from an unavailable-but-known
+// response), any other open failure to codes.Unavailable with an "open:"
+// prefix, and a stat failure on the open handle to codes.Unavailable with a
+// "stat:" prefix (closing the handle before returning that error).
+// Superseded statForFetch (12-07-PLAN.md Task 2, WR-02): reading through
+// one handle means the size check and the read can no longer observe
+// different files — there is no longer a gap between "how big is this"
+// and "read these bytes" for a second open call to fall into.
+func openForFetch(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "filesystem: item not found")
+			return nil, nil, status.Errorf(codes.NotFound, "filesystem: item not found")
 		}
-		return nil, status.Errorf(codes.Unavailable, "filesystem: stat: %v", err)
+		return nil, nil, status.Errorf(codes.Unavailable, "filesystem: open: %v", err)
 	}
-	return info, nil
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, status.Errorf(codes.Unavailable, "filesystem: stat: %v", err)
+	}
+	return f, info, nil
 }
 
 // fetchBytesRendition serves the bytes-kind preview (PDF, inline-
-// renderable images): stat first and refuse over maxByteRenditionSize
-// with Available false — the file's bytes are never read into memory
-// when it is oversize — otherwise read and return the full bytes with
-// mime.
-func fetchBytesRendition(full, mime string) (*toposv1.FetchResponse, error) {
-	info, err := statForFetch(full)
+// renderable images): open once, refuse over maxByteRenditionSize with
+// Available false BEFORE reading any bytes — the file's bytes are never
+// read into memory when it is oversize — otherwise read the full bytes
+// from that same handle, bounded by io.LimitReader at maxByteRenditionSize
+// so the cap holds even if the file grows after the stat.
+func fetchBytesRendition(path, mime string) (*toposv1.FetchResponse, error) {
+	f, info, err := openForFetch(path)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
+
 	if info.Size() > maxByteRenditionSize {
 		return &toposv1.FetchResponse{Available: false, UnavailableReason: oversizeReason}, nil
 	}
 
-	data, err := os.ReadFile(full)
+	data, err := io.ReadAll(io.LimitReader(f, maxByteRenditionSize))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "filesystem: item not found")
-		}
 		return nil, status.Errorf(codes.Unavailable, "filesystem: read: %v", err)
 	}
 
@@ -177,25 +193,25 @@ func fetchBytesRendition(full, mime string) (*toposv1.FetchResponse, error) {
 	}, nil
 }
 
-// fetchMarkdownRendition serves the markdown-kind preview: stat first and
+// fetchMarkdownRendition serves the markdown-kind preview: open once and
 // refuse over maxByteRenditionSize exactly like the bytes kind, otherwise
-// read and render through RenderMarkdown (render.go), returning the
-// UNSANITIZED HTML fragment with CONTENT_SHAPE_MARKDOWN_HTML — the
-// kernel's rendition boundary sanitizes it before serving.
-func fetchMarkdownRendition(full string) (*toposv1.FetchResponse, error) {
-	info, err := statForFetch(full)
+// read from that same handle (bounded by io.LimitReader) and render through
+// RenderMarkdown (render.go), returning the UNSANITIZED HTML fragment with
+// CONTENT_SHAPE_MARKDOWN_HTML — the kernel's rendition boundary sanitizes
+// it before serving.
+func fetchMarkdownRendition(path string) (*toposv1.FetchResponse, error) {
+	f, info, err := openForFetch(path)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
+
 	if info.Size() > maxByteRenditionSize {
 		return &toposv1.FetchResponse{Available: false, UnavailableReason: oversizeReason}, nil
 	}
 
-	raw, err := os.ReadFile(full)
+	raw, err := io.ReadAll(io.LimitReader(f, maxByteRenditionSize))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "filesystem: item not found")
-		}
 		return nil, status.Errorf(codes.Unavailable, "filesystem: read: %v", err)
 	}
 
@@ -220,21 +236,15 @@ func fetchMarkdownRendition(full string) (*toposv1.FetchResponse, error) {
 // GET /api/items/{id}/content can serve it too (kernel/httpapi/item.go's
 // allowedRenditionTypes gains a text/plain entry alongside this task).
 // When the source file is longer than the bound, the returned text's
-// final line honestly says so rather than silently cutting off.
-func fetchPlainTextRendition(full string) (*toposv1.FetchResponse, error) {
-	f, err := os.Open(full)
+// final line honestly says so rather than silently cutting off. Reads
+// through openForFetch like its two siblings, so all three renditions
+// share one open-and-map helper.
+func fetchPlainTextRendition(path string) (*toposv1.FetchResponse, error) {
+	f, info, err := openForFetch(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "filesystem: item not found")
-		}
-		return nil, status.Errorf(codes.Unavailable, "filesystem: open: %v", err)
+		return nil, err
 	}
 	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "filesystem: stat: %v", err)
-	}
 
 	data, err := io.ReadAll(io.LimitReader(f, maxPlainTextSize))
 	if err != nil {

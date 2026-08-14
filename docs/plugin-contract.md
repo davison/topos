@@ -860,7 +860,22 @@ later swapped on disk for a symlink pointing outside the root is refused
 rather than followed. This is the same defense-in-depth join-resolve-and-
 validate discipline your own plugin must apply when resolving `source_id`
 back to a real path for `Fetch` — `plugins/filesystem`'s `resolvePath`
-(`item.go`) is the reference implementation for that side too.
+(`item.go`) is the reference implementation for that side too. **The
+resolved path is also the path the kernel actually hands to the desktop
+handler**, not the lexical join it validated it against — read and exec
+the same resolved path you validate, rather than re-walking symlinks
+implicitly on the read/exec call itself, so the path your plugin's own
+containment check approves and the path it actually opens are always one
+and the same.
+
+A path-based check like this one `narrows but does not eliminate` the
+race between resolution and the syscall: a single remaining window exists
+between `filepath.EvalSymlinks` returning and the following `os.Open`/exec
+call, in which the resolved path's own final component could in principle
+be swapped again. Fully eliminating it requires descriptor-based traversal
+(`openat`/`O_NOFOLLOW`), which topos does not currently do — no plugin or
+kernel code in this repo should be built assuming a stronger guarantee
+than that.
 
 ## `LinkFidelity`
 

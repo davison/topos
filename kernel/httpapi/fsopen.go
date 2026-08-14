@@ -84,8 +84,12 @@ func resolveRoot(root string) string {
 // compares the RESOLVED pair, and fails closed when resolution is
 // impossible (CR-02, 12-06-PLAN.md Task 1) — so a file indexed legitimately
 // and later swapped on disk for a symlink pointing outside the root is
-// refused rather than followed, before opener is ever called. Registered
-// on /api only (routes.go) — never on the /agent/v1 mirror.
+// refused rather than followed, before opener is ever called. opener is
+// handed the resolved, symlink-free path — the same path the containment
+// check approved, not the lexical one (WR-02, 12-07-PLAN.md Task 2) — so a
+// user whose configured root is a symlink sees the resolved location in
+// their desktop application's own UI, which is deliberate. Registered on
+// /api only (routes.go) — never on the /agent/v1 mirror.
 func FilesystemOpenHandler(store *index.Store, cfgStore *config.Store, opener Opener, logger hclog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := itemIDParam(r)
@@ -164,7 +168,14 @@ func FilesystemOpenHandler(store *index.Store, cfgStore *config.Store, opener Op
 		// future Opener that DOES honour its context. Every other use of
 		// ctx in this handler (store.GetItem) stays as-is: index reads
 		// should still be cancelled when the requester goes away.
-		if err := opener(context.WithoutCancel(ctx), full); err != nil {
+		//
+		// opener is handed resolved, not full (WR-02, 12-07-PLAN.md Task 2):
+		// the path validated by the containment check above and the path
+		// handed to the desktop handler must be one and the same. A user
+		// whose configured root is a symlink will therefore see the
+		// resolved location in their desktop application's own UI, which is
+		// deliberate.
+		if err := opener(context.WithoutCancel(ctx), resolved); err != nil {
 			WriteError(w, http.StatusBadGateway, "open_failed", err.Error())
 			return
 		}

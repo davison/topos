@@ -88,29 +88,38 @@ func resolveRoot(root string) string {
 // RESOLVED root — inside root after symlink resolution, failing closed when
 // resolution is impossible (CR-02, 12-06-PLAN.md Task 1). This closes the
 // gap the lexical check alone cannot: a file indexed as legitimate and then
-// swapped on disk for a symlink pointing outside root. Returns the LEXICAL
-// full path (not the resolved one) on success — callers, the index,
-// fileDeepLink and the kernel's own join all key on the lexical path under
-// the configured root. A resolution failure is wrapped with %w so callers
-// (fetch.go's fetchByKind) can distinguish a vanished file
-// (errors.Is(err, fs.ErrNotExist)) from a genuine containment escape.
-// Mirrors kernel/httpapi/fsopen.go's identical guard on the kernel side of
-// this same join.
-func resolvePath(root, sourceID string) (string, error) {
+// swapped on disk for a symlink pointing outside root.
+//
+// Returns TWO paths naming the same file: full is the LEXICAL identity path
+// — callers, the index, fileDeepLink and the kernel's own join all key on
+// this one, and it must never start reporting resolved paths (D-01) —
+// resolved is the symlink-free real path every read/exec should target, so
+// the path validated and the path used are one and the same (WR-02,
+// 12-07-PLAN.md Task 2: closes the gap where resolvePath validated the
+// resolved path but callers then read/exec'd the lexical one, leaving a
+// narrow window for the final path component to be swapped between
+// validation and the syscall). A resolution failure is wrapped with %w so
+// callers (fetch.go's fetchByKind) can distinguish a vanished file
+// (errors.Is(err, fs.ErrNotExist)) from a genuine containment escape; on any
+// error both results are empty strings, so a caller that ignores the error
+// cannot accidentally use a half-validated path. Mirrors
+// kernel/httpapi/fsopen.go's identical guard on the kernel side of this
+// same join.
+func resolvePath(root, sourceID string) (full, resolved string, err error) {
 	cleanRoot := filepath.Clean(root)
-	full := filepath.Join(cleanRoot, filepath.FromSlash(sourceID))
+	full = filepath.Join(cleanRoot, filepath.FromSlash(sourceID))
 	if full != cleanRoot && !strings.HasPrefix(full, cleanRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("resolved path escapes source root")
+		return "", "", fmt.Errorf("resolved path escapes source root")
 	}
 
-	resolved, err := filepath.EvalSymlinks(full)
+	resolved, err = filepath.EvalSymlinks(full)
 	if err != nil {
-		return "", fmt.Errorf("resolve path: %w", err)
+		return "", "", fmt.Errorf("resolve path: %w", err)
 	}
 	resolvedRoot := resolveRoot(cleanRoot)
 	if resolved != resolvedRoot && !strings.HasPrefix(resolved, resolvedRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("resolved path escapes source root")
+		return "", "", fmt.Errorf("resolved path escapes source root")
 	}
 
-	return full, nil
+	return full, resolved, nil
 }

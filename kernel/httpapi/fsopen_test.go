@@ -111,7 +111,12 @@ func TestFilesystemOpen_HappyPathOpensTheJoinedAbsolutePath(t *testing.T) {
 	if !opener.called {
 		t.Fatal("expected the opener to be called")
 	}
-	want := filepath.Join(root, "invoice.pdf")
+	// Computed through filepath.EvalSymlinks (WR-02, 12-07-PLAN.md Task 2):
+	// the opener is handed the RESOLVED path, not the lexical one — a
+	// tightening that makes this assertion correct even when the runner's
+	// own temp dir is itself behind a symlink (e.g. macOS's /tmp ->
+	// /private/tmp).
+	want := resolvedJoinForTest(t, root, "invoice.pdf")
 	if opener.calledWith != want {
 		t.Errorf("expected opener called with %q, got %q", want, opener.calledWith)
 	}
@@ -122,6 +127,20 @@ func TestFilesystemOpen_HappyPathOpensTheJoinedAbsolutePath(t *testing.T) {
 	if !resp.Opened {
 		t.Error("expected opened: true in the response")
 	}
+}
+
+// resolvedJoinForTest computes the expected opener argument for a happy-path
+// fixture: filepath.EvalSymlinks on the joined root+sourceID path, falling
+// back to the raw lexical join if resolution fails so a test never becomes
+// a skip over an environment quirk (WR-02, 12-07-PLAN.md Task 2).
+func resolvedJoinForTest(t *testing.T, root, sourceID string) string {
+	t.Helper()
+	full := filepath.Join(root, sourceID)
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return full
+	}
+	return resolved
 }
 
 // TestFilesystemOpen_TildeInConfiguredPathIsExpandedBeforeTheJoin proves a
@@ -161,7 +180,9 @@ func TestFilesystemOpen_TildeInConfiguredPathIsExpandedBeforeTheJoin(t *testing.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	want := filepath.Join(fixtureDir, "invoice.pdf")
+	// Computed through filepath.EvalSymlinks (WR-02, 12-07-PLAN.md Task 2) —
+	// see resolvedJoinForTest's own doc comment.
+	want := resolvedJoinForTest(t, fixtureDir, "invoice.pdf")
 	if opener.calledWith != want {
 		t.Errorf("expected the tilde expanded before the join: expected %q, got %q", want, opener.calledWith)
 	}
@@ -346,6 +367,56 @@ func TestFilesystemOpen_VanishedFileAnswersItemNotFoundAndNeverOpens(t *testing.
 	}
 	if opener.called {
 		t.Error("expected the opener to never be called for a vanished file")
+	}
+}
+
+// TestFilesystemOpen_OpenerReceivesTheSymlinkResolvedPath proves the exec
+// site is fixed (WR-02, 12-07-PLAN.md Task 2): when the source's configured
+// Path is a symlink to a real temp directory, the opener receives the join
+// under the REAL directory, not the join under the symlinked configured
+// path — even though the containment check (and the index's own source_id)
+// still key on the lexical, symlinked-path form.
+func TestFilesystemOpen_OpenerReceivesTheSymlinkResolvedPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir real: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	linkRoot := filepath.Join(tmp, "linkroot")
+	if err := os.Symlink(real, linkRoot); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: linkRoot},
+	}}
+	opener := &recordingOpener{}
+	router, seed := newFsopenTestRouter(t, cfg, opener)
+	seed.put(t, item.Item{
+		ID: "docs-folder:invoice.pdf", Source: "docs-folder", SourceID: "invoice.pdf",
+		Fidelity: item.FidelityExact, DeepLink: "file://" + filepath.Join(linkRoot, "invoice.pdf"),
+	})
+
+	rec := doOpen(router, "docs-folder:invoice.pdf")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !opener.called {
+		t.Fatal("expected the opener to be called")
+	}
+	want := filepath.Join(real, "invoice.pdf")
+	if opener.calledWith != want {
+		t.Errorf("expected the opener called with the resolved real join %q, got %q", want, opener.calledWith)
+	}
+	notWant := filepath.Join(linkRoot, "invoice.pdf")
+	if opener.calledWith == notWant {
+		t.Errorf("expected the opener NOT to be called with the lexical symlinked-root join %q", notWant)
 	}
 }
 

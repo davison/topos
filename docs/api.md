@@ -436,7 +436,19 @@ the configured root, compares the RESOLVED pair, and fails closed when
 resolution is impossible — so a file indexed legitimately and later
 swapped on disk for a symlink pointing outside the root is refused rather
 than followed. Nothing in the request body or query string reaches the
-opener.
+opener. **The path handed to the desktop handler is the resolved,
+symlink-free path itself** — not the lexical join the containment check
+started from — so the path validated and the path execed are always the
+same one; a user whose configured `path` is a symlink will see the
+resolved location in their desktop application's own UI, which is
+deliberate.
+
+This `narrows but does not eliminate` the race between resolution and the
+exec: a single window remains between `filepath.EvalSymlinks` returning
+and `xdg-open` actually being started, in which the resolved path's final
+component could in principle be swapped again. Fully eliminating it would
+require descriptor-based traversal (`openat`/`O_NOFOLLOW`), which topos
+does not currently do.
 
 ```
 $ curl -s -X POST http://127.0.0.1:7777/api/items/docs%3Ainvoice.pdf/open | jq

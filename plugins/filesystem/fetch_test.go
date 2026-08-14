@@ -372,6 +372,41 @@ func TestFetch_MalformedGlobPatternSurfacesTheOffendingPattern(t *testing.T) {
 	}
 }
 
+// TestFetch_SymlinkedRootStillServesAnInRootFile proves a plugin rooted at a
+// symlinked directory (the common ~/Documents -> ~/dotfiles/Documents
+// dotfile-manager pattern, WR-01) still fetches successfully — reading
+// through the resolved real path (12-07-PLAN.md Task 2, WR-02) is a valid
+// I/O target and does not break this legitimate pattern.
+func TestFetch_SymlinkedRootStillServesAnInRootFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir real: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "notes.md"), []byte("# hi\n\nbody\n"), 0o644); err != nil {
+		t.Fatalf("write notes.md: %v", err)
+	}
+	linkRoot := filepath.Join(tmp, "linkroot")
+	if err := os.Symlink(real, linkRoot); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	p := NewSourcePlugin(linkRoot, nil, false)
+
+	resp := fetchFull(t, p, "notes.md")
+	if !resp.GetAvailable() {
+		t.Fatal("expected available true for a file under a symlinked root")
+	}
+	if resp.GetContentShape() != toposv1.ContentShape_CONTENT_SHAPE_MARKDOWN_HTML {
+		t.Errorf("expected CONTENT_SHAPE_MARKDOWN_HTML, got %v", resp.GetContentShape())
+	}
+	if !strings.Contains(string(resp.GetData()), "<h1") {
+		t.Errorf("expected rendered HTML bytes, got %q", resp.GetData())
+	}
+}
+
 func TestFetch_SourceIDEscapingTheRootIsRefusedBeforeAnyFileIsOpened(t *testing.T) {
 	root := t.TempDir()
 	p := NewSourcePlugin(root, nil, false)
