@@ -264,6 +264,114 @@ func TestFetch_SymlinkSwappedAfterIndexingIsRefusedBeforeAnyBytesAreServed(t *te
 	}
 }
 
+// TestFetch_IncludeGlobAdmittedUnknownExtensionIsMetadataOnlyNotNotFound
+// proves the gap 12-VERIFICATION.md recorded is closed: a file admitted to
+// scope only because include_glob widened past the default extension
+// allowlist previews honestly as metadata-only, on BOTH CONTENT_VARIANT_FULL
+// (the kernel's detail route) and CONTENT_VARIANT_PREVIEW (the kernel's
+// content route) — the reported false 404 appeared on both.
+func TestFetch_IncludeGlobAdmittedUnknownExtensionIsMetadataOnlyNotNotFound(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "archive.zip", []byte("not a document"))
+	p := NewSourcePlugin(root, map[string]string{"include_glob": "**/*.zip"}, false)
+
+	full := fetchFull(t, p, "archive.zip")
+	if full.GetAvailable() {
+		t.Fatal("expected available false for an unrecognized extension admitted only by include_glob")
+	}
+	if full.GetUnavailableReason() != metadataOnlyReason {
+		t.Errorf("expected unavailable_reason %q, got %q", metadataOnlyReason, full.GetUnavailableReason())
+	}
+	if full.GetMimeType() != "" {
+		t.Errorf("expected no mime type, got %q", full.GetMimeType())
+	}
+	if len(full.GetData()) != 0 {
+		t.Errorf("expected no bytes, got %d", len(full.GetData()))
+	}
+
+	preview, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
+		SourceId: "archive.zip",
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW,
+	})
+	if err != nil {
+		t.Fatalf("Fetch PREVIEW: %v", err)
+	}
+	if preview.GetAvailable() {
+		t.Fatal("expected available false for PREVIEW too")
+	}
+	if preview.GetUnavailableReason() != metadataOnlyReason {
+		t.Errorf("expected unavailable_reason %q, got %q", metadataOnlyReason, preview.GetUnavailableReason())
+	}
+}
+
+// TestFetch_ExcludedByGlobIsStillNotFound proves the honesty fix never
+// widens what is served: a file matching exclude_glob is outside this
+// instance's scope and stays codes.NotFound even though it is on disk.
+func TestFetch_ExcludedByGlobIsStillNotFound(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "invoice.pdf", []byte("%PDF-1.4"))
+	p := NewSourcePlugin(root, map[string]string{"exclude_glob": "**/*.pdf"}, false)
+
+	_, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
+		SourceId: "invoice.pdf",
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a file excluded by exclude_glob")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.NotFound {
+		t.Fatalf("expected codes.NotFound, got %v", err)
+	}
+}
+
+// TestFetch_UnknownExtensionWithNoIncludeGlobIsStillNotFound proves today's
+// behavior for a genuinely out-of-scope extension is unchanged: with no
+// include_glob at all, an unrecognized extension stays codes.NotFound,
+// matching TestMatch_ExtensionOutsideDefaultAllowlistIsIgnored's verdict.
+func TestFetch_UnknownExtensionWithNoIncludeGlobIsStillNotFound(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "archive.zip", []byte("not a document"))
+	p := NewSourcePlugin(root, nil, false)
+
+	_, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
+		SourceId: "archive.zip",
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
+	})
+	if err == nil {
+		t.Fatal("expected an error for an unrecognized extension with no include_glob")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.NotFound {
+		t.Fatalf("expected codes.NotFound, got %v", err)
+	}
+}
+
+// TestFetch_MalformedGlobPatternSurfacesTheOffendingPattern proves a
+// malformed operator glob names itself in the error rather than being
+// silently swallowed, and fails with codes.Unavailable — the same class of
+// answer Match already gives for the identical pattern.
+func TestFetch_MalformedGlobPatternSurfacesTheOffendingPattern(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "invoice.pdf", []byte("%PDF-1.4"))
+	p := NewSourcePlugin(root, map[string]string{"include_glob": "[unterminated"}, false)
+
+	_, err := p.Fetch(t.Context(), &toposv1.FetchRequest{
+		SourceId: "invoice.pdf",
+		Variant:  toposv1.ContentVariant_CONTENT_VARIANT_FULL,
+	})
+	if err == nil {
+		t.Fatal("expected an error for a malformed include_glob pattern")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.Unavailable {
+		t.Fatalf("expected codes.Unavailable, got %v", err)
+	}
+	if !strings.Contains(st.Message(), "[unterminated") {
+		t.Errorf("expected the offending pattern to appear in the error message, got %q", st.Message())
+	}
+}
+
 func TestFetch_SourceIDEscapingTheRootIsRefusedBeforeAnyFileIsOpened(t *testing.T) {
 	root := t.TempDir()
 	p := NewSourcePlugin(root, nil, false)

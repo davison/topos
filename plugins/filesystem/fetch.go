@@ -47,11 +47,11 @@ const (
 
 // Fetch dispatches on ContentVariant exactly like plugins/paperless/
 // plugin.go does. FULL and PREVIEW both re-derive the item's
-// classification fresh from classify.go using the request's source_id —
-// never cached from Match, matching every other plugin's "Fetch re-fetches
-// fresh from source" rule — and branch on preview kind. THUMBNAIL always
-// answers unavailable, for every kind: this plugin never generates a
-// thumbnail rendition.
+// classification fresh from this instance's own scope (newScope(p.extras),
+// scope.go) using the request's source_id — never cached from Match,
+// matching every other plugin's "Fetch re-fetches fresh from source" rule
+// — and branch on preview kind. THUMBNAIL always answers unavailable, for
+// every kind: this plugin never generates a thumbnail rendition.
 func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*toposv1.FetchResponse, error) {
 	switch req.GetVariant() {
 	case toposv1.ContentVariant_CONTENT_VARIANT_FULL, toposv1.ContentVariant_CONTENT_VARIANT_PREVIEW:
@@ -67,8 +67,8 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 // BEFORE any file is opened (defense-in-depth, mirroring
 // kernel/httpapi/fsopen.go's identical guard) — this rejects a source_id
 // escape attempt, including a post-index symlink swap (CR-02,
-// 12-06-PLAN.md Task 1), before classify or any I/O runs. resolvePath can
-// now fail for two materially different reasons: a vanished file
+// 12-06-PLAN.md Task 1), before classification or any I/O runs. resolvePath
+// can fail for two materially different reasons: a vanished file
 // (errors.Is(err, fs.ErrNotExist)) answers the same codes.NotFound message
 // statForFetch already produces for a missing file elsewhere in this file —
 // a deliberate honesty improvement, since a metadata-only-kind item whose
@@ -76,8 +76,33 @@ func (p *SourcePlugin) Fetch(_ context.Context, req *toposv1.FetchRequest) (*top
 // available: false, because the resolution step now runs ahead of the kind
 // dispatch for every kind. Every other resolvePath failure (a genuine
 // containment escape, or an unresolvable symlink chain) keeps the existing
-// codes.InvalidArgument. It then re-derives the classification fresh from
-// classify.go and dispatches to the matching per-kind fetch helper.
+// codes.InvalidArgument.
+//
+// Classification is then decided by building ONE *scope from p.extras —
+// newScope(p.extras), the identical construction Match performs
+// (plugin.go:127) — and asking scope.includes(sourceID) the same question
+// Match/walk already ask (D-03 precedence: exclude first, then
+// include-if-declared REPLACING the default allowlist, then the default
+// allowlist alone). This is the fix for the gap 12-VERIFICATION.md
+// recorded: the package-level classify() helper alone has no knowledge of
+// include_glob/exclude_glob and cannot reproduce scope.includes' "unknown
+// extension admitted by glob -> metadata-only" branch, so any item indexed
+// only because include_glob widened past the default allowlist used to
+// answer a false NotFound instead of an honest metadata-only preview.
+// scope.includes' three outcomes map as follows:
+//   - a non-nil error (a malformed operator glob) becomes codes.Unavailable
+//     — a deliberate departure from codes.Internal: Match already maps this
+//     exact error class to codes.Unavailable (plugin.go:130-132), and the
+//     kernel maps every non-NotFound Fetch error to the same
+//     502 source_unavailable regardless, so one malformed pattern produces
+//     one class of failure at both entry points.
+//   - included == false becomes codes.NotFound, byte-for-byte the message
+//     this function already produced: the id is on disk but genuinely
+//     outside this instance's current scope (excluded by exclude_glob, or
+//     not matched by a declared include_glob, or an unrecognized extension
+//     with no include_glob at all) — the honesty fix widens the ANSWER for
+//     an in-scope item, never the membership test itself.
+//   - otherwise dispatch on the returned classification's kind, unchanged.
 func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, error) {
 	full, err := resolvePath(p.root, sourceID)
 	if err != nil {
@@ -87,8 +112,12 @@ func (p *SourcePlugin) fetchByKind(sourceID string) (*toposv1.FetchResponse, err
 		return nil, status.Errorf(codes.InvalidArgument, "filesystem: %v", err)
 	}
 
-	c, ok := classify(sourceID)
-	if !ok {
+	sc := newScope(p.extras)
+	c, included, err := sc.includes(sourceID)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "filesystem: %v", err)
+	}
+	if !included {
 		return nil, status.Errorf(codes.NotFound, "filesystem: item %q not found", sourceID)
 	}
 

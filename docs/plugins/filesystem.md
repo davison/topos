@@ -60,7 +60,12 @@ Resolution order, evaluated per candidate file:
    its extension is outside the default allowlist below (classified
    metadata-only if the extension is unrecognized, never guessing a MIME
    type); a file that does NOT match any include pattern is excluded even
-   if its extension otherwise would have qualified.
+   if its extension otherwise would have qualified. This same resolution
+   order **re-runs at Fetch time** against the instance's own extras, not
+   just at Match/walk time: a file admitted by an include pattern opens as
+   an honest metadata-only preview rather than a "not found," and a file
+   outside the instance's scope answers "not found" at Fetch even when it
+   exists on disk.
 3. **With no `include_glob` declared at all**, scope falls back to the
    default extension allowlist alone (below).
 
