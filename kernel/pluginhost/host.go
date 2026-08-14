@@ -56,6 +56,26 @@ var ErrPinMismatch = errors.New("pluginhost: external plugin binary does not mat
 // class has an established place to add its own constant beside this one.
 const LaunchFailurePinMismatch = "pin_mismatch"
 
+// LaunchFailureManifestUnverified is LaunchFailure.Reason's second
+// populated value (13-05-PLAN.md, D-12/D-13): a trusted-directory binary
+// whose name is absent from, or whose on-disk hash does not match, the
+// kernel's link-time build manifest. Unlike LaunchFailurePinMismatch, this
+// reason's remedy is NOT "trust and re-pin" — a trusted-tier binary is
+// never demoted to external tier and run anyway (D-13); its only path to
+// running at all is the existing explicit external-tier consent and pin
+// flow.
+const LaunchFailureManifestUnverified = "manifest_unverified"
+
+// LaunchAdvisoryShadowed is SourceHealth.LaunchAdvisory's one populated
+// value (D-14): a LAUNCHED, verified trusted-tier instance whose binary
+// name also exists as a regular file in the configured external
+// directory — the trusted copy won the launch (D-11's shadow rule
+// unchanged), but the operator's consented-to external plugin is not the
+// one actually running. Distinct from LaunchFailure/LaunchFailureReason:
+// a shadowed instance DID launch successfully; this is an advisory about
+// provenance ambiguity, never a launch refusal.
+const LaunchAdvisoryShadowed = "shadowed"
+
 // LaunchFailure is one instance's SOFT, per-instance launch failure —
 // currently only ever a pin mismatch (11-RESEARCH.md Pitfall 1, D-03):
 // unlike every other launch-failure class (missing/broken binary), which
@@ -116,6 +136,50 @@ func (e *pinMismatchError) toLaunchFailure() LaunchFailure {
 		Tier:        e.tier,
 		Reason:      LaunchFailurePinMismatch,
 		PinnedHash:  e.pinnedHash,
+		CurrentHash: e.currentHash,
+		Message:     e.Error(),
+	}
+}
+
+// manifestUnverifiedError carries the structured facts a caller (Discover,
+// Reconcile) needs to build a LaunchFailure record for a trusted-directory
+// binary that failed manifest verification (13-05-PLAN.md Task 3) —
+// mirroring pinMismatchError's shape exactly (instance, plugin,
+// displayName, tier, currentHash), minus a "pinned/expected" field: unlike
+// a pin mismatch, there is nothing for an operator to re-pin here — the
+// only field this failure class has to show is what's actually on disk.
+type manifestUnverifiedError struct {
+	instance, plugin, displayName string
+	tier                          Tier
+	currentHash                   string
+}
+
+// Error names the instance, the binary, and the on-disk digest — the
+// fail-loudly-by-name convention pinMismatchError's own Error method
+// establishes, extended here.
+func (e *manifestUnverifiedError) Error() string {
+	return fmt.Sprintf(
+		"pluginhost: instance %q binary %q is not verified by the kernel's build manifest (current=%s)",
+		e.instance, e.plugin, e.currentHash,
+	)
+}
+
+// Unwrap makes errors.Is(err, ErrManifestUnverified) true for every
+// *manifestUnverifiedError, mirroring pinMismatchError.Unwrap.
+func (e *manifestUnverifiedError) Unwrap() error { return ErrManifestUnverified }
+
+// toLaunchFailure converts e into the exported LaunchFailure shape
+// Host.launchFailures stores — mirroring pinMismatchError's own method.
+// PinnedHash is deliberately left empty (D-13: a trusted-tier binary is
+// never pinned, and this failure's only remedy is the existing
+// external-tier consent flow, not a re-pin action).
+func (e *manifestUnverifiedError) toLaunchFailure() LaunchFailure {
+	return LaunchFailure{
+		Instance:    e.instance,
+		Plugin:      e.plugin,
+		DisplayName: e.displayName,
+		Tier:        e.tier,
+		Reason:      LaunchFailureManifestUnverified,
 		CurrentHash: e.currentHash,
 		Message:     e.Error(),
 	}
@@ -217,6 +281,21 @@ type Plugin struct {
 	// identity/hash before any pin can exist for it (T-11-14). Empty for
 	// TierTrusted (nothing is pinned for the trusted tier, D-04).
 	binaryHash string
+	// manifestHash is this instance's on-disk SHA-256 as verified against
+	// the kernel's link-time build manifest (13-05-PLAN.md Task 3,
+	// VerifyTrustedBinary) — populated for EVERY TierTrusted launch that
+	// passed verification (a launch that failed verification never
+	// reaches this point at all — see launch's own manifest-gate branch).
+	// Distinct from binaryHash (external-tier-only, pin-related); kept for
+	// provenance/debugging symmetry with the external-tier hash fields
+	// above, not currently surfaced through any public getter.
+	manifestHash string
+	// shadowed is true when this TierTrusted instance's binary name also
+	// exists as a regular file in the configured external directory
+	// (D-14, resolveBinaryDetailed) — carried onto ProbeSources'
+	// SourceHealth.LaunchAdvisory. Always false for a TierExternal
+	// instance (only a trusted copy can shadow, never the reverse).
+	shadowed bool
 	// extras mirrors this instance's Describe-declared
 	// DescribeResponse.extras (D-15), filtered to drop any entry with an
 	// empty key (filterExtras) — a plugin must not be able to inject a
@@ -410,6 +489,13 @@ func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[st
 					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
 				continue
 			}
+			var muErr *manifestUnverifiedError
+			if errors.As(err, &muErr) {
+				h.launchFailures[name] = muErr.toLaunchFailure()
+				logger.Error("plugin launch refused: trusted binary not verified by the build manifest (D-12/D-13)",
+					"instance", name, "plugin", src.Plugin, "current_hash", muErr.currentHash)
+				continue
+			}
 			h.Shutdown()
 			return nil, fmt.Errorf("pluginhost: launch source %q: %w", name, err)
 		}
@@ -507,6 +593,13 @@ func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[st
 				logger.Error("plugin launch refused: pinned binary hash mismatch (T-11-07)",
 					"instance", name, "plugin", sources[name].Plugin,
 					"pinned_hash", pmErr.pinnedHash, "current_hash", pmErr.currentHash)
+				continue
+			}
+			var muErr *manifestUnverifiedError
+			if errors.As(err, &muErr) {
+				newFailures[name] = muErr.toLaunchFailure()
+				logger.Error("plugin launch refused: trusted binary not verified by the build manifest (D-12/D-13)",
+					"instance", name, "plugin", sources[name].Plugin, "current_hash", muErr.currentHash)
 				continue
 			}
 			for _, lp := range launched {
@@ -789,8 +882,25 @@ func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool
 // to pin) BEFORE any pin can exist for it — gating the trial launch on a
 // pin that cannot yet exist would make it structurally impossible to ever
 // add a first external source.
+//
+// Manifest verification (13-05-PLAN.md Task 3, D-12/D-13): immediately
+// after resolveBinaryDetailed resolves a TRUSTED-tier binary, and BEFORE
+// exec.Command is ever constructed, launch calls VerifyTrustedBinary. A
+// binary absent from, or not matching, the kernel's link-time build
+// manifest returns a *manifestUnverifiedError (wrapping
+// ErrManifestUnverified) and creates NO subprocess at all — UNLIKE the
+// pin-mismatch block above, this gate runs for describeOnly (trial)
+// launches TOO: the external-tier pin check skips trial launches because
+// a first pin cannot exist before the trial ever runs, but a trusted
+// binary either is in the manifest or it isn't — that fact doesn't
+// depend on whether this is a real or a trial launch, and letting the
+// add-source picker's trial launch execute an unverified dropped binary
+// would hand an attacker code execution through the describe path
+// (T-13-06). Verification never demotes-and-runs: an unverifiable
+// trusted binary's only path to running remains the existing explicit
+// external-tier consent and pin flow.
 func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
-	binPath, tier, err := ResolveBinary(dirs, src.Plugin, logger)
+	binPath, tier, shadowed, err := resolveBinaryDetailed(dirs, src.Plugin, logger)
 	if err != nil {
 		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, err)
 	}
@@ -805,6 +915,24 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 	instanceDisplayName := src.DisplayName
 	if instanceDisplayName == "" {
 		instanceDisplayName = name
+	}
+
+	// manifestHash carries the trusted-tier binary's verified on-disk
+	// SHA-256 out of this block into the returned *Plugin — see the
+	// Plugin.manifestHash field's own doc comment.
+	var manifestHash string
+	if tier == TierTrusted {
+		hash, verifyErr := VerifyTrustedBinary(src.Plugin, binPath)
+		if verifyErr != nil {
+			return nil, &manifestUnverifiedError{
+				instance:    name,
+				plugin:      src.Plugin,
+				displayName: instanceDisplayName,
+				tier:        tier,
+				currentHash: hash,
+			}
+		}
+		manifestHash = hash
 	}
 
 	// rawSrc is this instance's own RAW (unexpanded) config.Source — the
@@ -981,6 +1109,8 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		tier:            tier,
 		pinnedHash:      launchPinnedHash,
 		binaryHash:      binaryHash,
+		manifestHash:    manifestHash,
+		shadowed:        shadowed,
 		extras:          filterExtras(desc.GetExtras()),
 	}, nil
 }
@@ -1130,8 +1260,29 @@ type SourceHealth struct {
 	// external-tier GET /api/sources entry show its current pin, not only
 	// a pin-mismatched one.
 	PinnedHash string
-	Reachable  bool
-	ProbeError string
+	// LaunchAdvisory is a closed-vocabulary, non-fatal fact about a
+	// LAUNCHED instance's provenance (13-05-PLAN.md Task 3, D-14) — today
+	// only LaunchAdvisoryShadowed, set when this trusted-tier instance's
+	// binary name also exists as a regular file in the configured
+	// external directory. Empty for every instance with nothing to
+	// advise about. Distinct from a LaunchFailure: an instance carrying
+	// an advisory DID launch.
+	LaunchAdvisory string
+	Reachable      bool
+	ProbeError     string
+}
+
+// launchAdvisoryFor returns LaunchAdvisoryShadowed when p's binary shadowed
+// a same-named external-directory file at launch time (D-14), or an empty
+// string otherwise — the one mapping from Plugin.shadowed onto
+// SourceHealth.LaunchAdvisory's closed vocabulary, kept as its own
+// function so a future second advisory class has an established place to
+// extend this mapping.
+func launchAdvisoryFor(p *Plugin) string {
+	if p.shadowed {
+		return LaunchAdvisoryShadowed
+	}
+	return ""
 }
 
 // ProbeSources calls every launched plugin's Health RPC concurrently — a
@@ -1150,7 +1301,7 @@ func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
-			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier, PinnedHash: p.pinnedHash}
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier, PinnedHash: p.pinnedHash, LaunchAdvisory: launchAdvisoryFor(p)}
 			resp, err := p.Health(ctx)
 			switch {
 			case err != nil:

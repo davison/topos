@@ -204,8 +204,13 @@ func TestLaunch_Pin_NilRawBehavesAsUnpinned(t *testing.T) {
 // launches successfully even with a DELIBERATELY WRONG pin entry present —
 // pins apply to the external tier only, and a trusted-dir binary (rebuilt
 // constantly by `make build`/`make dev`) must never be pin-checked at all.
+// As of 13-05-PLAN.md Task 3, a trusted-tier launch also requires manifest
+// verification (installTrustedManifest below installs a real entry for
+// this fixture) — this test's OWN assertion stays scoped to the pin
+// question; manifestgate_test.go covers the manifest-verification gate.
 func TestLaunch_Pin_TrustedTierIgnoresPins(t *testing.T) {
 	trustedDir := buildMockPluginDir(t)
+	installTrustedManifest(t, trustedDir)
 
 	dirs := Dirs{Trusted: trustedDir}
 	raw := &config.Config{Plugins: config.PluginsConfig{Pins: map[string]string{

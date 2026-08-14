@@ -73,8 +73,29 @@ func buildMockPluginDir(t *testing.T) string {
 	if mockPluginDirErr != nil {
 		t.Fatalf("build mock plugin fixture: %v", mockPluginDirErr)
 	}
+
+	// installTrustedManifestOnce installs a manifest entry for THIS
+	// shared fixture directory exactly once per test binary run
+	// (13-05-PLAN.md Task 3) — never restored, since every trusted-tier
+	// launch across this whole package resolves against this SAME shared
+	// directory (buildSecondMockPluginDir/buildRenamedMockPluginDir/
+	// buildExternalDemoPluginDir below are all used as the EXTERNAL tier
+	// only, so there is no second, conflicting trusted directory in this
+	// package that a scoped-and-restored override would need to protect
+	// against). pluginhost.VerifyTrustedBinary would otherwise refuse
+	// every real (non-fixture-swapping) trusted-tier launch this whole
+	// package performs.
+	installTrustedManifestOnce.Do(func() {
+		restore, err := pluginhost.OverrideBuildManifestFromDir(mockPluginDir)
+		if err != nil {
+			t.Fatalf("OverrideBuildManifestFromDir(%s): %v", mockPluginDir, err)
+		}
+		_ = restore // deliberately never called — see comment above
+	})
 	return mockPluginDir
 }
+
+var installTrustedManifestOnce sync.Once
 
 // newTestConfigStore writes contents to a real temp config.toml and wraps
 // it in a *config.Store — Apply reads live state off cfgStore.Expanded(),

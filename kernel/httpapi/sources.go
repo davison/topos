@@ -79,15 +79,31 @@ type sourceStatus struct {
 	// except on a pin-mismatch entry.
 	CurrentHash string `json:"current_hash,omitempty"`
 	// LaunchFailure is the CLOSED-VOCABULARY reason this instance never
-	// launched at all — today only "pin_mismatch"
-	// (pluginhost.LaunchFailurePinMismatch) — or empty when the instance
-	// did launch (whether or not it is currently reachable — see
+	// launched at all — "pin_mismatch" (pluginhost.LaunchFailurePinMismatch)
+	// or, as of 13-05-PLAN.md, "manifest_unverified"
+	// (pluginhost.LaunchFailureManifestUnverified) — or empty when the
+	// instance did launch (whether or not it is currently reachable — see
 	// Reachable/LastError for that). The SPA gates the re-pin remedial
 	// action on THIS field alone, never on a last_error string match
 	// (T-11-18): a copy edit to last_error can never enable or disable the
-	// action.
+	// action. NEVER widened to carry LaunchAdvisory's "shadowed" value
+	// (PD-05) — a shadowed instance DID launch, so publishing it here
+	// would contradict this field's own published "never launched at
+	// all" meaning.
 	LaunchFailure string `json:"launch_failure,omitempty"`
-	Reachable     bool   `json:"reachable"`
+	// LaunchAdvisory is a closed-vocabulary, non-fatal fact about a
+	// LAUNCHED instance's provenance (13-05-PLAN.md Task 3, D-14/PD-05) —
+	// today only "shadowed" (pluginhost.LaunchAdvisoryShadowed): this
+	// trusted-tier instance's binary name also exists as a regular file
+	// in the configured external directory, so the plugin the operator
+	// consented to pin is not the one actually running. Populated ONLY
+	// on a probe-derived (launched) entry, and always empty on a
+	// LaunchFailure-derived entry — an instance that never launched has
+	// no running binary to be ambiguous about. A single entry NEVER
+	// carries both a non-empty LaunchFailure and a non-empty
+	// LaunchAdvisory at once.
+	LaunchAdvisory string `json:"launch_advisory,omitempty"`
+	Reachable      bool   `json:"reachable"`
 	Syncing       bool   `json:"syncing"`
 	LastStatus    string `json:"last_status"`
 	LastSyncUnix  int64  `json:"last_sync_unix"`
@@ -166,18 +182,19 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 	for _, h := range healths {
 		run := runs[h.Name] // zero value SyncRun ("" / 0) when no run has ever been recorded — the neutral "unknown" state
 		statuses = append(statuses, sourceStatus{
-			Name:         h.Name,
-			SourceType:   h.SourceType,
-			DisplayName:  h.DisplayName,
-			Plugin:       h.Plugin,
-			Tier:         string(h.Tier),
-			PinnedHash:   h.PinnedHash,
-			Reachable:    h.Reachable,
-			Syncing:      syncing[h.Name],
-			LastStatus:   run.Status,
-			LastSyncUnix: run.FinishedUnix,
-			LastError:    run.Error,
-			LastNotice:   run.Notice,
+			Name:           h.Name,
+			SourceType:     h.SourceType,
+			DisplayName:    h.DisplayName,
+			Plugin:         h.Plugin,
+			Tier:           string(h.Tier),
+			PinnedHash:     h.PinnedHash,
+			LaunchAdvisory: h.LaunchAdvisory,
+			Reachable:      h.Reachable,
+			Syncing:        syncing[h.Name],
+			LastStatus:     run.Status,
+			LastSyncUnix:   run.FinishedUnix,
+			LastError:      run.Error,
+			LastNotice:     run.Notice,
 		})
 		seen[h.Name] = true
 	}

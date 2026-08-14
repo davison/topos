@@ -538,6 +538,33 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
       "last_status": "error",
       "last_sync_unix": 1784900000,
       "last_error": "dial tcp: connection refused"
+    },
+    {
+      "name": "dropped-binary",
+      "source_type": "",
+      "display_name": "Dropped binary",
+      "plugin": "topos-plugin-dropped",
+      "tier": "trusted",
+      "current_hash": "cccc...",
+      "launch_failure": "manifest_unverified",
+      "reachable": false,
+      "syncing": false,
+      "last_status": "",
+      "last_sync_unix": 0,
+      "last_error": "pluginhost: instance \"dropped-binary\" binary \"topos-plugin-dropped\" is not verified by the kernel's build manifest (current=cccc...)"
+    },
+    {
+      "name": "shadowed-instance",
+      "source_type": "paperless",
+      "display_name": "Shadowed paperless",
+      "plugin": "topos-plugin-paperless",
+      "tier": "trusted",
+      "launch_advisory": "shadowed",
+      "reachable": true,
+      "syncing": false,
+      "last_status": "ok",
+      "last_sync_unix": 1785000100,
+      "last_error": ""
     }
   ]
 }
@@ -591,13 +618,31 @@ ever renders; none of them is decided client-side.
 - **`current_hash`** is the on-disk SHA-256 of a pin-mismatched instance's
   binary — the value an operator would be re-pinning to. Empty except on
   a `launch_failure` entry.
-- **`launch_failure`** is a **CLOSED-VOCABULARY** field, empty or
-  `"pin_mismatch"` today, naming why this instance never launched at all
+- **`launch_failure`** is a **CLOSED-VOCABULARY** field, empty,
+  `"pin_mismatch"`, or (as of `13-05-PLAN.md`, `D-12`/`D-13`)
+  `"manifest_unverified"`, naming why this instance never launched at all
   — as opposed to `reachable: false`, which means the instance DID
   launch but is currently unreachable. **A client MUST branch on
   `launch_failure`, never on parsing `last_error`'s free text** — the
   message string is for a human to read, and a copy edit to it must never
-  change what the UI offers to do.
+  change what the UI offers to do. `"manifest_unverified"` names a
+  trusted-directory binary absent from, or not matching, the kernel's
+  link-time build manifest (`docs/plugin-contract.md`'s "Trust tiers");
+  unlike `"pin_mismatch"`, there is no re-pin/trust remedial action for
+  this reason — the only path to running an unverified trusted-directory
+  binary is the existing external-tier consent-and-pin flow.
+- **`launch_advisory`** (`13-05-PLAN.md`, `D-14`) is a **CLOSED-VOCABULARY**
+  field, empty or `"shadowed"` today, populated ONLY on an entry that DID
+  launch (a probe-derived entry — never alongside a populated
+  `launch_failure` on the same entry, and never on a `launch_failure`
+  entry at all). `"shadowed"` means this trusted-tier instance's binary
+  name also exists as a regular file in the configured external
+  directory — the trusted copy won the launch (the shadow rule is
+  unchanged), but the plugin an operator separately consented to pin
+  under `[plugins.pins]` is not the one actually running this instance.
+  **A client MUST branch on `launch_advisory`, never infer it from
+  `tier`/`pinned_hash` alone** — a trusted-tier entry with no external
+  counterpart carries an empty `launch_advisory` identically.
 
 **A configured instance that never launched at all still produces a real
 entry here — never a silent omission.** Before this phase, a source

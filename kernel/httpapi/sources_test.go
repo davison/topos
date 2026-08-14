@@ -892,3 +892,96 @@ func TestSources_ZeroMatchNoticeTravelsFromCorrelateToTheSourcesAPI(t *testing.T
 		t.Errorf("expected LastStatus ok, LastError empty, LastNotice non-empty, got: %+v", typedEntry)
 	}
 }
+
+// TestSourcesHandler_ShadowedSourceCarriesLaunchAdvisory is 13-05-PLAN.md
+// Task 3's own shape check (D-14/PD-05): GET /api/sources carries
+// launch_advisory equal to the shadowed value on a launched, shadowed
+// source, and that its launch_failure is empty — a shadowed instance DID
+// launch.
+func TestSourcesHandler_ShadowedSourceCarriesLaunchAdvisory(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{healths: []pluginhost.SourceHealth{
+		{Name: "paperless", SourceType: "paperless", DisplayName: "paperless-ngx", Reachable: true, Tier: pluginhost.TierTrusted, LaunchAdvisory: pluginhost.LaunchAdvisoryShadowed},
+	}}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 1 {
+		t.Fatalf("expected exactly one entry, got %d: %+v", len(resp.Sources), resp.Sources)
+	}
+	entry := resp.Sources[0]
+	if entry.LaunchAdvisory != pluginhost.LaunchAdvisoryShadowed {
+		t.Errorf("expected launch_advisory %q, got %q", pluginhost.LaunchAdvisoryShadowed, entry.LaunchAdvisory)
+	}
+	if entry.LaunchFailure != "" {
+		t.Errorf("expected an empty launch_failure on a launched, shadowed source, got %q", entry.LaunchFailure)
+	}
+	if !entry.Reachable {
+		t.Error("expected the shadowed source to be reachable — it DID launch")
+	}
+
+	rawBody := rec.Body.String()
+	if !strings.Contains(rawBody, `"launch_advisory":"shadowed"`) {
+		t.Errorf("expected the raw response body to carry \"launch_advisory\":\"shadowed\", got: %s", rawBody)
+	}
+}
+
+// TestSourcesHandler_ManifestUnverifiedEntryCarriesNoLaunchAdvisory is
+// TestSourcesHandler_ShadowedSourceCarriesLaunchAdvisory's negative
+// sibling: a manifest-refused source's entry carries launch_failure equal
+// to manifest_unverified and an empty launch_advisory — the two fields
+// are never both populated on the same entry.
+func TestSourcesHandler_ManifestUnverifiedEntryCarriesNoLaunchAdvisory(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	prober := &fakeProber{
+		failures: []pluginhost.LaunchFailure{
+			{
+				Instance:    "dropped",
+				Plugin:      "topos-plugin-dropped",
+				DisplayName: "Dropped binary",
+				Tier:        pluginhost.TierTrusted,
+				Reason:      pluginhost.LaunchFailureManifestUnverified,
+				CurrentHash: "cccc",
+				Message:     `pluginhost: instance "dropped" binary "topos-plugin-dropped" is not verified by the kernel's build manifest (current=cccc)`,
+			},
+		},
+	}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Sources) != 1 {
+		t.Fatalf("expected exactly one entry, got %d: %+v", len(resp.Sources), resp.Sources)
+	}
+	entry := resp.Sources[0]
+	if entry.LaunchFailure != pluginhost.LaunchFailureManifestUnverified {
+		t.Errorf("expected launch_failure %q, got %q", pluginhost.LaunchFailureManifestUnverified, entry.LaunchFailure)
+	}
+	if entry.LaunchAdvisory != "" {
+		t.Errorf("expected an empty launch_advisory on a manifest-refused entry, got %q", entry.LaunchAdvisory)
+	}
+	if entry.CurrentHash != "cccc" {
+		t.Errorf("expected current_hash %q, got %q", "cccc", entry.CurrentHash)
+	}
+	if entry.Reachable {
+		t.Error("expected reachable:false for a manifest-refused entry")
+	}
+
+	rawBody := rec.Body.String()
+	if strings.Contains(rawBody, "launch_advisory") {
+		t.Errorf("expected omitempty to drop launch_advisory entirely from the raw body, got: %s", rawBody)
+	}
+}

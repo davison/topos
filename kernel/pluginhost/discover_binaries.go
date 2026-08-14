@@ -337,10 +337,27 @@ func validatePluginBinaryName(name string) error {
 // ResolveBinary is the one launch-time authority for turning a plugin
 // binary NAME into a filesystem PATH plus the Tier it resolved to
 // (T-11-01): every launch in this package — Discover, Reconcile, and
-// DescribePluginType's trial launch — goes through this function via
-// launch(), so tier is set from provenance at exactly one point and never
+// DescribePluginType's trial launch — goes through this function (via
+// resolveBinaryDetailed, below, which this is now a thin wrapper over),
+// so tier is set from provenance at exactly one point and never
 // re-derived or overwritten from anything the plugin process itself
-// later reports.
+// later reports. Its signature and behavior are UNCHANGED by the D-14
+// shadowing-advisory work (13-05-PLAN.md Task 3) — see
+// resolveBinaryDetailed's own doc comment for the widened contract new
+// call sites (launch, below) use instead.
+func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, err error) {
+	path, tier, _, err = resolveBinaryDetailed(dirs, name, logger)
+	return path, tier, err
+}
+
+// resolveBinaryDetailed is ResolveBinary's full-detail implementation,
+// additionally reporting whether the resolved TRUSTED copy shadowed a
+// same-named regular file in dirs.External (D-14) — the fact launch()
+// carries out of the resolver and onto the returned *Plugin so
+// ProbeSources can surface it as SourceHealth.LaunchAdvisory, rather than
+// only the named hclog.Warn line below (kept exactly where it was: a
+// shadow must never be silent even when nothing downstream reads the
+// returned flag).
 //
 // Confinement contract (CR-01, 11-REVIEW.md; T-11-35): name is validated
 // by validatePluginBinaryName as this function's FIRST statement, before
@@ -355,19 +372,21 @@ func validatePluginBinaryName(name string) error {
 // consulted first. When name exists there AS A REGULAR FILE (T-11-36:
 // os.Stat, which follows symlinks — the e2e harness's symlinked plugin
 // fixtures depend on this — but never a directory or other non-regular
-// entry), ResolveBinary returns that path with TierTrusted immediately —
-// but first checks whether name ALSO exists in dirs.External, and if so
-// emits a named hclog.Warn line carrying the colliding binary name (a
-// shadow must never be silent). When name does not resolve to a regular
-// file in dirs.Trusted, dirs.External is checked next; a hit there
-// returns TierExternal. Neither directory holding name returns an error
-// naming the binary and both directories searched — an empty Dirs field
-// is treated as "nothing to check there", not a separate failure mode,
-// mirroring DiscoverAllBinaries' own missing-directory-is-empty-state
-// contract.
-func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, err error) {
+// entry), resolveBinaryDetailed returns that path with TierTrusted
+// immediately — but first checks whether name ALSO exists in
+// dirs.External, and if so emits a named hclog.Warn line carrying the
+// colliding binary name (a shadow must never be silent) AND reports
+// shadowed=true. When name does not resolve to a regular file in
+// dirs.Trusted, dirs.External is checked next; a hit there returns
+// TierExternal (shadowed is always false for an external-tier
+// resolution — only a trusted copy can shadow, never the reverse).
+// Neither directory holding name returns an error naming the binary and
+// both directories searched — an empty Dirs field is treated as
+// "nothing to check there", not a separate failure mode, mirroring
+// DiscoverAllBinaries' own missing-directory-is-empty-state contract.
+func resolveBinaryDetailed(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, shadowed bool, err error) {
 	if err := validatePluginBinaryName(name); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
 	if dirs.Trusted != "" {
@@ -381,18 +400,19 @@ func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, ti
 					}
 					logger.Warn("plugin binary name shadowed: trusted copy wins, external copy ignored (D-11)",
 						"binary", name)
+					shadowed = true
 				}
 			}
-			return trustedPath, TierTrusted, nil
+			return trustedPath, TierTrusted, shadowed, nil
 		}
 	}
 
 	if dirs.External != "" {
 		externalPath := filepath.Join(dirs.External, name)
 		if info, statErr := os.Stat(externalPath); statErr == nil && info.Mode().IsRegular() {
-			return externalPath, TierExternal, nil
+			return externalPath, TierExternal, false, nil
 		}
 	}
 
-	return "", "", fmt.Errorf("plugin binary %q not found in trusted directory %q or external directory %q", name, dirs.Trusted, dirs.External)
+	return "", "", false, fmt.Errorf("plugin binary %q not found in trusted directory %q or external directory %q", name, dirs.Trusted, dirs.External)
 }

@@ -228,7 +228,39 @@ external one, logging a named warning identifying the shadowed binary. A
 binary can never impersonate a trusted plugin by choosing a colliding
 filename in the external directory — the trusted directory always wins,
 silently to the running kernel (loudly to its own logs), never the other
-way around.
+way around. When the trusted copy wins a collision, `GET /api/sources`
+also carries a `launch_advisory: "shadowed"` on that instance's own entry
+(`13-05-PLAN.md`, `D-14`) — a structured, UI-visible fact, not only a log
+line, so an operator can see that the plugin they separately consented
+to pin is not the one actually running.
+
+**Trusted status is a build-provenance fact, not a filesystem-location
+proxy (`13-05-PLAN.md`, `D-12`/`D-13`).** Which directory a binary sits
+in still decides which tier it's a CANDIDATE for (the two directories
+above remain real install conveniences — `D-16` — and are unchanged),
+but a trusted-DIRECTORY binary must additionally verify against a
+link-time build manifest before it is ever launched: at kernel build
+time, `cmd/topos-manifest` hashes the exact plugin binaries that build
+just produced and links the resulting name→SHA-256 table into the kernel
+binary itself via `-ldflags -X`. At launch time, the kernel re-hashes the
+trusted-directory binary and checks it against that embedded table —
+absent from the table, or hashed differently than the table records, and
+the binary refuses to launch (`launch_failure: "manifest_unverified"`),
+**including the add-source picker's own trial ("describe") launch**, so
+a dropped binary can never reach code execution through that path
+either. A kernel built with no manifest at all (a bare `go build`, or a
+build recipe that skipped the generator) trusts NOTHING in the trusted
+directory — there is deliberately no fallback to directory-derived trust
+if the manifest is missing. **Verification never demotes-and-runs**: an
+unverifiable trusted-directory binary's only path to running at all
+remains the existing external-tier consent-and-pin flow described
+below — moving (or symlinking) it into the external directory and adding
+it as a new external-tier source. The two production paths a real build
+takes are `make build`/`make build-portable`/`make dev` (which rebuild
+every trusted plugin binary and regenerate the manifest before linking
+the kernel, every time) and a manually invoked bare `go build` (which
+carries no manifest and therefore launches no trusted-tier plugin at
+all) — there is no supported path in between.
 
 **`[sources.<id>] plugin` must be a bare binary filename.** The value
 resolves directly inside one of the two configured directories above and

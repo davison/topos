@@ -901,6 +901,25 @@ func TestRoutesGuard_NoLocalConfigSnapshot(t *testing.T) {
 	})
 }
 
+// installTrustedManifest is a test helper installing an
+// pluginhost.OverrideBuildManifestFromDir(dir) value with a deferred
+// restore (via t.Cleanup) — used by every test in this file that launches
+// a TRUSTED-tier fixture binary (13-05-PLAN.md Task 3), so
+// pluginhost.VerifyTrustedBinary sees a real manifest entry for it rather
+// than refusing it as unverified. Each test installs and restores its own
+// override; since this package's tests never run with t.Parallel(), this
+// per-test scoping is sound regardless of how many distinct fixture
+// directories (buildMockPluginDir's vs buildPaperlessPluginDir's) different
+// tests use.
+func installTrustedManifest(t *testing.T, dir string) {
+	t.Helper()
+	restore, err := pluginhost.OverrideBuildManifestFromDir(dir)
+	if err != nil {
+		t.Fatalf("OverrideBuildManifestFromDir(%s): %v", dir, err)
+	}
+	t.Cleanup(restore)
+}
+
 // newPluginTypesTestRouter mounts only the two plugin-discovery routes —
 // PluginTypesHandler and DescribePluginHandler are pure functions of
 // dirs, needing no config.Store or index.Store at all. pluginsDir is
@@ -1087,6 +1106,7 @@ func buildPaperlessPluginDir(t *testing.T) string {
 // structurally no [sources.*] block it could ever write.
 func TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary(t *testing.T) {
 	dir := buildPaperlessPluginDir(t)
+	installTrustedManifest(t, dir)
 	router := newPluginTypesTestRouter(dir)
 
 	body := `{"plugin":"topos-plugin-paperless","source":{"base_url":"http://paperless.example.test","token":"unverified"}}`
@@ -1164,6 +1184,7 @@ func buildMockPluginDir(t *testing.T) string {
 // legitimately exists in config.
 func TestDescribePluginHandler_ExistingMockInstance_ReturnsMatchVocabulary(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	router := newPluginTypesTestRouter(dir)
 
 	// Confirm the setup precondition this regression depends on: mock is
@@ -1253,6 +1274,7 @@ func TestDescribePluginHandler_ExternalBinary_ReturnsTierAndKernelComputedHash(t
 // and an EMPTY binary_hash — nothing is ever pinned for the trusted tier.
 func TestDescribePluginHandler_TrustedBinary_ReturnsTierTrustedAndEmptyHash(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	router := newPluginTypesTestRouter(dir)
 
 	body := `{"plugin":"topos-plugin-mock","source":{}}`
@@ -1287,6 +1309,7 @@ func TestDescribePluginHandler_EnvVarNamesReferenceTokenAndExtras_NeverLeaksValu
 	t.Setenv("TOPOS_TEST_B", "distinctive-secret-value-B")
 
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	router := newPluginTypesTestRouter(dir)
 
 	reqBody := describePluginRequest{
@@ -1337,6 +1360,7 @@ func TestDescribePluginHandler_EnvVarNamesReferenceTokenAndExtras_NeverLeaksValu
 // — an API consumer must never need to special-case a null field here.
 func TestDescribePluginHandler_ExtrasAndEnvVarNamesSerializeAsEmptyArrayNotNull(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	router := newPluginTypesTestRouter(dir)
 
 	body := `{"plugin":"topos-plugin-mock","source":{}}`

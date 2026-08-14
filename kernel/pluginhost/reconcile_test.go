@@ -70,6 +70,7 @@ func buildMockPluginDir(t *testing.T) string {
 // restarted by a save that only touches a different source.
 func TestReconcile_UnchangedSourceMapKeepsSamePluginPointers(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	sources := map[string]config.Source{"demo": {Plugin: "topos-plugin-mock"}}
 
 	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, sources, hclog.NewNullLogger())
@@ -94,6 +95,7 @@ func TestReconcile_UnchangedSourceMapKeepsSamePluginPointers(t *testing.T) {
 // Plugins().
 func TestReconcile_RemovedInstanceIsKilledAndDropped(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock"},
 	}, hclog.NewNullLogger())
@@ -116,6 +118,7 @@ func TestReconcile_RemovedInstanceIsKilledAndDropped(t *testing.T) {
 // launched and unrestarted — a partial apply must never look successful.
 func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock"},
 	}, hclog.NewNullLogger())
@@ -149,6 +152,7 @@ func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 // changed.
 func TestReconcile_ChangedConnectionConfigRelaunches(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, map[string]config.Source{
 		"demo": {Plugin: "topos-plugin-mock", DisplayName: "before"},
 	}, hclog.NewNullLogger())

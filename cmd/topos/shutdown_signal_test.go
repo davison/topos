@@ -36,6 +36,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/davison/topos/kernel/pluginhost"
 )
 
 // signalTestBins builds the kernel and the mock plugin ONCE for every case
@@ -69,20 +71,40 @@ func buildSignalTestBins(t *testing.T) (kernel, pluginsDir string) {
 			return
 		}
 
-		build := func(out, pkg string) error {
-			cmd := exec.Command("go", "build", "-o", out, pkg)
+		build := func(out, pkg string, ldflags ...string) error {
+			args := []string{"build"}
+			args = append(args, ldflags...)
+			args = append(args, "-o", out, pkg)
+			cmd := exec.Command("go", args...)
 			cmd.Dir = root
 			if b, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Errorf("build %s: %w\n%s", pkg, err, b)
 			}
 			return nil
 		}
-		kbin := filepath.Join(dir, "topos")
-		if err := build(kbin, "./cmd/topos"); err != nil {
+		mockBin := filepath.Join(plugins, "topos-plugin-mock")
+		if err := build(mockBin, "./plugins/mock"); err != nil {
 			signalBinsErr = err
 			return
 		}
-		if err := build(filepath.Join(plugins, "topos-plugin-mock"), "./plugins/mock"); err != nil {
+
+		// The kernel must be linked with a trust manifest that verifies
+		// topos-plugin-mock (13-05-PLAN.md, D-12/D-13) — mirroring the
+		// Makefile's own build recipes, since this test builds a real
+		// kernel binary and launches it as a real subprocess against
+		// pluginsDir as its TRUSTED directory; a manifest-less bare `go
+		// build` would refuse every trusted-tier launch by design
+		// (PD-04), which is exactly the launch this regression test
+		// exists to observe.
+		manifestEntries, err := pluginhost.ManifestEntriesForBinaries(mockBin)
+		if err != nil {
+			signalBinsErr = fmt.Errorf("compute trust manifest: %w", err)
+			return
+		}
+		ldflags := "-ldflags=-X github.com/davison/topos/kernel/pluginhost.buildManifest=" + pluginhost.FormatManifest(manifestEntries)
+
+		kbin := filepath.Join(dir, "topos")
+		if err := build(kbin, "./cmd/topos", ldflags); err != nil {
 			signalBinsErr = err
 			return
 		}

@@ -133,6 +133,7 @@ func TestSourceConfigEnvelope_TopLevelKeyNamesUnchanged(t *testing.T) {
 // directly rather than parsed back out of the subprocess's own env.
 func TestLaunch_SourceConfigEnvelopeCarriesExtrasThroughRealLaunch(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 	src := config.Source{
 		Plugin:  "topos-plugin-mock",
 		BaseURL: "http://mock.test",

@@ -83,6 +83,7 @@ func buildWhatsAppPluginDir(t *testing.T) string {
 // Describe-declared vocabulary.
 func TestDescribePluginType_WhatsApp_SucceedsWhileARealInstanceHoldsTheStoreLock(t *testing.T) {
 	dir := buildWhatsAppPluginDir(t)
+	installTrustedManifest(t, dir)
 	dataDir := t.TempDir()
 
 	src := config.Source{Plugin: "topos-plugin-whatsapp", Path: dataDir}

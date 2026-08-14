@@ -34,6 +34,7 @@ func TestDescribePluginType_LaunchFailureWrapsErrorWithoutASubprocess(t *testing
 // leaked subprocess — nothing is left running.
 func TestDescribePluginType_RealPlugin_ReturnsDescribeInfoAndKillsBeforeReturning(t *testing.T) {
 	dir := buildMockPluginDir(t)
+	installTrustedManifest(t, dir)
 
 	info, err := DescribePluginType(context.Background(), Dirs{Trusted: dir}, config.Source{Plugin: "topos-plugin-mock"}, hclog.NewNullLogger())
 	if err != nil {

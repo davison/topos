@@ -315,3 +315,59 @@ func TestResolveBinary_SymlinkedBinaryStillResolvesAfterRegularFileCheck(t *test
 		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
 	}
 }
+
+// TestResolveBinaryDetailed_CollisionReportsShadowedTrue proves
+// resolveBinaryDetailed's own widened contract (13-05-PLAN.md Task 3,
+// D-14): a name collision — the same shape
+// TestResolveBinary_CollisionResolvesTrustedAndLogsByName above proves at
+// ResolveBinary's level — additionally reports shadowed=true, the fact
+// launch() carries onto the returned *Plugin and, from there, onto
+// SourceHealth.LaunchAdvisory.
+func TestResolveBinaryDetailed_CollisionReportsShadowedTrue(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-shadowed")
+	externalDir := t.TempDir()
+	writeFixtureFile(t, externalDir, "topos-plugin-shadowed")
+
+	path, tier, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-shadowed", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("resolveBinaryDetailed: %v", err)
+	}
+	if want := filepath.Join(trustedDir, "topos-plugin-shadowed"); path != want {
+		t.Errorf("expected the trusted path %q to win the collision, got %q", want, path)
+	}
+	if tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
+	}
+	if !shadowed {
+		t.Error("expected shadowed=true for a colliding binary name")
+	}
+}
+
+// TestResolveBinaryDetailed_NoCollisionReportsShadowedFalse proves the
+// negative: a trusted-only resolution (no external counterpart at all)
+// reports shadowed=false, and an external-only resolution reports
+// shadowed=false too (only a trusted copy can shadow, never the
+// reverse).
+func TestResolveBinaryDetailed_NoCollisionReportsShadowedFalse(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	externalDir := t.TempDir()
+	writeFixtureFile(t, externalDir, "topos-plugin-example")
+
+	_, tier, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-paperless", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("resolveBinaryDetailed (trusted-only): %v", err)
+	}
+	if tier != TierTrusted || shadowed {
+		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierTrusted, tier, shadowed)
+	}
+
+	_, tier, shadowed, err = resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-example", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("resolveBinaryDetailed (external-only): %v", err)
+	}
+	if tier != TierExternal || shadowed {
+		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierExternal, tier, shadowed)
+	}
+}
