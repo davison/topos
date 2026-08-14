@@ -26,8 +26,8 @@ result: pass
 
 ### 4. Real desktop — unreachable mount with leftover advisory shows honest tooltip (CR-01 counterpart)
 expected: Unmount (or otherwise make unreachable) a network-mounted filesystem source whose last completed sync carried a leftover advisory (e.g. a zero-match notice from before the mount went away), then check the chip. It shows the red/destructive dot AND its tooltip reads "{display_name} — unreachable since {relative}" — never the reassuring "synced … — advisory" text.
-result: skipped
-reason: "Could not produce genuine unreachability: unmounting the NFS volume exposes the underlying local mountpoint directory, so the root is readable-and-empty, not unreachable — the observed amber dot + persisted zero-match notice is the correct presentation of that state (user retracted the initial failure report). The unreachable-with-leftover-advisory rendering remains covered by 12-tooltip-precedence.spec.ts Test A (fabricated API response)."
+result: pass
+note: "Pass recorded by user decision: could not produce genuine unreachability live (unmounting NFS exposes the underlying local mountpoint, so the root is readable-and-empty — and the observed amber dot + persisted zero-match notice is the CORRECT presentation of that state; initial failure report retracted). The unreachable-with-leftover-advisory rendering is proven in a real browser by 12-tooltip-precedence.spec.ts Test A against a fabricated API response — the coverage split docs/testing.md designs for."
 
 ### 5. Docs accurately describe the symlink-resolving containment discipline
 expected: Read the symlink/containment passages in docs/plugin-contract.md, docs/api.md and docs/plugins/filesystem.md; they describe the symlink-resolving containment discipline the shipped code actually enforces (post-index symlink swaps refused at both the Fetch byte-serving site and the open route; vanished files reported honestly as not-found). (Carried forward — blocked in the prior round by the since-fixed sync bug.)
@@ -40,10 +40,10 @@ result: pass
 ## Summary
 
 total: 6
-passed: 5
+passed: 6
 issues: 0
 pending: 0
-skipped: 1
+skipped: 0
 blocked: 0
 
 ## Gaps
