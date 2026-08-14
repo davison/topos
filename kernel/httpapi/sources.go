@@ -104,10 +104,10 @@ type sourceStatus struct {
 	// LaunchAdvisory at once.
 	LaunchAdvisory string `json:"launch_advisory,omitempty"`
 	Reachable      bool   `json:"reachable"`
-	Syncing       bool   `json:"syncing"`
-	LastStatus    string `json:"last_status"`
-	LastSyncUnix  int64  `json:"last_sync_unix"`
-	LastError     string `json:"last_error"`
+	Syncing        bool   `json:"syncing"`
+	LastStatus     string `json:"last_status"`
+	LastSyncUnix   int64  `json:"last_sync_unix"`
+	LastError      string `json:"last_error"`
 	// LastNotice is the kernel's own non-fatal advisory recorded on this
 	// instance's last completed run (12-09-PLAN.md, G-12-1/G-12-3) —
 	// today, that a webspace's explicit match block matched none of this
