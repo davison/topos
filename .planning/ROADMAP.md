@@ -93,7 +93,7 @@ Plans:
   4. The plugin never writes to the source folder — read-only behavior is enforced by committed guards like every other topos plugin.
   5. The filesystem plugin binary, copied into the external plugins directory, loads and syncs identically while showing the untrusted badge — the external path is proven against a real source plugin before the Google Drive work begins.
 
-**Plans**: 7/7 plans executed (4 waves + 2 gap-closure waves)
+**Plans**: 7/10 plans executed (4 waves + 3 gap-closure waves)
 Plans:
 **Wave 1**
 
@@ -119,6 +119,17 @@ Plans:
 **Gap closure 2** *(from the 2026-08-14 re-verification — G-12-3: Fetch ignored the include_glob scope that admitted the item; SRC-04)*
 
 - [x] 12-07-PLAN.md — Fetch classifies through the instance's own scope (honest metadata-only preview, no false 404), resolved-path reads/exec, the missing source_system provenance key
+
+**Gap closure 3** *(from 12-UAT.md — G-12-1 / G-12-3: a webspace match value of `folders = ['*']` can never match, and the resulting zero-match state was silent; SRC-04)*
+
+**Wave 1**
+
+- [ ] 12-08-PLAN.md — "Everything from this instance" made expressible (root base name labels every file at every depth) plus docs/config that state match values are never globs
+- [ ] 12-09-PLAN.md — The zero-match diagnostic: an explicit match block that matched nothing is named on the sync run and published as `last_notice`
+
+**Wave 2** *(blocked on 12-09)*
+
+- [ ] 12-10-PLAN.md — The advisory becomes visible: warning-tone source chip with the kernel's text, exact-match hint in the shared match form, browser gate over the user's exact config
 
 ### Phase 13: Per-Item Curation & Installable App
 
