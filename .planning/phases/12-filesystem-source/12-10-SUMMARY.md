@@ -187,6 +187,10 @@ None - no external service configuration required.
 - The one remaining `must_haves` item (`statement: "On the user's own desktop, the files chip in webspace test shows the warning tone..."`) is explicitly `verification: backstop` — a live-desktop human confirmation outside an automated worktree agent's reach, exactly like 12-09-SUMMARY.md's own D4 coverage entry. The kernel-side field (12-09) and the browser-visible surface this plan built are both proven above; only the user's own desktop confirmation remains, and is not blocking.
 - No blockers. `git diff --name-only` against the base commit lists exactly this plan's seven declared `files_modified` files — no Go file, no doc file, and no existing e2e/vitest file was touched.
 
+## Self-Check: PASSED
+
+All 8 declared files (7 task files + this SUMMARY) verified present on disk. All 4 task commit hashes (`ffdd2e1`, `fdd0fb8`, `e9b7412`, `01c533e`) verified present in `git log --oneline`.
+
 ---
 *Phase: 12-filesystem-source*
 *Completed: 2026-08-14*
