@@ -23,6 +23,25 @@ export default defineConfig({
 		SvelteKitPWA({
 			strategies: 'generateSW',
 			registerType: 'autoUpdate',
+			// Explicit, load-bearing top-level `base` (VitePWAOptions.base, NOT
+			// the same as `kit.base` below — the two are read by different code
+			// paths). Left unset, this defaults to Vite's OWN resolved `base`
+			// for whichever build environment happens to be running, and
+			// verified this session that SvelteKit's CLIENT build environment
+			// resolves Vite's `base` to `"./"` (relative) in this repo, while
+			// the SSR/server environment resolves it to `"/"`. vite-plugin-pwa
+			// uses this value for the registered SW's own scriptURL AND scope
+			// (`generateRegisterSW2`, `resolveOptions`) — left at the relative
+			// default, the generated register script becomes
+			// `new Workbox("./sw.js", { scope: "./" })`, which resolves
+			// relative to whatever route the browser is CURRENTLY on (e.g. a
+			// user on `/w/<webspace>` requests `/w/<webspace>sw.js` → 404 →
+			// served the 200.html SPA fallback with the wrong script MIME
+			// type, and registers with scope `/w/` instead of the site root).
+			// The kernel always serves this app from `/` with no subpath, so
+			// pinning this to `/` matches reality and makes both values
+			// absolute — confirmed via the compiled register script.
+			base: '/',
 			kit: {
 				adapterFallback: '200.html',
 				spa: true

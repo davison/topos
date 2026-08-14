@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -158,6 +159,27 @@ func externalPluginsDir(cfg *config.Config) (string, error) {
 	return filepath.Join(filepath.Dir(exe), cfg.Plugins.ExternalDir), nil
 }
 
+// registerManifestMimeType registers ".webmanifest" -> "application/
+// manifest+json" with the Go stdlib's mime package once, before the HTTP
+// server is constructed. spaHandler (kernel/httpapi/routes.go) serves the
+// embedded SPA build — including the PWA's generated manifest.webmanifest
+// — via http.FileServer, which infers Content-Type through
+// mime.TypeByExtension; that function falls through to the HOST OS's own
+// mime.types database for any extension Go doesn't hard-code, and
+// ".webmanifest" is not universally pre-registered there across every
+// Linux distro, macOS, or Windows install (13-RESEARCH.md Pitfall 4).
+// Browsers can be strict about a manifest's declared Content-Type when
+// deciding installability, so this line must not be deleted as
+// redundant even on a machine where it happens to be a no-op today. A
+// registration failure is logged and otherwise ignored — the worst case
+// is falling back to the host's own (possibly-correct) mime database,
+// never a reason to fail kernel startup.
+func registerManifestMimeType(logger hclog.Logger) {
+	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
+		logger.Warn("could not register .webmanifest mime type, falling back to the host's own mime database", "error", err.Error())
+	}
+}
+
 func setupLogger() hclog.Logger {
 	return hclog.New(&hclog.LoggerOptions{
 		Name:  "topos",
@@ -306,6 +328,8 @@ func runServe() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := setupLogger()
+
+	registerManifestMimeType(logger)
 
 	cfgStore, store, err := setup(ctx, logger)
 	if err != nil {

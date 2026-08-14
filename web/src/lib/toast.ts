@@ -104,3 +104,17 @@ export function markSuccessToast({
 export function markFailureToast({ verb, count }: { verb: MarkFailureVerb; count: number }): void {
 	toast.error(`Couldn't ${verb} ${count} ${itemNoun(count)} — try again.`);
 }
+
+/**
+ * pwaUpdatedToast fires the informational, neutral-toned toast explaining
+ * an unannounced reload (13-UI-SPEC.md E3.3/E8): the ServiceWorker's
+ * `autoUpdate` strategy silently activates a new build and reloads the
+ * page with no user action, so this toast exists purely to explain what
+ * just happened, not to ask for one. No action button — the reload has
+ * already happened by the time this renders. Auto-dismisses after 4000ms.
+ * Copy is the contract-exact string from the Copywriting Contract; do not
+ * reword.
+ */
+export function pwaUpdatedToast(): void {
+	toast('topos updated to the latest version.', { duration: 4000 });
+}

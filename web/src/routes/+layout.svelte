@@ -1,7 +1,9 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import { browser } from '$app/environment';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
+	import { pwaUpdatedToast } from '$lib/toast';
 
 	let { children } = $props();
 
@@ -16,6 +18,59 @@
 	// page it renders via {@render children()} — the header has to be
 	// rendered by whichever component actually owns that state.
 	let webspace = $derived(page.params.webspace);
+
+	// 13-04-PLAN.md Task 2 (UI-13/UI-SPEC E8): PWA update registration —
+	// the ONLY place `virtual:pwa-register` is imported. Guarded behind
+	// `browser` so a non-browser evaluation (svelte-check, vitest) is a
+	// no-op; the virtual module resolves only inside a real Vite build.
+	//
+	// registerType: 'autoUpdate' (web/vite.config.ts, PD-08) means
+	// vite-plugin-pwa's own registerSW core reloads the page itself with NO
+	// user action the moment a new ServiceWorker activates — UNLESS an
+	// `onNeedReload` callback is supplied, in which case the callback
+	// becomes wholly responsible for reloading (verified against
+	// node_modules/vite-plugin-pwa/dist/client/build/svelte.js this
+	// session). This app supplies `onNeedReload` to set a one-shot
+	// sessionStorage flag immediately before performing the exact same
+	// reload the library would have done unprompted — the flag is what
+	// lets the NEXT page load (the one immediately after the reload) know
+	// to fire pwaUpdatedToast(), since a toast fired here would never be
+	// seen: the reload it precedes destroys this document before anything
+	// renders.
+	const PWA_UPDATED_FLAG = 'topos-pwa-updated';
+
+	if (browser) {
+		if (sessionStorage.getItem(PWA_UPDATED_FLAG)) {
+			sessionStorage.removeItem(PWA_UPDATED_FLAG);
+			pwaUpdatedToast();
+		}
+
+		import('virtual:pwa-register')
+			.then(({ registerSW }) => {
+				registerSW({
+					// Register immediately rather than deferring to the window
+					// `load` event (workbox-window's own default when
+					// `immediate` is unset) — an installed desktop app wants an
+					// active ServiceWorker as soon as possible, both for the
+					// "kernel not running still renders the shell" guarantee
+					// (13-UI-SPEC.md E8) and so the hermetic e2e spec proving
+					// registration has no window-load timing to race against.
+					immediate: true,
+					onNeedReload() {
+						sessionStorage.setItem(PWA_UPDATED_FLAG, '1');
+						window.location.reload();
+					}
+				});
+			})
+			.catch(() => {
+				// `virtual:pwa-register` always resolves (a no-op stub under
+				// `vite dev`, the real registration module in a production
+				// build) — this catch is a defensive backstop only, not an
+				// expected path; registration-specific failures are the
+				// registerSW() call's own concern (onRegisterError), not this
+				// dynamic import's.
+			});
+	}
 </script>
 
 <svelte:head>
