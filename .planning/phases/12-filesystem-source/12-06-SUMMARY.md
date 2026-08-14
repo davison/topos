@@ -202,6 +202,10 @@ None - no external service configuration required.
 - No e2e spec was added or changed, per the plan's explicit scope note: both closed findings are Go process-lifecycle and Go path-resolution bugs, and `docs/testing.md` already scopes real `xdg-open` desktop-handler behavior out of the hermetic browser harness by design.
 - REQUIREMENTS.md, STATE.md and ROADMAP.md are intentionally NOT updated by this plan (worktree/wave execution) — the orchestrator owns those writes after all wave agents complete.
 
+## Self-Check: PASSED
+
+All key files confirmed present on disk; all four commit hashes (`0367cc9`, `2d9df52`, `906e0f0`, `fa7b235`) confirmed present in `git log --oneline --all`.
+
 ---
 *Phase: 12-filesystem-source*
 *Completed: 2026-08-14*
