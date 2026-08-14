@@ -524,7 +524,8 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
       "syncing": false,
       "last_status": "ok",
       "last_sync_unix": 1785000000,
-      "last_error": ""
+      "last_error": "",
+      "last_notice": "webspace \"house-move\": match block matched 0 items (tags=\"invoices-2025-*\") — match values are compared exactly and never as glob patterns"
     },
     {
       "name": "silverbullet",
@@ -544,16 +545,36 @@ $ curl -s http://127.0.0.1:7777/api/sources | jq
 
 `reachable` is a **live** `Health` RPC probe made at request time, not a
 cached value — a source can flip from reachable to unreachable between
-two calls with no sync in between. `last_status`, `last_sync_unix` and
-`last_error`, by contrast, come exclusively from the kernel's own
-recorded sync history — a plugin's self-reported last-sync time and last
-error are never trusted for these fields, so a plugin cannot report a
-rosier history than the kernel actually recorded and turn its own health
-chip green. `last_status: ""` (with `last_sync_unix: 0` and `last_error:
-""`) is the neutral "unknown" state for a source that has never completed
-a sync — render this as a neutral indicator, never as a green "ok". One
-plugin's probe failing never fails the whole response: it becomes that
-source's own `reachable: false`, never a `500`.
+two calls with no sync in between. `last_status`, `last_sync_unix`,
+`last_error` and `last_notice`, by contrast, come exclusively from the
+kernel's own recorded sync history — a plugin's self-reported last-sync
+time, last error and advisory text are never trusted for these fields, so
+a plugin cannot report a rosier history than the kernel actually recorded
+and turn its own health chip green (`PLUG-04`). `last_status: ""` (with
+`last_sync_unix: 0` and `last_error: ""`) is the neutral "unknown" state
+for a source that has never completed a sync — render this as a neutral
+indicator, never as a green "ok". One plugin's probe failing never fails
+the whole response: it becomes that source's own `reachable: false`,
+never a `500`.
+
+- **`last_notice`** (`12-09-PLAN.md`, `SRC-04`) is a non-fatal,
+  human-readable advisory the KERNEL recorded about this instance's last
+  completed sync — today, that one of the webspaces this instance
+  participates in has an explicit `[webspaces.<ws>.match.<instance>]`
+  block that matched none of this source's items. Like `last_status` and
+  `last_error` it comes exclusively from the kernel's own recorded
+  `sync_runs` row and never from anything the plugin reports (`PLUG-04`):
+  a plugin can no more fabricate a notice than it can fabricate its own
+  sync history. **A non-empty `last_notice` does NOT imply a failure** —
+  it coexists with `last_status: "ok"` and an empty `last_error`, exactly
+  as the `paperless` entry above shows; a notice is never written to
+  `last_error` and never flips `last_status` to `"error"`. Empty for an
+  instance that never launched (a `launch_failure` entry — it has no sync
+  history of its own to advise about), exactly like `last_error` there.
+  **A client MUST NOT parse or branch on `last_notice`'s text** — mirroring
+  the `launch_failure` bullet's discipline above, the wording is for a
+  human to read, and a copy edit to it must never change what the UI
+  offers to do. Additive: `schema_version` stays `1`.
 
 **`tier`, `pinned_hash`, `current_hash`, `launch_failure` (Phase 11,
 `PLUG-06`/`PLUG-07`/`PLUG-08`) — the trust facts the kernel derives, never

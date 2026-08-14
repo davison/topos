@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1296,5 +1297,76 @@ func TestFinishSyncRunWithNotice_PersistsTheNoticeBesideTheOutcome(t *testing.T)
 	}
 	if len(history) != 1 || history[0].Error != "some rejection" || history[0].Notice != "some notice" {
 		t.Errorf("expected the files run's full history to carry both error and notice, got: %+v", history)
+	}
+}
+
+// TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice
+// proves the exact transition an operator's existing index.db takes on
+// the next kernel start after the sync_runs.notice column landed
+// (12-09-PLAN.md, schemaVersion bumped 2->3): Open succeeds, the
+// pre-existing rows are GONE (the documented drop-and-recreate, D-07 —
+// never a silent half-migration), and the reopened store accepts a run
+// finished through FinishSyncRunWithNotice and reads the notice back,
+// proving the new column exists on the recreated table.
+func TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(context.Background(), "ws", "paperless", []item.Item{sampleItem("1", 100)}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Force the on-disk schema version back to the PREVIOUS version (2),
+	// simulating an operator's existing index.db from before this column
+	// landed — a direct PRAGMA write against the same file, reusing this
+	// package's own "sqlite" driver registration (store.go's blank
+	// import), rather than inventing a second mechanism.
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatalf("force user_version = 2: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen at the previous schema version: %v", err)
+	}
+	t.Cleanup(func() { reopened.Close() })
+
+	// The rebuild observably happened: the row written before the
+	// rollback is absent afterwards, not merely that Open returned no
+	// error.
+	items, err := reopened.StreamItems(context.Background(), "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems after rebuild: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected the schema rebuild to drop pre-existing rows (D-07), got: %+v", items)
+	}
+
+	runID, err := reopened.StartSyncRun(context.Background(), "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun on the rebuilt store: %v", err)
+	}
+	if err := reopened.FinishSyncRunWithNotice(context.Background(), runID, "ok", "", "a notice", 0); err != nil {
+		t.Fatalf("FinishSyncRunWithNotice on the rebuilt store: %v", err)
+	}
+	runs, err := reopened.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if runs["paperless"].Notice != "a notice" {
+		t.Errorf("expected the notice to round-trip through the rebuilt schema, got: %+v", runs["paperless"])
 	}
 }
