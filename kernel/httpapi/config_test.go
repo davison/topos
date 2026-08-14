@@ -605,6 +605,12 @@ func TestRoutesGuard_NonGetRoutesScopedToConfig(t *testing.T) {
 		// above, resolved exclusively from index state plus configuration,
 		// never from the request.
 		{"Post", "/api/items/{id}/open"}: true,
+		// POST /api/webspaces/{webspace}/marks (KERN-09/KERN-10,
+		// 13-01-PLAN.md Task 1): the per-item exclude/include write path
+		// (kernel/httpapi/marks.go) — every id is bound as a `?`
+		// parameter (T-13-01), and this route is deliberately absent from
+		// MountAgentRoutes' /agent/v1 mirror (T-13-02).
+		{"Post", "/api/webspaces/{webspace}/marks"}: true,
 	}
 
 	var found []allowedNonGetRoute

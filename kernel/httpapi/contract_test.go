@@ -393,6 +393,10 @@ func TestContract_MutatingRoutesAreConfigScoped(t *testing.T) {
 		// request; its own STRIDE register row lives in 12-01-PLAN.md's
 		// threat_model (T-12-01 through T-12-06).
 		{method: "Post", path: "/api/items/{id}/open"}: true,
+		// POST /api/webspaces/{webspace}/marks (KERN-09/KERN-10,
+		// 13-01-PLAN.md Task 1, T-13-02): the per-item exclude/include
+		// write path — registered on /api only, never on /agent/v1.
+		{method: "Post", path: "/api/webspaces/{webspace}/marks"}: true,
 	}
 
 	found := nonGetRoutesInFile(t, "routes.go", "r")

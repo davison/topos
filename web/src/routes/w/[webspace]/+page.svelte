@@ -12,6 +12,7 @@
 		reloadConfig,
 		listPluginTypes,
 		describePlugin,
+		setItemMarks,
 		ApiError,
 		CONFIG_CONFLICT_MESSAGE,
 		type StreamResponse,
@@ -86,6 +87,32 @@
 			history.back();
 		} else {
 			selectedId = null;
+		}
+	}
+
+	// markBusy/handleExclude (KERN-09, 13-01-PLAN.md Task 1): the
+	// detail-pane single-item exclude write. markBusy disables the
+	// control for the duration of the request (prevents a double-fire);
+	// on success the detail pane closes (the excluded item can no longer
+	// be shown from the normal stream, D-03) and the stream refetches so
+	// the item disappears on the very next render. Failure handling here
+	// is deliberately bare — no toast yet, Task 3 wires markFailureToast
+	// — the item is simply left in place and markBusy clears in the
+	// finally, matching this task's own scope line ("the toast surface
+	// arrives in Task 3").
+	let markBusy = $state(false);
+
+	async function handleExclude(id: string) {
+		markBusy = true;
+		try {
+			await setItemMarks(webspace, 'add', [id]);
+			closeDetail();
+			await load(navGeneration);
+		} catch {
+			// Task 3 wires the write-failure toast; this task leaves the
+			// item exactly where it was on a failed write.
+		} finally {
+			markBusy = false;
 		}
 	}
 
@@ -1232,6 +1259,8 @@
 					sourceReachable={sourcesByInstance.get(selectedItem.source)?.reachable ?? true}
 					{searchQuery}
 					onback={closeDetail}
+					onexclude={() => handleExclude(selectedItem.id)}
+					{markBusy}
 				/>
 			</div>
 		{/if}

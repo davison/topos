@@ -116,6 +116,14 @@ func rebuildOnSchemaChange(db *sql.DB) error {
 	defer tx.Rollback()
 
 	if itemsTableExists != 0 {
+		// item_marks is DELIBERATELY ABSENT from this list (D-10,
+		// KERN-09) — this is the whole mechanism by which a mark
+		// survives a schema-version-triggered index rebuild. Every
+		// other schema.go-owned table is re-derivable from the next
+		// sync and is dropped here; item_marks is the kernel's first
+		// user-owned data and is never dropped by this function. Do
+		// not add it here without re-reading schema.go's item_marks
+		// comment first.
 		for _, stmt := range []string{
 			`DROP TABLE IF EXISTS items_fts`,
 			`DROP TRIGGER IF EXISTS items_ai`,
@@ -315,6 +323,118 @@ func (s *Store) DeleteSyncRuns(ctx context.Context, source string) error {
 	return nil
 }
 
+// MarkKindExcluded is the sole item_marks.kind value Phase 13 writes
+// (KERN-09/KERN-10) — one item id excluded from one webspace. kind stays
+// a TEXT column rather than a hardcoded boolean flag so a future mark
+// kind, if one is ever needed, is a data addition, not a schema change.
+const MarkKindExcluded = "excluded"
+
+// markFilterClause is the ONE shared SQL fragment that excludes a
+// webspace's marked-excluded items — appended, unchanged, to both
+// StreamItems query variants below and to searchQuery, always with
+// webspaceName bound as the LAST parameter of the call. This single
+// composition site is what makes the /agent/v1 stream mirror inherit the
+// filter for free: kernel/httpapi/agent.go's two stream call sites both
+// call StreamItems directly rather than reimplementing their own query
+// (verified against agent.go before this phase's plan was written), so an
+// excluded item becomes invisible to an agent grant the instant it
+// becomes invisible to the human UI, with no separate change required
+// there (D-03/PD-01, 13-01-PLAN.md).
+const markFilterClause = `AND items.id NOT IN (SELECT item_id FROM item_marks WHERE webspace_name = ? AND kind = 'excluded')`
+
+// SetItemMarks marks each of itemIDs with kind in webspaceName, in one
+// transaction. INSERT OR IGNORE per id makes re-marking an already-marked
+// id a true no-op — SetItemMarks is idempotent: a second call with the
+// same (webspace, item, kind) inserts nothing and its RowsAffected
+// contribution is 0, never a constraint error and never a duplicate row
+// (item_marks' own PRIMARY KEY already forbids that). Returns the number
+// of ids NEWLY marked by this call, summed across the batch — 0 when
+// every id in itemIDs was already marked. itemIDs may be empty: that is a
+// legitimate zero-change no-op at this layer (the HTTP layer, not this
+// method, is where an empty request is rejected — 13-01-PLAN.md Task 1).
+func (s *Store) SetItemMarks(ctx context.Context, webspaceName, kind string, itemIDs []string) (int, error) {
+	if len(itemIDs) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("index: begin set item marks transaction for %s: %w", webspaceName, err)
+	}
+	defer tx.Rollback()
+
+	var changed int64
+	for _, id := range itemIDs {
+		res, err := tx.ExecContext(ctx, `
+INSERT OR IGNORE INTO item_marks (webspace_name, item_id, kind, created_unix) VALUES (?, ?, ?, unixepoch())
+`, webspaceName, id, kind)
+		if err != nil {
+			return 0, fmt.Errorf("index: set item mark %s/%s/%s: %w", webspaceName, id, kind, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("index: set item mark rows affected %s/%s/%s: %w", webspaceName, id, kind, err)
+		}
+		changed += n
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("index: commit set item marks transaction for %s: %w", webspaceName, err)
+	}
+	return int(changed), nil
+}
+
+// ClearItemMarks removes the kind mark from each of itemIDs in
+// webspaceName — SetItemMarks' exact mirror: one transaction, one DELETE
+// per id, summing RowsAffected. Clearing a mark that was never set is a
+// legitimate no-op (changed=0, never an error) — un-excluding an item
+// that carries no mark is not a failure case (KERN-10 adjacency). itemIDs
+// may be empty for the same reason SetItemMarks' may: HTTP-layer request
+// validation, not this method, rejects an empty request.
+func (s *Store) ClearItemMarks(ctx context.Context, webspaceName, kind string, itemIDs []string) (int, error) {
+	if len(itemIDs) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("index: begin clear item marks transaction for %s: %w", webspaceName, err)
+	}
+	defer tx.Rollback()
+
+	var changed int64
+	for _, id := range itemIDs {
+		res, err := tx.ExecContext(ctx, `
+DELETE FROM item_marks WHERE webspace_name = ? AND item_id = ? AND kind = ?
+`, webspaceName, id, kind)
+		if err != nil {
+			return 0, fmt.Errorf("index: clear item mark %s/%s/%s: %w", webspaceName, id, kind, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("index: clear item mark rows affected %s/%s/%s: %w", webspaceName, id, kind, err)
+		}
+		changed += n
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("index: commit clear item marks transaction for %s: %w", webspaceName, err)
+	}
+	return int(changed), nil
+}
+
+// CountItemMarks returns how many items in webspaceName currently carry
+// kind — the excluded-view toggle's own live count (13-UI-SPEC.md E4) and
+// the marks handler's response field after every write.
+func (s *Store) CountItemMarks(ctx context.Context, webspaceName, kind string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM item_marks WHERE webspace_name = ? AND kind = ?
+`, webspaceName, kind).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("index: count item marks for %s/%s: %w", webspaceName, kind, err)
+	}
+	return count, nil
+}
+
 // StreamItems returns every item associated with webspaceName, ordered
 // timestamp_unix DESC, secondary_timestamp_unix DESC, id ASC — a total,
 // stable chronological order that never depends on SQLite's natural row
@@ -347,9 +467,10 @@ SELECT items.id, items.source, items.source_type, items.source_id, items.title, 
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
+` + markFilterClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		rows, err = s.db.QueryContext(ctx, q, webspaceName)
+		rows, err = s.db.QueryContext(ctx, q, webspaceName, webspaceName)
 	} else {
 		const q = baseColumns + `
 FROM items_fts
@@ -357,9 +478,10 @@ JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
+` + markFilterClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		rows, err = s.db.QueryContext(ctx, q, webspaceName, match)
+		rows, err = s.db.QueryContext(ctx, q, webspaceName, match, webspaceName)
 	}
 	if err != nil {
 		// Mirror Search's fts5-error degradation (03-RESEARCH.md Pattern
@@ -505,6 +627,7 @@ JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
+` + markFilterClause + `
 ORDER BY rank ASC
 LIMIT 50
 `
@@ -530,7 +653,7 @@ func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filte
 		return []SearchResult{}, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, searchQuery, SnippetOpen, SnippetClose, webspaceName, query)
+	rows, err := s.db.QueryContext(ctx, searchQuery, SnippetOpen, SnippetClose, webspaceName, query, webspaceName)
 	if err != nil {
 		// ftsQuery's phrase-quoting makes a genuine MATCH syntax error
 		// unreachable in principle, but a malformed query must degrade to

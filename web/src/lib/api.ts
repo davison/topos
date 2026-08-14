@@ -485,6 +485,40 @@ export function listPluginTypes(): Promise<PluginTypesResponse> {
 	return getJSON<PluginTypesResponse>('/api/config/plugin-types');
 }
 
+// --- Per-item marks (KERN-09/KERN-10, 13-01's kernel/httpapi/marks.go) ---
+
+/** MarkAction mirrors marksRequest.action on the wire: "add" excludes, "remove" includes. */
+export type MarkAction = 'add' | 'remove';
+
+export interface MarksResponse {
+	schema_version: number;
+	webspace: string;
+	kind: string;
+	action: MarkAction;
+	changed: number;
+	// excluded_count is the webspace's LIVE total after this write — the
+	// same count the excluded-items view toggle renders (13-UI-SPEC.md
+	// E4), so a caller never has to track a running total itself.
+	excluded_count: number;
+}
+
+/**
+ * POST /api/webspaces/{webspace}/marks. kind is always 'excluded' — the
+ * only mark kind this app writes (KERN-09/KERN-10) — so callers only ever
+ * choose the action and the item id(s).
+ */
+export function setItemMarks(
+	webspace: string,
+	action: MarkAction,
+	itemIds: string[]
+): Promise<MarksResponse> {
+	return postJSON<MarksResponse>(`/api/webspaces/${encodeURIComponent(webspace)}/marks`, {
+		kind: 'excluded',
+		action,
+		item_ids: itemIds
+	});
+}
+
 /**
  * deleteJSON mirrors getJSON/postJSON/putJSON's error-envelope handling
  * exactly, for the kernel's one DELETE route

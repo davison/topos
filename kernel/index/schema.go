@@ -75,6 +75,30 @@ CREATE TABLE IF NOT EXISTS sync_runs (
   notice        TEXT NOT NULL DEFAULT ''  -- non-fatal advisory recorded alongside an otherwise-successful run (12-09-PLAN.md, G-12-1/G-12-3) — distinct from the error column, never written by a genuine sync failure
 );
 
+-- item_marks (KERN-09/KERN-10, Phase 13): the kernel's first user-owned
+-- data OUTSIDE config.toml (Phase 11 D-01 framing) — a user's per-item
+-- exclude/include decision for one webspace. Deliberately carries NO
+-- REFERENCES clause on item_id: DeleteSourceItems' existing DELETE FROM
+-- items statement (and webspace_items' own ON DELETE CASCADE) must
+-- never cascade-delete a mark — a mark's lifecycle is governed solely by
+-- the explicit include write and the later healthy-sync-only prune sweep
+-- (D-09/D-10), never by an item's own row disappearing. This is also why
+-- item_marks is intentionally ABSENT from rebuildOnSchemaChange's drop
+-- list in store.go: that absence, not a version-gate check here, is what
+-- makes a mark survive an index rebuild (KERN-09's "survives re-sync,
+-- restart, AND index rebuild" guarantee) — see the load-bearing comment
+-- beside that list.
+CREATE TABLE IF NOT EXISTS item_marks (
+  webspace_name TEXT NOT NULL,
+  item_id       TEXT NOT NULL,   -- NO FK to items(id) — deliberate, see above
+  kind          TEXT NOT NULL,   -- e.g. "excluded" (index.MarkKindExcluded)
+  created_unix  INTEGER NOT NULL,
+  PRIMARY KEY (webspace_name, item_id, kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_item_marks_lookup
+  ON item_marks(webspace_name, kind, item_id);
+
 CREATE INDEX IF NOT EXISTS idx_items_chrono
   ON items(timestamp_unix DESC, secondary_timestamp_unix DESC, id ASC);
 

@@ -127,6 +127,12 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(dirs.Trusted, suspender, newExecLinkSpawner(logger), linkStore, logger))
 	r.Get("/api/config/whatsapp-link/{session}", WhatsAppLinkPollHandler(linkStore, logger))
 	r.Delete("/api/config/whatsapp-link/{session}", WhatsAppLinkCancelHandler(linkStore, logger))
+	// POST /api/webspaces/{webspace}/marks (KERN-09/KERN-10, 13-01-PLAN.md
+	// Task 1): the per-item exclude/include write path — see
+	// kernel/httpapi/marks.go. Registered on /api only, above the
+	// MountAgentRoutes call below: /agent/v1 carries zero non-GET routes,
+	// so a mark can never be written through an agent grant (T-13-02).
+	r.Post("/api/webspaces/{webspace}/marks", MarksHandler(store, cfgStore))
 	// MountAgentRoutes adds the /agent/v1 namespace (AGENT-01, D-12): a
 	// default-deny, grant-filtered mirror of the routes above, over the
 	// same store/cfgStore/fetcher/prober. Every /api/* route above is
