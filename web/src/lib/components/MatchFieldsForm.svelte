@@ -60,7 +60,8 @@
 					oninput={(e) => handleInput(field, e.currentTarget.value)}
 				/>
 				<p class="text-[14px] leading-[1.4] text-muted-foreground">
-					Comma-separated. Matches if any value is present.
+					Comma-separated. Matches if any value is present. Values are matched exactly,
+					case-insensitively — wildcards and glob patterns are not supported.
 				</p>
 			</div>
 		{/each}
