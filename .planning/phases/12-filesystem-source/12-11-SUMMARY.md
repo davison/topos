@@ -147,6 +147,11 @@ None - no external service configuration required.
 - CR-01 (12-VERIFICATION.md's sole open gap) and WR-01 are both closed; 12-VERIFICATION.md should now report 11/11 on re-verification.
 - No blockers for phase completion from this plan. IN-01 (`zeroMatchNotice`'s field-key-count guard) remains deliberately deferred per this plan's own scope, unchanged.
 
+## Self-Check: PASSED
+
+All 7 created/modified files confirmed present on disk; all 4 commits
+(`8ec3f50`, `0ea8f22`, `e59fbe8`, `8fbd576`) confirmed present in `git log`.
+
 ---
 *Phase: 12-filesystem-source*
 *Completed: 2026-08-14*
