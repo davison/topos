@@ -25,10 +25,20 @@ type Opener func(ctx context.Context, path string) error
 // binary literal with the resolved path as its only argument (T-12-01 —
 // the binary name is never derived from config or the request, and no
 // shell is involved), and never blocks the HTTP response on the child's
-// own exit (T-12-05: the child is reaped by a background wait).
+// own exit (T-12-05: the child is reaped by a background wait). The
+// returned closure's context parameter is deliberately the blank
+// identifier: this implementation structurally cannot bind the child to
+// any caller-supplied context, because an HTTP request's context is
+// cancelled by net/http essentially synchronously with the handler
+// returning — and FilesystemOpenHandler returns within microseconds of
+// starting the child. Binding the child's lifetime to that context
+// (exec.CommandContext) meant the desktop handler was routinely SIGKILLed
+// moments after launch while the kernel reported opened: true (CR-01,
+// 12-06-PLAN.md Task 2). The child must outlive the request that started
+// it, so it is built with the plain two-argument exec.Command form instead.
 func newXDGOpener(logger hclog.Logger) Opener {
-	return func(ctx context.Context, path string) error {
-		cmd := exec.CommandContext(ctx, "xdg-open", path)
+	return func(_ context.Context, path string) error {
+		cmd := exec.Command("xdg-open", path)
 		if err := cmd.Start(); err != nil {
 			return err
 		}
@@ -144,7 +154,17 @@ func FilesystemOpenHandler(store *index.Store, cfgStore *config.Store, opener Op
 			return
 		}
 
-		if err := opener(ctx, full); err != nil {
+		// The opener is handed a context detached from the request's own
+		// (CR-01): it still carries the request's values but can never be
+		// cancelled by the request completing, since the desktop handler
+		// must outlive the HTTP response that launched it. This is
+		// belt-and-braces with newXDGOpener's own structural inability to
+		// bind to a caller context — it is the load-bearing half for the
+		// seam, provable at the stubbed-Opener boundary, and protects any
+		// future Opener that DOES honour its context. Every other use of
+		// ctx in this handler (store.GetItem) stays as-is: index reads
+		// should still be cancelled when the requester goes away.
+		if err := opener(context.WithoutCancel(ctx), full); err != nil {
 			WriteError(w, http.StatusBadGateway, "open_failed", err.Error())
 			return
 		}

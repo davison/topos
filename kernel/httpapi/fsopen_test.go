@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,20 +21,23 @@ import (
 	"github.com/davison/topos/kernel/item"
 )
 
-// recordingOpener is a test Opener stub that records the path it was
-// handed (or none, if never called) instead of execing xdg-open — the
-// seam FilesystemOpenHandler's tests exercise every refusal branch
-// through, so the gate does not depend on xdg-open being installed on the
-// runner (12-01-PLAN.md's own <verification> requirement).
+// recordingOpener is a test Opener stub that records the path (and, for
+// CR-01's regression proof, the context) it was handed — or none, if never
+// called — instead of execing xdg-open — the seam FilesystemOpenHandler's
+// tests exercise every refusal branch through, so the gate does not depend
+// on xdg-open being installed on the runner (12-01-PLAN.md's own
+// <verification> requirement).
 type recordingOpener struct {
 	calledWith string
+	calledCtx  context.Context
 	called     bool
 	err        error
 }
 
-func (o *recordingOpener) open(_ context.Context, path string) error {
+func (o *recordingOpener) open(ctx context.Context, path string) error {
 	o.called = true
 	o.calledWith = path
+	o.calledCtx = ctx
 	return o.err
 }
 
@@ -353,4 +359,126 @@ func userHomeDirForTest(t *testing.T) (string, error) {
 		return "", err
 	}
 	return expanded, nil
+}
+
+// TestFilesystemOpen_OpenerContextIsDetachedFromTheRequestContext proves
+// CR-01 is closed at the handler seam: the context handed to opener is NOT
+// the HTTP request's own — cancelling the request's context after
+// ServeHTTP has returned leaves the opener's captured context uncancelled.
+// Under the pre-fix code, the captured context WAS the request context, so
+// cancelling it would fail this assertion — that is the regression this
+// test exists to catch.
+func TestFilesystemOpen_OpenerContextIsDetachedFromTheRequestContext(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "invoice.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"docs-folder": {Plugin: "topos-plugin-filesystem", Path: root},
+	}}
+	opener := &recordingOpener{}
+	router, seed := newFsopenTestRouter(t, cfg, opener)
+	seed.put(t, item.Item{
+		ID: "docs-folder:invoice.pdf", Source: "docs-folder", SourceID: "invoice.pdf",
+		Fidelity: item.FidelityExact, DeepLink: "file://" + filepath.Join(root, "invoice.pdf"),
+	})
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/api/items/docs-folder:invoice.pdf/open", nil).WithContext(reqCtx)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !opener.called {
+		t.Fatal("expected the opener to be called")
+	}
+	if opener.calledCtx == nil {
+		t.Fatal("expected the opener to have been handed a non-nil context")
+	}
+
+	// Cancel the REQUEST's own context, after ServeHTTP has already
+	// returned — this is exactly what net/http does the instant a handler
+	// returns.
+	cancel()
+
+	if err := opener.calledCtx.Err(); err != nil {
+		t.Errorf("expected the opener's captured context to report no error after the request's own context was cancelled, got %v", err)
+	}
+	select {
+	case <-opener.calledCtx.Done():
+		t.Error("expected the opener's captured context to not be done after the request's own context was cancelled")
+	default:
+	}
+}
+
+// TestNewXDGOpener_ChildIsNotBoundToACallerContext structurally proves two
+// properties of newXDGOpener via go/ast (never file text, so a comment or
+// a string can neither trip nor defeat this check): the returned function
+// literal's context parameter is the blank identifier, making it
+// structurally impossible for this implementation to pass it to anything;
+// and no selector named CommandContext appears anywhere in that function's
+// body. The same test also asserts the child is still constructed from the
+// fixed "xdg-open" string literal, so T-12-01's no-configurable-binary
+// property is asserted by the same test that asserts the CR-01 fix.
+// Scoped to fsopen.go alone (never the whole package), so this test file's
+// own mention of the forbidden constructor cannot make the guard
+// self-invalidating. A behavioural test cannot reach this: the production
+// opener execs a fixed binary that is not guaranteed present on a CI
+// runner, and making it substitutable would trade away T-12-01.
+func TestNewXDGOpener_ChildIsNotBoundToACallerContext(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "fsopen.go", nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse fsopen.go: %v", err)
+	}
+
+	var fn *ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fd, ok := decl.(*ast.FuncDecl); ok && fd.Name.Name == "newXDGOpener" {
+			fn = fd
+			break
+		}
+	}
+	if fn == nil {
+		t.Fatal("expected to find a newXDGOpener function declaration in fsopen.go")
+	}
+
+	var lit *ast.FuncLit
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if fl, ok := n.(*ast.FuncLit); ok && lit == nil {
+			lit = fl
+		}
+		return true
+	})
+	if lit == nil {
+		t.Fatal("expected newXDGOpener to return a function literal")
+	}
+
+	if lit.Type.Params == nil || len(lit.Type.Params.List) == 0 {
+		t.Fatal("expected the returned function literal to declare parameters")
+	}
+	ctxParam := lit.Type.Params.List[0]
+	if len(ctxParam.Names) != 1 || ctxParam.Names[0].Name != "_" {
+		t.Errorf("expected the context parameter to be the blank identifier, got %v", ctxParam.Names)
+	}
+
+	var foundCommandContext bool
+	var foundFixedBinary bool
+	ast.Inspect(lit.Body, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "CommandContext" {
+			foundCommandContext = true
+		}
+		if bl, ok := n.(*ast.BasicLit); ok && bl.Kind == token.STRING && bl.Value == `"xdg-open"` {
+			foundFixedBinary = true
+		}
+		return true
+	})
+	if foundCommandContext {
+		t.Error("expected no CommandContext selector anywhere in newXDGOpener's returned closure")
+	}
+	if !foundFixedBinary {
+		t.Error("expected the fixed \"xdg-open\" binary literal to still be constructed in place")
+	}
 }
