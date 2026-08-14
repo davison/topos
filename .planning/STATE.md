@@ -2,43 +2,43 @@
 gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Plugin Ecosystem
-current_phase: 12
-current_phase_name: filesystem-source
-status: executing
-stopped_at: Phase 12 UAT found gaps (G-12-1/G-12-3) — fix plans 12-08..12-10 ready to execute
-last_updated: "2026-08-14T10:51:28.618Z"
+current_phase: 13
+current_phase_name: Per-Item Curation & Installable App
+status: planning
+stopped_at: Completed 12-07-PLAN.md
+last_updated: "2026-08-14T13:26:48.786Z"
 last_activity: 2026-08-14
 last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 18
-  completed_plans: 17
-  percent: 25
+  completed_plans: 18
+  percent: 50
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-13 after Phase 11 completion)
+See: .planning/PROJECT.md (updated 2026-08-14 after Phase 12 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 12 — filesystem-source
+**Current focus:** Phase 13 — Per-Item Curation & Installable App
 
 ## Current Position
 
-Phase: 12 (filesystem-source) — EXECUTING
-Plan: 1 of 11
-Status: Executing Phase 12
-Progress: [██████████] 100% (1/4 phases)
-Last activity: 2026-08-14 — Phase 12 execution started
+Phase: 13 — Per-Item Curation & Installable App
+Plan: Not started
+Status: Ready to plan
+Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
+Last activity: 2026-08-14 — Phase 12 complete, transitioned to Phase 13
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 106
+- Total plans completed: 110
 - Average duration: —
 - Total execution time: —
 
@@ -59,7 +59,7 @@ Last activity: 2026-08-14 — Phase 12 execution started
 | 09.1 | 4 | - | - |
 | 10 | 5 | - | - |
 | 11 | 7 | - | - |
-| 12 | 7 | - | - |
+| 12 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -135,9 +135,12 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - [Phase 11] External-tier launches gated on SHA-256 content pins recomputed from disk before every exec; pin mismatch is a soft per-instance failure (chip shows named cause, two-click re-pin; kernel boot and unrelated saves unaffected).
 - [Phase 11] Plugin subprocess environment built from an explicit allowlist + only the instance's own ${VAR} references — kernel environment never inherited wholesale.
 - [Phase 11] Source.Plugin confined to bare filenames end-to-end (ResolveBinary first-statement guard + config.Validate twin) after CR-01 gap closure.
-- [Phase ?]: [Phase 12-07] Fetch classifies through the instance's own scope (newScope(p.extras).includes) instead of a second, weaker classify() rule — closes the false 404 for an include_glob-admitted item outside the default extension allowlist.
-- [Phase ?]: [Phase 12-07] A malformed operator glob at Fetch time maps to codes.Unavailable (not codes.Internal), matching Match's own answer for the identical pattern class.
-- [Phase ?]: [Phase 12-07] Fetch and the kernel open route read/exec the filepath.EvalSymlinks-resolved path the containment check approved, not the lexical path it validated; the residual final-component TOCTOU window is documented as 'narrows but does not eliminate.'
+- [Phase 12] Fetch classifies through the instance's own scope (newScope(p.extras).includes) instead of a second, weaker classify() rule — closes the false 404 for an include_glob-admitted item outside the default extension allowlist.
+- [Phase 12] A malformed operator glob at Fetch time maps to codes.Unavailable (not codes.Internal), matching Match's own answer for the identical pattern class.
+- [Phase 12] Fetch and the kernel open route read/exec the filepath.EvalSymlinks-resolved path the containment check approved, not the lexical path it validated; the residual final-component TOCTOU window is documented as 'narrows but does not eliminate.'
+- [Phase 12] Match values are exact literals, never globs; "everything from this instance" is expressed via the root's own base name, and a zero-match state across a healthy sync surfaces as a kernel-composed `last_notice` advisory (never plugin text).
+- [Phase 12] UI surfaces consult one precedence chain: the chip tooltip defers to `isAdvisoryOnly` in format.ts (re-asks `healthTone` with the notice stripped) rather than re-deriving its own gate — CR-01's fix pattern for any future health-adjacent surface.
+- [Phase 12] Launch-failed source entries deliberately carry no `last_notice` (matches docs/api.md contract; pinned by Go test, WR-01).
 
 ### Pending Todos
 
@@ -182,14 +185,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-14T01:14:50.850Z
-Stopped at: Completed 12-07-PLAN.md
+Last session: 2026-08-14T13:30:00Z
+Stopped at: Phase 12 complete (11/11 plans, verified, UAT passed, SECURED), ready to plan Phase 13
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 12 with /gsd-discuss-phase 12 (or /gsd-plan-phase 12 directly)
+- Plan Phase 13 with /gsd-discuss-phase 13 (or /gsd-plan-phase 13 directly)
 - Open design questions to settle during phase discuss/spec (from research/SUMMARY.md "Gaps to Address"):
-  - Phase 12: filesystem stable-ID choice (inode vs path)
   - Phase 13: per-item include scope (un-exclude only vs a new Browse RPC) and mark-orphan handling; PWA mobile/LAN scope
   - Phase 14: Google OAuth credential distribution (bring-your-own is the requirement's stated position — confirm at spec time)

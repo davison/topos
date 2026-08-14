@@ -1,7 +1,7 @@
 ---
 phase: 12-filesystem-source
 verified: 2026-08-14T12:15:00Z
-status: human_needed
+status: passed
 score: 11/11 must-have truths verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,6 +9,7 @@ re_verification:
   previous_status: gaps_found
   previous_score: "10/11"
   gaps_closed:
+
     - "CR-01: SourceChip.svelte's tooltip advisory gate now defers to a new format.ts predicate (isAdvisoryOnly, which re-asks healthTone with the notice removed) instead of testing source.last_status directly. A source that is reachable:false with a stale last_status:'ok' and a leftover last_notice now selects the 'unreachable since …' tooltip branch and carries none of the advisory text — independently reconfirmed by reading the code and by running the new unit matrix and a new e2e spec (both pass)."
     - "WR-01: kernel/httpapi/sources.go's launch-failure merge now carries a comment recording that LastNotice is deliberately not copied from the recorded run (matching docs/api.md's published contract), pinned by a new Go test (TestSourcesHandler_LaunchFailedEntryCarriesNoLastNotice) — independently re-run, passes."
   gaps_remaining: []
@@ -17,15 +18,19 @@ re_verification:
 deferred: []
 behavior_unverified_items: []
 human_verification:
+
   - test: "On the user's real desktop, re-save the actual webspace config so the filesystem source's `folders` match value is the source root's own base name (per 12-08's fix), then trigger a sync."
     expected: "The user's own filesystem documents (previously invisible under the old match-all-inexpressible failure) now appear in the correct webspace stream, with previews."
     why_human: "Requires the user's own machine, their own real folder structure, and their own config file — the e2e specs prove the mechanism against a synthetic corpus but cannot exercise the user's actual data."
+
   - test: "On the user's real desktop, before correcting the config, check `GET /api/sources` (or the Manage Sources UI) for the `files` source."
     expected: "A `last_notice` naming the real webspace and the real mistyped match value the user originally typed — the zero-match state is diagnosed rather than silent."
     why_human: "Requires the user's live kernel and their live (possibly still-uncorrected) config; the mechanism is proven end-to-end by 12-zero-match-diagnostic.spec.ts against a synthetic corpus."
+
   - test: "On the user's real desktop: (a) before the fix, confirm the `files` chip in the relevant webspace shows the warning tone with the diagnostic text naming the zero-matching value; (b) after correcting the value, confirm documents appear with previews and a working desktop-handler open action; (c) confirm the same flow works when the source folder is a network (NFS/SMB) mount, not just a local path."
     expected: "Amber/warning chip with correct diagnostic copy pre-fix; full working preview/open/sync flow post-fix; NFS/SMB behaves identically to a local path."
     why_human: "Previews, the real xdg-open handoff, and actual NFS/SMB mount behavior are explicitly scoped out of the hermetic browser harness by docs/testing.md's own design — this is the same backstop item carried since the original 12-05 tracer plan."
+
   - test: "On the user's real desktop, unmount (or otherwise make unreachable) a network-mounted filesystem source whose last completed sync carried a leftover advisory (e.g. a zero-match notice from before the mount went away), then check the chip."
     expected: "The chip shows the red/destructive dot AND its tooltip reads '{display_name} — unreachable since {relative}' — never the reassuring 'synced … — advisory' text. This is CR-01's real-world counterpart to the now-passing fabricated-response e2e test."
     why_human: "The hermetic harness can only fabricate a `GET /api/sources` response where reachable:false and last_status:'ok' disagree with each other on purpose (12-tooltip-precedence.spec.ts Test A already proves the SPA presents such a body correctly); no fixture plugin can be made to produce that disagreement live, because it requires a real mount actually going away between two real sync attempts."
