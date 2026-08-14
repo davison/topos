@@ -236,3 +236,16 @@ None — no external service configuration required. Existing build recipes (`ma
 ## Next Phase Readiness
 
 Task 3's own `<done>` criterion is met: an unverifiable trusted-directory binary refuses to launch by name, a shadowing collision is a structured advisory rather than only a log line, and every Phase 11 external-tier behavior is unchanged. `13-06` (per the phase's plan sequencing) can build the UI rendering for `launch_advisory` — the wire contract (`docs/api.md`) and the underlying kernel fact are both in place and tested. No blockers.
+
+## Self-Check: PASSED
+
+- FOUND: kernel/pluginhost/manifest.go
+- FOUND: kernel/pluginhost/manifest_test.go
+- FOUND: kernel/pluginhost/manifestgate_test.go
+- FOUND: cmd/topos-manifest/main.go
+- FOUND: .planning/phases/13-per-item-curation-installable-app/13-05-SUMMARY.md
+- FOUND commit 38178f6 (Task 1)
+- FOUND commit 9e520a4 (Task 2)
+- FOUND commit c083de9 (Task 3)
+- FOUND commit 21c337f (gofmt fixup)
+- FOUND commit cfc556c (this SUMMARY)
