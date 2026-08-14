@@ -70,12 +70,14 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 
 		const rows = page.locator('[data-item-id]');
 		await expect(rows.first()).toBeVisible();
+		const rowCountBefore = await rows.count();
 		const itemId = await rows.first().getAttribute('data-item-id');
 		expect(itemId).toBeTruthy();
 
 		await rows.first().click();
 		await page.getByRole('button', { name: 'Exclude from webspace' }).click();
-		await expect(rows).toHaveCount(0);
+		await expect(page.locator(`[data-item-id="${itemId}"]`)).toHaveCount(0);
+		await expect(rows).toHaveCount(rowCountBefore - 1);
 		// Copywriting Contract (13-UI-SPEC.md): singular, exact.
 		await expect(page.getByText('Excluded 1 item', { exact: true })).toBeVisible();
 
@@ -109,5 +111,112 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 
 		const streamB = await readStream(kernel.baseURL, WS_B1);
 		expect(streamB.excluded_count).toBe(0);
+	});
+
+	test('bulk exclude in A, switch to B, Undo — every excluded id is restored in A', async ({ page, kernel }) => {
+		await waitForFirstSync(kernel.baseURL, [SOURCE_ID], { logs: kernel.logs });
+		await page.goto(`${kernel.baseURL}/w/${WS_A2}`);
+
+		const rows = page.locator('[data-item-id]');
+		await expect(rows.first()).toBeVisible();
+
+		await rows.nth(0).click({ modifiers: ['Control'] });
+		await rows.nth(1).click({ modifiers: ['Control'] });
+		await expect(page.getByText('2 selected', { exact: true })).toBeVisible();
+
+		const excludedIds = (await Promise.all([
+			rows.nth(0).getAttribute('data-item-id'),
+			rows.nth(1).getAttribute('data-item-id')
+		])) as string[];
+
+		await page.getByRole('button', { name: 'Exclude', exact: true }).click();
+		await expect(page.getByText('Excluded 2 items', { exact: true })).toBeVisible();
+		for (const id of excludedIds) {
+			await expect(page.locator(`[data-item-id="${id}"]`)).toHaveCount(0);
+		}
+
+		await switchWebspace(page, WS_A2, WS_B2);
+
+		const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+		await expect(undoButton).toBeVisible();
+		await undoButton.click();
+
+		await expect
+			.poll(
+				async () => {
+					const stream = await readStream(kernel.baseURL, WS_A2);
+					const idsPresent = new Set(stream.items.map((it) => it.id));
+					return {
+						allPresent: excludedIds.every((id) => idsPresent.has(id)),
+						excludedCount: stream.excluded_count
+					};
+				},
+				{ timeout: 10_000 }
+			)
+			.toEqual({ allPresent: true, excludedCount: 0 });
+
+		const streamB = await readStream(kernel.baseURL, WS_B2);
+		expect(streamB.excluded_count).toBe(0);
+	});
+
+	test('detail-pane include in A, switch to B, Undo — A is re-excluded and B gains no mark', async ({
+		page,
+		kernel
+	}) => {
+		await waitForFirstSync(kernel.baseURL, [SOURCE_ID], { logs: kernel.logs });
+
+		// Seed the precondition through the API rather than the UI (docs/
+		// testing.md: "Seed state through the fixture, not the UI") — this
+		// also keeps exactly one toast alive at a time, so the Undo locator
+		// can never hit two toasts at once. This is the same write the UI's
+		// Exclude button issues, taken directly so the test's subject is
+		// the include-then-undo path and nothing else.
+		const seedStream = await readStream(kernel.baseURL, WS_A3);
+		const itemId = seedStream.items[0].id;
+		const seedRes = await fetch(`${kernel.baseURL}/api/webspaces/${WS_A3}/marks`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ kind: 'excluded', action: 'add', item_ids: [itemId] })
+		});
+		expect(seedRes.ok).toBe(true);
+
+		await page.goto(`${kernel.baseURL}/w/${WS_A3}`);
+
+		await page.getByRole('button', { name: 'Excluded (1)', exact: true }).click();
+		const rows = page.locator('[data-item-id]');
+		await expect(rows).toHaveCount(1);
+		await expect(page.locator(`[data-item-id="${itemId}"]`)).toBeVisible();
+
+		await rows.first().click();
+		await page.getByRole('button', { name: 'Include in webspace' }).click();
+		await expect(page.getByText('Included 1 item', { exact: true })).toBeVisible();
+
+		await switchWebspace(page, WS_A3, WS_B3);
+
+		const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+		await expect(undoButton).toBeVisible();
+		await undoButton.click();
+
+		// The sharper half of this test: pre-fix, this exact sequence wrote
+		// a real, user-invisible exclusion into a webspace the user had
+		// merely navigated to (a misdirected `add`, the corrupting
+		// direction — it does not merely no-op like a misdirected
+		// `remove`).
+		await expect
+			.poll(
+				async () => {
+					const stream = await readStream(kernel.baseURL, WS_A3);
+					return {
+						hasItem: stream.items.some((it) => it.id === itemId),
+						excludedCount: stream.excluded_count
+					};
+				},
+				{ timeout: 10_000 }
+			)
+			.toEqual({ hasItem: false, excludedCount: 1 });
+
+		const streamB = await readStream(kernel.baseURL, WS_B3);
+		expect(streamB.excluded_count).toBe(0);
+		expect(streamB.items.some((it) => it.id === itemId)).toBe(true);
 	});
 });

@@ -393,7 +393,7 @@ binary rather than a mock.
   events for another client's writes) is accepted as documented fact
   rather than independently re-verified here.
 
-## `web/e2e/specs/13-multi-select-bulk-exclude.spec.ts` / `13-excluded-view.spec.ts` — per-item curation, real end to end
+## `web/e2e/specs/13-multi-select-bulk-exclude.spec.ts` / `13-excluded-view.spec.ts` / `13-undo-across-webspace-switch.spec.ts` — per-item curation, real end to end
 
 Phase 13's KERN-09/KERN-10 user-facing half (13-03-PLAN.md), driven
 entirely from the real UI against a real booted kernel and the
@@ -416,6 +416,19 @@ specs build on).
   auto-flips back to the normal stream — with the toggle disappearing
   again — the instant its one item is un-excluded via the bulk action
   bar's Include button (E4's "no sustained empty-excluded-view state").
+- **`13-undo-across-webspace-switch.spec.ts`** (13-07-PLAN.md, gap
+  closure) — pins 13-REVIEW.md WR-01 / 13-VERIFICATION.md's single
+  recorded gap: the undo toast's reversal must target the webspace the
+  toast was created in, not whichever webspace is current when Undo is
+  clicked, across all three write paths (single-item exclude, bulk
+  exclude, detail-pane include). A real WebspaceSwitcher navigation
+  interrupts the toast's 5000ms window before Undo fires, and every
+  assertion reads direct kernel stream responses rather than rendered
+  rows, because the SPA intentionally renders no signal for a reversal
+  issued after a navigation (the snapshotted generation is stale
+  post-navigation, so the route's own refetch no-ops by design). Each
+  test owns its own webspace pair so the absolute `excluded_count`
+  assertions stay hermetic under a shared worker-scoped kernel.
 
 ## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` — the two new trust states, real binaries
 
