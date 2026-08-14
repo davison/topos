@@ -28,7 +28,7 @@ Phase: 13 — Per-Item Curation & Installable App
 Plan: Not started
 Status: Ready to plan
 Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
-Last activity: 2026-08-14 — Phase 12 complete, transitioned to Phase 13
+Last activity: 2026-08-14 - Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim
 
 ## Performance Metrics
 
@@ -170,6 +170,7 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 | 260811-r5d | exclude topos-plugin-mockstrict from the picker catalog (kernel exclusion + e2e injection helper + docs correction) | 2026-08-11 | 160853a | [260811-r5d-exclude-topos-plugin-mockstrict-from-the](./quick/260811-r5d-exclude-topos-plugin-mockstrict-from-the/) |
 | 260811-rqc | header branding lockup: app icon + topos wordmark + tagline, top-right of header, muted (human-verified live) | 2026-08-11 | 55e133e | [260811-rqc-header-branding-app-icon-topos-wordmark-](./quick/260811-rqc-header-branding-app-icon-topos-wordmark-/) |
 | 11 | (fast) fix webspace page title: '{webspace} — topos' replaces pre-rename '— webspaces' (+ smoke e2e assertion) | 2026-08-11 | ce9f985 | — |
+| 260814-mkl | Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim | 2026-08-14 | 66d4012 | [260814-mkl-fix-ci-check-e2e-failure-declare-unlinks](./quick/260814-mkl-fix-ci-check-e2e-failure-declare-unlinks/) |
 
 ## Deferred Items
 
