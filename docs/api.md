@@ -430,8 +430,13 @@ the file to.
 configuration — never from the request.** `{id}` is the only input: the
 kernel looks up that item's indexed `source_id` and its owning source's
 configured `path`, joins them, and re-validates the join stays inside the
-configured root before ever exec'ing anything. Nothing in the request
-body or query string reaches the opener.
+configured root before ever exec'ing anything. That re-validation
+resolves symlinks with `filepath.EvalSymlinks` on both the joined path and
+the configured root, compares the RESOLVED pair, and fails closed when
+resolution is impossible — so a file indexed legitimately and later
+swapped on disk for a symlink pointing outside the root is refused rather
+than followed. Nothing in the request body or query string reaches the
+opener.
 
 ```
 $ curl -s -X POST http://127.0.0.1:7777/api/items/docs%3Ainvoice.pdf/open | jq
@@ -444,14 +449,19 @@ error-code table below):
 - **`404 item_not_found`** — `{id}` does not exist in the local index; its
   `deep_link` does not carry the `file://` scheme (this route is
   unreachable for a non-filesystem item, keyed on the URL scheme alone,
-  never `source_type`); or its owning source has no configured `path` at
+  never `source_type`); its owning source has no configured `path` at
   all (e.g. its `[sources.<id>]` entry was removed from config while the
-  item's index row survives).
+  item's index row survives); or the file no longer exists at its indexed
+  path (it was deleted or moved since the last sync — reported honestly
+  rather than as a containment violation).
 - **`400 invalid_path`** — the path joined from the item's indexed
-  `source_id` and its source's configured `path` resolves outside the
-  configured root. Not reachable through the request itself (the request
-  carries no path), but a defense-in-depth guard against a corrupted or
-  hand-edited index row.
+  `source_id` and its source's configured `path`, after symlink
+  resolution, resolves outside the configured root — or resolution itself
+  fails for any reason other than the file simply not existing. Not
+  reachable through the request itself (the request carries no path), but
+  a defense-in-depth guard against a corrupted or hand-edited index row, or
+  a file swapped on disk for a symlink pointing outside the root since it
+  was indexed.
 - **`502 open_failed`** — the join and validation both succeeded, but the
   `xdg-open` invocation itself failed (e.g. no handler registered for the
   file's type on the machine running the kernel) — carries the opener's
@@ -1245,13 +1255,13 @@ namespace", above).
 | Code | HTTP status | Route(s) | Meaning |
 |---|---|---|---|
 | `webspace_not_found` | 404 | `GET /api/webspaces/{webspace}/stream`, `GET /api/webspaces/{webspace}/search`, `GET /agent/v1/webspaces/{webspace}/stream` | `{webspace}` is in neither the running configuration nor the local index. A configured-but-never-synced webspace is NOT this case — it answers `200` with `"items": []` (or `"results": []`) instead. |
-| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children; `POST /api/items/{id}/open` | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. On `POST /api/items/{id}/open` specifically, also covers an item whose `deep_link` does not carry the `file://` scheme, and an item whose owning source has no configured `path`. |
+| `item_not_found` | 404 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children; `POST /api/items/{id}/open` | `{id}` does not exist in the local index (or, for `Fetch`-level failures, the plugin itself reports the source object no longer exists). On `/agent/v1/*`, also covers an `{id}` whose source exists but is ungranted — deliberately the same code as a genuinely nonexistent id. On `POST /api/items/{id}/open` specifically, also covers an item whose `deep_link` does not carry the `file://` scheme, an item whose owning source has no configured `path`, and an item whose file no longer exists at its indexed path. |
 | `source_unavailable` | 502 | `GET /api/items/{id}` and its `/content`, `/thumbnail` children | The live `Fetch` call to the owning plugin failed — the source system was unreachable or errored. |
 | `unsupported_rendition_type` | 415 | `GET /api/items/{id}/content`, `/thumbnail` | The plugin reported a rendition MIME type outside the fixed allowlist; the kernel refuses to serve it. |
 | `unsupported_content_shape` | 502 | `GET /api/items/{id}/content` | The rendition's `mime_type` is `text/html` but its plugin-declared `content_shape` is unrecognised or unspecified (`CONTENT_SHAPE_UNSPECIFIED`) — the kernel's sanitize/wrap boundary (D-11) refuses to guess a policy and writes no body. |
 | `content_unavailable` | 404 | `GET /api/items/{id}/content`, `/thumbnail` | The item exists and the plugin was reachable, but no rendition is available for this specific variant (distinct from `item_not_found`: the item is real, this rendition just doesn't exist). |
 | `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
-| `invalid_path` | 400 | `POST /api/items/{id}/open` | The path joined from the item's indexed `source_id` and its source's configured `path` resolves outside that configured root. |
+| `invalid_path` | 400 | `POST /api/items/{id}/open` | The path joined from the item's indexed `source_id` and its source's configured `path` resolves outside that configured root after symlink resolution, or resolution itself fails for a reason other than the file not existing. |
 | `open_failed` | 502 | `POST /api/items/{id}/open` | The resolved path is valid, but the `xdg-open` invocation itself failed — the opener's own error message. |
 | `invalid_request` | 400 | `PUT /api/config` | The request body is not valid JSON, or is missing the `config` field. |
 | `config_changed_on_disk` | 409 | `PUT /api/config` | `base_hash` no longer matches `config.toml`'s current on-disk hash — someone else (another browser tab, a hand-edit, a `topos` CLI run) saved since you last read it. Nothing is written; re-`GET /api/config` and retry. |

@@ -118,8 +118,20 @@ relative path.
   link from silently widening the folder an operator consented to expose.
 - A symlinked regular file is classified and included like any other
   file, but its resolved real path is re-validated as still inside the
-  configured root before it becomes an item — a symlink pointing outside
-  the folder never becomes an item.
+  resolved configured root before it becomes an item — a symlink pointing
+  outside the folder never becomes an item.
+- A configured root which is itself a symlink or bind mount (the common
+  `~/Documents` -> `~/dotfiles/Documents` dotfile-manager pattern) is
+  fully supported: the root is resolved once before the walk begins, so
+  its legitimately in-tree symlinked files are included in the stream
+  rather than silently dropped.
+- The identical resolved-containment check re-runs at Fetch time (when an
+  item's preview or full content is served) and at open time (when
+  `POST /api/items/{id}/open` execs the desktop's own file handler) — not
+  just at Match/walk time. Both re-resolve symlinks on the joined path and
+  the configured root and fail closed on resolution failure, so a file
+  swapped for an outward-pointing symlink between one sync and the next
+  request is refused rather than served or opened.
 
 ## When the mount goes away
 

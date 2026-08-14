@@ -852,9 +852,15 @@ resulting absolute path. `plugins/filesystem` (`item.go`'s
 `fileDeepLink`) is the reference implementation: `"file://" +
 filepath.ToSlash(filepath.Join(root, sourceID))`. The kernel's own
 re-resolution on the open route re-validates the joined path stays inside
-the configured root before ever exec'ing anything — the same
-defense-in-depth join-and-validate discipline your own plugin should
-already apply when resolving `source_id` back to a real path for `Fetch`.
+the configured root before ever exec'ing anything, and that re-validation
+resolves symlinks: it calls `filepath.EvalSymlinks` on both the joined
+path and the configured root, compares the RESOLVED pair, and fails
+closed when resolution is impossible — so a file indexed legitimately and
+later swapped on disk for a symlink pointing outside the root is refused
+rather than followed. This is the same defense-in-depth join-resolve-and-
+validate discipline your own plugin must apply when resolving `source_id`
+back to a real path for `Fetch` — `plugins/filesystem`'s `resolvePath`
+(`item.go`) is the reference implementation for that side too.
 
 ## `LinkFidelity`
 
