@@ -1,9 +1,9 @@
 ---
-status: partial
+status: diagnosed
 phase: 12-filesystem-source
 source: [12-01-SUMMARY.md, 12-02-SUMMARY.md, 12-03-SUMMARY.md, 12-04-SUMMARY.md, 12-05-SUMMARY.md, 12-06-SUMMARY.md, 12-07-SUMMARY.md]
 started: 2026-08-14T08:19:53.798Z
-updated: 2026-08-14T08:33:40.000Z
+updated: 2026-08-14T08:39:52.000Z
 ---
 
 ## Current Test
@@ -338,8 +338,21 @@ skipped: 0
   reason: "User reported: the filesystem plugin is not showing files that exist within the configured directory"
   severity: major
   test: 1
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Match values are compared as exact case-insensitive strings (strings.EqualFold) at every layer; the user's webspace match block folders = ['*'] is glob syntax the pipeline does not have, so the plugin's Match RPC filters out every synced file while sync/health report ok. 'Match everything from this instance' is inexpressible (nested files never carry the root base name), the zero-match state is silent, and docs/plugins/filesystem.md documents doublestar globs for include_glob on the same page without stating match values are glob-free."
+  artifacts:
+    - path: "plugins/filesystem/plugin.go"
+      issue: "labelMatchesAny is exact-match only; no match-all affordance"
+    - path: "plugins/filesystem/item.go"
+      issue: "folderLabels: nested files never carry the root base name, so no single folders value covers a recursive source"
+    - path: "kernel/correlate/correlate.go"
+      issue: "matchFieldsFor passes match values verbatim; a can-never-match value loads silently with zero diagnostics"
+    - path: "docs/plugins/filesystem.md"
+      issue: "does not state that match values are exact (never globs); invites glob confusion next to include_glob/exclude_glob"
+  missing:
+    - "An expressible 'everything from this instance' match affordance (or root-base-name label on nested files)"
+    - "A zero-match diagnostic when an explicit match block matched nothing across a completed healthy sync"
+    - "Docs + config.example.toml statement that match values are exact, with the root-base-name worked example"
+  debug_session: .planning/debug/filesystem-items-missing-from-stream.md
 
 - gap_id: G-12-3
   truth: "With a real filesystem source configured, documents appear in the webspace stream with previews and a working desktop-handler open action, including on network mounts"
@@ -347,5 +360,18 @@ skipped: 0
   reason: "User reported: plugin shows no files in the stream (same observable failure as G-12-1 — no filesystem items reach the stream)"
   severity: major
   test: 3
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Match values are compared as exact case-insensitive strings (strings.EqualFold) at every layer; the user's webspace match block folders = ['*'] is glob syntax the pipeline does not have, so the plugin's Match RPC filters out every synced file while sync/health report ok. 'Match everything from this instance' is inexpressible (nested files never carry the root base name), the zero-match state is silent, and docs/plugins/filesystem.md documents doublestar globs for include_glob on the same page without stating match values are glob-free."
+  artifacts:
+    - path: "plugins/filesystem/plugin.go"
+      issue: "labelMatchesAny is exact-match only; no match-all affordance"
+    - path: "plugins/filesystem/item.go"
+      issue: "folderLabels: nested files never carry the root base name, so no single folders value covers a recursive source"
+    - path: "kernel/correlate/correlate.go"
+      issue: "matchFieldsFor passes match values verbatim; a can-never-match value loads silently with zero diagnostics"
+    - path: "docs/plugins/filesystem.md"
+      issue: "does not state that match values are exact (never globs); invites glob confusion next to include_glob/exclude_glob"
+  missing:
+    - "An expressible 'everything from this instance' match affordance (or root-base-name label on nested files)"
+    - "A zero-match diagnostic when an explicit match block matched nothing across a completed healthy sync"
+    - "Docs + config.example.toml statement that match values are exact, with the root-base-name worked example"
+  debug_session: .planning/debug/filesystem-items-missing-from-stream.md
