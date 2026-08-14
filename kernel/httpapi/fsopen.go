@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net/http"
 	"os/exec"
 	"os/user"
@@ -23,10 +25,20 @@ type Opener func(ctx context.Context, path string) error
 // binary literal with the resolved path as its only argument (T-12-01 —
 // the binary name is never derived from config or the request, and no
 // shell is involved), and never blocks the HTTP response on the child's
-// own exit (T-12-05: the child is reaped by a background wait).
+// own exit (T-12-05: the child is reaped by a background wait). The
+// returned closure's context parameter is deliberately the blank
+// identifier: this implementation structurally cannot bind the child to
+// any caller-supplied context, because an HTTP request's context is
+// cancelled by net/http essentially synchronously with the handler
+// returning — and FilesystemOpenHandler returns within microseconds of
+// starting the child. Binding the child's lifetime to that context
+// (exec.CommandContext) meant the desktop handler was routinely SIGKILLed
+// moments after launch while the kernel reported opened: true (CR-01,
+// 12-06-PLAN.md Task 2). The child must outlive the request that started
+// it, so it is built with the plain two-argument exec.Command form instead.
 func newXDGOpener(logger hclog.Logger) Opener {
-	return func(ctx context.Context, path string) error {
-		cmd := exec.CommandContext(ctx, "xdg-open", path)
+	return func(_ context.Context, path string) error {
+		cmd := exec.Command("xdg-open", path)
 		if err := cmd.Start(); err != nil {
 			return err
 		}
@@ -44,13 +56,36 @@ type fsopenResponse struct {
 	Opened        bool `json:"opened"`
 }
 
+// resolveRoot mirrors plugins/filesystem/item.go's resolveRoot (that
+// package is a separate Go module and cannot be imported here, so the
+// helper is a hand-kept twin): resolves root's real, symlink-free path with
+// filepath.EvalSymlinks, falling back to the lexically cleaned root when
+// resolution fails (a root that does not exist yet, or is unreadable) — the
+// containment comparison in FilesystemOpenHandler must still have a value
+// to compare against, and the lexical clean is the conservative one. D-01's
+// relative-path source_id is what makes the join meaningful in the first
+// place — resolveRoot only ever resolves the CONFIGURED root, never the
+// joined path.
+func resolveRoot(root string) string {
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return filepath.Clean(root)
+	}
+	return resolved
+}
+
 // FilesystemOpenHandler serves POST /api/items/{id}/open (D-06, T-12-02,
 // T-12-03, T-12-06): resolves the target absolute path exclusively from
 // the indexed item's own source_id plus its source's configured Path —
 // nothing read off the request body or query string ever reaches opener —
 // re-validates the joined path is still inside the configured root, and
-// execs it via opener. Registered on /api only (routes.go) — never on the
-// /agent/v1 mirror.
+// execs it via opener. The re-validation resolves symlinks with
+// filepath.EvalSymlinks on both the joined path and the configured root,
+// compares the RESOLVED pair, and fails closed when resolution is
+// impossible (CR-02, 12-06-PLAN.md Task 1) — so a file indexed legitimately
+// and later swapped on disk for a symlink pointing outside the root is
+// refused rather than followed, before opener is ever called. Registered
+// on /api only (routes.go) — never on the /agent/v1 mirror.
 func FilesystemOpenHandler(store *index.Store, cfgStore *config.Store, opener Opener, logger hclog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := itemIDParam(r)
@@ -95,7 +130,41 @@ func FilesystemOpenHandler(store *index.Store, cfgStore *config.Store, opener Op
 			return
 		}
 
-		if err := opener(ctx, full); err != nil {
+		// Second containment check against the RESOLVED path and the
+		// RESOLVED root (CR-02): a file indexed legitimately and later
+		// swapped on disk for a symlink pointing outside the root is
+		// refused here, before opener is ever called. A resolution
+		// failure that is itself a vanished file (fs.ErrNotExist) answers
+		// item_not_found honestly rather than as a containment violation;
+		// every other resolution failure, and a resolved path that falls
+		// outside the resolved root, answers invalid_path — no new error
+		// code, matching today's message for the lexical case.
+		resolved, err := filepath.EvalSymlinks(full)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				WriteError(w, http.StatusNotFound, "item_not_found", "item \""+id+"\" no longer exists at its indexed path")
+				return
+			}
+			WriteError(w, http.StatusBadRequest, "invalid_path", "resolved path escapes source root")
+			return
+		}
+		resolvedRoot := resolveRoot(root)
+		if resolved != resolvedRoot && !strings.HasPrefix(resolved, resolvedRoot+string(filepath.Separator)) {
+			WriteError(w, http.StatusBadRequest, "invalid_path", "resolved path escapes source root")
+			return
+		}
+
+		// The opener is handed a context detached from the request's own
+		// (CR-01): it still carries the request's values but can never be
+		// cancelled by the request completing, since the desktop handler
+		// must outlive the HTTP response that launched it. This is
+		// belt-and-braces with newXDGOpener's own structural inability to
+		// bind to a caller context — it is the load-bearing half for the
+		// seam, provable at the stubbed-Opener boundary, and protects any
+		// future Opener that DOES honour its context. Every other use of
+		// ctx in this handler (store.GetItem) stays as-is: index reads
+		// should still be cancelled when the requester goes away.
+		if err := opener(context.WithoutCancel(ctx), full); err != nil {
 			WriteError(w, http.StatusBadGateway, "open_failed", err.Error())
 			return
 		}

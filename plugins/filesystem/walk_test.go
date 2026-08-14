@@ -249,6 +249,50 @@ func TestWalk_SymlinkToFileOutsideRootIsExcluded(t *testing.T) {
 	}
 }
 
+// TestWalk_InTreeSymlinkUnderASymlinkedRootIsStillIncluded proves WR-01 is
+// closed: a configured root that is itself a symlink or bind mount (the
+// common `~/Documents` -> `~/dotfiles/Documents` dotfile-manager pattern)
+// still contributes its legitimately in-tree symlinked files to the walk's
+// corpus, instead of silently dropping every one of them. Under the
+// pre-fix code, the resolved symlink target never shared the unresolved
+// root's literal prefix, so linked.pdf would be silently dropped and this
+// test would fail with one result instead of two.
+func TestWalk_InTreeSymlinkUnderASymlinkedRootIsStillIncluded(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatalf("mkdir real: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "target.pdf"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write target.pdf: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(real, "target.pdf"), filepath.Join(real, "linked.pdf")); err != nil {
+		t.Fatalf("symlink linked.pdf: %v", err)
+	}
+	linkRoot := filepath.Join(tmp, "linkroot")
+	if err := os.Symlink(real, linkRoot); err != nil {
+		t.Fatalf("symlink linkroot: %v", err)
+	}
+
+	results, _, err := walk(t.Context(), linkRoot, false, noScope())
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	got := sourceIDs(results)
+	want := []string{"linked.pdf", "target.pdf"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
 // --- Permission-denied subtree is skipped, walk completes ---
 
 func TestWalk_PermissionDeniedSubdirectoryIsSkippedWalkCompletes(t *testing.T) {

@@ -54,8 +54,13 @@ type walkResult struct {
 //     cycles, and prevents an in-tree link from silently widening the
 //     folder the operator consented to expose (T-12-12). A symlinked
 //     regular file IS classified and included like any other file, but
-//     its resolved real path must still be inside root before it becomes
-//     an item (T-12-12 again, for the file case).
+//     its resolved real path must still be inside the RESOLVED configured
+//     root before it becomes an item (T-12-12 again, for the file case).
+//     A configured root which is itself a symlink or bind mount (the
+//     common `~/Documents` -> `~/dotfiles/Documents` dotfile-manager
+//     pattern) is fully supported: the root is resolved once before the
+//     walk begins, so its in-tree symlinked files are included rather
+//     than silently dropped (WR-01).
 //   - A per-entry error (most often permission denied on a shared mount
 //     with mixed ACLs) skips that entry or subtree and continues; it
 //     never aborts the walk. An error reading the root itself DOES abort
@@ -75,18 +80,37 @@ func walk(ctx context.Context, root string, recursive bool, sc *scope) ([]walkRe
 	}
 
 	cleanRoot := filepath.Clean(root)
+	// Resolved ONCE per walk, before filepath.WalkDir is entered, never per
+	// entry (WR-01, 12-06-PLAN.md Task 3). This resolved root serves two
+	// purposes: it is the base the in-tree symlink containment check below
+	// compares a symlink's resolved target against (instead of the merely
+	// lexical cleanRoot); and it is the path filepath.WalkDir itself is
+	// started from, because WalkDir uses Lstat semantics on the ROOT
+	// argument too — if root itself is a symlink, WalkDir sees a
+	// non-directory at the top and never descends into it at all, however
+	// the walk otherwise handles in-tree symlinks. Without resolving root
+	// before starting the walk, a configured root that is itself a symlink
+	// or bind mount (the common `~/Documents` -> `~/dotfiles/Documents`
+	// dotfile-manager pattern) would silently walk NOTHING, not just drop
+	// its symlinked files. relPathSourceID is computed against this same
+	// resolved base, so source_id stays a correct forward-slash relative
+	// path for every file actually visited — the relative subtree
+	// structure is identical whichever name (configured or resolved) the
+	// top of the tree is addressed by. resolveRoot is defined in item.go,
+	// shared by this package.
+	resolvedRoot := resolveRoot(cleanRoot)
 	var (
 		results []walkResult
 		skipped int
 	)
 
-	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(resolvedRoot, func(path string, d fs.DirEntry, err error) error {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
 
 		if err != nil {
-			if path == root {
+			if path == resolvedRoot {
 				// The root itself failed to read — the mount-is-gone
 				// case; must abort rather than present as an empty
 				// folder.
@@ -99,11 +123,11 @@ func walk(ctx context.Context, root string, recursive bool, sc *scope) ([]walkRe
 			return nil
 		}
 
-		if path == root {
+		if path == resolvedRoot {
 			return nil
 		}
 
-		relPath := relPathSourceID(root, path)
+		relPath := relPathSourceID(resolvedRoot, path)
 		isSymlink := d.Type()&fs.ModeSymlink != 0
 
 		if d.IsDir() {
@@ -137,9 +161,13 @@ func walk(ctx context.Context, root string, recursive bool, sc *scope) ([]walkRe
 				skipped++
 				return nil
 			}
-			if real != cleanRoot && !strings.HasPrefix(real, cleanRoot+string(filepath.Separator)) {
-				// Resolves outside root: never widen the folder the
-				// operator consented to expose (T-12-12).
+			if real != resolvedRoot && !strings.HasPrefix(real, resolvedRoot+string(filepath.Separator)) {
+				// Resolves outside the RESOLVED configured root: never
+				// widen the folder the operator consented to expose
+				// (T-12-12). Comparing against resolvedRoot rather than
+				// the merely lexical cleanRoot is what lets a symlinked or
+				// bind-mounted root's own in-tree symlinked files through
+				// (WR-01) while still refusing a genuine escape.
 				return nil
 			}
 		}
