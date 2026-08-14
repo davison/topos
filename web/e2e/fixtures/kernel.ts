@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 
-import { KERNEL_BIN, linkPluginBinaries } from './plugin-binaries';
+import { KERNEL_BIN, linkPluginBinaries, linkPluginBinaryAs } from './plugin-binaries';
 import { buildConfig, writeConfig, type FixtureConfigSpec } from './config-builder';
 
 export { expect };
@@ -288,6 +288,14 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 		configSpec.externalPluginBinaries ?? [],
 		configSpec.externalPluginBinariesSrcDir
 	);
+	// trustedBinaryLinks (13-06-PLAN.md Task 2): each entry links an
+	// arbitrary source path into the TRUSTED directory under its own
+	// caller-chosen name — see config-builder.ts's own doc comment for
+	// why this is a separate, per-entry mechanism from pluginBinaries
+	// above.
+	for (const link of configSpec.trustedBinaryLinks ?? []) {
+		linkPluginBinaryAs(pluginsDirPath, link.name, link.srcPath);
+	}
 
 	const logBuffer = new BoundedLogBuffer();
 	const child = spawn(KERNEL_BIN, ['serve'], {

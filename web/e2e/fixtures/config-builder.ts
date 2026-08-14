@@ -75,6 +75,21 @@ export interface FixtureConfigSpec {
 	// source and the pin hash resolve against the real out-of-repo build
 	// artifact rather than throwing (no bin/plugins copy exists for it).
 	externalPluginBinariesSrcDir?: string;
+	// trustedBinaryLinks (13-06-PLAN.md Task 2): additional binaries linked
+	// into the TRUSTED directory alongside pluginBinaries above, but each
+	// entry names its OWN destination name and its OWN arbitrary absolute
+	// source path — the general, per-entry sibling of
+	// externalPluginBinariesSrcDir's list-wide srcDir override. This is
+	// the mechanism a spec proving the file-drop bypass path (D-12/D-13)
+	// uses to link a real out-of-repo binary (built by `make e2e`'s
+	// `external-demo` dependency into `bin/plugins-external/`, never
+	// `bin/plugins/`) into the hermetic kernel's trusted directory under a
+	// name the link-time build manifest never covers — proving the
+	// manifest gate refuses it by name rather than by directory location
+	// alone. Empty/undefined by default, so a fixture naming nothing here
+	// is byte-identical to before this field existed. Never hashed into
+	// [plugins.pins] — that table is for the external tier only.
+	trustedBinaryLinks?: { name: string; srcPath: string }[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is how a spec reaches a mock-plugin fixture env

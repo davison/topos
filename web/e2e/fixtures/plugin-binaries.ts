@@ -89,3 +89,31 @@ export function hashPluginBinary(name: string, srcDir: string = PLUGIN_BIN_DIR):
 	assertExists(path, `plugin binary "${name}" (for hashing)`);
 	return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
+
+/**
+ * linkPluginBinaryAs symlinks ONE arbitrary source binary (an absolute
+ * path — not necessarily from PLUGIN_BIN_DIR or EXTERNAL_DEMO_BIN_DIR)
+ * into destDir under a caller-chosen destination NAME, which need not
+ * match the source file's own basename (13-06-PLAN.md Task 2). This is
+ * the general form linkPluginBinaries above cannot express — that
+ * function always resolves srcDir/name to destDir/name, the same name on
+ * both sides.
+ *
+ * The one real use this exists for: proving the file-drop bypass path
+ * (D-12/D-13) by linking `bin/plugins-external/topos-plugin-external-demo`
+ * — a real binary `make e2e`'s `external-demo` dependency builds into a
+ * directory the manifest generator never scans — into the hermetic
+ * kernel's TRUSTED plugin directory. Symlink-based, like
+ * linkPluginBinaries, so the kernel's own SHA-256 verification hashes the
+ * SAME bytes this helper links from, never a copy.
+ */
+export function linkPluginBinaryAs(destDir: string, destName: string, srcPath: string): void {
+	assertExists(KERNEL_BIN, 'kernel binary (bin/topos)');
+	assertExists(srcPath, `plugin binary source path "${srcPath}"`);
+	mkdirSync(destDir, { recursive: true });
+	const dest = join(destDir, destName);
+	// force-remove any stale entry first, matching linkPluginBinaries'
+	// own idempotency guarantee.
+	rmSync(dest, { force: true });
+	symlinkSync(srcPath, dest);
+}
