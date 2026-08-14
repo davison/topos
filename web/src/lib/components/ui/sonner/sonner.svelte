@@ -21,39 +21,40 @@
 	13-UI-SPEC.md E3 ("least likely to occlude the stream or detail
 	pane").
 
-	Checkpoint fix (13-04-PLAN.md Task 4, defect 2): --normal-border was
-	set to the raw --border token (#1e293b) — the LIGHTEST step of
-	app.css's own 4-step dark elevation staircase, but still too close in
-	lightness to --popover (#172033, the toast's own background) to read
-	as a visible edge, and svelte-sonner's own hardcoded
-	box-shadow (0px 4px 12px rgba(0,0,0,.1), see node_modules/
-	svelte-sonner/dist/Toaster.svelte) is a BLACK shadow — contributing
-	nothing against an already near-black page background (--background:
-	#020617). Confirmed via a real browser render (13-pwa-manifest-sw.spec.ts's
-	toast-contrast case) that the toast was legible up close but did not
-	visually "pop" — exactly the reported "close to invisible" complaint.
-	Fixed with two changes, both derived from EXISTING tokens via
-	color-mix() (the same idiom app.css's own --scrollbar-thumb/
-	--stream-marker tokens already use for a visible-but-neutral mark
-	against this same dark background) — no new hex colour introduced,
-	and the toast stays informational/neutral-toned (never accent or
-	destructive), per 13-UI-SPEC.md E3.3's own constraint:
-	  1. --normal-border strengthens to a genuine mid-grey ring
-	     (--muted-foreground at 50% opacity) instead of the barely-lighter
-	     --border token.
-	  2. toastOptions.style overrides svelte-sonner's hardcoded
-	     black box-shadow (not exposed as a CSS variable) with a soft
-	     --muted-foreground-derived outer ring plus a darker, larger-radius
-	     drop shadow for real depth against the page.
+	Checkpoint fix (13-04-PLAN.md Task 4, defect 2, two rounds):
+
+	Round 1 tried --normal-bg: var(--color-popover) (the same neutral
+	elevation-staircase surface dropdown-menu-content.svelte/
+	popover-content.svelte already use for the chip menus) with a
+	strengthened border + shadow. User re-verification: still not enough
+	— "the background itself, not just the border, needs to contrast with
+	the main scheme," modeled on "the popovers on the source chips."
+
+	Round 2 (this one): the chip-adjacent surface that actually reads as
+	the OPPOSITE end of this app's tonal range — not just one more
+	dark-staircase step lighter — is tooltip-content.svelte's own
+	SourceChip hover tooltip, styled `bg-foreground text-background`: a
+	full light/dark INVERSION (near-white fill, near-black text), with no
+	border and no shadow at all — the swap itself is the entire
+	affordance, and it is unmistakably visible against this app's
+	near-black page background in a way another same-family dark tone
+	(--popover, --card, --secondary — all four of app.css's own dark
+	staircase steps) structurally cannot be. This toast reuses that exact
+	token pair (still no new hex colour: --foreground/--background are
+	both pre-existing app.css tokens) and keeps a single dark drop-shadow
+	for depth, which — unlike round 1's shadow problem — now has real
+	visual purpose: a LIGHT surface casting a dark shadow onto a dark page
+	reads as genuinely elevated, where a dark-on-dark shadow could not.
+	Still never destructive/accent-toned (13-UI-SPEC.md E3.3) — this is a
+	brightness inversion, not a hue change.
 -->
 <Sonner
 	theme="dark"
 	position="bottom-right"
 	class="toaster group"
-	style="--normal-bg: var(--color-popover); --normal-text: var(--color-popover-foreground); --normal-border: color-mix(in srgb, var(--color-muted-foreground) 50%, transparent); --description-color: var(--color-muted-foreground);"
+	style="--normal-bg: var(--color-foreground); --normal-text: var(--color-background); --normal-border: var(--color-border); --description-color: var(--color-muted-foreground);"
 	toastOptions={{
-		style:
-			'box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-muted-foreground) 30%, transparent), 0 12px 32px color-mix(in srgb, black 60%, transparent);'
+		style: 'box-shadow: 0 12px 32px color-mix(in srgb, black 60%, transparent);'
 	}}
 	{...restProps}
 >

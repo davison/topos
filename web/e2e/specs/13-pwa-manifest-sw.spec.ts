@@ -152,7 +152,7 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 		).toEqual([]);
 	});
 
-	test('a toast renders with visible contrast against the page background (checkpoint defect 2)', async ({
+	test('a toast renders with a genuinely high-contrast background against the page (checkpoint defect 2, round 2)', async ({
 		page,
 		kernel
 	}) => {
@@ -162,8 +162,9 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 		// Fires the shared markSuccessToast helper — the same untyped
 		// toast() call and --normal-* styling pwaUpdatedToast() uses, so
 		// this exercises the exact surface the checkpoint's "close to
-		// invisible" report was about without needing a real kernel
-		// upgrade to trigger the PWA-specific toast.
+		// invisible" / "background itself needs contrast" reports were
+		// about, without needing a real kernel upgrade to trigger the
+		// PWA-specific toast.
 		const rows = page.locator('[data-item-id]');
 		await expect(rows.first()).toBeVisible();
 		await rows.first().click();
@@ -179,10 +180,6 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 		const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
 		expect(
-			styles.background,
-			'expected the toast background to differ from the page background — otherwise it visually disappears'
-		).not.toBe(bodyBg);
-		expect(
 			styles.borderColor,
 			'expected a distinct border color from the toast fill — a border indistinguishable from its own background gives no visible edge'
 		).not.toBe(styles.background);
@@ -190,5 +187,37 @@ test.describe('13-04: PWA manifest, service-worker registration, and API-free Ca
 			styles.boxShadow,
 			'expected a real box-shadow, not the "none" a fully-transparent/absent shadow would report'
 		).not.toBe('none');
+
+		// Round 1 (a same-family dark surface, one --popover step lighter
+		// than the page) only asserted "not equal" — technically distinct,
+		// but re-verification reported it still read as "close to
+		// invisible". Round 2 reuses SourceChip's own tooltip treatment
+		// (tooltip-content.svelte's bg-foreground/text-background full
+		// light/dark inversion) specifically because it is the one
+		// chip-adjacent floating surface that is NOT just another step of
+		// the same dark staircase — so this asserts the STRONGER claim a
+		// mere inequality can't: a real WCAG-style luminance gap, not just
+		// a different RGB triple.
+		function relativeLuminance(rgb: string): number {
+			const match = rgb.match(/\d+(\.\d+)?/g);
+			if (!match) throw new Error(`could not parse computed color: ${rgb}`);
+			const [r, g, b] = match.slice(0, 3).map(Number);
+			const toLinear = (c: number) => {
+				const s = c / 255;
+				return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+			};
+			return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+		}
+
+		const toastLuminance = relativeLuminance(styles.background);
+		const pageLuminance = relativeLuminance(bodyBg);
+		const lighter = Math.max(toastLuminance, pageLuminance) + 0.05;
+		const darker = Math.min(toastLuminance, pageLuminance) + 0.05;
+		const contrastRatio = lighter / darker;
+
+		expect(
+			contrastRatio,
+			`expected a WCAG-AA-grade contrast ratio (>= 4.5) between the toast background (${styles.background}, luminance ${toastLuminance.toFixed(3)}) and the page background (${bodyBg}, luminance ${pageLuminance.toFixed(3)}) — got ${contrastRatio.toFixed(2)}`
+		).toBeGreaterThanOrEqual(4.5);
 	});
 });
