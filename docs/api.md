@@ -200,6 +200,110 @@ recently recorded run anywhere in the kernel. `GET /api/webspaces`'s
 value), and the `/agent/v1` mirrors below compose this same participation
 scoping with grant filtering.
 
+**The `view` query parameter** (`KERN-10`, `13-02-PLAN.md`) selects which
+mark bucket this route returns. `?view=included` (also the default when
+the parameter is absent) is the ordinary stream — every item NOT carrying
+an excluded mark for `{webspace}`. `?view=excluded` returns exactly the
+items carrying an excluded mark, in the identical chronological order —
+the two views are exact complements of the webspace's full item set. Any
+other value is rejected `400 invalid_request` naming both allowed values;
+nothing is ever silently coerced to either bucket. The existence gate
+(`webspaceIsKnown`) runs BEFORE the view is parsed, so an unknown webspace
+still answers `404 webspace_not_found` regardless of the `view` value, and
+a known webspace with zero marks answers `?view=excluded` with `200` and
+`"items": []`, never `404`.
+
+**The `excluded_count` field** is the webspace's LIVE count of
+excluded-marked items, read fresh on every stream request and present in
+**both** views — the excluded-view toggle's own count (so a client on the
+included view already knows how many items the excluded view holds,
+without a second round trip).
+
+```
+$ curl -s http://127.0.0.1:7777/api/webspaces/house-move/stream?view=excluded | jq
+{
+  "schema_version": 1,
+  "webspace": "house-move",
+  "sync": { "status": "ok", "finished_unix": 1785000000, "error": "" },
+  "items": [ /* exactly the marked-excluded items, same ordering and shape as the included view */ ],
+  "excluded_count": 1
+}
+```
+
+### `POST /api/webspaces/{webspace}/marks`
+
+Marks (or un-marks) up to 1000 items with a per-item, per-webspace kind —
+today, `kind: "excluded"` is the only value this route accepts
+(`index.MarkKindExcluded`; `KERN-09`/`KERN-10`). This is the kernel's
+first user-owned data OUTSIDE `config.toml` (Phase 11 `D-01` framing): a
+mark lives in the local index, keyed on `(webspace_name, item_id, kind)`,
+and survives a re-sync, a kernel restart, and a schema-version-triggered
+index rebuild.
+
+```
+$ curl -s -X POST http://127.0.0.1:7777/api/webspaces/house-move/marks \
+    -H 'Content-Type: application/json' \
+    -d '{"kind": "excluded", "action": "add", "item_ids": ["paperless:528"]}' | jq
+{
+  "schema_version": 1,
+  "webspace": "house-move",
+  "kind": "excluded",
+  "action": "add",
+  "changed": 1,
+  "excluded_count": 1
+}
+```
+
+**Request body:**
+
+| Field | Type | Closed vocabulary | Notes |
+|---|---|---|---|
+| `kind` | string | `"excluded"` | The only mark kind this phase creates. |
+| `action` | string | `"add"` (exclude) or `"remove"` (include) | `"remove"` is exclude's exact mirror, never a separate un-exclude endpoint. |
+| `item_ids` | array of strings | — | 1 to 1000 entries; each id is trimmed before validation, and a blank (empty or whitespace-only) id after trimming is rejected. |
+
+**Response body:** `changed` is how many of `item_ids` this call actually
+newly marked/unmarked — re-marking an already-marked id (or un-marking an
+already-unmarked id) contributes 0, never an error and never a duplicate
+row: `SetItemMarks`/`ClearItemMarks` are both idempotent. `excluded_count`
+is the webspace's live total after this write, read fresh — the same
+field `GET .../stream` reports in both views, so a client never has to
+track the running total itself. Un-excluding an item that carries no mark
+returns `200` with `changed: 0`, never a `404` — clearing a mark that was
+never set is a legitimate no-op, not a failure case.
+
+**Rejections:** `404 webspace_not_found` (the same existence gate every
+other webspace-scoped route uses); `400 invalid_request` for a body that
+isn't valid JSON, a `kind` other than `"excluded"`, an `action` other than
+`"add"`/`"remove"`, an empty or absent `item_ids`, more than 1000 ids, or
+any id that is blank after trimming. Every id reaches the store as a bound
+parameter — never concatenated into SQL.
+
+**This route exists on `/api` only and is deliberately absent from
+`/agent/v1`** — `MountAgentRoutes` registers zero non-GET routes, so no
+agent grant can ever write a mark, only read the marks a human has already
+made (via the granted-source items an agent stream mirror still returns,
+now narrowed by the same exclusion rule the human stream applies).
+
+**Mark lifecycle**, for operators reasoning about what makes a mark
+appear or disappear: a mark **survives** a re-sync of its (webspace,
+source) pair that still reports the item, a kernel restart, and a
+schema-version-triggered index rebuild (item_marks carries no foreign key
+to `items(id)` and is deliberately absent from the rebuild's drop list).
+A mark is **swept** in exactly one circumstance: a HEALTHY sync of the
+owning (webspace, source) pair that no longer reports the item — the
+prune runs inside that same sync's own transaction, scoped to that one
+(webspace, source) pair, and never fires on a failed sync (a `Match`
+error never reaches the persistence call that carries the sweep) or an
+index rebuild (which drops item rows before any sync runs). A
+**de-allowlisted source's marks are swept with its rows** for that
+webspace (`PD-02`) — re-allowlisting therefore returns its items
+unexcluded, exactly as if they were never marked. A **renamed or moved
+item loses its mark**: Phase 12's remove+add identity model gives a
+renamed/moved item a new stable id, and the old mark has nothing left to
+attach to — this is the accepted, documented consequence of that identity
+model (`D-11`), not a bug; no rename-tracking is added for marks.
+
 ### `GET /api/webspaces/{webspace}/search`
 
 Full-text search over every item correlated into `{webspace}` (`KERN-05`).
@@ -239,6 +343,12 @@ $ curl -s "http://127.0.0.1:7777/api/webspaces/house-move/search?q=boiler" | jq
 **Query parameter:** `q`. A missing, empty, or whitespace-only `q` returns
 `200` with `"query": ""` and `"results": []` — never an error, and the
 store is not even queried in this case.
+
+**Excluded items never appear here, in any view** (`PD-06`,
+`13-02-PLAN.md`) — unlike the stream route, search carries no `?view=`
+parameter; it always answers from the included bucket, so an excluded
+item is unreachable through search regardless of the stream's own current
+view.
 
 **Query syntax:** the raw `q` text is never handed to the underlying FTS5
 `MATCH` operator directly. It's split into whitespace-delimited terms,
@@ -1213,7 +1323,7 @@ instance's `agent.read` is set explicitly.
 |---|---|---|
 | `GET /agent/v1/sources` | `GET /api/sources` | Ungranted sources are omitted entirely; each entry gains a `capabilities: {read, handoff}` object. |
 | `GET /agent/v1/webspaces` | `GET /api/webspaces` | `item_count` and `last_sync` are computed over granted sources only; `last_sync` additionally composes the same per-webspace participation scoping the `/api` route now applies (see "The `sync` object is an aggregate..." above) — grant filtering never widens what participation alone would report. |
-| `GET /agent/v1/webspaces/{webspace}/stream` | `GET /api/webspaces/{webspace}/stream` | `items` and `sync` are restricted to granted sources; ordering is otherwise identical to the `/api` stream with ungranted rows removed, never reordered. `sync` composes grant filtering with the identical participation scoping the `/api` route applies. |
+| `GET /agent/v1/webspaces/{webspace}/stream` | `GET /api/webspaces/{webspace}/stream` | `items` and `sync` are restricted to granted sources; ordering is otherwise identical to the `/api` stream with ungranted rows removed, never reordered. `sync` composes grant filtering with the identical participation scoping the `/api` route applies. This mirror carries **no `?view=` parameter of its own** — it always reads the included bucket (`index.ViewIncluded`, explicit at both of its `StreamItems` call sites) — so an excluded item is exactly as invisible through an agent grant as it is through the human UI (`D-03`/`PD-01`, `13-02-PLAN.md`), with no separate excluded-view surface for agents. |
 | `GET /agent/v1/items/{id}` | `GET /api/items/{id}` | An ungranted source's item responds identically to a nonexistent id (see below). |
 | `GET /agent/v1/items/{id}/content` | `GET /api/items/{id}/content` | Same restriction as above; no rendition bytes are written for an ungranted item. |
 | `GET /agent/v1/items/{id}/thumbnail` | `GET /api/items/{id}/thumbnail` | Same restriction as above. |
@@ -1341,7 +1451,7 @@ namespace", above).
 | `source_not_found` | 404 | `POST /api/sources/{name}/refresh` | `{name}` does not match any configured `[sources.<name>]` entry. The message never enumerates which names do exist. |
 | `invalid_path` | 400 | `POST /api/items/{id}/open` | The path joined from the item's indexed `source_id` and its source's configured `path` resolves outside that configured root after symlink resolution, or resolution itself fails for a reason other than the file not existing. |
 | `open_failed` | 502 | `POST /api/items/{id}/open` | The resolved path is valid, but the `xdg-open` invocation itself failed — the opener's own error message. |
-| `invalid_request` | 400 | `PUT /api/config` | The request body is not valid JSON, or is missing the `config` field. |
+| `invalid_request` | 400 | `PUT /api/config`, `GET /api/webspaces/{webspace}/stream`, `POST /api/webspaces/{webspace}/marks` | `PUT /api/config`: the request body is not valid JSON, or is missing the `config` field. `GET .../stream`: `?view=` is neither `included` nor `excluded`. `POST .../marks`: the body is not valid JSON, `kind` is not `"excluded"`, `action` is not `"add"`/`"remove"`, `item_ids` is empty/absent/over-1000/contains a blank id. |
 | `config_changed_on_disk` | 409 | `PUT /api/config` | `base_hash` no longer matches `config.toml`'s current on-disk hash — someone else (another browser tab, a hand-edit, a `topos` CLI run) saved since you last read it. Nothing is written; re-`GET /api/config` and retry. |
 | `config_has_unknown_keys` | 409 | `PUT /api/config` | `config.toml` carries a TOML key or table the `Config` struct doesn't model. The kernel refuses to write a canonical rewrite that would silently drop it — the message names the offending key(s); fix them by hand before any UI save can succeed. |
 | `config_invalid` | 422 | `PUT /api/config`, `POST /api/config/reload` | The submitted (or reloaded) config fails the same `(*config.Config).Validate` a hand-edited file must pass at load time. The message is the validator's own error string, verbatim. On a failed reload, the previously running configuration is left completely untouched. |

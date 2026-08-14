@@ -684,3 +684,123 @@ func TestAgentWebspacesHandler_CountsRestrictedToGrantedSources(t *testing.T) {
 		t.Errorf("expected item_count restricted to the 2 granted paperless items (silverbullet's 1 excluded), got %d", resp.Webspaces[0].ItemCount)
 	}
 }
+
+// --- Three-surface exclusion parity (13-02-PLAN.md Task 3, D-03/PD-01) ---
+
+// TestThreeSurfaceParity_ExcludedItemAgreesAcrossStreamSearchAndAgentMirror
+// proves D-03's "one consistent rule" by test rather than by construction
+// alone: against ONE temp index and ONE config, excluding an item removes
+// it from GET /api/webspaces/{ws}/stream, GET /api/webspaces/{ws}/search,
+// and GET /agent/v1/webspaces/{ws}/stream alike, while it remains present
+// in GET /api/webspaces/{ws}/stream?view=excluded. Built here (not in
+// stream_test.go or search_test.go) because newAgentTestRouter is the one
+// harness in this package that mounts all three routes on a single full
+// Router, so the fixture is built exactly once.
+func TestThreeSurfaceParity_ExcludedItemAgreesAcrossStreamSearchAndAgentMirror(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	ctx := context.Background()
+
+	kept := item.Item{
+		ID: "paperless:1", Source: "paperless", SourceType: "paperless", SourceID: "1",
+		Title: "kept invoice", Preview: "kept", Fidelity: item.FidelityExact, DeepLink: "http://x/1", TimestampUnix: 200,
+	}
+	excluded := item.Item{
+		ID: "paperless:2", Source: "paperless", SourceType: "paperless", SourceID: "2",
+		Title: "excluded invoice", Preview: "excluded", Fidelity: item.FidelityExact, DeepLink: "http://x/2", TimestampUnix: 100,
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept, excluded}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := store.SetItemMarks(ctx, "ws", index.MarkKindExcluded, []string{excluded.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	cfg := &config.Config{Sources: map[string]config.Source{
+		"paperless": {Plugin: "x", BaseURL: "http://x", Token: "t", Agent: config.AgentGrant{Read: true}},
+	}}
+	router := newAgentTestRouter(store, cfg, &fakeFetcher{}, &fakeProber{})
+
+	// GET /api/webspaces/ws/stream (default view) — excluded item absent.
+	req := httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var streamResp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &streamResp); err != nil {
+		t.Fatalf("unmarshal /api stream: %v", err)
+	}
+	if parityContainsID(streamResp.Items, excluded.ID) {
+		t.Errorf("expected /api/webspaces/{ws}/stream to omit the excluded item")
+	}
+	if !parityContainsID(streamResp.Items, kept.ID) {
+		t.Errorf("expected /api/webspaces/{ws}/stream to still carry the kept item")
+	}
+
+	// GET /api/webspaces/ws/search?q=invoice — excluded item absent.
+	req = httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/search?q=invoice", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var searchResp searchResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &searchResp); err != nil {
+		t.Fatalf("unmarshal /api search: %v", err)
+	}
+	for _, r := range searchResp.Results {
+		if r.ID == excluded.ID {
+			t.Errorf("expected /api/webspaces/{ws}/search to omit the excluded item")
+		}
+	}
+	foundKeptInSearch := false
+	for _, r := range searchResp.Results {
+		if r.ID == kept.ID {
+			foundKeptInSearch = true
+		}
+	}
+	if !foundKeptInSearch {
+		t.Errorf("expected /api/webspaces/{ws}/search to still surface the kept item")
+	}
+
+	// GET /agent/v1/webspaces/ws/stream — excluded item absent (a granted
+	// source's items pass through the identical StreamItems(ViewIncluded)
+	// read the /api mirror uses).
+	req = httptest.NewRequest(http.MethodGet, "/agent/v1/webspaces/ws/stream", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var agentResp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &agentResp); err != nil {
+		t.Fatalf("unmarshal /agent/v1 stream: %v", err)
+	}
+	if parityContainsID(agentResp.Items, excluded.ID) {
+		t.Errorf("expected /agent/v1/webspaces/{ws}/stream to omit the excluded item")
+	}
+	if !parityContainsID(agentResp.Items, kept.ID) {
+		t.Errorf("expected /agent/v1/webspaces/{ws}/stream to still carry the kept item")
+	}
+
+	// GET /api/webspaces/ws/stream?view=excluded — the excluded item IS
+	// present, and the kept item is absent (the excluded view's own
+	// complement proof, at the HTTP layer this time).
+	req = httptest.NewRequest(http.MethodGet, "/api/webspaces/ws/stream?view=excluded", nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var excludedViewResp streamResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &excludedViewResp); err != nil {
+		t.Fatalf("unmarshal ?view=excluded: %v", err)
+	}
+	if !parityContainsID(excludedViewResp.Items, excluded.ID) {
+		t.Errorf("expected ?view=excluded to carry the excluded item")
+	}
+	if parityContainsID(excludedViewResp.Items, kept.ID) {
+		t.Errorf("expected ?view=excluded to omit the kept item")
+	}
+}
+
+// parityContainsID reports whether items carries an entry with the given
+// id — the shared lookup TestThreeSurfaceParity_... uses across all three
+// surfaces' response shapes.
+func parityContainsID(items []streamItem, id string) bool {
+	for _, it := range items {
+		if it.ID == id {
+			return true
+		}
+	}
+	return false
+}
