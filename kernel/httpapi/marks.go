@@ -2,13 +2,20 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/index"
 )
+
+// maxMarksItemIDs caps a single POST /api/webspaces/{webspace}/marks
+// request's item_ids array (T-13-03, DoS): an over-cap request is
+// rejected 400 before any transaction opens, never partially processed.
+const maxMarksItemIDs = 1000
 
 // marksRequest is the request body POST /api/webspaces/{webspace}/marks
 // decodes. kind is a closed vocabulary (today, only "excluded" —
@@ -46,11 +53,12 @@ type marksResponse struct {
 // parameter (SetItemMarks/ClearItemMarks) — never concatenated into SQL
 // (T-13-01).
 //
-// This task's validation is intentionally the minimal set 13-01-PLAN.md
-// Task 1's <behavior> names: an empty/absent item_ids is rejected; a
-// bad kind/action, an over-cap id list, and blank-id trimming are Task
-// 2's hardening pass (13-01-PLAN.md), landing in this same file without
-// changing this route's path or response shape.
+// Every rejection below returns the shared invalid_request code, naming
+// the offending field, so a caller can distinguish "empty request" from
+// "over cap" from "blank id" without parsing message text (Task 2,
+// 13-01-PLAN.md). Ids are trimmed BEFORE validation and before ever
+// reaching the store, so a trailing-space id can never create a mark no
+// read path can ever match.
 func MarksHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := cfgStore.Expanded()
@@ -85,12 +93,31 @@ func MarksHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc {
 			WriteError(w, http.StatusBadRequest, "invalid_request", "item_ids must not be empty")
 			return
 		}
+		if len(req.ItemIDs) > maxMarksItemIDs {
+			WriteError(w, http.StatusBadRequest, "invalid_request",
+				fmt.Sprintf("item_ids must not carry more than %d ids", maxMarksItemIDs))
+			return
+		}
+
+		// Trim every id before validating and before it ever reaches the
+		// store — a blank (empty or whitespace-only) id is rejected
+		// outright, since it could never match a real item's id anyway
+		// and would otherwise create a mark no read path can ever find.
+		trimmedIDs := make([]string, len(req.ItemIDs))
+		for i, id := range req.ItemIDs {
+			trimmed := strings.TrimSpace(id)
+			if trimmed == "" {
+				WriteError(w, http.StatusBadRequest, "invalid_request", "item_ids must not contain a blank id")
+				return
+			}
+			trimmedIDs[i] = trimmed
+		}
 
 		var changed int
 		if req.Action == "add" {
-			changed, err = store.SetItemMarks(ctx, name, req.Kind, req.ItemIDs)
+			changed, err = store.SetItemMarks(ctx, name, req.Kind, trimmedIDs)
 		} else {
-			changed, err = store.ClearItemMarks(ctx, name, req.Kind, req.ItemIDs)
+			changed, err = store.ClearItemMarks(ctx, name, req.Kind, trimmedIDs)
 		}
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())

@@ -2,6 +2,8 @@ package index
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"testing"
 
 	"github.com/davison/topos/kernel/item"
@@ -211,5 +213,129 @@ func TestDeleteSourceItems_MarkSurvives(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected item_marks row to survive DeleteSourceItems with no FK cascade, got count=%d", count)
+	}
+}
+
+// TestItemMarks_SurviveIndexRebuild pins the KERN-09 survival guarantee
+// by a test rather than a comment (13-01-PLAN.md Task 2): a mark written
+// under schemaVersion N is still present after an Open that triggers
+// rebuildOnSchemaChange, while items/webspace_items rows for the same
+// item are gone — and the surviving mark still filters the item out once
+// it re-enters the index via a later ReplaceWebspaceSourceItems call.
+// Mirrors TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice's
+// own "force PRAGMA user_version, close, reopen" mechanism. This test
+// fails (see its own failure messages) if item_marks is ever added to
+// rebuildOnSchemaChange's drop list — verified by temporarily adding it,
+// observing the failure, and reverting.
+func TestItemMarks_SurviveIndexRebuild(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ctx := context.Background()
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{it.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Force the on-disk schema version to a value other than the current
+	// schemaVersion, simulating an operator's existing index.db from
+	// before a schema change — the same mechanism
+	// TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice
+	// (store_test.go) already uses.
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 999`); err != nil {
+		t.Fatalf("force user_version = 999: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen at a stale schema version: %v", err)
+	}
+	t.Cleanup(func() { reopened.Close() })
+
+	// (a) items/webspace_items rows are gone — the ordinary rebuild
+	// behavior, unaffected by this phase's addition.
+	items, err := reopened.StreamItems(ctx, "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems after rebuild: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected the schema rebuild to drop pre-existing item rows (D-07), got: %v", idsOf(items))
+	}
+
+	// (b) the item_marks row survives — the rebuild ate the mark if this
+	// count is 0.
+	count, err := reopened.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks after rebuild: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("the rebuild ate the mark: expected the item_marks row to survive a schema-version-triggered rebuild, got count=%d", count)
+	}
+
+	// The surviving mark still filters the item out once it re-enters the
+	// index via an ordinary sync — a match rule that later pulls the item
+	// back in cannot resurrect it.
+	if err := reopened.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("re-insert after rebuild: %v", err)
+	}
+	itemsAfterReinsert, err := reopened.StreamItems(ctx, "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems after re-insert: %v", err)
+	}
+	if len(itemsAfterReinsert) != 0 {
+		t.Fatalf("the rebuild ate the mark: expected the surviving mark to still filter %s after it re-entered the index, got %v", it.ID, idsOf(itemsAfterReinsert))
+	}
+}
+
+// TestSetItemMarks_MarkForUnindexedItemOutranksLaterMatch proves what
+// "always outranks whatever the automatic match rules say" means
+// concretely (KERN-09): a mark written for an item id that is not yet
+// indexed is accepted and stored, and becomes effective the moment that
+// id later appears via a normal sync/match — a match rule that pulls the
+// item in cannot resurrect it.
+func TestSetItemMarks_MarkForUnindexedItemOutranksLaterMatch(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+
+	// The mark is written BEFORE the item has ever been synced/indexed
+	// for this webspace — item_marks carries no FK to items(id), so this
+	// must succeed.
+	changed, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{it.ID})
+	if err != nil {
+		t.Fatalf("SetItemMarks for an unindexed item: %v", err)
+	}
+	if changed != 1 {
+		t.Errorf("expected changed=1 marking an unindexed item, got %d", changed)
+	}
+
+	// The item now arrives via an ordinary sync/match.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected the mark written before indexing to still filter %s out once matched, got %v", it.ID, idsOf(items))
 	}
 }
