@@ -4,15 +4,15 @@ milestone: v1.1.0
 milestone_name: Plugin Ecosystem
 current_phase: 13
 current_phase_name: Per-Item Curation & Installable App
-status: planning
+status: executing
 stopped_at: Phase 13 UI-SPEC approved
-last_updated: "2026-08-14T15:35:22.796Z"
+last_updated: "2026-08-14T16:50:11.096Z"
 last_activity: 2026-08-14
 last_activity_desc: "Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 18
+  total_plans: 24
   completed_plans: 18
   percent: 50
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-14 after Phase 12 completion)
 
 Phase: 13 — Per-Item Curation & Installable App
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
 Last activity: 2026-08-14 - Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim
 

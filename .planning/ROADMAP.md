@@ -153,11 +153,22 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 13-01-PLAN.md — Tracer: item_marks table, mark write/read API, shared exclusion filter, toast layer (wave 1)
-- [ ] 13-02-PLAN.md — Excluded-bucket view param, excluded_count, orphan prune sweep, API docs (wave 2)
-- [ ] 13-03-PLAN.md — Multi-select, floating action bar, excluded-view toggle, include mirror, e2e specs (wave 3)
-- [ ] 13-04-PLAN.md — PWA manifest/icons/ServiceWorker, never-stale update flow, UI-14 docs (wave 2)
 - [ ] 13-05-PLAN.md — Trust hardening: link-time build-provenance manifest, reordered build, refuse-to-load launch gate (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 13-02-PLAN.md — Excluded-bucket view param, excluded_count, orphan prune sweep, API docs (wave 2)
+- [ ] 13-04-PLAN.md — PWA manifest/icons/ServiceWorker, never-stale update flow, UI-14 docs (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 13-03-PLAN.md — Multi-select, floating action bar, excluded-view toggle, include mirror, e2e specs (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 13-06-PLAN.md — Trust hardening UI states, browser specs, republished plugin contract and Signal guidance (wave 4)
 
 **UI hint**: yes
