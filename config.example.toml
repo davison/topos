@@ -520,6 +520,17 @@ path = "~/Documents/household"
 # Validation: none — false is always a legal value.
 recursive = false
 
+# Match vocabulary: "folders". Every file this instance contributes
+# carries the configured path's own base name as a label, at every depth
+# — name that value in a webspace's folders match block (or keywords) to
+# match "everything from this instance". A nested file (recursive = true)
+# additionally carries one label per containing-directory segment plus
+# the cumulative relative path. CAUTION: these values are compared as
+# exact, case-insensitive strings — never as glob patterns — unlike the
+# include_glob/exclude_glob keys documented immediately below. See
+# docs/plugins/filesystem.md's "Folder-vocabulary match values" section
+# for the worked example and the full precedence rule.
+
 # [sources.filesystem.extras] — OPTIONAL glob-based scope overrides this
 # plugin's own Describe RPC declares (see [sources.paperless.extras],
 # above, for the general extras mechanism). Both keys are a single
@@ -657,7 +668,11 @@ handoff = false
 # Matching itself stays exact and case-insensitive with no Unicode
 # normalization (D-04) in both shapes above — only WHERE the value list
 # comes from (one shared list vs. a typed, per-instance table) changed in
-# Phase 5.
+# Phase 5. A glob-shaped value (e.g. "*" or "**") is therefore taken
+# literally, matches no source's actual field values, and silently
+# produces an empty result for that instance — never as glob patterns,
+# not for any plugin's match vocabulary, even the filesystem plugin whose
+# own include_glob/exclude_glob extras (above) DO take doublestar globs.
 #
 # filter (D-16/D-17/D-18, OPTIONAL, added Phase 7): a webspace's saved
 # PERMANENT filter — a plain list of exact-word terms, AND-ed together and
