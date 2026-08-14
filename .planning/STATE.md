@@ -6,13 +6,13 @@ current_phase: 13
 current_phase_name: per-item-curation-installable-app
 status: executing
 stopped_at: Phase 13 UI-SPEC approved
-last_updated: "2026-08-14T16:58:13.857Z"
+last_updated: "2026-08-14T23:31:50.637Z"
 last_activity: 2026-08-14
 last_activity_desc: "Completed quick task 260814-mkl: Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 24
+  total_plans: 25
   completed_plans: 18
   percent: 50
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-14 after Phase 12 completion)
 
 Phase: 13 (per-item-curation-installable-app) — EXECUTING
 Plan: 1 of 6
-Status: Executing Phase 13
+Status: Ready to execute
 Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
 Last activity: 2026-08-14 — Phase 13 execution started
 
