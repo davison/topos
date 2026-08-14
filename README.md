@@ -101,6 +101,52 @@ plugin, since a from-source build already has (or will need) a C
 toolchain. Use `make build-portable` instead if you want the same output
 minus Signal, with no cgo requirement at all.
 
+### As an app (PWA)
+
+Once the kernel is running, topos installs like a desktop app.
+
+Open the loopback address (`http://127.0.0.1:7777` by default) in a
+Chromium-based browser or Edge, and use the browser's own install
+affordance — the install icon in the address bar, or "Install topos" in
+the browser's app menu. topos adds no install button of its own; the
+browser owns that affordance entirely.
+
+This works with no extra setup because `http://localhost`/`http://127.0.0.1`
+on any port is a browser-recognized secure context, which is what
+ServiceWorker registration and install eligibility both require — and the
+kernel's default listener is already loopback.
+
+**The limitation:** opening topos from another device on your LAN — a
+phone, a tablet, another desktop — over a plain-HTTP LAN address such as
+`http://192.168.1.20:7777` is *not* a secure context, so the browser will
+not register a ServiceWorker and will not offer to install the app. The
+page itself still loads and works over LAN; only installability is
+unavailable there. This is a browser rule, not a topos bug — it's the
+same secure-context requirement the kernel's own non-loopback listener
+warning is the network-layer counterpart of (see "Run", below: binding
+beyond loopback is a deliberate exposure decision the kernel warns about
+at startup).
+
+If you want to install topos from another device anyway, that means
+putting real TLS in front of the kernel yourself — none of these are
+something topos ships, all of them are things you run:
+
+- **A reverse proxy you already trust**, terminating TLS with a
+  certificate your devices already trust, forwarding to the kernel.
+- **A mesh VPN that issues real certificates for its own hostnames**
+  (this repo's own dev tooling already allowlists such hostnames — see
+  `allowedHosts` in `web/vite.config.ts`).
+- **A locally-generated certificate authority**, added to one trusted
+  device's own trust store, for a single-device setup.
+
+Whichever you pick, the kernel has to be reachable from wherever TLS
+terminates, which means widening `[server] listen` beyond loopback — and
+the kernel logs a warning when you do, deliberately, because that
+widening is a real exposure decision (see "Run", below).
+
+No built-in HTTPS listen mode is planned for this release; that's tracked
+separately, with no date attached.
+
 ## Configure
 
 topos needs two things from you: your source connection details in the

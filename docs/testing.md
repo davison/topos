@@ -416,9 +416,9 @@ never builds, not a gap in the shipped SPA code).
 
 ## What stays manual, and why
 
-Three items remain manual, accepted risk — non-deterministic timing
+Four items remain manual, accepted risk — non-deterministic timing
 windows a browser driver cannot reliably provoke, or requiring hardware
-this harness cannot have:
+or a real browser install this harness cannot have:
 
 1. **Killing the kernel between the `config.toml.bak` write and the
    atomic rename during a config save.** The window is a handful of
@@ -434,6 +434,14 @@ this harness cannot have:
    hermetic harness can fabricate that hardware step. Covered instead by
    Plan 08-01 Task 3's hands-on spike (a real, one-time manual pairing
    run, recorded in `08-01-SUMMARY.md`), not by an automated gate.
+4. **The actual desktop PWA install, the standalone window launch, and
+   the post-upgrade freshness check (13-04-PLAN.md Task 4).** These need
+   a real browser's own install affordance and a real kernel binary
+   upgrade+restart — neither is something Playwright's hermetic fixture
+   process can fabricate. The browser-drivable half (manifest
+   Content-Type, the manifest `<link>`, ServiceWorker registration and
+   scope, and zero `/api/` entries in Cache Storage) is covered by
+   `13-pwa-manifest-sw.spec.ts`.
 
 Recording this here, in shipped documentation, is deliberate: the
 standing rule below says future UI work extends this suite, and a reader
