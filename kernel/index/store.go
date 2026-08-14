@@ -221,13 +221,27 @@ WHERE webspace_name = ?
 		return fmt.Errorf("index: clear webspace_items for %s/%s: %w", webspaceName, source, err)
 	}
 
-	for _, it := range items {
+	keptIDs := make([]string, len(items))
+	for i, it := range items {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO webspace_items (webspace_name, item_id) VALUES (?, ?)`,
 			webspaceName, it.ID,
 		); err != nil {
 			return fmt.Errorf("index: insert webspace_items row for %s/%s: %w", webspaceName, it.ID, err)
 		}
+		keptIDs[i] = it.ID
+	}
+
+	// The orphan prune sweep (13-02-PLAN.md Task 2, D-09/D-10): runs AFTER
+	// upsertItemsTx and the reinsert loop above, so the surviving id set
+	// (keptIDs) is already known and the just-arrived items are already
+	// attributed to source in the items table. This is what makes the
+	// sweep structurally unreachable on a failed sync — SyncSource never
+	// calls ReplaceWebspaceSourceItems at all when Match errors (D-10) —
+	// and unreachable on an index rebuild, which drops item rows before
+	// any sync runs and never calls this method directly.
+	if err := pruneItemMarksTx(ctx, tx, webspaceName, source, keptIDs); err != nil {
+		return err
 	}
 
 	// Marked on ANY source's successful contribution, not gated on every
@@ -456,6 +470,63 @@ DELETE FROM item_marks WHERE webspace_name = ? AND item_id = ? AND kind = ?
 		return 0, fmt.Errorf("index: commit clear item marks transaction for %s: %w", webspaceName, err)
 	}
 	return int(changed), nil
+}
+
+// pruneItemMarksTx sweeps item_marks rows for the (webspaceName, source)
+// pair whose item_id is not among keptIDs, inside tx — called from
+// ReplaceWebspaceSourceItems AFTER upsertItemsTx and the webspace_items
+// reinsert loop, BEFORE the webspaces upsert (13-02-PLAN.md Task 2,
+// D-09/D-10): the sweep runs ONLY inside a healthy sync's own transaction,
+// never as a separate pass, so it can never fire independently of a
+// successful ReplaceWebspaceSourceItems call. A Match failure for this
+// (webspace, source) pair never reaches this method at all — SyncSource
+// skips straight to appending an error WebspaceResult and never calls
+// ReplaceWebspaceSourceItems for that pair — making the sweep
+// structurally unreachable on a failed sync (D-10). An index rebuild
+// (rebuildOnSchemaChange) drops item rows directly and never calls this
+// method either, so a rebuild can never prune a mark (KERN-09's "survives
+// re-sync, restart, AND index rebuild" guarantee).
+//
+// Scoping mirrors the existing webspace_items delete immediately above in
+// ReplaceWebspaceSourceItems: item_id IN (SELECT id FROM items WHERE
+// source = ?) attributes ownership by the kernel's OWN source parameter —
+// never each item's self-reported Source field — so this source
+// instance's sweep can never touch a sibling source's marks in the same
+// webspace, and webspaceName scopes it so a sync of webspace X can never
+// touch a mark in webspace Y. This call runs strictly after
+// upsertItemsTx, so the just-synced items are already present in items
+// and therefore correctly attributed to source by the subquery.
+//
+// When keptIDs is empty, the NOT IN restriction is omitted entirely
+// (an empty SQL IN-list is a syntax error, not "match nothing") — the
+// intended behaviour for an empty keptIDs is not "keep everything" but
+// "delete every mark for this source in this webspace". This is the
+// de-allowlist branch's behaviour, reached when
+// ReplaceWebspaceSourceItems is called with items=nil: PD-02's decided
+// consequence of D-09's own framing — the excluded view only ever shows
+// items that would otherwise be in the stream, and a de-allowlisted
+// source contributes nothing to the stream, so its marks for this
+// webspace are swept along with its rows. Re-allowlisting therefore
+// returns the source's items unexcluded.
+func pruneItemMarksTx(ctx context.Context, tx *sql.Tx, webspaceName, source string, keptIDs []string) error {
+	query := `
+DELETE FROM item_marks
+WHERE webspace_name = ?
+  AND item_id IN (SELECT id FROM items WHERE source = ?)
+`
+	args := []any{webspaceName, source}
+	if len(keptIDs) > 0 {
+		placeholders := make([]string, len(keptIDs))
+		for i, id := range keptIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		query += "  AND item_id NOT IN (" + strings.Join(placeholders, ", ") + ")\n"
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("index: prune item marks for %s/%s: %w", webspaceName, source, err)
+	}
+	return nil
 }
 
 // CountItemMarks returns how many items in webspaceName currently carry

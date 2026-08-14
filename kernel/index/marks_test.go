@@ -404,6 +404,272 @@ func TestStreamItems_ZeroMarksExcludedViewReturnsEmpty(t *testing.T) {
 	}
 }
 
+// --- Orphan prune sweep (13-02-PLAN.md Task 2, D-09/D-10) ---
+
+// TestReplaceWebspaceSourceItems_ResyncedExcludedItemKeepsItsMark proves a
+// sync that re-reports a previously-excluded item leaves its mark intact —
+// the sweep only removes marks for items a healthy sync OMITS, never ones
+// it still reports.
+func TestReplaceWebspaceSourceItems_ResyncedExcludedItemKeepsItsMark(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{it.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	// Re-sync reporting the SAME item again.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+
+	count, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected the mark to survive a re-sync that still reports the item, got count=%d", count)
+	}
+}
+
+// TestReplaceWebspaceSourceItems_OmittedExcludedItemIsPruned proves a
+// healthy sync that omits a previously-excluded item of the SAME source
+// removes that mark — the core D-09 sweep behavior.
+func TestReplaceWebspaceSourceItems_OmittedExcludedItemIsPruned(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	kept := sampleItem("1", 200)
+	vanished := sampleItem("2", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept, vanished}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{vanished.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	// Healthy re-sync that no longer reports "vanished".
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept}); err != nil {
+		t.Fatalf("re-sync omitting vanished item: %v", err)
+	}
+
+	count, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected the mark on the omitted item to be swept, got count=%d", count)
+	}
+}
+
+// TestReplaceWebspaceSourceItems_SweepNeverTouchesSiblingSourceMarks proves
+// a sync of source A never removes a mark on an item belonging to source B
+// in the same webspace, even when B's item is never reported by A's sync.
+func TestReplaceWebspaceSourceItems_SweepNeverTouchesSiblingSourceMarks(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	aItem := sampleItemForSource("paperless", "1", 200)
+	bItem := sampleItemForSource("silverbullet", "1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{aItem}); err != nil {
+		t.Fatalf("seed paperless: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "silverbullet", []item.Item{bItem}); err != nil {
+		t.Fatalf("seed silverbullet: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{bItem.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	// A healthy paperless sync that omits everything (paperless never
+	// reported bItem in the first place — it belongs to silverbullet).
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", nil); err != nil {
+		t.Fatalf("paperless sync: %v", err)
+	}
+
+	count, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected silverbullet's mark to survive a paperless-only sync, got count=%d", count)
+	}
+}
+
+// TestReplaceWebspaceSourceItems_SweepNeverTouchesOtherWebspaceMarks proves
+// a sync of webspace X never removes a mark in webspace Y, even for the
+// SAME item id and the SAME source.
+func TestReplaceWebspaceSourceItems_SweepNeverTouchesOtherWebspaceMarks(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	shared := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws-x", "paperless", []item.Item{shared}); err != nil {
+		t.Fatalf("seed ws-x: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws-y", "paperless", []item.Item{shared}); err != nil {
+		t.Fatalf("seed ws-y: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws-y", MarkKindExcluded, []string{shared.ID}); err != nil {
+		t.Fatalf("SetItemMarks(ws-y): %v", err)
+	}
+
+	// A healthy ws-x sync that omits the shared item entirely.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws-x", "paperless", nil); err != nil {
+		t.Fatalf("ws-x sync: %v", err)
+	}
+
+	count, err := s.CountItemMarks(ctx, "ws-y", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks(ws-y): %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected ws-y's mark on the same item id to survive a ws-x sync, got count=%d", count)
+	}
+}
+
+// TestReplaceWebspaceSourceItems_DeallowlistClearsThatSourcesMarks proves a
+// de-allowlist call (items=nil) removes that source's marks for that
+// webspace (PD-02) — verified against store.go's own PD-02-named comment
+// at the sweep's empty-kept-set branch.
+func TestReplaceWebspaceSourceItems_DeallowlistClearsThatSourcesMarks(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{it.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	// De-allowlist: items=nil.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", nil); err != nil {
+		t.Fatalf("de-allowlist sync: %v", err)
+	}
+
+	count, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected the de-allowlisted source's mark to be swept, got count=%d", count)
+	}
+}
+
+// TestReplaceWebspaceSourceItems_ReappearingItemIsUnexcluded proves that
+// after a prune, the same item arriving again on a LATER sync appears in
+// the normal stream, unexcluded — its mark is gone, not dormant (D-09).
+func TestReplaceWebspaceSourceItems_ReappearingItemIsUnexcluded(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	it := sampleItem("1", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{it.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	// Healthy sync that omits the item — prunes the mark.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", nil); err != nil {
+		t.Fatalf("sync omitting item: %v", err)
+	}
+
+	// The item reappears on a LATER sync.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("sync reintroducing item: %v", err)
+	}
+
+	items, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != it.ID {
+		t.Fatalf("expected the reappeared item %q back in the stream, unexcluded, got %v", it.ID, idsOf(items))
+	}
+}
+
+// TestReplaceWebspaceSourceItems_InterruptedSyncLeavesItemsAndMarksUnchanged
+// proves the whole method — upsert, webspace_items replace, the mark
+// sweep, and the webspaces upsert — is one atomic transaction: a write
+// interrupted by a concurrent writer holding the database's write lock
+// fails cleanly and leaves the item set AND the mark set exactly as they
+// were beforehand, never a partially-applied sweep.
+func TestReplaceWebspaceSourceItems_InterruptedSyncLeavesItemsAndMarksUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	ctx := context.Background()
+
+	kept := sampleItem("1", 200)
+	vanished := sampleItem("2", 100)
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept, vanished}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "ws", MarkKindExcluded, []string{vanished.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	before, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems (before): %v", err)
+	}
+	beforeCount, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks (before): %v", err)
+	}
+
+	// A second, independent connection to the SAME file holds the
+	// database's write lock for the duration of the attempted sync below —
+	// SetMaxOpenConns(1) forces every statement through one held
+	// connection, so the two raw Execs below run on it without an
+	// intervening implicit commit.
+	blocker, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open blocker connection: %v", err)
+	}
+	defer blocker.Close()
+	blocker.SetMaxOpenConns(1)
+	if _, err := blocker.Exec(`BEGIN IMMEDIATE`); err != nil {
+		t.Fatalf("blocker BEGIN IMMEDIATE: %v", err)
+	}
+
+	// This sync — which would otherwise omit "vanished" and prune its
+	// mark — cannot acquire the write lock and must fail cleanly.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{kept}); err == nil {
+		t.Fatal("expected ReplaceWebspaceSourceItems to fail while another writer holds the database lock")
+	}
+
+	if _, err := blocker.Exec(`ROLLBACK`); err != nil {
+		t.Fatalf("blocker ROLLBACK: %v", err)
+	}
+
+	after, err := s.StreamItems(ctx, "ws", nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems (after): %v", err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("expected the interrupted sync to leave items unchanged: before=%v after=%v", idsOf(before), idsOf(after))
+	}
+	afterCount, err := s.CountItemMarks(ctx, "ws", MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks (after): %v", err)
+	}
+	if afterCount != beforeCount {
+		t.Fatalf("expected the interrupted sync to leave marks unchanged: before=%d after=%d", beforeCount, afterCount)
+	}
+}
+
 // TestSetItemMarks_MarkForUnindexedItemOutranksLaterMatch proves what
 // "always outranks whatever the automatic match rules say" means
 // concretely (KERN-09): a mark written for an item id that is not yet

@@ -158,6 +158,55 @@ func TestSyncSource_MatchErrorReturnsWebspaceResultErr(t *testing.T) {
 	}
 }
 
+// TestSyncSource_MatchFailureNeverPrunesAMark proves the STRUCTURAL half
+// of D-10 (13-02-PLAN.md Task 2): a Match failure for a (webspace, source)
+// pair never reaches Store.ReplaceWebspaceSourceItems at all — SyncSource's
+// error branch appends a WebspaceResult and continues, skipping the
+// persistence call entirely for that pair — so the orphan prune sweep is
+// structurally unreachable on a failed sync, not merely skipped by a
+// runtime check that could later be bypassed.
+func TestSyncSource_MatchFailureNeverPrunesAMark(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// Seed and exclude an item via a prior HEALTHY sync of this same
+	// (webspace, source) pair.
+	it := item.Item{
+		ID: item.ID("paperless", "1"), Source: "paperless", SourceType: "paperless", SourceID: "1",
+		Title: "Doc 1", Fidelity: item.FidelityExact, DeepLink: "http://paperless.lan/documents/1", TimestampUnix: 100,
+	}
+	if err := store.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := store.SetItemMarks(ctx, "ws", index.MarkKindExcluded, []string{it.ID}); err != nil {
+		t.Fatalf("SetItemMarks: %v", err)
+	}
+
+	src := &fakeSource{
+		name: "paperless", sourceType: "paperless",
+		matchFunc: func([]string) (*toposv1.MatchResponse, error) {
+			return nil, errors.New("connection refused")
+		},
+	}
+	cfg := &config.Config{Webspaces: map[string]config.Webspace{
+		"ws": {Keywords: []string{"a"}},
+	}}
+	engine := &Engine{Store: store, Config: cfg}
+
+	results, _ := engine.SyncSource(ctx, src)
+	if len(results) != 1 || results[0].Err == nil {
+		t.Fatalf("expected a webspace-level error result for the failed Match, got: %+v", results)
+	}
+
+	count, err := store.CountItemMarks(ctx, "ws", index.MarkKindExcluded)
+	if err != nil {
+		t.Fatalf("CountItemMarks: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("a failed sync ate a mark: expected the mark to survive a Match failure untouched, got count=%d", count)
+	}
+}
+
 // TestSyncSource_RejectsUnspecifiedFidelityAndEmptyDeepLink verifies
 // PLUG-03: an item with an unspecified fidelity, or an empty deep link, is
 // skipped at the correlation boundary and never reaches the index, while
