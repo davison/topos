@@ -78,8 +78,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRC-04 | Phase 12 | Complete |
 | SRC-05 | Phase 14 | Pending |
 | SRC-06 | Phase 14 | Pending |
-| KERN-09 | Phase 13 | Pending |
-| KERN-10 | Phase 13 | Pending |
+| KERN-09 | Phase 13 | Gaps Found |
+| KERN-10 | Phase 13 | Gaps Found |
 | UI-13 | Phase 13 | Gaps Found |
 | UI-14 | Phase 13 | Gaps Found |
 
