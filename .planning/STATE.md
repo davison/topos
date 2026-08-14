@@ -5,16 +5,15 @@ milestone_name: Plugin Ecosystem
 current_phase: 12
 current_phase_name: filesystem-source
 status: executing
-stopped_at: Phase 12 UI-SPEC approved
-last_updated: "2026-08-14T00:56:21.999Z"
+stopped_at: Completed 12-07-PLAN.md
+last_updated: "2026-08-14T01:14:50.861Z"
 last_activity: 2026-08-14
-last_activity_desc: Phase 12 execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 14
-  completed_plans: 12
-  percent: 25
+  completed_plans: 14
+  percent: 50
 ---
 
 # Project State
@@ -29,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-13 after Phase 11 completion)
 ## Current Position
 
 Phase: 12 (filesystem-source) — EXECUTING
-Plan: 1 of 6
+Plan: 2 of 7
 Status: Ready to execute
-Progress: [██▌-------] 25% (1/4 phases)
-Last activity: 2026-08-14 — Phase 12 execution started
+Progress: [██████████] 100% (1/4 phases)
+Last activity: 2026-08-14
 
 ## Performance Metrics
 
@@ -116,6 +115,7 @@ Last activity: 2026-08-14 — Phase 12 execution started
 | Phase 07 P14 | 8min | 3 tasks | 7 files |
 | Phase 07 P15 | ~35min | 2 tasks | 13 files |
 | Phase 07 P16 | ~55min | 3 tasks | 6 files |
+| Phase 12 P07 | ~35min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -133,6 +133,9 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - [Phase 11] External-tier launches gated on SHA-256 content pins recomputed from disk before every exec; pin mismatch is a soft per-instance failure (chip shows named cause, two-click re-pin; kernel boot and unrelated saves unaffected).
 - [Phase 11] Plugin subprocess environment built from an explicit allowlist + only the instance's own ${VAR} references — kernel environment never inherited wholesale.
 - [Phase 11] Source.Plugin confined to bare filenames end-to-end (ResolveBinary first-statement guard + config.Validate twin) after CR-01 gap closure.
+- [Phase ?]: [Phase 12-07] Fetch classifies through the instance's own scope (newScope(p.extras).includes) instead of a second, weaker classify() rule — closes the false 404 for an include_glob-admitted item outside the default extension allowlist.
+- [Phase ?]: [Phase 12-07] A malformed operator glob at Fetch time maps to codes.Unavailable (not codes.Internal), matching Match's own answer for the identical pattern class.
+- [Phase ?]: [Phase 12-07] Fetch and the kernel open route read/exec the filepath.EvalSymlinks-resolved path the containment check approved, not the lexical path it validated; the residual final-component TOCTOU window is documented as 'narrows but does not eliminate.'
 
 ### Pending Todos
 
@@ -177,9 +180,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-13T18:31:35.470Z
-Stopped at: Phase 12 UI-SPEC approved
-Resume file: .planning/phases/12-filesystem-source/12-UI-SPEC.md
+Last session: 2026-08-14T01:14:50.850Z
+Stopped at: Completed 12-07-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
