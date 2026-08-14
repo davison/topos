@@ -12,6 +12,8 @@ package correlate
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/davison/topos/kernel/config"
@@ -59,6 +61,17 @@ type WebspaceResult struct {
 	Source    string
 	ItemCount int
 	Err       error
+	// Notice is a non-fatal, human-readable advisory about this (webspace,
+	// source) pair — never an error and never a substitute for one. Set
+	// only when this webspace's explicit ws.Match block (never the
+	// keywords fallback) matched zero items across an otherwise-successful
+	// Match call (the G-12-1/G-12-3 gap closure): a value that can never
+	// match any label used to load, sync "ok", and produce zero rows with
+	// no diagnostic anywhere. Composed exclusively from configuration by
+	// zeroMatchNotice — never from anything the plugin returned — so a
+	// plugin can no more fabricate a notice than it can fabricate its own
+	// sync history (A-PLUG-04).
+	Notice string
 }
 
 // SyncSource runs one source's Match RPC against every configured
@@ -86,7 +99,7 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 	var rejected []string
 
 	for name, ws := range e.Config.Webspaces {
-		fields, participates := matchFieldsFor(ws, src)
+		fields, participates, explicit := matchFieldsFor(ws, src)
 		if !participates {
 			// D-03: this instance is excluded from this webspace by a
 			// non-empty sources allowlist. Never call Match — instead
@@ -107,6 +120,23 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 			wrapped := fmt.Errorf("match against source %q: %w", src.Name(), err)
 			results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), Err: wrapped})
 			continue
+		}
+
+		// The zero-match notice (G-12-1/G-12-3): fires only when the
+		// fields came from an EXPLICIT ws.Match block (never the keywords
+		// fallback, which is fanned across every source and legitimately
+		// matches nothing for most of them) and the plugin returned zero
+		// items. Tested against resp.GetItems() — the count the plugin
+		// actually returned — deliberately BEFORE the PLUG-03 rejection
+		// loop below: emptiness caused by every returned item being
+		// rejected at the correlation boundary must keep reporting as
+		// rejections, never be reattributed to the operator's match
+		// config. The non-empty fields guard stops a structurally
+		// impossible empty explicit block from producing a contentless
+		// advisory.
+		var notice string
+		if explicit && len(fields) > 0 && len(resp.GetItems()) == 0 {
+			notice = zeroMatchNotice(name, fields)
 		}
 
 		var items []item.Item
@@ -130,7 +160,7 @@ func (e *Engine) SyncSource(ctx context.Context, src Source) (results []Webspace
 			continue
 		}
 
-		results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), ItemCount: len(items)})
+		results = append(results, WebspaceResult{Webspace: name, Source: src.Name(), ItemCount: len(items), Notice: notice})
 	}
 
 	return results, strings.Join(rejected, "; ")
@@ -209,20 +239,76 @@ func ParticipatesIn(ws config.Webspace, instance string) bool {
 // resolved fields — never the webspace's whole match configuration — so a
 // Match RPC to one plugin process never discloses another instance's match
 // configuration (T-05-07).
-func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates bool) {
+//
+// The third result, explicit, reports whether fields came from rule 2 (an
+// explicit ws.Match block) rather than rule 4 (the keywords fallback) —
+// added 12-09-PLAN.md so SyncSource can tell the two apart when deciding
+// whether a zero-item Match answer deserves a zeroMatchNotice: the
+// fallback is fanned across every source and legitimately matches nothing
+// for most of them, so only the explicit-block branch may ever produce
+// one.
+func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates, explicit bool) {
 	if !ParticipatesIn(ws, src.Name()) {
-		return nil, false
+		return nil, false, false
 	}
 
 	if block, ok := ws.Match[src.Name()]; ok {
-		return map[string][]string(block), true
+		return map[string][]string(block), true, true
 	}
 
 	fields = make(map[string][]string, len(src.MatchVocabulary()))
 	for _, field := range src.MatchVocabulary() {
 		fields[field] = ws.Keywords
 	}
-	return fields, true
+	return fields, true, false
+}
+
+// zeroMatchNotice composes the G-12-1/G-12-3 zero-match advisory from its
+// two arguments and nothing else — this is the A-PLUG-04 property in
+// miniature, and it is why this function takes a field map rather than
+// the whole webspace or the Match response: no MatchResponse value, item
+// title, source_id, label or plugin-provided string can ever reach it.
+// The text is read by a human (a source chip tooltip, docs/api.md's
+// last_notice) and is never parsed by a client.
+//
+// Fields render in sorted name order and values in their configured
+// order, so the returned string is byte-identical across repeated calls
+// on the same input — a caller that joins several of these (see
+// kernel/syncer.joinNotices) needs that determinism to avoid a
+// perpetually-changing tooltip. The closing clause states the matching
+// rule: when any value contains a glob metacharacter (the reported
+// failure — .planning/debug/filesystem-items-missing-from-stream.md — was
+// precisely a doublestar pattern typed into an exact-match field) the
+// notice says so explicitly, so the operator learns the rule as well as
+// the fact that it matched nothing.
+func zeroMatchNotice(webspace string, fields map[string][]string) string {
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	hasGlob := false
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		values := fields[name]
+		quoted := make([]string, len(values))
+		for i, v := range values {
+			quoted[i] = strconv.Quote(v)
+			if strings.ContainsAny(v, "*?[") {
+				hasGlob = true
+			}
+		}
+		parts = append(parts, name+"="+strings.Join(quoted, ", "))
+	}
+
+	rule := "match values are compared exactly against the values this source reports"
+	if hasGlob {
+		rule = "match values are compared exactly and never as glob patterns"
+	}
+
+	return fmt.Sprintf("webspace %q: match block matched 0 items (%s) — %s",
+		webspace, strings.Join(parts, "; "), rule)
 }
 
 // validateCorrelatedItem enforces PLUG-03 at the sync boundary: no item

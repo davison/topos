@@ -92,6 +92,16 @@ type sourceStatus struct {
 	LastStatus    string `json:"last_status"`
 	LastSyncUnix  int64  `json:"last_sync_unix"`
 	LastError     string `json:"last_error"`
+	// LastNotice is the kernel's own non-fatal advisory recorded on this
+	// instance's last completed run (12-09-PLAN.md, G-12-1/G-12-3) —
+	// today, that a webspace's explicit match block matched none of this
+	// source's items. Additive at schema_version 1. Like LastError, it
+	// comes exclusively from the kernel's own recorded sync_runs row,
+	// never from anything the plugin reports (A-PLUG-04), and a non-empty
+	// value does NOT imply LastStatus is anything other than "ok" — see
+	// docs/api.md's do-not-parse discipline before branching on this
+	// field's text.
+	LastNotice string `json:"last_notice"`
 }
 
 type sourcesResponse struct {
@@ -106,11 +116,11 @@ type sourcesResponse struct {
 // instance id for a deterministic response order run to run. A plugin's
 // own self-reported last-sync time and last error are
 // deliberately never read here: last_status, last_sync_unix and
-// last_error come exclusively from the kernel's own recorded sync_runs
-// rows, so a plugin cannot report a rosier history than actually happened
-// and turn its own chip green (A-PLUG-04). One plugin's probe failing
-// never fails the whole response — it only makes that source's own
-// reachable:false, never a 500.
+// last_error — and, as of 12-09-PLAN.md, last_notice — come exclusively
+// from the kernel's own recorded sync_runs rows, so a plugin cannot report
+// a rosier history than actually happened and turn its own chip green
+// (A-PLUG-04). One plugin's probe failing never fails the whole response —
+// it only makes that source's own reachable:false, never a 500.
 func SourcesHandler(store *index.Store, prober HealthProber) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statuses, err := sourceStatusesFrom(r.Context(), store, prober)
@@ -167,6 +177,7 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			LastStatus:   run.Status,
 			LastSyncUnix: run.FinishedUnix,
 			LastError:    run.Error,
+			LastNotice:   run.Notice,
 		})
 		seen[h.Name] = true
 	}

@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1229,5 +1230,143 @@ func TestDeleteSyncRuns_ClearsOnlyThatSourcesHistory(t *testing.T) {
 	}
 	if _, ok := runs["silverbullet"]; !ok {
 		t.Errorf("expected silverbullet's sync_runs history to survive DeleteSyncRuns(\"paperless\") untouched")
+	}
+}
+
+// TestFinishSyncRunWithNotice_PersistsTheNoticeBesideTheOutcome proves a
+// run finished with both an error message and a notice reads back with
+// both intact and independent through every reader (12-09-PLAN.md,
+// G-12-1/G-12-3), and that a run finished through the plain FinishSyncRun
+// spelling reads back with an empty notice.
+func TestFinishSyncRunWithNotice_PersistsTheNoticeBesideTheOutcome(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	withNoticeID, err := s.StartSyncRun(ctx, "files")
+	if err != nil {
+		t.Fatalf("StartSyncRun(files): %v", err)
+	}
+	if err := s.FinishSyncRunWithNotice(ctx, withNoticeID, "ok", "some rejection", "some notice", 3); err != nil {
+		t.Fatalf("FinishSyncRunWithNotice: %v", err)
+	}
+
+	plainID, err := s.StartSyncRun(ctx, "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun(paperless): %v", err)
+	}
+	if err := s.FinishSyncRun(ctx, plainID, "ok", "", 1); err != nil {
+		t.Fatalf("FinishSyncRun: %v", err)
+	}
+
+	// LatestSyncRunPerSource
+	perSource, err := s.LatestSyncRunPerSource(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	filesRun, ok := perSource["files"]
+	if !ok {
+		t.Fatal("expected a recorded run for files")
+	}
+	if filesRun.Error != "some rejection" || filesRun.Notice != "some notice" {
+		t.Errorf("expected error and notice both intact and independent, got: %+v", filesRun)
+	}
+	paperlessRun, ok := perSource["paperless"]
+	if !ok {
+		t.Fatal("expected a recorded run for paperless")
+	}
+	if paperlessRun.Notice != "" {
+		t.Errorf("expected a run finished through the plain FinishSyncRun spelling to read back with an empty notice, got %q", paperlessRun.Notice)
+	}
+
+	// LatestSyncRun
+	latest, ok, err := s.LatestSyncRun(ctx)
+	if err != nil {
+		t.Fatalf("LatestSyncRun: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected a latest run")
+	}
+	if latest.Source == "files" && latest.Notice != "some notice" {
+		t.Errorf("expected LatestSyncRun to carry the notice when the latest run is the notice-bearing one, got: %+v", latest)
+	}
+
+	// SyncRunsForSourceForTesting
+	history, err := s.SyncRunsForSourceForTesting(ctx, "files")
+	if err != nil {
+		t.Fatalf("SyncRunsForSourceForTesting: %v", err)
+	}
+	if len(history) != 1 || history[0].Error != "some rejection" || history[0].Notice != "some notice" {
+		t.Errorf("expected the files run's full history to carry both error and notice, got: %+v", history)
+	}
+}
+
+// TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice
+// proves the exact transition an operator's existing index.db takes on
+// the next kernel start after the sync_runs.notice column landed
+// (12-09-PLAN.md, schemaVersion bumped 2->3): Open succeeds, the
+// pre-existing rows are GONE (the documented drop-and-recreate, D-07 —
+// never a silent half-migration), and the reopened store accepts a run
+// finished through FinishSyncRunWithNotice and reads the notice back,
+// proving the new column exists on the recreated table.
+func TestOpen_IndexAtThePreviousSchemaVersionIsRebuiltAndAcceptsANotice(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(context.Background(), "ws", "paperless", []item.Item{sampleItem("1", 100)}); err != nil {
+		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Force the on-disk schema version back to the PREVIOUS version (2),
+	// simulating an operator's existing index.db from before this column
+	// landed — a direct PRAGMA write against the same file, reusing this
+	// package's own "sqlite" driver registration (store.go's blank
+	// import), rather than inventing a second mechanism.
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatalf("force user_version = 2: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen at the previous schema version: %v", err)
+	}
+	t.Cleanup(func() { reopened.Close() })
+
+	// The rebuild observably happened: the row written before the
+	// rollback is absent afterwards, not merely that Open returned no
+	// error.
+	items, err := reopened.StreamItems(context.Background(), "ws", nil)
+	if err != nil {
+		t.Fatalf("StreamItems after rebuild: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected the schema rebuild to drop pre-existing rows (D-07), got: %+v", items)
+	}
+
+	runID, err := reopened.StartSyncRun(context.Background(), "paperless")
+	if err != nil {
+		t.Fatalf("StartSyncRun on the rebuilt store: %v", err)
+	}
+	if err := reopened.FinishSyncRunWithNotice(context.Background(), runID, "ok", "", "a notice", 0); err != nil {
+		t.Fatalf("FinishSyncRunWithNotice on the rebuilt store: %v", err)
+	}
+	runs, err := reopened.LatestSyncRunPerSource(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSyncRunPerSource: %v", err)
+	}
+	if runs["paperless"].Notice != "a notice" {
+		t.Errorf("expected the notice to round-trip through the rebuilt schema, got: %+v", runs["paperless"])
 	}
 }
