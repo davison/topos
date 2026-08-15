@@ -5,10 +5,10 @@ milestone_name: Plugin Ecosystem
 current_phase: 14
 current_phase_name: Google Drive Source, Built Out-of-Repo
 status: planning
-stopped_at: Phase 13 UI-SPEC approved
-last_updated: "2026-08-15T14:39:36.328Z"
+stopped_at: Phase 13 complete, ready to plan Phase 14
+last_updated: "2026-08-15T15:10:00.000Z"
 last_activity: 2026-08-15
-last_activity_desc: Phase 13 execution started
+last_activity_desc: Phase 13 UAT passed (G-13-1 fix re-verified), phase complete
 progress:
   total_phases: 4
   completed_phases: 3
@@ -21,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-14 after Phase 12 completion)
+See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 13 — per-item-curation-installable-app
+**Current focus:** Phase 14 — Google Drive Source, Built Out-of-Repo
 
 ## Current Position
 
 Phase: 14 — Google Drive Source, Built Out-of-Repo
 Plan: Not started
 Status: Ready to plan
-Progress: [████████████████████] 18/18 plans (100%) — 2/4 phases complete
+Progress: [████████████████████] 26/26 plans (100%) — 3/4 phases complete
 Last activity: 2026-08-15 — Phase 13 complete, transitioned to Phase 14
 
 ## Performance Metrics
@@ -142,6 +142,10 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - [Phase 12] Match values are exact literals, never globs; "everything from this instance" is expressed via the root's own base name, and a zero-match state across a healthy sync surfaces as a kernel-composed `last_notice` advisory (never plugin text).
 - [Phase 12] UI surfaces consult one precedence chain: the chip tooltip defers to `isAdvisoryOnly` in format.ts (re-asks `healthTone` with the notice stripped) rather than re-deriving its own gate — CR-01's fix pattern for any future health-adjacent surface.
 - [Phase 12] Launch-failed source entries deliberately carry no `last_notice` (matches docs/api.md contract; pinned by Go test, WR-01).
+- [Phase 13] Per-item marks live in the kernel index as user-owned data: they survive re-sync, restart, and index rebuild, and always outrank automatic match rules.
+- [Phase 13] Undo toast closures act on the webspace where the toast was created, never the currently-viewed one (13-07 gap closure).
+- [Phase 13] `load()` rejects stale navigation generations before any side effect — the `loadState = 'loading'` write sits behind the generation guard, so a stale-gen call is a true no-op (13-08 / G-13-1; pinned by a RED-first browser spec asserting on the rendered stream).
+- [Phase 13] PWA never-stale update flow: ServiceWorker update surfaces through the shared toast layer; the installed app always lands on the new build after a kernel upgrade.
 
 ### Pending Todos
 
@@ -187,13 +191,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-14T15:35:22.784Z
-Stopped at: Phase 13 UI-SPEC approved
-Resume file: .planning/phases/13-per-item-curation-installable-app/13-UI-SPEC.md
+Last session: 2026-08-15T15:10:00.000Z
+Stopped at: Phase 13 complete, ready to plan Phase 14
+Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 13 with /gsd-discuss-phase 13 (or /gsd-plan-phase 13 directly)
+- Plan Phase 14 with /gsd-discuss-phase 14 (or /gsd-plan-phase 14 directly)
 - Open design questions to settle during phase discuss/spec (from research/SUMMARY.md "Gaps to Address"):
-  - Phase 13: per-item include scope (un-exclude only vs a new Browse RPC) and mark-orphan handling; PWA mobile/LAN scope
   - Phase 14: Google OAuth credential distribution (bring-your-own is the requirement's stated position — confirm at spec time)
