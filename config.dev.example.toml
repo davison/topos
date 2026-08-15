@@ -1,0 +1,36 @@
+# topos dev config template — checkout-agnostic; `make dev-config`
+# expands this into an untracked, per-checkout config.dev.toml (see
+# Makefile's DEV_CONFIG/dev-config), substituting the @CHECKOUT@
+# placeholder below with the checkout root (CURDIR at generation time).
+#
+# The generated config.dev.toml is freely, permanently editable —
+# `make dev-config` never overwrites a file that already exists, so any
+# hand edit you make survives every `make dev`. It deliberately starts
+# with no [sources.*] or [webspaces.*] tables; add your own dev-only
+# instances directly to the generated file, or point at a shared dev
+# config with `make dev DEV_CONFIG=<path>`.
+#
+# As with config.example.toml, a credential belongs ONLY as a ${VAR}
+# reference expanded from the environment (Go's os.Expand) — never as a
+# literal value in this file or the generated copy. config.dev.toml is
+# gitignored, but the rule still applies: a literal secret here is a
+# secret sitting in a per-checkout file outside git's own history
+# protection, not a secret kept out of history entirely.
+
+[server]
+listen = "127.0.0.1:7777"
+
+[index]
+# @CHECKOUT@ becomes this checkout's own absolute root — each git
+# worktree of this repo generates its own config.dev.toml (a different
+# CURDIR), so each gets its own dev index, never the operator's
+# production ~/.local/share/topos/index.db.
+path = "@CHECKOUT@/bin/topos-dev-index.db"
+
+[plugins]
+# Both directories resolve inside THIS checkout's own bin/, so `make dev`
+# in a worktree launches only the plugin binaries that worktree's own
+# `plugins` prerequisite just built — never another checkout's binaries,
+# and never the operator's production plugins.dir.
+dir = "@CHECKOUT@/bin/plugins"
+external_dir = "@CHECKOUT@/bin/plugins-external-dev"

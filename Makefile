@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -50,6 +50,18 @@ MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
 DEV_HOST ?= 127.0.0.1
 DEV_PORT ?= 7777
 
+# DEV_CONFIG is the config file `make dev` passes to the kernel via
+# --config (see DEV_KERNEL_CMD below). Two things a reader needs: (1)
+# each checkout — including each git worktree of this repo — gets its
+# OWN generated config.dev.toml, because the default is derived from
+# CURDIR, which differs per checkout; a worktree kernel therefore never
+# reads, launches from, or writes to the operator's production config,
+# index, or plugins directory (the defect 2026-08-14's Phase 13 UAT hit,
+# see docs/testing.md). (2) `make dev DEV_CONFIG=$$HOME/.config/topos/
+# config.toml` is the supported way to run the dev loop against the
+# production config instead — the escape hatch back, in one variable.
+DEV_CONFIG ?= $(CURDIR)/config.dev.toml
+
 # DEV_READY_TIMEOUT is how many seconds (one per readiness-gate
 # iteration, below) the kernel is allowed to take to start listening
 # before `dev` gives up and fails loud. Generous by default because
@@ -69,8 +81,13 @@ DEV_READY_TIMEOUT ?= 60
 # real manifest of the plugin binaries `plugins` (this target's own
 # prerequisite) just built. An overridden DEV_KERNEL_CMD simply ignores
 # the variable — dev-guard-smoke.sh's fake children ARE such an override,
-# and remain completely unaffected by this.
-DEV_KERNEL_CMD ?= go run -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$TOPOS_DEV_MANIFEST" ./cmd/topos serve
+# and remain completely unaffected by this. The trailing --config
+# $(DEV_CONFIG) is what makes the real dev-loop kernel read this
+# checkout's own generated dev config instead of the operator's
+# production one (see DEV_CONFIG above) — it stays part of the `?=`
+# default, so scripts/dev-guard-smoke.sh's fake-child overrides (which
+# replace this whole variable) are unaffected by it.
+DEV_KERNEL_CMD ?= go run -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$TOPOS_DEV_MANIFEST" ./cmd/topos serve --config $(DEV_CONFIG)
 # --host exposes the Vite dev server on all interfaces (including the
 # tailscale one); vite.config.ts allowlists *.ts.net Host headers so the
 # MagicDNS name works too. Raw-IP access (100.x.y.z:5173) needs no allowlist.
@@ -302,6 +319,27 @@ e2e:
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
+# dev-config generates $(DEV_CONFIG) from the tracked config.dev.example.toml
+# template, substituting the @CHECKOUT@ placeholder with $(CURDIR) — but
+# ONLY when $(DEV_CONFIG) does not already exist. Regeneration must never
+# clobber an existing file: an operator's hand edits to their dev config
+# (added [sources.*]/[webspaces.*] blocks) survive every `make dev`
+# unconditionally, and a DEV_CONFIG override pointed at an already-
+# existing file (e.g. the production config, via `make dev
+# DEV_CONFIG=$$HOME/.config/topos/config.toml`) is never touched by this
+# target either. Prints a loud, multi-line notice on the generation path
+# only — a silent no-op the rest of the time.
+dev-config:
+	@if [ ! -f "$(DEV_CONFIG)" ]; then \
+		sed 's|@CHECKOUT@|$(CURDIR)|g' config.dev.example.toml > "$(DEV_CONFIG)"; \
+		echo "make dev-config: wrote a fresh per-checkout dev config:" >&2; \
+		echo "  $(DEV_CONFIG)" >&2; \
+		echo "  it starts with no [sources.*] or [webspaces.*] tables — add your own" >&2; \
+		echo "  dev-only source instances directly to that file, or run" >&2; \
+		echo "  'make dev DEV_CONFIG=<path>' to point the dev loop at a different" >&2; \
+		echo "  config entirely (e.g. your production config)." >&2; \
+	fi
+
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
 # 127.0.0.1:7777 (see web/vite.config.ts), so edits to either side hot
@@ -320,7 +358,7 @@ e2e:
 # a process-group kill is the only teardown that reliably reaps
 # `go run`'s kernel child, the kernel's own plugin subprocesses, and
 # npm's node child together.
-dev: plugins
+dev: plugins dev-config
 	@if ! command -v ss >/dev/null 2>&1; then \
 		echo "make dev: 'ss' (iproute2) is required by the dev port guard — install iproute2" >&2; \
 		exit 1; \
