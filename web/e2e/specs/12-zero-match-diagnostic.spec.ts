@@ -129,7 +129,7 @@ test.describe('12-10 Task 2: the user\'s exact config — healthy, green-reporti
 		).toHaveLength(0);
 	});
 
-	test('the chip renders the warning tone and a title carrying the API-published advisory, with no "a source couldn\'t sync" degraded treatment', async ({
+	test('the chip renders the warning tone and a health description carrying the API-published advisory, with no "a source couldn\'t sync" degraded treatment', async ({
 		page,
 		kernel
 	}) => {
@@ -139,7 +139,10 @@ test.describe('12-10 Task 2: the user\'s exact config — healthy, green-reporti
 		const sourcesBody = (await sourcesRes.json()) as { sources: SourceStatus[] };
 		const instance = sourcesBody.sources.find((s) => s.name === INSTANCE_ID);
 		const notice = instance?.last_notice ?? '';
-		expect(notice, 'expected a non-empty last_notice to assert the DOM title against').not.toBe('');
+		expect(
+			notice,
+			'expected a non-empty last_notice to assert the DOM health description against'
+		).not.toBe('');
 		// A distinctive substring, not the whole sentence — proves the two
 		// surfaces agree rather than hard-coding kernel copy a later pass
 		// may legitimately improve.
@@ -156,7 +159,13 @@ test.describe('12-10 Task 2: the user\'s exact config — healthy, green-reporti
 		await expect(chip.locator('span.size-2')).toHaveClass(/bg-warning/);
 		await expect(chip.locator('span.size-2')).not.toHaveClass(/bg-success/);
 
-		await expect(chip).toHaveAttribute('title', new RegExp(distinctiveSubstring.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the advisory no
+		// longer renders through a native `title` attribute — it is exposed as
+		// the button's accessible DESCRIPTION via a visually-hidden sr-only
+		// span wired through aria-describedby.
+		await expect(chip).toHaveAccessibleDescription(
+			new RegExp(distinctiveSubstring.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+		);
 
 		// The sync did not fail — claiming otherwise would send the user to
 		// restart a healthy service, the exact defect 08-UAT.md's G-08-3

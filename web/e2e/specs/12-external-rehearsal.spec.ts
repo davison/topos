@@ -155,6 +155,10 @@ test.describe('12-05 Task 1: external-tier rehearsal — the real filesystem bin
 		// on this one instance's scoped assertion.
 		await expect(page.locator(`${badgeGlyph}:visible`)).toHaveCount(1);
 
-		await expect(chip).toHaveAttribute('title', /untrusted external plugin/);
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the disclosure no
+		// longer renders through a native `title` attribute — it is exposed as
+		// the button's accessible DESCRIPTION via a visually-hidden sr-only
+		// span wired through aria-describedby.
+		await expect(chip).toHaveAccessibleDescription(/untrusted external plugin/);
 	});
 });

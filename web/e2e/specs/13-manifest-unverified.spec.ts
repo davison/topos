@@ -62,8 +62,11 @@ test.describe('13-06 Task 2: a trusted-directory binary absent from the build ma
 			droppedChip.locator('span.size-2'),
 			'expected the manifest-unverified chip to render the DESTRUCTIVE tone, matching the pin-mismatch precedent'
 		).toHaveClass(/bg-destructive/);
-		await expect(droppedChip).toHaveAttribute(
-			'title',
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the contract-exact
+		// sentence no longer renders through a native `title` attribute — it is
+		// exposed as the button's accessible DESCRIPTION via a visually-hidden
+		// sr-only span wired through aria-describedby.
+		await expect(droppedChip).toHaveAccessibleDescription(
 			`${DROPPED_DISPLAY} — binary not in the trusted build manifest`
 		);
 

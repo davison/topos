@@ -46,8 +46,11 @@ test.describe('13-06 Task 2: a trusted binary shadowing a same-named pinned exte
 			chip.locator('span.size-2'),
 			'expected the shadowed chip to NEVER render the destructive tone — the pinned external plugin the operator consented to may still be the one running'
 		).not.toHaveClass(/bg-destructive/);
-		await expect(chip).toHaveAttribute(
-			'title',
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the contract-exact
+		// sentence no longer renders through a native `title` attribute — it is
+		// exposed as the button's accessible DESCRIPTION via a visually-hidden
+		// sr-only span wired through aria-describedby.
+		await expect(chip).toHaveAccessibleDescription(
 			`${SHADOWED_DISPLAY} — a same-named trusted-directory binary is shadowing this pinned plugin`
 		);
 

@@ -150,8 +150,11 @@ test.describe('11-06 Task 3: swap a real binary mid-run, see it caught, re-pin, 
 		await expect(renamedChip.locator('span.size-2')).toHaveClass(/bg-destructive/, {
 			timeout: 15_000
 		});
-		await expect(renamedChip).toHaveAttribute(
-			'title',
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the contract-exact
+		// sentence no longer renders through a native `title` attribute — it is
+		// exposed as the button's accessible DESCRIPTION via a visually-hidden
+		// sr-only span wired through aria-describedby.
+		await expect(renamedChip).toHaveAccessibleDescription(
 			`${RENAMED_DISPLAY_NAME} — binary changed since it was trusted`
 		);
 
@@ -206,10 +209,14 @@ test.describe('11-06 Task 3: swap a real binary mid-run, see it caught, re-pin, 
 		).toBe(tamperedHash);
 
 		await expect(renamedChip.locator('span.size-2')).toHaveClass(/bg-success/, { timeout: 15_000 });
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the health
+		// sentence no longer renders through a native `title` attribute — it
+		// is exposed as the button's accessible DESCRIPTION via a
+		// visually-hidden sr-only span wired through aria-describedby.
 		await expect(
 			renamedChip,
-			'expected the recovered chip\'s tooltip to no longer carry the binary-changed wording'
-		).not.toHaveAttribute('title', /binary changed/);
+			'expected the recovered chip\'s health description to no longer carry the binary-changed wording'
+		).not.toHaveAccessibleDescription(/binary changed/);
 
 		await page.getByRole('button', { name: `${RENAMED_DISPLAY_NAME} actions` }).click();
 		const recoveredMenu = page.getByRole('menu');

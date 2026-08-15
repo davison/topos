@@ -131,18 +131,36 @@ test.describe('09.1-04: header touch adaptation (09.1-TOUCH)', () => {
 			await expect(page.getByRole('dialog')).toBeVisible();
 		});
 
-		test('5: chip health detail is reachable without hover, via a native title', async ({ page, kernel }) => {
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, approved design contract)
+		// removes the native `title` this test originally required as the
+		// touch degrade for chip health detail (09.1-04-PLAN.md R2, RESEARCH
+		// Pitfall 2 — "chip health detail is otherwise unreachable without
+		// hover"). G1 replaces it with an aria-describedby-wired sr-only span,
+		// exposed only to assistive technology, NOT to a plain touch tap. This
+		// is a KNOWN, DELIBERATE regression — G1 and its Task 1 checkpoint did
+		// not discuss touch-only reachability — recorded in 14-02-SUMMARY.md
+		// and the cross-phase WINDOWS.md ledger for follow-up: a touch user on
+		// a source chip below 768px who is not running a screen reader can no
+		// longer reach the health sentence at all.
+		test('5: chip health detail is reachable only to assistive technology now, not via a plain touch tap (14-02-PLAN.md G1 supersedes 09.1-04-PLAN.md R2)', async ({
+			page,
+			kernel
+		}) => {
 			await waitForFirstSync(kernel.baseURL, allIds, { logs: kernel.logs });
 			await page.goto(`${kernel.baseURL}/w/${SINGLE_WEBSPACE}`);
 
 			const filterButton = page.getByRole('button', { name: 'Mock 01', exact: true });
-			const title = await filterButton.getAttribute('title');
 
-			expect(title, 'expected the filter button to carry a non-empty native title').toBeTruthy();
+			const title = await filterButton.getAttribute('title');
 			expect(
 				title,
-				'expected the native title to carry the same health copy the desktop tooltip shows, naming the source'
-			).toContain('Mock 01');
+				'expected NO native title on the filter button — 14-UI-SPEC.md G1 removes it in favour of an aria-describedby-wired description exposed only to assistive tech'
+			).toBeNull();
+
+			// The one reachability guarantee G1 DOES preserve: a screen reader
+			// still exposes the health sentence as the button's accessible
+			// description.
+			await expect(filterButton).toHaveAccessibleDescription(/Mock 01/);
 		});
 
 		test('6: chips that do not fit push into the existing overflow popover', async ({ page, kernel }) => {

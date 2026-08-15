@@ -107,7 +107,7 @@ test.describe('11-01 Task 3: two-tier discovery end to end — one trusted, one 
 		await expect(page.locator(`${badgeGlyph}:visible`)).toHaveCount(1);
 	});
 
-	test('the mockstrict chip tooltip discloses "untrusted external plugin"; the mock chip tooltip does not', async ({
+	test('the mockstrict chip health description discloses "untrusted external plugin"; the mock chip health description does not', async ({
 		page,
 		kernel
 	}) => {
@@ -118,7 +118,11 @@ test.describe('11-01 Task 3: two-tier discovery end to end — one trusted, one 
 		const mockChip = page.getByRole('button', { name: 'Mock Source', exact: true });
 		const mockstrictChip = page.getByRole('button', { name: 'Mockstrict Corpus', exact: true });
 
-		await expect(mockstrictChip).toHaveAttribute('title', /untrusted external plugin/);
-		await expect(mockChip).not.toHaveAttribute('title', /untrusted external plugin/);
+		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the disclosure no
+		// longer renders through a native `title` attribute — it is exposed as
+		// the button's accessible DESCRIPTION via a visually-hidden sr-only
+		// span wired through aria-describedby.
+		await expect(mockstrictChip).toHaveAccessibleDescription(/untrusted external plugin/);
+		await expect(mockChip).not.toHaveAccessibleDescription(/untrusted external plugin/);
 	});
 });

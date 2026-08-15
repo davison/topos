@@ -54,6 +54,13 @@ test.use({ configSpec });
 // names the webspace and a glob-shaped match value.
 const DISTINCTIVE_NOTICE = `webspace '${WEBSPACE}': match value 'mock-01.folders=*' matched no items`;
 
+// 14-02-PLAN.md Task 3 (option-b): escapes a literal substring for use
+// inside a RegExp passed to toHaveAccessibleDescription — mirrors
+// 12-zero-match-diagnostic.spec.ts's identical inline escape.
+function escapeRegExp(literal: string): string {
+	return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 interface FabricatedSourcesBodyOpts {
 	reachable: boolean;
 	last_status: 'ok';
@@ -86,7 +93,14 @@ function fabricatedSourcesBody(opts: FabricatedSourcesBodyOpts) {
 	};
 }
 
-test.describe('12-11 Task 2: the rendered title attribute proves the tooltip gate\'s precedence (CR-01)', () => {
+// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the chip's health
+// sentence no longer renders through a native `title` attribute — it is
+// exposed as the button's accessible DESCRIPTION via a visually-hidden
+// sr-only span wired through aria-describedby. `toHaveAccessibleDescription`
+// reads that computed description the same way assistive tech would,
+// making it the correct replacement for the old title-attribute assertions
+// below.
+test.describe('12-11 Task 2: the rendered accessible description proves the tooltip gate\'s precedence (CR-01)', () => {
 	test('A — reachable: false + last_status ok + a leftover notice: the title says unreachable and carries NONE of the notice text', async ({
 		page,
 		kernel
@@ -108,12 +122,11 @@ test.describe('12-11 Task 2: the rendered title attribute proves the tooltip gat
 		const chip = page.getByRole('button', { name: DISPLAY_NAME, exact: true });
 		await expect(chip).toBeVisible();
 
-		await expect(chip).toHaveAttribute('title', /unreachable since/);
-		const title = await chip.getAttribute('title');
-		expect(
-			title,
-			'the unreachable-since tooltip must carry none of the leftover advisory text'
-		).not.toContain(DISTINCTIVE_NOTICE);
+		await expect(chip).toHaveAccessibleDescription(/unreachable since/);
+		await expect(
+			chip,
+			'the unreachable-since health description must carry none of the leftover advisory text'
+		).not.toHaveAccessibleDescription(new RegExp(escapeRegExp(DISTINCTIVE_NOTICE)));
 
 		const dot = chip.locator('span.size-2');
 		await expect(dot).toHaveClass(/bg-destructive/);
@@ -143,12 +156,11 @@ test.describe('12-11 Task 2: the rendered title attribute proves the tooltip gat
 		const chip = page.getByRole('button', { name: DISPLAY_NAME, exact: true });
 		await expect(chip).toBeVisible();
 
-		await expect(chip).toHaveAttribute('title', /synced/);
-		const title = await chip.getAttribute('title');
-		expect(
-			title,
-			'the synced-plus-advisory tooltip must still carry the notice text — this fails if the gate is ever written against the chip\'s own computed tone (tone === "success"), which would make the advisory branch unreachable'
-		).toContain(DISTINCTIVE_NOTICE);
+		await expect(chip).toHaveAccessibleDescription(/synced/);
+		await expect(
+			chip,
+			'the synced-plus-advisory health description must still carry the notice text — this fails if the gate is ever written against the chip\'s own computed tone (tone === "success"), which would make the advisory branch unreachable'
+		).toHaveAccessibleDescription(new RegExp(escapeRegExp(DISTINCTIVE_NOTICE)));
 
 		const dot = chip.locator('span.size-2');
 		await expect(dot).toHaveClass(/bg-warning/);
