@@ -23,13 +23,13 @@ Requirements for this milestone. Each maps to roadmap phases. REQ-ID numbering c
 
 ### Per-Item Curation
 
-- [ ] **KERN-09**: User can exclude an individual stream item from a webspace; the exclusion survives re-syncs and index rebuilds and always outranks automatic match rules
-- [ ] **KERN-10**: User can view a webspace's excluded items and un-exclude them (mark reversal; pulling never-matched items in via a Browse RPC is explicitly out of scope)
+- [x] **KERN-09**: User can exclude an individual stream item from a webspace; the exclusion survives re-syncs and index rebuilds and always outranks automatic match rules
+- [x] **KERN-10**: User can view a webspace's excluded items and un-exclude them (mark reversal; pulling never-matched items in via a Browse RPC is explicitly out of scope)
 
 ### Web App
 
-- [ ] **UI-13**: App installs as a PWA on desktop (manifest, ServiceWorker, icons) with an update flow that never serves a stale UI against an upgraded kernel
-- [ ] **UI-14**: Mobile/LAN install limitation (secure-context requirement) is documented, with the recommended user-provided HTTPS workarounds
+- [x] **UI-13**: App installs as a PWA on desktop (manifest, ServiceWorker, icons) with an update flow that never serves a stale UI against an upgraded kernel
+- [x] **UI-14**: Mobile/LAN install limitation (secure-context requirement) is documented, with the recommended user-provided HTTPS workarounds
 
 ## Future Requirements
 
@@ -78,10 +78,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRC-04 | Phase 12 | Complete |
 | SRC-05 | Phase 14 | Pending |
 | SRC-06 | Phase 14 | Pending |
-| KERN-09 | Phase 13 | Gaps Found |
-| KERN-10 | Phase 13 | Gaps Found |
-| UI-13 | Phase 13 | Gaps Found |
-| UI-14 | Phase 13 | Gaps Found |
+| KERN-09 | Phase 13 | Complete |
+| KERN-10 | Phase 13 | Complete |
+| UI-13 | Phase 13 | Complete |
+| UI-14 | Phase 13 | Complete |
 
 **Coverage:**
 

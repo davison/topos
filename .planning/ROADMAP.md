@@ -33,7 +33,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.0-ROADMAP.m
 
 - [x] **Phase 11: External Plugins & the Trust Boundary** - Kernel loads out-of-repo plugin binaries, deriving trust from provenance and marking everything else untrusted, loudly (completed 2026-08-13)
 - [x] **Phase 12: Filesystem Source** - A local or network folder becomes a source; its binary doubles as the external-path rehearsal before Google Drive (UAT gap closure in progress — G-12-1/G-12-3) (completed 2026-08-14)
-- [ ] **Phase 13: Per-Item Curation & Installable App** - Users get the last word on what's in a webspace, and topos installs as a desktop app
+- [x] **Phase 13: Per-Item Curation & Installable App** - Users get the last word on what's in a webspace, and topos installs as a desktop app (completed 2026-08-15)
 - [ ] **Phase 14: Google Drive Source, Built Out-of-Repo** - A Drive folder as a source, delivered by a plugin developed outside the repo against the published contract alone
 
 ## Phase Details
@@ -204,7 +204,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
-| 13. Per-Item Curation & Installable App | v1.1.0 | 8/8 | In Progress|  |
+| 13. Per-Item Curation & Installable App | v1.1.0 | 8/8 | Complete    | 2026-08-15 |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
 ## Backlog
