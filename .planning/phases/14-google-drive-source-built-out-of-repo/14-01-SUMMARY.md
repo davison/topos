@@ -137,3 +137,7 @@ None - no external service configuration required.
 ---
 *Phase: 14-google-drive-source-built-out-of-repo*
 *Completed: 2026-08-15*
+
+## Self-Check: PASSED
+
+All key files (`cmd/topos/main.go`, `cmd/topos/configpath_test.go`, `Makefile`, `config.dev.example.toml`, `.gitignore`, `config.example.toml`, `docs/testing.md`, this SUMMARY.md) confirmed present on disk. All four commits (`eef30c4`, `9602262`, `bc91bc5`, `b40ad48`) confirmed present in `git log --oneline --all`.
