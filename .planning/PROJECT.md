@@ -17,7 +17,7 @@ Open one webspace and instantly see and grok all related information across ever
 - Webspaces are built and edited entirely from the UI (hot-apply config writes); works on mobile widths; first run bootstraps a default config
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
-- **v1.1.0 in progress**: Phase 12 complete (2026-08-14) — filesystem source live (local/network folders, stat-diff polling, include_glob scope widening, external-path rehearsal proven); Phase 11 landed the trust boundary it rides on; next up Phase 13 (per-item curation & installable app)
+- **v1.1.0 in progress**: Phase 13 complete (2026-08-15) — per-item curation (exclude/include with undo, excluded-items view, marks survive rebuilds and outrank match rules) and PWA installability live; one UAT gap (G-13-1 cross-webspace undo skeleton strand) closed by a gap-closure plan; next up Phase 14 (Google Drive source, built out-of-repo)
 
 ## Current Milestone: v1.1.0 Plugin Ecosystem
 
@@ -60,11 +60,11 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Webspaces defined in a config map matching each source's *native* categorization (IMAP folders/labels, chat group and contact names, paperless-ngx tags, SilverBullet tags/pages) — v1.0 (Phases 1–4 proved keyword matching; Phase 5 upgraded to per-instance typed match blocks with keywords as fallback; Phase 8 closed the last source)
 - ✓ Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item — v1.0 (built out across Phases 1–9.1, including mobile layout and first-run bootstrap)
 
+- ✓ Per-item curation (KERN-09, KERN-10, UI-13, UI-14) — users get the last word on webspace contents: exclude any stream item (single, bulk, or from the detail pane) with a 5s undo toast, marks persist in the kernel index and survive re-sync/restart/index-rebuild while always outranking automatic match rules, an excluded-items view lists exactly what was removed and un-excludes on click; app installs as a PWA on desktop and mobile (ServiceWorker + manifest/assets, update notice via the shared toast layer) — Phase 13 (verified 5/5 after one gap-closure plan closed G-13-1, the cross-webspace undo skeleton strand, with a stale-generation entry guard in `load()` pinned by a RED-first browser spec)
+
 ### Active
 
 - [ ] Google Drive source plugin, built out-of-repo against the published contract (dogfoods the external-plugin path)
-- [ ] User can mark individual stream entries for inclusion/exclusion in a webspace — final tier of the filter hierarchy
-- [ ] App is installable as a PWA on desktop and mobile (ServiceWorker + manifest/assets)
 
 Deferred candidates (not this milestone): IMAP-vanilla refactor with provider extensions; OneDrive plugin; pull-by-URL distribution, dev guide, certification. Advisory review items (10-REVIEW warnings, 06-REVIEW WR-01) and pending todos ride along only if a phase touches their area.
 
@@ -137,4 +137,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-14 after Phase 12 completion (filesystem source)*
+*Last updated: 2026-08-15 after Phase 13 completion (per-item curation & installable app)*
