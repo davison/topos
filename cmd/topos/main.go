@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"mime"
 	"net"
@@ -33,11 +34,13 @@ func main() {
 
 	switch os.Args[1] {
 	case "serve":
-		if err := runServe(); err != nil {
+		path := resolveConfigPath(parseConfigFlag("serve", os.Args[2:]))
+		if err := runServe(path); err != nil {
 			fatal(err)
 		}
 	case "sync":
-		if err := runSync(); err != nil {
+		path := resolveConfigPath(parseConfigFlag("sync", os.Args[2:]))
+		if err := runSync(path); err != nil {
 			fatal(err)
 		}
 	default:
@@ -47,7 +50,64 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: topos <serve|sync>")
+	fmt.Fprintln(os.Stderr, "usage: topos <serve|sync> [--config <path>]")
+	fmt.Fprintln(os.Stderr, "  TOPOS_CONFIG can also set the config path (lower precedence than --config)")
+}
+
+// parseConfigFlag parses the given subcommand's own argv tail (os.Args[2:])
+// for an optional --config flag, using a per-subcommand flag.FlagSet so
+// "serve" and "sync" each report their own name on a parse error. Both
+// "--config <path>" and "--config=<path>" are accepted (a FlagSet gives
+// both forms for free). An unrecognised flag or a --config with no value
+// prints this package's own usage() (naming TOPOS_CONFIG alongside the
+// flag) and exits 2, the same contract main already applies to an unknown
+// subcommand — flag.ContinueOnError's own message goes to os.Stderr first,
+// via fs.SetOutput, so the operator sees both the specific parse error and
+// the general usage line.
+func parseConfigFlag(cmd string, args []string) string {
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configFlag := fs.String("config", "", "path to the config file (overrides TOPOS_CONFIG and the XDG default)")
+	if err := fs.Parse(args); err != nil {
+		usage()
+		os.Exit(2)
+	}
+	return *configFlag
+}
+
+// resolveConfigPath computes the config file path setup() loads, in
+// precedence order: flagValue (the --config flag, highest); then the
+// TOPOS_CONFIG environment variable; then configPath()'s own unchanged
+// XDG_CONFIG_HOME / $HOME/.config / bare-"config.toml" fallback chain
+// (lowest). flagValue is the empty string when --config was not given.
+//
+// A non-empty flagValue or TOPOS_CONFIG value is returned VERBATIM — a
+// relative value is resolved later against the process's own working
+// directory when the path is opened, never joined against
+// os.Executable()'s directory the way pluginsDir/externalPluginsDir
+// resolve cfg.Plugins.Dir/ExternalDir. That executable-relative
+// convention exists so a built binary's relative plugin directory always
+// resolves next to the binary regardless of the caller's cwd — the right
+// rule for a config-declared path. A --config value is different in
+// kind: it is typed on a command line (or set in TOPOS_CONFIG) by
+// whoever is running the process, and the dev loop starts the kernel via
+// `go run`, whose own os.Executable() lives in a throwaway build
+// directory under the Go build cache that never holds a config file.
+// Routing --config through the executable-relative rule would silently
+// resolve `go run ./cmd/topos serve --config config.dev.toml` (run from
+// a checkout root) into a nonexistent path in that temp directory
+// instead of the config.dev.toml sitting right there. A path typed on a
+// command line is expected to mean what the shell means by it: relative
+// to the directory the command was run from — do NOT call
+// os.Executable() from this function.
+func resolveConfigPath(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if env := os.Getenv("TOPOS_CONFIG"); env != "" {
+		return env
+	}
+	return configPath()
 }
 
 // shutdownSignals are the signals that must run the kernel's teardown
@@ -240,8 +300,14 @@ func bootstrapConfig(path string, loadErr error, logger hclog.Logger) (bool, err
 // zero sources honestly rather than dying, and the INFO log line
 // bootstrapConfig emits is what makes that self-explaining rather than
 // silent.
-func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Store, error) {
-	path := configPath()
+//
+// path is the already-resolved config path (resolveConfigPath's result,
+// threaded down from main via runServe/runSync) — setup no longer
+// computes it itself; every other behaviour (the bootstrapConfig
+// first-run gate, the re-load through config.NewStore after a bootstrap
+// write, returning the ORIGINAL load error when the failure was not
+// os.ErrNotExist) is unchanged.
+func setup(ctx context.Context, logger hclog.Logger, path string) (*config.Store, *index.Store, error) {
 	cfgStore, err := config.NewStore(path)
 	if err != nil {
 		wrote, bootErr := bootstrapConfig(path, err, logger)
@@ -275,7 +341,7 @@ func setup(ctx context.Context, logger hclog.Logger) (*config.Store, *index.Stor
 	return cfgStore, store, nil
 }
 
-func runSync() error {
+func runSync(path string) error {
 	// Same reachability requirement as runServe: `defer sup.Shutdown()`
 	// below is what kills the plugin subprocesses, and a signal that
 	// terminates the process outright never runs it. NotifyContext is
@@ -289,7 +355,7 @@ func runSync() error {
 	defer stop()
 	logger := setupLogger()
 
-	cfgStore, store, err := setup(ctx, logger)
+	cfgStore, store, err := setup(ctx, logger, path)
 	if err != nil {
 		return err
 	}
@@ -324,14 +390,14 @@ func runSync() error {
 	return nil
 }
 
-func runServe() error {
+func runServe(path string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := setupLogger()
 
 	registerManifestMimeType(logger)
 
-	cfgStore, store, err := setup(ctx, logger)
+	cfgStore, store, err := setup(ctx, logger, path)
 	if err != nil {
 		return err
 	}
