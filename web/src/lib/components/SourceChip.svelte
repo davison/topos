@@ -108,6 +108,16 @@
 
 	let tone = $derived(healthTone(source));
 
+	// chipDescId (14-02-PLAN.md Task 1/2, option-b): `$props.id()` rather than
+	// an id derived from `source.name` — this component renders more than
+	// one simultaneous instance for the SAME source (WebspaceHeader.svelte's
+	// aria-hidden measurement clone, and the overflow-popover clone, both
+	// alongside the visible row chip), so a name-derived id would collide
+	// across instances and produce duplicate DOM ids. `$props.id()` is
+	// SSR-safe and unique per component instance, which is exactly the
+	// guarantee `aria-describedby` needs here.
+	const chipDescId = $props.id();
+
 	// isWhatsApp gates the Re-link… menu entry (D-03) — keyed on
 	// source_type, the Describe-reported plugin KIND GET /api/sources
 	// actually exposes, never on a plugin binary name this component has
@@ -305,9 +315,9 @@
 						{...props}
 						type="button"
 						aria-pressed={selected}
+						aria-describedby={chipDescId}
 						onclick={() => onfilter(source.name)}
 						class="flex max-w-48 items-center gap-1.5 self-stretch rounded-full pr-1.5 pl-2.5"
-						title={tooltipText}
 					>
 						<span
 							class={cn(
@@ -322,21 +332,11 @@
 								<PluginIcon plugin={source.plugin} size="size-3.5 shrink-0" />
 							{/snippet}
 						</TrustBadge>
-						<!--
-						  R2: two nested title attributes, deliberately. The outer
-						  button's title={tooltipText} is the touch degrade for
-						  health detail (unreachable without hover below 768px);
-						  this inner span's title={source.display_name} is a
-						  different affordance — a legible name on hover when
-						  truncation clips it. They serve different purposes and
-						  neither should absorb the other's text.
-						-->
 						<span
 							class={cn(
 								'truncate text-[14px] leading-[1.4]',
 								selected ? 'text-primary-foreground' : 'text-foreground'
-							)}
-							title={source.display_name}>{source.display_name}</span
+							)}>{source.display_name}</span
 						>
 					</button>
 				{/snippet}
@@ -344,6 +344,26 @@
 			<TooltipContent>{tooltipText}</TooltipContent>
 		</Tooltip>
 	</TooltipProvider>
+	<!--
+	  14-02-PLAN.md Task 1/2 (option-b): the browser-native tooltips that used
+	  to duplicate/cover the app's own styled Tooltip popover (the outer
+	  button's native-tooltip title, and a second one on the truncated name
+	  span) are removed. The health sentence stays reachable as an
+	  accessible DESCRIPTION — the role the removed button title played —
+	  via this visually-hidden sibling span plus aria-describedby on the
+	  button, rather than moving into aria-label (which would replace the
+	  button's accessible NAME, today just the display name, with the whole
+	  sentence — a real behaviour change ~24 Playwright locators depend on
+	  not happening; see 14-02-PLAN.md Task 1's decision record). While the
+	  Tooltip is open, bits-ui also sets its own aria-describedby pointing at
+	  TooltipContent; this explicit attribute on the DOM element overrides
+	  that one, which is harmless because both reference the identical
+	  health-sentence expression. The truncated name span's own native
+	  tooltip is also removed — its text is unchanged and fully covered by
+	  the button's accessible name, so the redundant popover it produced
+	  added nothing.
+	-->
+	<span id={chipDescId} class="sr-only">{tooltipText}</span>
 
 	<DropdownMenu>
 		<DropdownMenuTrigger>

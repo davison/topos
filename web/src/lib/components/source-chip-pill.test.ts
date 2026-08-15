@@ -203,14 +203,28 @@ describe('reveal scoping: hover and keyboard focus only, never a mouse-click pin
 	});
 });
 
-// 09.1-04-PLAN.md Task 1 (planner_resolutions R2, RESEARCH Pitfall 2):
-// chip health detail is otherwise unreachable without hover, so the filter
-// button must carry a native title attribute as the touch degrade.
-describe('touch health detail: the filter button carries a native title', () => {
-	it('the filter button block carries a title= binding', () => {
+// 09.1-04-PLAN.md Task 1 (planner_resolutions R2, RESEARCH Pitfall 2)
+// originally required a native title attribute here as the long-press
+// touch degrade for chip health detail, since health detail is otherwise
+// unreachable without hover below 768px.
+//
+// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, approved design contract)
+// deliberately removes that title — it duplicated/was covered by the app's
+// own styled Tooltip popover on hover-capable devices. G1's fix applies
+// under EITHER of Task 1's checkpoint options (aria-label or
+// aria-describedby): both replace title with an attribute exposed only to
+// assistive technology, not to a plain touch tap. G1 and its checkpoint did
+// not discuss touch-only reachability, so this is a KNOWN, DELIBERATE
+// deviation from R2's original guarantee, not an oversight papered over
+// here — recorded in 14-02-SUMMARY.md and the cross-phase WINDOWS.md
+// ledger for follow-up: a touch user on a source chip below 768px who is
+// not running a screen reader can no longer reach the health sentence at
+// all (no hover, no keyboard focus, and now no long-press title either).
+describe('touch health detail (14-02-PLAN.md G1 supersedes 09.1-04-PLAN.md R2): the filter button carries no native title', () => {
+	it('the filter button block carries no title= binding — deliberate regression from the long-press touch degrade, see comment above', () => {
 		expect(
 			/\btitle=/.test(filterButtonBlock),
-			'expected the filter button to carry a title= binding — health detail is otherwise unreachable without hover, and a native title is the long-press-accessible touch degrade'
-		).toBe(true);
+			'expected NO title= binding on the filter button — 14-UI-SPEC.md G1 removes it in favour of an aria attribute exposed only to assistive tech, which does not restore touch-only (non-screen-reader) reachability of chip health detail below 768px'
+		).toBe(false);
 	});
 });

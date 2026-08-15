@@ -91,6 +91,63 @@ describe('tooltipText structure: exact template per branch (Fix 3 Copywriting Co
 // against the real component source — the behavioural precedence coverage
 // (which branch is chosen for which combination of inputs) lives in
 // match-advisory.test.ts; this file's own job is the exact wording.
+// 14-02-PLAN.md Task 2 (option-b, see Task 1's decision record): the
+// native-tooltip `title` attributes that used to duplicate/cover the app's
+// own styled Tooltip popover are gone from both popover-bearing elements —
+// the outer chip filter button and the inner truncated display-name span.
+// The dropdown-footer pinned-hash span is untouched (it sits inside
+// already-open dropdown content, not behind a hover popover; 14-UI-SPEC.md
+// G1 point 3 rules it out of scope). The replacement is a visually-hidden
+// `sr-only` sibling span carrying the exact `tooltipText` expression, wired
+// to the button via `aria-describedby` — preserving the button's accessible
+// NAME (the display name, via its own text content) while keeping the
+// health sentence reachable as an accessible DESCRIPTION, the role the
+// removed `title` played.
+describe('native-tooltip suppression (14-02-PLAN.md, option-b): no title on popover-bearing elements', () => {
+	it('the outer chip filter button carries no title attribute', () => {
+		expect(
+			strippedChip.includes('title={tooltipText}'),
+			'expected title={tooltipText} to be removed from the outer chip button'
+		).toBe(false);
+	});
+
+	it('the inner truncated display-name span carries no title attribute', () => {
+		expect(
+			strippedChip.includes('title={source.display_name}'),
+			'expected title={source.display_name} to be removed from the inner display-name span'
+		).toBe(false);
+	});
+
+	it('the dropdown-footer pinned-hash span still carries its own title attribute (untouched, out of scope)', () => {
+		const matches = strippedChip.match(/title=\{source\.pinned_hash\}/g) ?? [];
+		expect(
+			matches.length,
+			'expected exactly one title={source.pinned_hash} to remain, on the dropdown-footer span'
+		).toBe(1);
+	});
+
+	it('the outer chip button is wired to the replacement description via aria-describedby={chipDescId}', () => {
+		expect(
+			strippedChip.includes('aria-describedby={chipDescId}'),
+			'expected the outer chip button to carry aria-describedby={chipDescId}'
+		).toBe(true);
+	});
+
+	it('a visually-hidden sr-only span renders the same tooltipText expression as the replacement description', () => {
+		expect(
+			/id=\{chipDescId\}\s+class="sr-only">\{tooltipText\}/.test(strippedChip),
+			'expected a `sr-only` span with id={chipDescId} rendering {tooltipText} verbatim'
+		).toBe(true);
+	});
+
+	it('no aria-label carries the tooltipText expression on the outer button (option-a was not taken)', () => {
+		expect(
+			strippedChip.includes('aria-label={tooltipText}'),
+			'expected NO aria-label={tooltipText} — option-b keeps the sentence as a description, not the accessible name'
+		).toBe(false);
+	});
+});
+
 describe('tooltipText structure: the two new 13-06-PLAN.md branches (D-12/D-13/D-14)', () => {
 	it('manifest-unverified branch reads the contract-exact sentence', () => {
 		expect(
