@@ -193,7 +193,14 @@ Plans:
   3. Syncs after the first are incremental (changed items only), not a full folder re-listing.
   4. The plugin lives in its own repository, is installed through the external-plugin path, and carries the untrusted badge in the running app — with any place the published contract or mock fell short written down as a contract gap.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 14-01-PLAN.md — Split the dev/test config path from the operator's production config (folded todo; UAT precondition)
+- [ ] 14-02-PLAN.md — Suppress the native tooltips duplicating the source-chip popover, and bring the Playwright suite onto the chip's new locator surface (folded todo)
+- [ ] 14-03-PLAN.md — Author the plugin PRD and bootstrap the out-of-repo clean room, then hand off to its own GSD project
+- [ ] 14-04-PLAN.md — Prove the Drive plugin on the untrusted external path: binary-gated browser spec plus the recorded live UAT
+- [ ] 14-05-PLAN.md — Triage the contract-gap log back into the published contract and the backlog
 
 ## Progress
 
