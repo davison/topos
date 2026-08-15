@@ -2,6 +2,12 @@
 # $XDG_CONFIG_HOME/webspaces/config.toml if XDG_CONFIG_HOME is set) and
 # fill in your own values.
 #
+# This is the PRODUCTION config — the one the kernel loads by default,
+# at the XDG path above. If you're setting up `make dev`'s dev loop
+# instead, see config.dev.example.toml: it's a separate, per-checkout
+# generated template so a dev kernel never reads or writes this file
+# (docs/testing.md, "The real config and the dev config").
+#
 # One file holds kernel settings, source connections, and webspace
 # definitions (D-04). Every key below is documented with its purpose, its
 # default (if any), and its validation rule.

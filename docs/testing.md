@@ -50,6 +50,37 @@ credential-requiring automated check in this repository (see "What
 changed"). It needs no network access, no live source credentials, and
 no `.env` file.
 
+## The real config and the dev config
+
+The kernel resolves its config file from three sources, in precedence
+order: the `--config <path>` flag on `topos serve`/`topos sync`; then the
+`TOPOS_CONFIG` environment variable; then the XDG default
+(`$XDG_CONFIG_HOME/topos/config.toml`, falling back to
+`~/.config/topos/config.toml`).
+
+`make dev` defaults to a generated, per-checkout `config.dev.toml`
+(`DEV_CONFIG` in the Makefile, expanded from the tracked
+`config.dev.example.toml` template) — so the dev loop never reads or
+writes the operator's production config, index, or plugins directory.
+
+Because the generated path is derived from the checkout root (`CURDIR`),
+each git worktree of this repo gets its OWN `config.dev.toml`. This is
+the concrete defect that split closes: a Phase 13 UAT run (2026-08-14)
+had a worktree kernel resolve the *main checkout's* plugin binaries
+through the shared production config, and the build-manifest gate
+correctly refused all six trusted plugins as unverified. `make dev` in a
+worktree now runs entirely inside that worktree.
+
+`make dev DEV_CONFIG=<path>` runs the dev loop against any other config,
+including the operator's own production one
+(`make dev DEV_CONFIG=$HOME/.config/topos/config.toml`) — the escape
+hatch back, in one make variable.
+
+The hermetic Playwright harness is unaffected by any of this: it already
+isolates each spec via its own `XDG_CONFIG_HOME`/`XDG_DATA_HOME`
+(see "Harness architecture", below), so nothing in `web/e2e/` needs to
+pass `--config` or set `TOPOS_CONFIG`.
+
 ## Running a single spec, a single project, or a manual cross-engine pass
 
 ```bash
