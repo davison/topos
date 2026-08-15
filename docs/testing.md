@@ -416,19 +416,36 @@ specs build on).
   auto-flips back to the normal stream — with the toggle disappearing
   again — the instant its one item is un-excluded via the bulk action
   bar's Include button (E4's "no sustained empty-excluded-view state").
-- **`13-undo-across-webspace-switch.spec.ts`** (13-07-PLAN.md, gap
-  closure) — pins 13-REVIEW.md WR-01 / 13-VERIFICATION.md's single
-  recorded gap: the undo toast's reversal must target the webspace the
-  toast was created in, not whichever webspace is current when Undo is
-  clicked, across all three write paths (single-item exclude, bulk
-  exclude, detail-pane include). A real WebspaceSwitcher navigation
-  interrupts the toast's 5000ms window before Undo fires, and every
-  assertion reads direct kernel stream responses rather than rendered
-  rows, because the SPA intentionally renders no signal for a reversal
-  issued after a navigation (the snapshotted generation is stale
-  post-navigation, so the route's own refetch no-ops by design). Each
-  test owns its own webspace pair so the absolute `excluded_count`
-  assertions stay hermetic under a shared worker-scoped kernel.
+- **`13-undo-across-webspace-switch.spec.ts`** (13-07-PLAN.md gap
+  closure; extended by 13-08-PLAN.md for G-13-1) — pins 13-REVIEW.md
+  WR-01 / 13-VERIFICATION.md's recorded gap: the undo toast's reversal
+  must target the webspace the toast was created in, not whichever
+  webspace is current when Undo is clicked, across all three write paths
+  (single-item exclude, bulk exclude, detail-pane include). A real
+  WebspaceSwitcher navigation interrupts the toast's 5000ms window before
+  Undo fires. Asserts on two layers, for two different reasons: webspace
+  A's reversal is read directly from the kernel, because the SPA
+  genuinely issues no refetch for a webspace that is no longer current —
+  there is no rendered A-side signal to assert on until the user
+  navigates back. Webspace B's stream, by contrast, is asserted on the
+  RENDERED page (rows or empty-state copy, plus zero stream skeletons) as
+  a direct consequence of `load()`'s entry guard in
+  `web/src/routes/w/[webspace]/+page.svelte`: a call whose generation is
+  already stale at entry is a true no-op — no state write, no request —
+  so B's stream can never be driven into a stranded loading state by A's
+  reversal. A fourth test drives 13-UAT.md's exact reported reproduction
+  (exclude in a populated webspace, switch to a genuinely EMPTY second
+  webspace, Undo) and pins G-13-1: pre-fix, `load()` wrote `loadState =
+  'loading'` before checking staleness, and its post-await guards could
+  never undo that write for a call that was already stale at entry — so
+  the navigated-to webspace was stranded with four permanent skeleton
+  rows until a reload or "Refresh all". The three same-webspace-pair
+  tests were extended with the identical rendered-stream assertions on B,
+  since the data-layer-only version of this spec passed while the
+  view-layer defect shipped — the two-layer strategy is what closes that
+  gap for good. Each test owns its own webspace pair so the absolute
+  `excluded_count` assertions stay hermetic under a shared worker-scoped
+  kernel.
 
 ## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` — the two new trust states, real binaries
 

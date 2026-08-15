@@ -101,10 +101,19 @@ function streamSkeletonLocator(page: import('@playwright/test').Page) {
 }
 
 // readStream fetches a webspace's stream directly from the kernel — the
-// proof surface for every assertion in this file, because the SPA
-// deliberately renders no visible signal for a reversal issued after a
-// navigation (the snapshotted `gen` is stale post-navigation, so load(gen)
-// no-ops by design).
+// proof surface for webspace A's reversal in every test below. A's own
+// stream is never re-fetched by the SPA after a cross-webspace navigation
+// (nothing in +page.svelte re-issues a getStream call for a webspace that
+// is no longer current), so there is no rendered A-side signal to assert
+// on until the user navigates back — the kernel is A's proof surface for
+// that reason, not because a stale-generation load() silently discards
+// its own effects. Webspace B's rendered stream, by contrast, IS directly
+// assertable: load()'s entry guard (web/src/routes/w/[webspace]/
+// +page.svelte) makes a call with an already-stale generation a true
+// no-op, so B's stream can never be driven into a loading state by the
+// reversal — every test below now asserts on B's rendered rows (or, for
+// the fourth test's genuinely empty B4, its rendered empty-state copy)
+// directly, alongside this kernel-side read.
 async function readStream(
 	baseURL: string,
 	webspace: string
@@ -141,18 +150,18 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 		// duration to buy room (13-UI-SPEC.md E3.1 contract behaviour).
 		await switchWebspace(page, WS_A1, WS_B1);
 
-		// exact: true is load-bearing here, not stylistic: the fixture's own
-		// webspace names (undo-nav-*) contain "undo" as a case-insensitive
-		// substring, so a non-exact name match against the WebspaceSwitcher
-		// trigger button (accessible name = the current webspace name) would
-		// ambiguously resolve to two elements.
-		const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
-		await expect(undoButton).toBeVisible();
-		await undoButton.click();
+		// clickUndo's markWebspace is WS_A1 (the toast's own snapshotted
+		// `ws` — exact: true, load-bearing, matters here too: the fixture's
+		// own webspace names (undo-nav-*) contain "undo" as a
+		// case-insensitive substring, so a non-exact name match against the
+		// WebspaceSwitcher trigger button would ambiguously resolve to two
+		// elements).
+		await clickUndo(page, WS_A1);
 
-		// The SPA renders no signal for this Undo (the snapshotted `gen` is
-		// stale post-navigation, so load(gen) no-ops by design) — poll the
-		// kernel directly instead of asserting on rendered rows.
+		// A's own stream is never re-fetched by the SPA after this
+		// cross-webspace navigation — poll the kernel directly instead of
+		// asserting on rendered rows (see readStream's own doc comment
+		// above for why A and B differ here).
 		await expect
 			.poll(
 				async () => {
@@ -163,8 +172,18 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 			)
 			.toEqual({ hasItem: true, excludedCount: 0 });
 
+		// B's RENDERED stream, untouched by A's reversal (13-08-PLAN.md
+		// Task 2, G-13-1): asserted against server truth — streamB.items
+		// is nonzero here (unlike Task 1's empty B4, this proves the
+		// assertion isn't vacuously passing on an empty list) — plus zero
+		// stream skeletons. StreamList.svelte renders the skeleton branch
+		// INSTEAD of any row, so a rendered row set at the expected count
+		// is itself positive proof loadState never flipped to 'loading'.
 		const streamB = await readStream(kernel.baseURL, WS_B1);
 		expect(streamB.excluded_count).toBe(0);
+		expect(streamB.items.length).toBeGreaterThan(0);
+		await expect(page.locator('[data-item-id]')).toHaveCount(streamB.items.length);
+		await expect(streamSkeletonLocator(page)).toHaveCount(0);
 	});
 
 	test('bulk exclude in A, switch to B, Undo — every excluded id is restored in A', async ({ page, kernel }) => {
@@ -191,9 +210,7 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 
 		await switchWebspace(page, WS_A2, WS_B2);
 
-		const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
-		await expect(undoButton).toBeVisible();
-		await undoButton.click();
+		await clickUndo(page, WS_A2);
 
 		await expect
 			.poll(
@@ -209,8 +226,13 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 			)
 			.toEqual({ allPresent: true, excludedCount: 0 });
 
+		// B's RENDERED stream, untouched by A's reversal (13-08-PLAN.md
+		// Task 2, G-13-1) — same discipline as the single-item test above.
 		const streamB = await readStream(kernel.baseURL, WS_B2);
 		expect(streamB.excluded_count).toBe(0);
+		expect(streamB.items.length).toBeGreaterThan(0);
+		await expect(page.locator('[data-item-id]')).toHaveCount(streamB.items.length);
+		await expect(streamSkeletonLocator(page)).toHaveCount(0);
 	});
 
 	test('detail-pane include in A, switch to B, Undo — A is re-excluded and B gains no mark', async ({
@@ -247,9 +269,7 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 
 		await switchWebspace(page, WS_A3, WS_B3);
 
-		const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
-		await expect(undoButton).toBeVisible();
-		await undoButton.click();
+		await clickUndo(page, WS_A3);
 
 		// The sharper half of this test: pre-fix, this exact sequence wrote
 		// a real, user-invisible exclusion into a webspace the user had
@@ -269,9 +289,14 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 			)
 			.toEqual({ hasItem: false, excludedCount: 1 });
 
+		// B's RENDERED stream, untouched by A's reversal (13-08-PLAN.md
+		// Task 2, G-13-1) — same discipline as the two tests above.
 		const streamB = await readStream(kernel.baseURL, WS_B3);
 		expect(streamB.excluded_count).toBe(0);
 		expect(streamB.items.some((it) => it.id === itemId)).toBe(true);
+		expect(streamB.items.length).toBeGreaterThan(0);
+		await expect(page.locator('[data-item-id]')).toHaveCount(streamB.items.length);
+		await expect(streamSkeletonLocator(page)).toHaveCount(0);
 	});
 
 	// 13-08-PLAN.md Task 1 (G-13-1 gap closure): the exact UAT reproduction
