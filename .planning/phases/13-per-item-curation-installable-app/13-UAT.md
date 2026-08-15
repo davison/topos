@@ -1,9 +1,9 @@
 ---
-status: resolved
+status: complete
 phase: 13-per-item-curation-installable-app
 source: [13-VERIFICATION.md]
 started: 2026-08-15T01:15:00Z
-updated: 2026-08-15T14:45:00Z
+updated: 2026-08-15T15:05:00Z
 ---
 
 ## Current Test
@@ -13,16 +13,15 @@ updated: 2026-08-15T14:45:00Z
 ## Tests
 
 ### 1. Real human timing feasibility of the undo-across-webspace-switch window
-expected: A human can comfortably complete exclude → WebspaceSwitcher switch → click Undo inside the toast's real 5000ms window with normal reaction time; the Undo button is still visible and clickable when reached, and the undo correctly reverses the exclusion in the ORIGINAL webspace (not the one navigated to).
-result: issue
-reported: "the toast and button are still reachable and the button can be clicked (pass) but when clicking the button it shows 4 glowing (loading) cards in the stream of the 2nd webspace which requires a reload or 'Refresh all' to clear. Note that the 2nd webspace was empty, this could be relevant"
-severity: major
+expected: A human can comfortably complete exclude → WebspaceSwitcher switch → click Undo inside the toast's real 5000ms window with normal reaction time; the Undo button is still visible and clickable when reached, and the undo correctly reverses the exclusion in the ORIGINAL webspace (not the one navigated to). After clicking Undo while viewing the second webspace, its stream stays intact: no loading-skeleton cards appear and no reload/"Refresh all" is needed.
+result: pass
+retest: prior run reported stale loading skeletons in the second webspace (severity major); root cause fixed by 13-08-PLAN.md (gap G-13-1, resolved) — fix re-verified and passed
 
 ## Summary
 
 total: 1
-passed: 0
-issues: 1
+passed: 1
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -32,6 +31,8 @@ blocked: 0
 - gap_id: G-13-1
   truth: "Clicking Undo after switching webspaces reverses the exclusion in the original webspace without corrupting the currently-viewed webspace's stream; no stale loading skeletons appear in the second webspace"
   status: resolved
+  resolved_by: 13-08-PLAN.md
+  resolved_at: 2026-08-15
   reason: "User reported: the toast and button are still reachable and the button can be clicked (pass) but when clicking the button it shows 4 glowing (loading) cards in the stream of the 2nd webspace which requires a reload or 'Refresh all' to clear. Note that the 2nd webspace was empty, this could be relevant"
   severity: major
   test: 1
