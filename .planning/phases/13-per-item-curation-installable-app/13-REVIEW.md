@@ -4,99 +4,123 @@ reviewed: 2026-08-15T00:00:00Z
 depth: standard
 files_reviewed: 3
 files_reviewed_list:
-  - docs/testing.md
-  - web/e2e/specs/13-undo-across-webspace-switch.spec.ts
   - web/src/routes/w/[webspace]/+page.svelte
+  - web/e2e/specs/13-undo-across-webspace-switch.spec.ts
+  - docs/testing.md
 findings:
   critical: 0
   warning: 1
-  info: 0
-  total: 1
+  info: 1
+  total: 2
 status: issues_found
 ---
 
-# Phase 13: Code Review Report (13-07 gap-closure re-review)
+# Phase 13: Code Review Report (13-08 gap-closure re-review)
 
 **Reviewed:** 2026-08-15T00:00:00Z
 **Depth:** standard
 **Files Reviewed:** 3
 **Status:** issues_found
 
-**Scope note:** This is a re-review of only the delta introduced by gap-closure
-plan 13-07 (`git diff 1ec0b43..HEAD`), which fixed 13-REVIEW.md WR-01 (the
-exclude/include undo toast's mirror write could retarget itself against the
-wrong webspace if the user switched webspaces inside the 5000ms undo window).
-**This review supersedes the WR-01 finding of the prior full-phase review**
-(committed as `e3ff3d8`, 67 files); it does not re-review those other 66
-files. WR-01 itself is now CLOSED — see verification below.
+**Scope note:** This is a re-review of the delta introduced by gap-closure
+plan 13-08 (`git diff ceca9dd83e4f2e1909766787d24b8574de9259fa..HEAD`, commits
+4f67d32/d44fd68/bcf09dc), which closes G-13-1 (a stale-generation `load()`
+call could strand the navigated-to webspace's stream in a permanent loading
+skeleton). This review supersedes only the parts of the prior 13-REVIEW.md
+that this delta touches; WR-02 from that prior review was re-verified
+against the current source (not assumed) and is carried forward below
+because it remains unfixed in the code as it stands today — 13-08's scope
+was G-13-1 only, and nothing in this delta touches the `closeDetail()`/
+`handleBulkClear()` call sites WR-02 is about.
 
 ## Summary
 
-`web/src/routes/w/[webspace]/+page.svelte`'s three mark handlers
-(`handleExclude`, `handleInclude`, `handleBulkPrimary`) now each snapshot
-`webspace`/`navGeneration` into local `ws`/`gen` constants at function entry,
-and every subsequent read inside both the immediate write and the `onUndo`
-closure uses the snapshot, never the live `$derived(page.params.webspace)`
-binding. This is verified correct and complete for the specific WR-01 defect:
-grep confirms there are exactly three `onUndo` closures in the file, and the
-diff shows all three were updated identically. `setItemMarks(ws, …)` inside
-every `onUndo` now targets the webspace the toast was created in, and
-`load(gen)` will simply no-op (by the pre-existing `gen !== navGeneration`
-guard) if a navigation has superseded it — matching the documented,
-intentional "no visible signal after navigation" behavior the new spec
-exercises.
+The core fix — an entry guard at the top of `load()`
+(`web/src/routes/w/[webspace]/+page.svelte:902`, `if (gen !== navGeneration)
+return;`) — is correct and verified by tracing every call site in the file:
 
-While verifying completeness, one adjacent, narrower race was found that
-13-07 did not address (see WR-02 below): two side effects in these same
-handlers (`closeDetail()` and `handleBulkClear()`) execute unconditionally
-immediately after the initial (non-undo) write's `await`, with no
-`gen === navGeneration` guard — unlike `load(gen)`, which is correctly
-guarded. This is a much narrower window than WR-01 (it requires the initial
-`setItemMarks` round-trip itself to race a navigation, not the 5000ms undo
-window), so it is filed as a WARNING, not a blocker.
+- It only ever actually triggers (returns early) for the three deferred
+  `onUndo` closures' `load(gen)` calls and, incidentally, for
+  `ensurePolling`'s quiet poll-completion `load(gen, { quiet: true })` call
+  if a webspace switch happened mid-tick — both are exactly the deferred-
+  callback cases the comment says it targets.
+- Every other call site in the file passes `navGeneration` itself, or a `gen`
+  already proven equal to the live `navGeneration` by an earlier guard in the
+  same function, so the new guard is a structural no-op for those paths —
+  confirmed no regression to any of the ~15 other `load(...)` call sites.
+- The two existing post-await guards inside `load()` are untouched and still
+  correctly cover the separate in-flight-fetch race, exactly as the code
+  comment claims.
 
-The new spec (`13-undo-across-webspace-switch.spec.ts`) and the
-`docs/testing.md` section describing it were both checked against the real
-kernel contract (`POST /api/webspaces/{webspace}/marks` request/response
-shapes, `GET /api/webspaces/{webspace}/stream`'s default view and
-`excluded_count` semantics) and found accurate — no defects found in either.
+The new fourth spec (`exclude in A4, switch to EMPTY B4, Undo`) correctly
+exercises the fix: `StreamList.svelte`'s `{#if state === 'loading'}` branch
+is checked ahead of every other branch (`web/src/lib/components/
+StreamList.svelte:85`), so a rendered "Nothing here yet" (`StreamEmpty.svelte:25`)
+is legitimate proof `loadState` never flipped to `'loading'`; the
+`streamSkeletonLocator` CSS selector (`[data-slot="skeleton"].stream-row-surface`)
+only ever matches `StreamLoadingSkeleton.svelte`'s own rows (`StreamRow.svelte`'s
+row surface carries the `.stream-row-surface` class but never
+`data-slot="skeleton"`), so it cannot produce a false positive against a
+populated stream. `clickUndo`'s `page.waitForResponse` registration before
+the click, and its `endsWith('/api/webspaces/${markWebspace}/marks')`
+matcher, are consistent with `setItemMarks`'s actual request URL
+(`web/src/lib/api.ts:553`). The `docs/testing.md` prose update accurately
+describes both the fix and the two-layer (kernel-read for A, rendered-DOM
+for B) assertion strategy the spec now uses.
+
+No new defects were introduced by this delta. One warning from the prior
+review remains open (re-verified against current line numbers, not carried
+forward blindly) and one new minor info-level observation was found on the
+same code path during this delta's review.
 
 ## Warnings
 
-### WR-02: `closeDetail()`/`handleBulkClear()` still run unconditionally after a navigation, ungated by `navGeneration`
+### WR-01: `closeDetail()`/`handleBulkClear()` still run unconditionally after a navigation, ungated by `navGeneration` (carried forward, re-verified, still unfixed)
 
-**File:** `web/src/routes/w/[webspace]/+page.svelte:126-127` (`handleExclude`), `149-150` (`handleInclude`), `230-231` (`handleBulkPrimary`)
+**File:** `web/src/routes/w/[webspace]/+page.svelte:132` (`handleExclude`),
+`:155` (`handleInclude`), `:236` (`handleBulkPrimary`)
 
-**Issue:** 13-07 correctly snapshotted `ws`/`gen` so the *write itself*
-(`setItemMarks`) and the stream refetch (`load(gen)`, which the pre-existing
-`gen !== navGeneration` check inside `load()` already discards when stale)
-can never target or display the wrong webspace. However, the UI-state side
-effects that run between the initial write's `await` and `load(gen)` —
-`closeDetail()` in `handleExclude`/`handleInclude`, and `handleBulkClear()`
-in `handleBulkPrimary` — are called unconditionally, with no check against
-`gen`/`navGeneration`. If a user triggers an exclude/include/bulk-exclude,
-then navigates to a different webspace and opens a different item (or makes
-a new bulk selection) in the new webspace before the *original*
-`setItemMarks` request resolves, the original handler's `closeDetail()` (or
-`handleBulkClear()`) will fire against the now-current state and spuriously
-deselect the newly opened item / clear the newly made selection in the
-*destination* webspace — a UI-only side effect (no data is written to the
-wrong place; `ws` still correctly targets the origin webspace for the actual
-mark write), but a real, unintended cross-webspace state clobber.
+**Issue:** The prior review (WR-02 in the superseded 13-REVIEW.md) identified
+that `closeDetail()`/`handleBulkClear()` run unconditionally immediately
+after the *initial* (non-undo) `setItemMarks` write's `await`, with no
+`gen === navGeneration` guard — unlike `load(gen)` in the same functions,
+which is correctly guarded (and, after this delta, guarded even more
+robustly at entry). 13-08-PLAN.md's scope was G-13-1 (the `load()` entry
+guard) only; it did not touch these three call sites, and re-reading the
+current source confirms they are still unconditional:
 
-This window is far narrower than WR-01's (it requires the initial
-`POST /marks` round-trip itself — normally single-digit milliseconds against
-the local kernel — to still be in flight when the user completes a
-navigation and a new selection/open, rather than WR-01's full 5000ms undo
-window), so it is unlikely to be hit in the hermetic e2e harness or typical
-use. It is nonetheless a real gap in the "the fix is complete" claim: the
-snapshot discipline documented in the code comment ("ws/gen … are captured at
-entry because markSuccessToast's Undo action can fire up to 5000ms later …")
-only reasons about the identity of the mirror write, not about every
-side-effecting statement in the same async function.
+```
+132:  closeDetail();       // handleExclude — no gen check
+155:  closeDetail();       // handleInclude — no gen check
+236:  handleBulkClear();   // handleBulkPrimary — no gen check
+```
 
-**Fix:** Gate the two unconditional side effects the same way `load()`
-already gates its own state write, e.g.:
+If a user triggers an exclude/include/bulk-exclude, then navigates to a
+different webspace and opens a different item (or makes a new bulk
+selection) in the new webspace before the *original* `setItemMarks` request
+resolves (a narrow window — normally single-digit milliseconds against the
+local kernel, not the 5000ms undo window WR-01/G-13-1 cover), the original
+handler's `closeDetail()`/`handleBulkClear()` fires against now-current
+state and spuriously deselects the newly opened item or clears the newly
+made selection in the *destination* webspace. No data is written to the
+wrong webspace (`ws` still correctly targets the origin webspace for the
+mark write itself) — this is a UI-only state clobber, not a data-integrity
+bug — but it is a real, unintended cross-webspace side effect that the
+`navGeneration` discipline this file otherwise applies consistently (see the
+extensive `load()`/`writeFilter()`/`handleSearch()` generation-guard comments
+throughout the same file) does not yet cover here.
+
+The same shared-state gap also applies, at lower severity, to `markBusy`/
+`bulkBusy`: both are set `true` synchronously at handler entry and cleared
+unconditionally in each handler's `finally` block. If webspace B's own
+detail pane or action bar happens to be rendered when a still-in-flight
+webspace-A handler's `finally` fires, B's busy-disabled control flips
+enabled/disabled as a side effect of A's request settling — narrower still
+than the `closeDetail`/`handleBulkClear` case, but the same missing
+`gen === navGeneration` discipline.
+
+**Fix:** Gate the two side effects (and, ideally, the busy-state writes) the
+same way `load()`'s own entry guard now does:
 
 ```ts
 async function handleExclude(id: string) {
@@ -108,18 +132,38 @@ async function handleExclude(id: string) {
 		if (gen === navGeneration) closeDetail();
 		await load(gen);
 		...
+	} finally {
+		if (gen === navGeneration) markBusy = false;
+	}
+}
 ```
 
-and correspondingly in `handleBulkPrimary`:
+and correspondingly in `handleInclude` (`closeDetail()`) and
+`handleBulkPrimary` (`handleBulkClear()`, `bulkBusy = false`).
 
-```ts
-await setItemMarks(ws, action, ids);
-if (gen === navGeneration) handleBulkClear();
-await load(gen);
-```
+## Info
 
-`handleInclude` needs the identical guard around its own `closeDetail()`
-call.
+### IN-01: `load()`'s new entry-guard comment block is long enough to bury the guard's one line of actual logic
+
+**File:** `web/src/routes/w/[webspace]/+page.svelte:879-900`
+
+**Issue:** The comment preceding `load()` documenting the G-13-1 fix (~22
+lines) is accurate and useful for future readers tracing the bug's history,
+but it sits directly above a function whose own doc comment already runs to
+~35 lines (the pre-existing `quiet` explanation). The two comment blocks
+together are now longer than the function body they describe, making the
+single load-bearing line (`if (gen !== navGeneration) return;`) easy to
+skim past on a future edit. This matches the file's established heavy-
+comment convention (evident throughout — e.g. the `navGeneration` doc
+comment at line ~682, the `handleStreamScroll` block at ~769-839) so it is
+not a deviation from house style, just a note that a future trim pass could
+consider consolidating the two `load()` comment blocks into one narrative
+rather than two stacked ones.
+
+**Fix:** Optional. If touched again, consider merging the `quiet` and
+entry-guard comment blocks into a single ordered explanation (state machine:
+entry guard → quiet branch → success → auto-flip → error) rather than two
+separately-dated additions.
 
 ---
 
