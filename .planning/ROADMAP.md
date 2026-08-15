@@ -150,7 +150,7 @@ Plans:
   4. After the kernel is upgraded, the installed app never serves a stale UI — the user lands on the new build rather than a cached one.
   5. The mobile/LAN install limitation (browsers require a secure context) is documented, along with the recommended user-provided HTTPS workarounds.
 
-**Plans**: 7/8 plans executed (13-07 closes 13-VERIFICATION.md; 13-08 closes 13-UAT.md G-13-1)
+**Plans**: 8/8 plans executed (13-07 closes 13-VERIFICATION.md; 13-08 closes 13-UAT.md G-13-1)
 
 Plans:
 **Wave 1**
@@ -177,7 +177,7 @@ Plans:
 
 **Wave 6** *(gap closure — blocked on Wave 5 completion)*
 
-- [ ] 13-08-PLAN.md — Stale-generation load() entry guard (no stranded skeletons after a cross-webspace undo); rendered-stream assertions added to the undo spec (wave 6)
+- [x] 13-08-PLAN.md — Stale-generation load() entry guard (no stranded skeletons after a cross-webspace undo); rendered-stream assertions added to the undo spec (wave 6)
 
 **UI hint**: yes
 
@@ -204,7 +204,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 |-------|-----------|----------------|--------|-----------|
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
-| 13. Per-Item Curation & Installable App | v1.1.0 | 7/7 | In Progress|  |
+| 13. Per-Item Curation & Installable App | v1.1.0 | 8/8 | In Progress|  |
 | 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 0/TBD | Not started | - |
 
 ## Backlog
