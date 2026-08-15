@@ -196,10 +196,21 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 14-01-PLAN.md — Split the dev/test config path from the operator's production config (folded todo; UAT precondition)
 - [ ] 14-02-PLAN.md — Suppress the native tooltips duplicating the source-chip popover, and bring the Playwright suite onto the chip's new locator surface (folded todo)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 14-03-PLAN.md — Author the plugin PRD and bootstrap the out-of-repo clean room, then hand off to its own GSD project
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 14-04-PLAN.md — Prove the Drive plugin on the untrusted external path: binary-gated browser spec plus the recorded live UAT
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 14-05-PLAN.md — Triage the contract-gap log back into the published contract and the backlog
 
 ## Progress
