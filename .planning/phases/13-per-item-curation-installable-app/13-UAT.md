@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 13-per-item-curation-installable-app
 source: [13-VERIFICATION.md]
 started: 2026-08-15T01:15:00Z
-updated: 2026-08-15T13:57:07Z
+updated: 2026-08-15T14:45:00Z
 ---
 
 ## Current Test
@@ -31,7 +31,7 @@ blocked: 0
 
 - gap_id: G-13-1
   truth: "Clicking Undo after switching webspaces reverses the exclusion in the original webspace without corrupting the currently-viewed webspace's stream; no stale loading skeletons appear in the second webspace"
-  status: failed
+  status: resolved
   reason: "User reported: the toast and button are still reachable and the button can be clicked (pass) but when clicking the button it shows 4 glowing (loading) cards in the stream of the 2nd webspace which requires a reload or 'Refresh all' to clear. Note that the 2nd webspace was empty, this could be relevant"
   severity: major
   test: 1

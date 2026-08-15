@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "G-13-1 (undo-cross-webspace-loading-skeletons): Clicking the Undo toast button after excluding an item and switching to a different (empty) webspace injects 4 glowing loading-skeleton cards into the second webspace's stream. They never resolve and only clear on a full page reload or clicking Refresh all."
 created: 2026-08-15T14:30:00Z
-updated: 2026-08-15T14:45:00Z
+updated: 2026-08-15T15:10:00Z
 ---
 
 ## Current Focus
