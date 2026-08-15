@@ -115,7 +115,12 @@
 	// to 5000ms later, by which time a WebspaceSwitcher navigation may
 	// have changed the route's derived webspace/navGeneration bindings —
 	// the same discipline writeFilter and handleSearch already apply for
-	// their own, shorter, delay windows.
+	// their own, shorter, delay windows. Passing the snapshotted `gen` to
+	// `load` from a callback firing this late is safe BECAUSE of load's
+	// own entry guard (13-08-PLAN.md, G-13-1 gap closure, below) — a
+	// generation that is already stale by the time onUndo fires makes
+	// `load` a true no-op rather than stranding the navigated-to
+	// webspace's stream in a permanent loading state.
 	let markBusy = $state(false);
 
 	async function handleExclude(id: string) {
@@ -871,7 +876,30 @@
 	// refresh leaves whatever is on screen exactly as it was — strictly
 	// better than today's behaviour of never refreshing at all, never
 	// worse.
+	//
+	// Entry guard (13-08-PLAN.md, G-13-1 gap closure): a `gen` that is
+	// already stale AT ENTRY — before the `quiet` destructuring, before
+	// the `loadState = 'loading'` write — now makes `load` a true no-op:
+	// no state write, no request. This is what makes it safe for a
+	// DEFERRED callback (the undo toast's `onUndo`, which snapshots its
+	// generation at mark time per WR-01 above) to call `load` with a
+	// generation the user has since navigated away from. Before this
+	// guard existed, the ordering was backwards: `loadState = 'loading'`
+	// was written FIRST, and only then did the post-await guard below
+	// check staleness — but that guard's only job is to discard a STALE
+	// RESPONSE, so it returns past every exit that could ever restore
+	// `'ready'` or `'error'`. A stale-generation call was therefore a
+	// one-way transition into a permanently-rendered skeleton (four rows,
+	// StreamLoadingSkeleton.svelte) until a page reload or "Refresh all"
+	// forced a fresh `load`. The guard sits at the very top of the
+	// function precisely so it holds for EVERY caller, present and
+	// future, not only the three `onUndo` closures that exposed it. Both
+	// post-await guards below are unchanged — they cover a DIFFERENT
+	// race (a navigation that happens DURING an in-flight fetch, which
+	// this entry check cannot see, since `gen` was still current when
+	// the fetch started).
 	async function load(gen: number, options?: { quiet?: boolean }) {
+		if (gen !== navGeneration) return; // already stale at entry: no state write, no request
 		const quiet = options?.quiet ?? false;
 		if (!quiet) loadState = 'loading';
 		try {
