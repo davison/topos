@@ -23,13 +23,27 @@ const WS_A2 = 'undo-nav-a2';
 const WS_B2 = 'undo-nav-b2';
 const WS_A3 = 'undo-nav-a3';
 const WS_B3 = 'undo-nav-b3';
+// A4/B4 (13-08-PLAN.md, G-13-1 gap closure): the fourth pair, added
+// specifically for the empty-second-webspace reproduction — B4 is seeded
+// with `keywords: []` (never omitted; see uat-06/uat-07's identical
+// rationale for why an explicit empty array, not an absent field, is the
+// established way this harness expresses a genuinely empty webspace) so
+// it participates in zero of the mock source's items and renders the
+// `Nothing here yet` empty-state copy, exactly like 13-UAT.md test 1's
+// reported condition.
+const WS_A4 = 'undo-nav-a4';
+const WS_B4 = 'undo-nav-b4';
 
 const configSpec: FixtureConfigSpec = {
 	sources: [{ id: SOURCE_ID, plugin: 'topos-plugin-mock', displayName: 'Mock Source' }],
-	webspaces: [WS_A1, WS_B1, WS_A2, WS_B2, WS_A3, WS_B3].map((name) => ({
-		name,
-		keywords: ['demo']
-	}))
+	webspaces: [
+		...[WS_A1, WS_B1, WS_A2, WS_B2, WS_A3, WS_B3].map((name) => ({
+			name,
+			keywords: ['demo']
+		})),
+		{ name: WS_A4, keywords: ['demo'] },
+		{ name: WS_B4, keywords: [] }
+	]
 };
 
 test.use({ configSpec });
@@ -44,6 +58,46 @@ async function switchWebspace(page: import('@playwright/test').Page, from: strin
 	await page.getByRole('button', { name: from, exact: true }).click();
 	await page.getByRole('menuitem', { name: to, exact: true }).click();
 	await expect(page.getByRole('button', { name: to, exact: true })).toBeVisible();
+}
+
+// clickUndo (13-08-PLAN.md, G-13-1 gap closure): registers the wait for
+// the reversal's mark POST BEFORE clicking Undo, so every assertion the
+// caller makes AFTER this resolves is sequenced strictly after the
+// response has reached the PAGE — the exact point after which onUndo's
+// continuation (the `load(gen)` call whose pre-fix side effect this spec
+// now pins) runs. Without this ordering, an absence-of-skeleton assertion
+// could evaluate before the browser had even received its POST response
+// and pass green against the unfixed source, which is the exact failure
+// mode this whole plan exists to stop repeating. `markWebspace` is the
+// webspace the reversal's mark write actually targets (the toast's own
+// snapshotted `ws`, captured at mark time — WR-01) — NOT necessarily the
+// webspace currently showing on screen.
+async function clickUndo(
+	page: import('@playwright/test').Page,
+	markWebspace: string
+): Promise<void> {
+	const responsePromise = page.waitForResponse(
+		(res) =>
+			res.url().endsWith(`/api/webspaces/${markWebspace}/marks`) && res.request().method() === 'POST'
+	);
+	const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+	await expect(undoButton).toBeVisible();
+	await undoButton.click();
+	await responsePromise;
+}
+
+// streamSkeletonLocator (13-08-PLAN.md, G-13-1 gap closure): a CSS
+// selector by necessity, not by preference — the skeleton is decoration
+// with no accessible name (StreamLoadingSkeleton.svelte), so its ABSENCE
+// has no user-facing locator. `data-slot="skeleton"` is an attribute the
+// shared shadcn Skeleton component already ships
+// (web/src/lib/components/ui/skeleton/skeleton.svelte), never one added
+// for this test — docs/testing.md's "Prefer user-facing locators" rule
+// and 13-07-PLAN.md's standing prohibition are both about ADDING
+// attributes to shipped components. Kept as the belt-and-braces companion
+// to the primary getByText assertion below, never the sole gate.
+function streamSkeletonLocator(page: import('@playwright/test').Page) {
+	return page.locator('[data-slot="skeleton"].stream-row-surface');
 }
 
 // readStream fetches a webspace's stream directly from the kernel — the
@@ -218,5 +272,80 @@ test.describe('13-07 Task 1/2: the undo toast targets the webspace it was create
 		const streamB = await readStream(kernel.baseURL, WS_B3);
 		expect(streamB.excluded_count).toBe(0);
 		expect(streamB.items.some((it) => it.id === itemId)).toBe(true);
+	});
+
+	// 13-08-PLAN.md Task 1 (G-13-1 gap closure): the exact UAT reproduction
+	// (13-UAT.md test 1) — clicking Undo after switching to an EMPTY
+	// second webspace strands four permanent loading skeletons there. The
+	// three tests above prove the reversal lands correctly (13-07's
+	// scope); this test proves the navigated-to webspace's RENDERED stream
+	// is left untouched by that reversal — the half 13-UAT.md's gap named
+	// and the existing spec deliberately skipped.
+	test('exclude in A4, switch to EMPTY B4, Undo — B4 renders no stranded skeleton (G-13-1)', async ({
+		page,
+		kernel
+	}) => {
+		await waitForFirstSync(kernel.baseURL, [SOURCE_ID], { logs: kernel.logs });
+
+		// Precondition, asserted from the kernel BEFORE any UI work (never
+		// in-window — the awaited span between Exclude and Undo below must
+		// stay inside the toast's real 5000ms lifetime): B4 is genuinely
+		// empty, the exact condition that made the injected skeleton rows
+		// conspicuous in the reported UAT reproduction.
+		const seedStreamB = await readStream(kernel.baseURL, WS_B4);
+		expect(seedStreamB.items.length).toBe(0);
+
+		await page.goto(`${kernel.baseURL}/w/${WS_A4}`);
+
+		const rows = page.locator('[data-item-id]');
+		await expect(rows.first()).toBeVisible();
+		const rowCountBefore = await rows.count();
+		const itemId = await rows.first().getAttribute('data-item-id');
+		expect(itemId).toBeTruthy();
+
+		await rows.first().click();
+		await page.getByRole('button', { name: 'Exclude from webspace' }).click();
+		await expect(page.locator(`[data-item-id="${itemId}"]`)).toHaveCount(0);
+		await expect(rows).toHaveCount(rowCountBefore - 1);
+		// Copywriting Contract (13-UI-SPEC.md): singular, exact.
+		await expect(page.getByText('Excluded 1 item', { exact: true })).toBeVisible();
+
+		// Keep every awaited step between the Exclude click above and the
+		// Undo click below to the minimum the file's existing comment
+		// demands — the whole span must still fit inside the toast's real
+		// 5000ms lifetime.
+		await switchWebspace(page, WS_A4, WS_B4);
+
+		// markWebspace is WS_A4 (the toast's own snapshotted `ws`), not the
+		// webspace now on screen (WS_B4) — that is exactly WR-01's fix
+		// this spec's first three tests already pin.
+		await clickUndo(page, WS_A4);
+
+		// B4's RENDERED stream — the assertion 13-UAT.md's gap named and
+		// the existing three tests deliberately skipped. StreamList.svelte
+		// checks the skeleton branch strictly ahead of every
+		// response-derived branch, so the empty-state copy being visible
+		// is itself positive proof `loadState !== 'loading'`.
+		await expect(page.getByText('Nothing here yet')).toBeVisible();
+		await expect(streamSkeletonLocator(page)).toHaveCount(0);
+
+		// A4 from the kernel — the unchanged proof surface and unchanged
+		// expectation: the item is listed again and excluded_count is 0.
+		await expect
+			.poll(
+				async () => {
+					const stream = await readStream(kernel.baseURL, WS_A4);
+					return { hasItem: stream.items.some((it) => it.id === itemId), excludedCount: stream.excluded_count };
+				},
+				{ timeout: 10_000 }
+			)
+			.toEqual({ hasItem: true, excludedCount: 0 });
+
+		// Navigate BACK to A4 and assert the restored item renders as a
+		// row — the reversal is user-visible on return, not merely
+		// kernel-true (KERN-09 Success Criterion 1's "trivially
+		// reversible" contract, end to end through the browser).
+		await switchWebspace(page, WS_B4, WS_A4);
+		await expect(page.locator(`[data-item-id="${itemId}"]`)).toBeVisible();
 	});
 });
