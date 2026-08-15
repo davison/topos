@@ -1,7 +1,7 @@
 ---
 phase: 14
 slug: google-drive-source-built-out-of-repo
-status: draft
+status: approved
 shadcn_initialized: true
 preset: "shadcn-svelte — style: new-york, baseColor: slate, cssVariables: true, Tailwind v4 (unchanged since Phase 1 — components.json present at web/components.json, no re-init this phase; every rendered color comes from web/src/app.css's hand-authored hex tokens, not the CLI's own slate defaults)"
 created: 2026-08-15
@@ -199,7 +199,7 @@ Every one of these surfaces is exercised by this phase's two success criteria an
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: **17 explicit, 1 backstop, 0 unresolved** — across G1 (real code) and G2–G4 (content rendered by existing generic components). Coverage for every reused surface (picker, trust badge, previews, deep link, match form) is inherited unmodified from its originating phase's own UI-SPEC (Phase 1/2/9/11/12) and is not re-litigated here — see "Explicit Reuse" above for the mapping.
+Probe run post-verification (engine: `ui-consideration-probe.cjs`, 20 applicable considerations across G1–G4; element kinds confirmed by user, with G4 carrying an authored override union adding error/populated status-indicator coverage beyond the engine's text-kind detection). Final ledger: **17 explicit, 1 backstop, 0 unresolved**; all remaining engine categories dismissed with recorded reasons (user-confirmed). Coverage for every reused surface (picker, trust badge, previews, deep link, match form) is inherited unmodified from its originating phase's own UI-SPEC (Phase 1/2/9/11/12) and is not re-litigated here — see "Explicit Reuse" above for the mapping.
 
 ### Resolved — explicit
 
@@ -234,7 +234,9 @@ Applicable state considerations resolved: **17 explicit, 1 backstop, 0 unresolve
 | Element | Categories dismissed | Reason |
 |---------|----------------------|--------|
 | G1 (tooltip suppression) | empty, populated, partial, zero-one-many, overflow | Not a data-bearing element — a fixed attribute change on an already-existing, already-covered control. |
+| G1 (tooltip suppression) | loading | No async content — a static attribute change; the chip's own load/health lifecycle is covered by prior phases' UI-SPECs, unmodified. |
 | G3 (match vocabulary) | error, long-text | Inherited unmodified from Phase 12's own D-05 vocabulary handling — no new validation or text-length concern this phase introduces beyond what Phase 12's own UI-SPEC already resolved for the identical `MatchFieldsForm.svelte` mechanism. |
+| G3 (match vocabulary) | loading, partial, overflow | Synchronous local comma-list input inherited unmodified from Phase 12's `MatchFieldsForm.svelte` — no async fetch (loading), no cross-value dependency (partial), and native input horizontal scroll for overlong lists (overflow) are all the identical, already-shipped behavior every existing match field exhibits. |
 
 ---
 
@@ -251,11 +253,11 @@ No third-party (non-shadcn-official, non-`@lucide/svelte`) frontend registry is 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** APPROVED (gsd-ui-checker, 2026-08-15 — 6/6 dimensions, no recommendations)
