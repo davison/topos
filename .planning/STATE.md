@@ -154,6 +154,7 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - 2026-08-05 — Signal schema-version verify-and-accept tooling (minor, tooling)
 - 2026-08-05 — Centralize rendition theming (and sanitization) in the kernel content boundary (major, api; schedule with Phase 5 contract work or ecosystem milestone)
 - 2026-08-13 — Plugin trust tier is directory-location, not provenance (major, security; Phase 11 debt — consent flow bypassable via config edit, file drop, or D-11 shadowing; candidate own hardening phase)
+- 2026-08-17 — Abstract OAuth connectivity and secrets management into the kernel for all plugins (major, kernel; requirement-grade per gdrive clean-room build — feeds 14-05 contract-gap triage, kernel implementation warrants next-milestone phase)
 
 ### Blockers/Concerns
 
