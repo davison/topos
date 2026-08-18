@@ -20,6 +20,26 @@ results table at the end.
 
 ---
 
+## Run Record
+
+**Run completed:** 2026-08-18, by the operator, against their own real
+Google account and Drive folder.
+
+**Operator's verbatim report:** "everything passes, I've not filled in
+the table"
+
+The results table and health-states table below were filled in by a
+continuation session on the operator's behalf, on the basis of that
+blanket report — every row is recorded as passing and attributed as
+**operator-attested (live run by operator, 2026-08-18; blanket
+"everything passes" report)**. No specific observed value, timing,
+screenshot, or log excerpt below was independently witnessed by the
+session filling in this table; where a cell asks for detail beyond a
+pass/fail (a date, a log excerpt, a screenshot filename), it is marked
+"not recorded — operator attested pass" rather than invented.
+
+---
+
 ## Preparation
 
 1. **Build (or confirm) the plugin binary.** The binary comes from the
@@ -279,10 +299,10 @@ surface.
 
 | Cause | Exact sentence | How to reach it deliberately | Reached this run? |
 |---|---|---|---|
-| Never authorized | `Not authorized — run "topos-plugin-gdrive auth" in a terminal, then use this source's "Refresh now".` | Add the source before running Authorization step 5 — this is exactly the state the hermetic e2e spec proves without a Google account. | |
-| Expired or revoked | `Authorization expired or was revoked — run "topos-plugin-gdrive auth" again, then use this source's "Refresh now".` | In your Google Account's own "Third-party apps & services" settings, revoke access for this OAuth client, then trigger a sync. | |
-| Rate limited | `Rate limited by Google Drive — retrying automatically. No action needed.` | Genuinely difficult to provoke deliberately against a personal-use quota (`14-RESEARCH.md` Pitfall 6) — note honestly if this state could not be reached this run rather than marking it passed. | |
-| Folder inaccessible | `The configured Drive folder is no longer accessible — check the folder still exists and is shared with this account.` | Remove or unshare the configured folder from the authorized account, then trigger a sync. | |
+| Never authorized | `Not authorized — run "topos-plugin-gdrive auth" in a terminal, then use this source's "Refresh now".` | Add the source before running Authorization step 5 — this is exactly the state the hermetic e2e spec proves without a Google account. | Yes — operator-attested (blanket "everything passes" report, 2026-08-18) |
+| Expired or revoked | `Authorization expired or was revoked — run "topos-plugin-gdrive auth" again, then use this source's "Refresh now".` | In your Google Account's own "Third-party apps & services" settings, revoke access for this OAuth client, then trigger a sync. | Yes — operator-attested (blanket "everything passes" report, 2026-08-18) |
+| Rate limited | `Rate limited by Google Drive — retrying automatically. No action needed.` | Genuinely difficult to provoke deliberately against a personal-use quota (`14-RESEARCH.md` Pitfall 6) — note honestly if this state could not be reached this run rather than marking it passed. | Yes — operator-attested (blanket "everything passes" report, 2026-08-18); not independently confirmed reached given how hard this state is to provoke deliberately — recorded as passing solely on the operator's blanket report, not on a witnessed specific observation |
+| Folder inaccessible | `The configured Drive folder is no longer accessible — check the folder still exists and is shared with this account.` | Remove or unshare the configured folder from the authorized account, then trigger a sync. | Yes — operator-attested (blanket "everything passes" report, 2026-08-18) |
 
 For every state you *do* reach, confirm:
 - `GET /api/sources`'s `reachable` is `false` and `last_error` is the
@@ -312,18 +332,18 @@ credential value, ever.
 
 | # | Item | Observed | Evidence | Notes |
 |---|------|----------|----------|-------|
-| 1 | Criterion 1 — restart survives with no re-auth | | | First authorization date: __________ |
-| 2 | Criterion 2 — documents, previews (native + Workspace export), deep links | | | |
-| 3 | Criterion 3 — second sync is incremental, stream stays full | | | |
-| 4 | Criterion 4 — untrusted badge, matching pin, gap log entries recorded | | | |
-| 5 | Health — never authorized | | | |
-| 6 | Health — expired/revoked | | | |
-| 7 | Health — rate limited | | | |
-| 8 | Health — folder inaccessible | | | |
+| 1 | Criterion 1 — restart survives with no re-auth | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | First authorization date: not recorded — operator attested pass |
+| 2 | Criterion 2 — documents, previews (native + Workspace export), deep links | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
+| 3 | Criterion 3 — second sync is incremental, stream stays full | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
+| 4 | Criterion 4 — untrusted badge, matching pin, gap log entries recorded | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
+| 5 | Health — never authorized | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
+| 6 | Health — expired/revoked | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
+| 7 | Health — rate limited | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass; this state is noted above as genuinely difficult to provoke deliberately — recorded pass solely on the operator's blanket report, not a witnessed specific observation |
+| 8 | Health — folder inaccessible | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
 
 **Anything to carry into the gap triage (14-05):**
 
-_(fill in — reference `CONTRACT-GAPS.md` entries by id where applicable)_
+None reported. The operator's report was a blanket "everything passes" with no additional detail or gap-log reference supplied.
 
 ---
 
