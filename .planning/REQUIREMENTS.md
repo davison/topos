@@ -18,8 +18,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Dev isolation
 
-- [ ] **ISOL-01**: Dev runs from the checkout keep all writable state (config, kernel index, plugin stores) in .gitignored per-checkout or `/tmp` locations — never the home/XDG locations the installed instance uses
-- [ ] **ISOL-02**: Dev/test servers bind a non-7777 port; the installed instance keeps 7777
+- [x] **ISOL-01**: Dev runs from the checkout keep all writable state (config, kernel index, plugin stores) in .gitignored per-checkout or `/tmp` locations — never the home/XDG locations the installed instance uses
+- [x] **ISOL-02**: Dev/test servers bind a non-7777 port; the installed instance keeps 7777
 - [ ] **ISOL-03**: The installed instance and a dev instance run simultaneously without clashing on port, config, or state
 
 ## Future Requirements
@@ -54,8 +54,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-03 | Phase 15 | Pending |
 | INST-04 | Phase 15 | Complete |
 | INST-05 | Phase 15 | Complete |
-| ISOL-01 | Phase 15 | Pending |
-| ISOL-02 | Phase 15 | Pending |
+| ISOL-01 | Phase 15 | Complete |
+| ISOL-02 | Phase 15 | Complete |
 | ISOL-03 | Phase 15 | Pending |
 
 **Coverage:**
