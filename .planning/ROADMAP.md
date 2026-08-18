@@ -236,6 +236,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+- [ ] Exempt a fully-`extras` source from the kernel's `base_url`/`token`/`path` config-load requirement, or define a fourth top-level connection-detail key such a source declares instead — found by Phase 14's `topos-plugin-gdrive` clean-room build, whose entire declared configuration lives in `extras` (client_id/client_secret/folder_id) and which the kernel currently refuses to boot without a functionally inert `path` stub (GAP-06, `.planning/phases/14-google-drive-source-built-out-of-repo/14-CONTRACT-GAPS.md`)
 
 ### Phase 999.2: Move functional plugins to topos-plugins sibling repo (BACKLOG)
 

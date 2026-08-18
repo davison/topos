@@ -39,6 +39,7 @@ Deferred to a later milestone. Tracked but not in the current roadmap.
 
 - **PLUG-10**: Pull-by-URL plugin distribution via the source picker's install flow
 - **PLUG-11**: Third-party plugin developer guide and certification/trust-promotion path
+  - Phase 14's out-of-repo `topos-plugin-gdrive` clean-room build produced concrete input for this: a 20-entry contract-gap log (GAP-01 through GAP-20), 19 of which were documentation-fixable and republished into `docs/plugin-contract.md` directly, and one (GAP-06 — an extras-only source vs. the kernel's `base_url`/`token`/`path` config-load requirement) filed as a backlog item under Phase 999.1. See `.planning/phases/14-google-drive-source-built-out-of-repo/14-CONTRACT-GAPS.md` for the full triage.
 
 ### New Sources
 

@@ -177,6 +177,15 @@ uses the returned `source_type` as the plugin's identity for the rest of
 the process's lifetime — **a plugin's identity is never trusted from its
 filename or its config key**, only from what `Describe` reports.
 
+**A launched plugin subprocess always receives zero arguments.** The
+kernel's own launch call never passes `argv` beyond the binary path
+itself — a plugin author is free to inspect `os.Args` for a plugin-owned
+purpose (an `auth`-style standalone subcommand your own binary dispatches
+on when a human runs it directly from a terminal, say), but must not
+expect the kernel to ever pass anything through it, and must fall through
+to normal `goplugin.Serve` operation on an empty argument list, which is
+the only shape the kernel's own launch path ever produces.
+
 **The kernel may launch the same plugin binary more than once.** Every
 `[sources.<id>]` entry in config gets its own subprocess, its own
 handshake, and its own `WEBSPACES_SOURCE_CONFIG` (see below) — two
@@ -430,6 +439,17 @@ expanded to `""`) — never start up silently and fail later, mid-`Match`,
 with a confusing downstream error. Log the missing key by name (never log
 the value of a secret key such as a token) and exit non-zero.
 
+**This fail-loud discipline applies to your plugin actually attempting to
+use a missing key — never to `Describe`.** The kernel may call `Describe`
+against connection fields an operator has typed but not yet saved, or
+against a source with nothing configured at all (see "Describe", below,
+under "RPC semantics") — a trial launch must never be failed for absent
+configuration. Read and validate `WEBSPACES_SOURCE_CONFIG` at the point
+your plugin is about to actually use a value (typically inside `Match`,
+`Fetch`, or `Health`, the first time a real call to your source system is
+attempted), not unconditionally inside `main` or `Describe`, so a
+config-incomplete trial launch still gets a normal `Describe` response.
+
 **A plugin with nothing to configure reads the variable and does nothing
 with it.** Not every source needs connection details at all — a source
 that has no external system to reach (like `plugins/mock`) simply never
@@ -478,6 +498,65 @@ empty object) when a source declares no extras at all, so your plugin's
 own JSON decode sees "no extras configured" unambiguously rather than an
 empty-vs-absent case to special-case.
 
+**A credential-shaped extras value (an OAuth client id/secret, an API
+key) reaches your plugin exactly like any other extras key** — nested
+inside `WEBSPACES_SOURCE_CONFIG.extras`, with its `${VAR}` reference
+already expanded by the kernel before your plugin ever sees the JSON (see
+above). Declare it `secret: true` in your `Describe` response's
+`ExtrasField` (see "Describe", below) so the kernel's add-source form
+masks the input, and read it from `extras` at the point you need it —
+there is no separate credential-delivery mechanism beyond this one
+environment variable.
+
+## Plugin-private state
+
+The `WEBSPACES_SOURCE_CONFIG` object above is *connection configuration*
+the operator supplies and the kernel owns — it is rewritten every time the
+operator edits a source's fields, and a plugin should treat it as
+transient input, not a place to keep anything of its own. Many plugins
+need a second, different kind of state that the kernel has no field for
+at all: state the *plugin* creates and owns, that must survive process
+restarts — an OAuth refresh token that must outlive the process between
+one launch and the next, or a working cache (a delta-sync page token, a
+resolved folder-membership tree) that makes the next sync incremental
+instead of a full re-walk.
+
+**Where to keep it.** Choose a directory under the operator's own XDG data
+home and use it consistently across every one of your plugin's runtime
+contexts (a standalone CLI subcommand, if you have one, and the
+kernel-launched subprocess) — resolve it the same way rather than
+assuming they land in the same place by coincidence. `HOME` is the one
+relevant piece of this puzzle guaranteed to reach your subprocess: it is
+on the fixed allowlist in "The launch environment", above, but
+`XDG_DATA_HOME` is deliberately not, so a resolver that prefers
+`XDG_DATA_HOME` when set and falls back to `HOME/.local/share` otherwise
+can disagree between a context where the operator's own shell sets
+`XDG_DATA_HOME` and the launched subprocess, where it is invisible. The
+safest, simplest choice is to resolve your private state directory from
+`HOME` alone (e.g. `$HOME/.local/share/<your-plugin-name>/`) so the same
+path is reachable everywhere your plugin runs, with no divergence to
+detect or warn about.
+
+**What the host does and does not guarantee about it.** The launch
+environment described above is deliberately reduced to a fixed allowlist
+— your plugin subprocess cannot assume any of the operator's ordinary
+shell environment is present beyond that allowlist and whatever
+`${VAR}` references its own config declares. Beyond environment
+visibility, the host makes no promise about a plugin-private directory at
+all: it does not create one for you, does not know its location, and
+places no naming convention on it beyond what you choose.
+
+**What the host guarantees about lifetime.** The host never reads,
+migrates, backs up, or removes anything under a plugin's own private
+state directory — that data is entirely outside the hybrid data model's
+scope (see "What this document does not cover", below) and entirely your
+plugin's own responsibility, including its own invalidation. If what you
+keep there includes a credential — an OAuth refresh token, an API key —
+protecting it (file permissions, e.g. mode `0600`, and never logging its
+value, see "Logging", below) is your plugin's responsibility alone; the
+host provides no vault, no secret-store integration, and no encryption at
+rest for this location.
+
 ## RPC semantics
 
 ### `Describe`
@@ -521,6 +600,17 @@ message ExtrasField {
   string placeholder = 5;  // DISPLAY-ONLY — never pre-filled into a saved value
 }
 ```
+
+**Choosing `source_type` and `display_name`.** Neither is looked up in
+any kernel-side table of known plugin types (D-05) — you choose both
+freely, but choose deliberately: `source_type` is retained as descriptive
+provenance on every item your plugin ever emits (see "Provenance", below)
+and is user-visible in the kernel's own UI and HTTP API, so treat it as
+effectively permanent once chosen. A short, lowercase, no-punctuation
+token matching the shape of this repository's own examples (`"paperless"`,
+`"filesystem"`) reads well next to them; `display_name` is the
+human-readable form an operator recognizes in the add-source form and
+logs (e.g. `"paperless-ngx"`).
 
 `icon`/`icon_mime` (Phase 9, 09-UI-SPEC.md Fix 10) are the plugin's own
 declared identity icon, additive fields appended after
@@ -643,6 +733,17 @@ A plugin implements `Match` against three rules:
    zero values (or absent entirely) means "this field contributes no
    matches" — it is not a wildcard.
 
+**Each `Match` response is the authoritative full current set, reconciled
+against the index, never additive.** The kernel treats every successful
+`Match` call as replacing this instance's entire contribution to the
+webspace being synced: an item your plugin returned on a previous sync
+and does not return this time is removed from that webspace's stream,
+even though it may still exist in your own index of previously-seen
+items. If your plugin's own matching logic is itself how an item leaves
+scope (a document that moved out of the configured folder, for example),
+simply not returning it is sufficient — you do not need, and the contract
+provides no mechanism for, an explicit removal or tombstone signal.
+
 **Worked example** — `plugins/mock`'s `Match` (the full file is
 `plugins/mock/plugin.go`) has a fixed, in-memory item set instead of a
 real source system to query, but the matching rule itself is identical to
@@ -680,6 +781,31 @@ the results — a page matches if its tags match any configured `tags`
 value OR its page name matches any configured `pages` value; the two
 fields are never combined into one comparison.
 
+**A hierarchical match field (a folder path, a nested wiki page tree) is
+one field whose value list is a set of literals, not a single path
+string.** For a source whose natural categorization nests (a folder tree,
+a page hierarchy), expose each item's own ancestor chain as its value
+list for that field, so a configured value can match at any depth without
+inventing prefix or glob semantics your `Match` rule already forbids.
+Worked example: a field named `"folders"`, a configured root named `Team
+Docs`, and an item at `Team Docs/Reports/2026/q1.pdf` — the item's
+`labels` (and therefore what it exposes to the `"folders"` match field)
+is exactly `["Team Docs", "Reports", "Reports/2026"]`: the root's own
+name (so "everything under this instance" is expressible as a single
+configured value), plus every relative path segment from the root down to
+the item's own immediate parent. A configured value of `"Reports"`
+matches the whole `Reports` subtree at any depth; `"Reports/2026"`
+narrows to exactly that subtree; every comparison stays an exact literal
+per rule 2, above — never a prefix or glob match.
+
+**A structural container node (a folder, a directory) is never itself
+returned as an `Item`.** For a tree-shaped source, folders exist to
+establish and maintain the set of leaf objects your plugin walks — they
+are the traversal mechanism, not members of the set `Match` returns. Keep
+whatever structural bookkeeping you need to resolve ancestor chains (see
+above) in your own plugin-private state (see "Plugin-private state",
+above); never emit a folder/directory node itself as an `Item`.
+
 A real plugin's `Match` typically has one more step before the comparison
 above: resolving each value against the source system's own
 categorization API (an HTTP call to look up a tag by name, an IMAP `LIST`
@@ -692,6 +818,17 @@ source system cannot be reached — the kernel records this per-source in
 that sync run's status and surfaces it as `source_unavailable`-shaped
 state, rather than treating "the source is down" the same as "nothing
 matched."
+
+**If your source offers an incremental/delta-change feed alongside a full
+listing, capture the feed's own starting marker (a page token, a cursor)
+BEFORE the initial full walk begins, never after.** Capturing it first
+means a change that happens during a slow first walk is redelivered by
+the very next incremental poll, rather than silently falling into the gap
+between "the walk observed the tree as of some moment" and "the marker
+started tracking changes as of some later moment." A resulting redundant
+reprocessing of a change already reflected in the initial walk is the
+correct, harmless tradeoff — key your plugin's own state by the source's
+own stable object id so a redundant update is idempotent.
 
 ### `Fetch`
 
@@ -796,12 +933,43 @@ that no longer exists (`codes.NotFound`); the kernel maps these to
 `source_unavailable` (502) and `item_not_found` (404) respectively on its
 own HTTP surface (see `docs/api.md`).
 
+**Which content gets a preview/fetch attempt at all is entirely your
+plugin's own scope decision — this contract does not enumerate a MIME
+allowlist.** Not every object your source system holds is text-shaped
+(binary formats, images, unsupported document types); a plugin is free to
+decline a preview or fetch attempt for any object type its own source
+material doesn't support extracting readable content from, returning
+`available: false` with a named reason (below) rather than fabricating
+content. The same applies to a source with its own family of native
+document types with multiple possible export targets (a Workspace-style
+editor with more than one export format per type, for example): which
+types you support and which concrete export format each maps to are your
+plugin's own documented choices, made consistently between `Match`'s
+preview and `Fetch`'s full content so a user sees the same substance in
+both places.
+
+**`unavailable_reason` is free text your plugin chooses, not a shared,
+host-rendered vocabulary.** The kernel republishes it verbatim; give it a
+stable, distinguishable string per distinct cause your plugin can report
+(a size ceiling exceeded, a format you've chosen not to support) so a
+reader — human or agent — can tell two different "unavailable" causes
+apart, but there is no fixed enum to conform to here.
+
 ### `Health`
 
 ```protobuf
 message HealthRequest {}
 message HealthResponse { bool reachable = 1; int64 last_sync_unix = 2; string last_error = 3; }
 ```
+
+**`last_sync_unix`** is the Unix-seconds timestamp of this instance's own
+last successful sync completion — the natural reading, and what every
+in-repo plugin reports. `0` means "never successfully synced." This is
+informational only: nothing in the kernel currently branches on it, but a
+plugin should still report a real value when it has one (a
+straightforward `stat` on whatever local state file already records a
+completed sync, if you keep one — see "Plugin-private state", above —
+rather than tracking a second in-memory copy).
 
 A lightweight reachability probe, called live on every request to
 `GET /api/sources` / `GET /agent/v1/sources` (`PLUG-04`) — never cached,
@@ -847,6 +1015,14 @@ message Item {
 | `group_id` / `group_label` | Optional — leave both `""` for a source with no thread concept | For sources with a natural thread/conversation concept (a chat, a mail thread): a stable id and human label for that group. |
 | `has_thumbnail` | Optional — defaults to `false` | Whether a `CONTENT_VARIANT_THUMBNAIL` fetch is expected to succeed — lets the UI decide whether to render a thumbnail slot without an extra round-trip. |
 
+**A concrete anchor for "bounded snippet."** The qualitative description
+above ("hundreds of characters, not the full document") is deliberately
+not a hard limit — but if you need a concrete number to implement
+against, a few hundred runes (500 is what this repository's own preview
+truncation, where implemented, targets) sits comfortably inside it, with
+however many raw bytes your source's own encoding needs to produce that
+many runes reliably.
+
 ### Provenance
 
 `provenance` is a `map<string, string>` your plugin populates on every
@@ -868,6 +1044,15 @@ Provenance: map[string]string{
 	"contract_version": contractVersion,       // matches Describe's contract_version
 },
 ```
+
+**A plugin with no `base_url`-shaped connection detail** (a local-path
+source, or one that targets a single fixed resource by id rather than a
+network endpoint) sets `source_system` to the most specific stable
+identifier its own configuration provides instead — a canonical URL for
+the configured resource if one exists (a cloud folder's own web-viewable
+URL, say), or the configured path itself for a purely local source. The
+value should be stable across a given instance's lifetime and safe to
+surface (never a value that also serves as a credential).
 
 ### The `file://` local-path deep-link convention
 
@@ -1120,3 +1305,12 @@ and the honestly-stated limits of that approximation).
   whole contract above is read-only end to end; action hand-off, if it
   ever lands, is a v1.x concern layered on top of the RPCs above, not a
   change to them.
+- How a specific third-party source system's own API behaves — for
+  example, how finely its error responses distinguish one failure cause
+  from another. This document defines the topos plugin contract; it does
+  not and cannot document any given source system's own API. Research
+  that in the source's own documentation, and design your plugin's
+  reported health/error states around what you can actually distinguish
+  (collapsing indistinguishable causes into one named state is a
+  legitimate, honest choice — see `plugins/whatsapp/health.go` for the
+  in-repo precedent).
