@@ -18,20 +18,21 @@ Open one webspace and instantly see and grok all related information across ever
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
 - **v1.1.0 Plugin Ecosystem shipped 2026-08-18** — 4 phases (11–14), 32 plans + 2 gap closures + 5 quick tasks, 309 commits in 6 days. Third-party plugin path proven end-to-end: external trust tier (provenance + pins + manifest gate), Google Drive source built clean-room out-of-repo against the published contract, per-item curation, PWA install. Milestone audit passed (11/11 requirements), phase-14 security audit 26/26 closed. See `.planning/MILESTONES.md` and `milestones/v1.1.0-*`.
-- **Next milestone:** not yet defined — run `/gsd-new-milestone`. Seeded candidates: kernel OAuth/secrets services for plugins (requirement-grade todo), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
+- **Current milestone:** v1.2.0 Dev/Prod Separation (defined 2026-08-18) — install story + full dev-side isolation so the operator runs installed artifacts daily while developing from the checkout. Remaining seeded candidates for later milestones: kernel OAuth/secrets services for plugins (requirement-grade todo), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
 
-## Current Milestone: v1.1.0 Plugin Ecosystem
+## Current Milestone: v1.2.0 Dev/Prod Separation
 
-**Goal:** Open topos to third-party plugins behind an explicit trust boundary, prove the external path by building a new source out-of-repo, and give users finer control over what lands in a webspace.
+**Goal:** The operator runs topos daily from installed release artifacts while developing the next milestone from the checkout — the two instances can never clash on port, config, or state.
 
 **Target features:**
-- External plugin support — kernel loads out-of-repo plugin binaries; trusted = built from the `davison/topos` repo, everything else marked untrusted with a warning when adding (load + trust marking only; distribution, dev guide, and certification deferred)
-- Local/network filesystem plugin — docs in a folder, optionally subfolders; built in-repo as a trusted plugin (the MVP-deferred source)
-- Google Drive plugin — docs-in-a-folder over the Drive API; deliberately built *out-of-repo* against the published contract to dogfood the external-plugin mechanism end to end (OneDrive deferred)
-- Per-item include/exclude — mark individual stream entries in or out of a webspace; the final tier of the filter-config hierarchy, and the kernel's first user-owned data beyond config
-- PWA installability — ServiceWorker + manifest/assets so the app installs on desktop and mobile
+- `make install [version]` — downloads the tag's GitHub release artifacts (no version → latest release), installs the kernel to `$PREFIX/bin` (default `/usr/local`, prefix configurable) and plugins to `$PREFIX/lib/topos/plugins`; installed default config points at that plugins dir; `topos` starts from PATH
+- `make install-signal` — explicit opt-in target that builds the cgo Signal plugin locally into the libexec plugins dir (base install stays toolchain-free: download + copy only)
+- `make uninstall` — removes prefix binaries/plugins; never touches config or state
+- Installed instance keeps config and local state in current home/XDG locations, unchanged
+- Full dev-side isolation — dev runs from the checkout use .gitignored//tmp config and state: kernel index, plugin stores (incl. a separate WhatsApp link for real-source dev runs), everything per-checkout; dev never touches the XDG/home locations
+- Dev port separation — dev/test servers move off production port 7777 (closes the pending todo)
 
-**Key context:** Milestone version labels are full semver from now on (`v1.1.0`) so the GSD completion tag directly triggers `release.yml` — no companion tag at close. IMAP-vanilla refactor deferred. Carried-over minor items ride along only when a phase touches their area.
+**Key context:** Builds on v1.1.0's 14-01 precursor (`--config`/`TOPOS_CONFIG`, per-checkout dev config). Run mode is manual from PATH — no service management this milestone. Natural end-to-end proof: the operator's live instance migrates to `make install`-ed artifacts and both instances run simultaneously.
 
 ## Requirements
 
@@ -61,13 +62,19 @@ Open one webspace and instantly see and grok all related information across ever
 - ✓ Webspaces defined in a config map matching each source's *native* categorization (IMAP folders/labels, chat group and contact names, paperless-ngx tags, SilverBullet tags/pages) — v1.0 (Phases 1–4 proved keyword matching; Phase 5 upgraded to per-instance typed match blocks with keywords as fallback; Phase 8 closed the last source)
 - ✓ Web UI: stream + detail pane — chronological cross-source feed per webspace, filterable by source, inline preview (email body, chat thread, note, document), "open in source" deep link on every item — v1.0 (built out across Phases 1–9.1, including mobile layout and first-run bootstrap)
 
+- ✓ Google Drive source plugin, built out-of-repo against the published contract — developed in a genuine clean-room repository (`github.com/davison/topos-plugin-gdrive`) against the published contract alone, installed through the untrusted external path, live-verified against a real Drive (BYO OAuth, incremental sync, Workspace export previews, deep links); its 20 contract gaps triaged back into the published contract — Phase 14 (dogfooded the external-plugin path end to end)
+
 - ✓ Per-item curation (KERN-09, KERN-10, UI-13, UI-14) — users get the last word on webspace contents: exclude any stream item (single, bulk, or from the detail pane) with a 5s undo toast, marks persist in the kernel index and survive re-sync/restart/index-rebuild while always outranking automatic match rules, an excluded-items view lists exactly what was removed and un-excludes on click; app installs as a PWA on desktop and mobile (ServiceWorker + manifest/assets, update notice via the shared toast layer) — Phase 13 (verified 5/5 after one gap-closure plan closed G-13-1, the cross-webspace undo skeleton strand, with a stale-generation entry guard in `load()` pinned by a RED-first browser spec)
 
 ### Active
 
-- [ ] Google Drive source plugin, built out-of-repo against the published contract (dogfoods the external-plugin path)
+- [ ] `make install [version]` installs GitHub release artifacts (kernel + plugins, default latest) under a configurable prefix; `topos` starts from PATH
+- [ ] `make install-signal` builds the cgo Signal plugin locally into the installed plugins dir
+- [ ] `make uninstall` removes installed binaries/plugins without touching config or state
+- [ ] Installed instance uses home/XDG config and state; dev checkout runs use .gitignored//tmp config and state exclusively (index, plugin stores, everything)
+- [ ] Dev/test servers run off production port 7777
 
-Deferred candidates (not this milestone): IMAP-vanilla refactor with provider extensions; OneDrive plugin; pull-by-URL distribution, dev guide, certification. Advisory review items (10-REVIEW warnings, 06-REVIEW WR-01) and pending todos ride along only if a phase touches their area.
+Deferred candidates (not this milestone): Google Drive source plugin moved to Validated (shipped v1.1.0). Kernel OAuth/secrets services for plugins; IMAP-vanilla refactor with provider extensions; OneDrive plugin; pull-by-URL distribution, dev guide, certification; `topos-plugins` repo restructure. Advisory review items (10-REVIEW warnings, 06-REVIEW WR-01) and pending todos ride along only if a phase touches their area.
 
 ### Out of Scope
 
@@ -138,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-18 after Phase 14 completion (Google Drive source, built out-of-repo)*
+*Last updated: 2026-08-18 after starting milestone v1.2.0 Dev/Prod Separation*

@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1.0
-milestone_name: Plugin Ecosystem
-current_phase: 14
-status: milestone_shipped
-stopped_at: Phase 14 UI-SPEC approved
-last_updated: "2026-08-18T14:12:52.351Z"
+milestone: v1.2.0
+milestone_name: Dev/Prod Separation
+status: planning
+last_updated: "2026-08-18T18:18:13.737Z"
 last_activity: 2026-08-18
-last_activity_desc: Phase 14 complete
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 32
-  completed_plans: 32
-  percent: 100
-current_phase_name: google-drive-source-built-out-of-repo
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,11 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
-Status: Milestone v1.1.0 shipped 2026-08-18 — next milestone not yet defined (/gsd-new-milestone)
-Progress: [████████████████████] 26/26 plans (100%) — 3/4 phases complete
-Last activity: 2026-08-18 — Phase 14 complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-18 — Milestone v1.2.0 started
 
 ## Performance Metrics
 
