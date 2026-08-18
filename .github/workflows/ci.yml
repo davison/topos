@@ -24,6 +24,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Job-level backstop (2026-08-18, quick task 260818-ov4): two
+    # consecutive runs hung >15 minutes inside an apt fetch with nothing
+    # to reap them. No single step below legitimately approaches this
+    # bound, so hitting it always means "hung", never "slow".
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -72,7 +77,35 @@ jobs:
       # Makefile's own E2E_PW_INSTALL_FLAGS comment). E2E_PROJECT is left
       # at its "chromium" default: D-14 makes Chromium the only engine the
       # automated gate runs; Firefox/WebKit stay manual-only.
+      # 2026-08-18 (quick task 260818-ov4): two consecutive runs hung
+      # >15 minutes inside Playwright's `--with-deps` apt phase — the
+      # runner's default azure.archive.ubuntu.com mirror failed (Ign:
+      # spam in the log) and the fallback fetch then stalled, with no
+      # timeout anywhere to catch it. This step repoints apt at the
+      # canonical archive.ubuntu.com and bounds every apt fetch with
+      # retries and per-connection timeouts, so a sick mirror surfaces
+      # as a fast, named failure in THIS step rather than a silent hang
+      # inside `make e2e`. The `apt-get update` here also pre-warms the
+      # indices Playwright's own apt run needs.
+      - name: Harden apt against mirror stalls
+        timeout-minutes: 5
+        run: |
+          for f in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if [ -f "$f" ]; then
+              sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' "$f"
+            fi
+          done
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99ci-mirror-timeouts >/dev/null
+          sudo apt-get update
+
       - name: make e2e
+        # Bounded (260818-ov4): the suite itself runs ~1-2 minutes; the
+        # first-time browser + OS-deps install adds a few more on a cold
+        # cache. 10 minutes is comfortably above both and far below the
+        # silent 17-minute hangs this bound exists to convert into
+        # failures.
+        timeout-minutes: 10
         run: make e2e
         env:
           E2E_PW_INSTALL_FLAGS: --with-deps
