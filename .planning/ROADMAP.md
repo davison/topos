@@ -69,7 +69,15 @@ Full phase details, success criteria, and plan lists: [milestones/v1.1.0-ROADMAP
   4. `make uninstall` removes exactly what was installed — prefix binaries and plugins — and leaves the operator's config, kernel index, and plugin stores completely untouched, verifiably so. (INST-05)
   5. The installed instance and a dev run from the checkout run **simultaneously** with neither noticing the other: the dev run binds a non-7777 port and keeps every writable artifact (dev config, kernel index, all plugin stores including a separate WhatsApp link for real-source dev runs) in .gitignored per-checkout or `/tmp` paths, so a dev run or a test run never reads or writes the home/XDG locations the installed instance owns. (ISOL-01, ISOL-02, ISOL-03)
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+
+- [ ] 15-01-PLAN.md — Installed layout end to end: `make install` for an explicit tag, checksum-verified, and the kernel's installed-layout plugin resolution (tracer)
+- [ ] 15-02-PLAN.md — Latest-release resolution, `make uninstall`, and the filesystem plugin added to the published asset set
+- [ ] 15-03-PLAN.md — `make install-signal` / `make uninstall-signal`, and a behavioural proof that the base install needs no toolchain
+- [ ] 15-04-PLAN.md — `cmd/topos-devguard` isolation refusal, the dev loop's move to port 7778, and the per-checkout plugin-store convention
+- [ ] 15-05-PLAN.md — The committed side-by-side simultaneity proof, the gate documentation, and the migration runbook
 
 **Notes**:
 
@@ -86,7 +94,7 @@ Phases execute in numeric order: 15 (decimal insertions, if any, run between the
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. Installed Instance & Dev Isolation | v1.2.0 | 0/? | Not started | - |
+| 15. Installed Instance & Dev Isolation | v1.2.0 | 0/5 | Not started | - |
 
 ## Backlog
 
