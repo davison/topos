@@ -193,7 +193,7 @@ Plans:
   3. Syncs after the first are incremental (changed items only), not a full folder re-listing.
   4. The plugin lives in its own repository, is installed through the external-plugin path, and carries the untrusted badge in the running app — with any place the published contract or mock fell short written down as a contract gap.
 
-**Plans**: 5/5 plans executed
+**Plans**: 5/6 plans executed (5 waves + 1 gap-closure wave)
 
 Plans:
 **Wave 1**
@@ -212,6 +212,10 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 14-05-PLAN.md — Triage the contract-gap log back into the published contract and the backlog
+
+**Gap closure** *(from 14-UAT.md — G-14-2, Test 2 / SRC-06)*
+
+- [ ] 14-06-PLAN.md — Guarantee an inline source chip at narrow viewports so chip health detail stays reachable, plus the 375px Playwright gate
 
 ## Progress
 
