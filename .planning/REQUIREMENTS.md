@@ -13,7 +13,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **INST-01**: User can run `make install [version]` to download that tag's GitHub release artifacts and install the kernel to `$PREFIX/bin` and plugins to `$PREFIX/lib/topos/plugins` (PREFIX configurable, default `/usr/local`)
 - [x] **INST-02**: User can run `make install` with no version argument and get the latest GitHub release
 - [ ] **INST-03**: User can start the installed instance as `topos` from PATH; it uses home/XDG config and state locations and discovers plugins from the installed plugins dir
-- [ ] **INST-04**: User can run `make install-signal` to build the cgo Signal plugin locally into the installed *external* plugins dir, picked up via the kernel's one-time consent-and-pin flow (base install stays toolchain-free: download + copy only). [Reworded 2026-08-18 during Phase 15 planning: a locally built binary in the *trusted* plugins dir is refused by Phase 13's build-manifest verification — the external-dir + consent path is the deliberate, operator-confirmed resolution.]
+- [x] **INST-04**: User can run `make install-signal` to build the cgo Signal plugin locally into the installed *external* plugins dir, picked up via the kernel's one-time consent-and-pin flow (base install stays toolchain-free: download + copy only). [Reworded 2026-08-18 during Phase 15 planning: a locally built binary in the *trusted* plugins dir is refused by Phase 13's build-manifest verification — the external-dir + consent path is the deliberate, operator-confirmed resolution.]
 - [x] **INST-05**: User can run `make uninstall` to remove installed binaries/plugins; config and state are never touched
 
 ### Dev isolation
@@ -52,7 +52,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INST-01 | Phase 15 | Complete |
 | INST-02 | Phase 15 | Complete |
 | INST-03 | Phase 15 | Pending |
-| INST-04 | Phase 15 | Pending |
+| INST-04 | Phase 15 | Complete |
 | INST-05 | Phase 15 | Complete |
 | ISOL-01 | Phase 15 | Pending |
 | ISOL-02 | Phase 15 | Pending |
