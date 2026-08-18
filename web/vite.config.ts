@@ -78,12 +78,15 @@ export default defineConfig({
 		})
 	],
 	server: {
-		// `make dev` runs the kernel separately on 127.0.0.1:7777 and the
+		// `make dev` runs the kernel separately on 127.0.0.1:7778 — the
+		// DEV port; the installed instance keeps 7777 (ISOL-02) — and the
 		// SvelteKit dev server proxies /api to it, so the SPA is never
-		// embedded during development.
+		// embedded during development. This target, the Makefile's
+		// DEV_PORT default, and config.dev.example.toml's listen value
+		// move together.
 		proxy: {
 			'/api': {
-				target: 'http://127.0.0.1:7777',
+				target: 'http://127.0.0.1:7778',
 				changeOrigin: true
 			}
 		},

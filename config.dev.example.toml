@@ -18,7 +18,13 @@
 # protection, not a secret kept out of history entirely.
 
 [server]
-listen = "127.0.0.1:7777"
+# 7778 is the DEV port — the installed instance owns the production
+# port (kernel/config's DefaultListen), and the two must differ so both
+# kernels can run side by side (ISOL-02). This value, the Makefile's
+# DEV_PORT default, and web/vite.config.ts's proxy target move
+# together; `make dev` refuses (naming both values) when this listen
+# port and its own DEV_PORT disagree.
+listen = "127.0.0.1:7778"
 
 [index]
 # @CHECKOUT@ becomes this checkout's own absolute root — each git

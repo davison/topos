@@ -156,10 +156,32 @@ cat > "$WORK/run.sh" <<RUN
 WORK_DIR="\$1"
 shift
 echo "\$\$" > "\$WORK_DIR/pgid"
-BROWSER=none XDG_CONFIG_HOME="$WORK/no-such-config" make "\$@" >"\$WORK_DIR/log" 2>&1
+BROWSER=none XDG_CONFIG_HOME="$WORK/no-such-config" XDG_DATA_HOME="$WORK/no-such-data" make "\$@" >"\$WORK_DIR/log" 2>&1
 echo "\$?" > "\$WORK_DIR/status"
 RUN
 chmod +x "$WORK/run.sh"
+
+# gen_dev_config <port> <path>: writes an isolated per-case dev config
+# whose every path sits under $WORK — the topos-devguard pre-flight the
+# `dev` recipe now runs (15-04) must see a config that is both isolated
+# and port-consistent before any case can reach the guard it is
+# actually exercising. XDG_DATA_HOME above points the guard's state
+# root into $WORK too, so these configs are judged against roots this
+# script owns, never the developer's real ones.
+gen_dev_config() {
+  local port="$1" path="$2"
+  cat > "$path" <<CFG
+[server]
+listen = "127.0.0.1:$port"
+
+[index]
+path = "$WORK/dev-smoke-index.db"
+
+[plugins]
+dir = "$WORK/dev-smoke-plugins"
+external_dir = "$WORK/dev-smoke-plugins-external"
+CFG
+}
 
 # run_case <budget-seconds> <make args...>: launches run.sh in a fresh
 # session/process group via setsid, waits for it to record its pgid,
@@ -231,7 +253,8 @@ SQUATTER_PID=$!
 sleep 0.5
 rm -f bin/plugins/topos-plugin-mock
 
-run_case 300 dev "DEV_PORT=$P1"
+gen_dev_config "$P1" "$WORK/devcfg-case1.toml"
+run_case 300 dev "DEV_PORT=$P1" "DEV_CONFIG=$WORK/devcfg-case1.toml"
 RC1=$?
 # Runs unconditionally, on both the pass AND fail branches of run_case:
 # the RED failure path (recipe hangs, run_case times out) is exactly the
@@ -281,7 +304,8 @@ echo "==> Case 1 PASS"
 echo "==> Case 2: kernel dies for another reason"
 P2="$(free_port)"
 
-run_case 60 dev "DEV_PORT=$P2" "DEV_READY_TIMEOUT=3" "DEV_KERNEL_CMD=false"
+gen_dev_config "$P2" "$WORK/devcfg-case2.toml"
+run_case 60 dev "DEV_PORT=$P2" "DEV_CONFIG=$WORK/devcfg-case2.toml" "DEV_READY_TIMEOUT=3" "DEV_KERNEL_CMD=false"
 RC2=$?
 assert_no_real_port_leak || exit 1
 if [ "$RC2" -ne 0 ]; then
@@ -311,7 +335,8 @@ echo "==> Case 3: happy path still reaches the UI launch"
 P3="$(free_port)"
 rm -f "$WORK/ui-started"
 
-run_case 60 dev "DEV_PORT=$P3" "DEV_READY_TIMEOUT=15" "DEV_KERNEL_CMD=sh $WORK/hold.sh $P3 4" "DEV_UI_CMD=sh $WORK/ui.sh"
+gen_dev_config "$P3" "$WORK/devcfg-case3.toml"
+run_case 60 dev "DEV_PORT=$P3" "DEV_CONFIG=$WORK/devcfg-case3.toml" "DEV_READY_TIMEOUT=15" "DEV_KERNEL_CMD=sh $WORK/hold.sh $P3 4" "DEV_UI_CMD=sh $WORK/ui.sh"
 RC3=$?
 assert_no_real_port_leak || exit 1
 if [ "$RC3" -ne 0 ]; then

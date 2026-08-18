@@ -41,14 +41,20 @@ MANIFEST_GEN_E2E = go run ./cmd/topos-manifest $(MANIFEST_E2E_BINARIES)
 MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
 
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
-# `dev` recipe's pre-flight port guard and readiness gate below. The
-# default MUST match web/vite.config.ts's hardcoded proxy target and
-# the [server] listen value in ~/.config/topos/config.toml — if one
-# moves, the other must move. Override on the command line
-# (`make dev DEV_PORT=9999`) if your config uses a non-default port;
-# this is the supported escape valve, not a way to skip the guard.
+# `dev` recipe's pre-flight guards and readiness gate below. 7778 is
+# the DEV port; the INSTALLED instance owns 7777 (kernel/config's
+# DefaultListen) — they must differ so a dev loop and the installed
+# kernel can run side by side without contending for one port
+# (ISOL-02). The default MUST match web/vite.config.ts's hardcoded
+# proxy target and the generated config.dev.toml's [server] listen
+# value — if one moves, the others must move, and the topos-devguard
+# pre-flight below fails loud (naming both values) when the config and
+# this variable disagree, instead of letting the readiness gate mask
+# the drift as a timeout. Override on the command line
+# (`make dev DEV_PORT=9999`) only together with a matching listen value
+# in your dev config; the consistency check is deliberate, not a hoop.
 DEV_HOST ?= 127.0.0.1
-DEV_PORT ?= 7777
+DEV_PORT ?= 7778
 
 # DEV_CONFIG is the config file `make dev` passes to the kernel via
 # --config (see DEV_KERNEL_CMD below). Two things a reader needs: (1)
@@ -451,6 +457,7 @@ dev-config:
 		sed 's|@CHECKOUT@|$(CURDIR)|g' config.dev.example.toml > "$(DEV_CONFIG)"; \
 		echo "make dev-config: wrote a fresh per-checkout dev config:" >&2; \
 		echo "  $(DEV_CONFIG)" >&2; \
+		echo "  it listens on the DEV port 7778 — the installed instance keeps 7777" >&2; \
 		echo "  it starts with no [sources.*] or [webspaces.*] tables — add your own" >&2; \
 		echo "  dev-only source instances directly to that file, or run" >&2; \
 		echo "  'make dev DEV_CONFIG=<path>' to point the dev loop at a different" >&2; \
@@ -459,8 +466,8 @@ dev-config:
 
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
-# 127.0.0.1:7777 (see web/vite.config.ts), so edits to either side hot
-# reload independently. Guarded against the two footguns a real
+# 127.0.0.1:7778 (see web/vite.config.ts; the installed instance keeps
+# 7777), so edits to either side hot reload independently. Guarded against the two footguns a real
 # debugging session hit on 2026-08-05: (1) a plugin source edit
 # silently not taking effect (closed by the `plugins` prerequisite
 # above) and (2) a stale kernel already holding the dev port, which
@@ -476,6 +483,7 @@ dev-config:
 # `go run`'s kernel child, the kernel's own plugin subprocesses, and
 # npm's node child together.
 dev: plugins dev-config
+	go run ./cmd/topos-devguard --config "$(DEV_CONFIG)" --expected-port $(DEV_PORT)
 	@if ! command -v ss >/dev/null 2>&1; then \
 		echo "make dev: 'ss' (iproute2) is required by the dev port guard — install iproute2" >&2; \
 		exit 1; \
