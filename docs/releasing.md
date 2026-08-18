@@ -63,10 +63,16 @@ Sequence:
 The release contains the kernel binary (`topos`), the operator-facing
 portable plugin binaries (`topos-plugin-paperless`,
 `topos-plugin-silverbullet`, `topos-plugin-proton`,
-`topos-plugin-whatsapp`), and a `checksums.txt` — `sha256sum` output over
-every other published asset. A downloader verifies their copy with
-`sha256sum -c checksums.txt` after downloading everything into the same
-directory.
+`topos-plugin-whatsapp`, `topos-plugin-filesystem`), and a
+`checksums.txt` — `sha256sum` output over every other published asset. A
+downloader verifies their copy with `sha256sum -c checksums.txt` after
+downloading everything into the same directory.
+
+Releases published before the filesystem plugin joined the asset list
+(v1.1.0 and earlier) do not carry it — and `make install <tag>` against
+such a release installs exactly what that tag published and reports what
+it installed. A missing plugin in an older release is not an error; an
+install consumes published artifacts, it does not build them.
 
 The fixture plugin binary (`topos-plugin-mock`) is deliberately not
 published: it is a contract-reference and test-harness fixture, not an

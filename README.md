@@ -52,19 +52,34 @@ or build it from source.
 
 ### Prebuilt (recommended)
 
-Download the binaries from the
+From a checkout, one command installs a verified release:
+
+- `make install` — resolves and installs the latest published stable
+  release (never a nightly or prerelease)
+- `make install VERSION=<tag>` — installs exactly that release
+- `make install PREFIX=$HOME/.local ...` — installs somewhere your user
+  can write (the default `PREFIX` is `/usr/local`, which usually needs
+  `sudo make install`)
+- `make uninstall` — removes exactly what `make install` placed; your
+  config, index, and plugin stores are never touched
+
+Every downloaded file is SHA-256-verified against the release's own
+`checksums.txt` before anything is placed. See
+[`docs/install.md`](docs/install.md) for the full treatment.
+
+Prefer to place files yourself? Download the binaries from the
 [latest release](https://github.com/davison/topos/releases/latest):
 `topos` (the kernel), `topos-plugin-paperless`,
 `topos-plugin-silverbullet`, `topos-plugin-proton`,
-`topos-plugin-whatsapp`, and `checksums.txt`. Verify what you downloaded
-before running any of it:
+`topos-plugin-whatsapp`, `topos-plugin-filesystem`, and
+`checksums.txt`. Verify what you downloaded before running any of it:
 
 ```bash
 sha256sum -c checksums.txt
 ```
 
 Place `topos` somewhere on your `PATH` (or run it from wherever you put
-it) and the four plugin binaries in a `plugins/` directory next to it —
+it) and the five plugin binaries in a `plugins/` directory next to it —
 this is the default `[plugins] dir` `config.example.toml` documents.
 
 **The Signal plugin binary is not published** — it's this repository's
@@ -74,11 +89,12 @@ yours. If you use Signal, build the plugin yourself with `make signal`
 against your own system's SQLCipher; see
 [`docs/plugins/signal.md`](docs/plugins/signal.md) for the prerequisites.
 
-**The filesystem plugin binary is not yet published either** — it needs
-no cgo and builds cleanly under `make build-portable`, but the release
-workflow's published-asset list has not been widened to include it yet.
-Build it from source with `make build` or `make build-portable` (below)
-in the meantime; see [`docs/plugins/filesystem.md`](docs/plugins/filesystem.md).
+**The filesystem plugin binary is published** as of the release after
+v1.1.0 — it needs no cgo and ships alongside the other four
+operator-facing plugins; see
+[`docs/plugins/filesystem.md`](docs/plugins/filesystem.md). Releases up
+to and including v1.1.0 predate it — installing one of those gets
+exactly what that tag published.
 
 ### From source
 
