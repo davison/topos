@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 14-google-drive-source-built-out-of-repo
 source: [14-VERIFICATION.md]
 started: 2026-08-18T15:05:00.000Z
@@ -39,5 +39,15 @@ blocked: 0
   reason: "User reported: the popover is not shown at all unless the viewport is wide enough to accommodate it"
   severity: major
   test: 2
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "Not a tooltip-rendering bug: WebspaceHeader's chip-row overflow relegation (visibleChipCount, floor 0) removes the chip — the popover's only hover trigger — from the row at <=~400px, leaving zero chips and only the '+N' pill; the tooltip itself renders correctly at every width whenever a trigger exists (proven 375px, Chromium+Firefox). Pre-existing Phase 6 overflow design, neither introduced nor exposed by 14-02; the clone chip inside the '+N' popover already shows the tooltip correctly but is undiscoverable."
+  artifacts:
+    - path: "web/src/lib/format.ts"
+      issue: "visibleChipCount floors at 0 — the row may render no chips while health detail has no other visible surface"
+    - path: "web/src/lib/components/WebspaceHeader.svelte"
+      issue: "overflow relegation leaves '+N' pill as sole affordance; nothing signals relegated chips' health lives inside it"
+    - path: "web/src/lib/components/SourceChip.svelte"
+      issue: "health sentence is hover/focus-tooltip-only (plus AT-only aria-describedby), so trigger absence means total absence"
+  missing:
+    - "A reachable/discoverable narrow-viewport path to chip health detail (e.g. keep >=1 harder-truncated chip in the row, or make '+N' visibly carry relegated chips' health surface)"
+    - "A Playwright spec pinning 'health detail reachable at 375px' (UAT-becomes-spec convention)"
+  debug_session: .planning/debug/popover-hidden-narrow-viewport.md
