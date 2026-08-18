@@ -69,7 +69,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.1.0-ROADMAP
   4. `make uninstall` removes exactly what was installed — prefix binaries and plugins — and leaves the operator's config, kernel index, and plugin stores completely untouched, verifiably so. (INST-05)
   5. The installed instance and a dev run from the checkout run **simultaneously** with neither noticing the other: the dev run binds a non-7777 port and keeps every writable artifact (dev config, kernel index, all plugin stores including a separate WhatsApp link for real-source dev runs) in .gitignored per-checkout or `/tmp` paths, so a dev run or a test run never reads or writes the home/XDG locations the installed instance owns. (ISOL-01, ISOL-02, ISOL-03)
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 **Wave 1**
@@ -78,7 +78,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 15-02-PLAN.md — Latest-release resolution, `make uninstall`, and the filesystem plugin added to the published asset set
+- [x] 15-02-PLAN.md — Latest-release resolution, `make uninstall`, and the filesystem plugin added to the published asset set
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -107,7 +107,7 @@ Phases execute in numeric order: 15 (decimal insertions, if any, run between the
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. Installed Instance & Dev Isolation | v1.2.0 | 1/5 | In Progress|  |
+| 15. Installed Instance & Dev Isolation | v1.2.0 | 2/5 | In Progress|  |
 
 ## Backlog
 
