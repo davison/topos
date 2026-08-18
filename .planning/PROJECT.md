@@ -17,7 +17,7 @@ Open one webspace and instantly see and grok all related information across ever
 - Webspaces are built and edited entirely from the UI (hot-apply config writes); works on mobile widths; first run bootstraps a default config
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
-- **v1.1.0 in progress**: Phase 13 complete (2026-08-15) — per-item curation (exclude/include with undo, excluded-items view, marks survive rebuilds and outrank match rules) and PWA installability live; one UAT gap (G-13-1 cross-webspace undo skeleton strand) closed by a gap-closure plan; next up Phase 14 (Google Drive source, built out-of-repo)
+- **v1.1.0 all phases complete**: Phase 14 complete (2026-08-18) — Google Drive source delivered by a plugin built genuinely out-of-repo (`github.com/davison/topos-plugin-gdrive`, a clean-room GSD project against the published contract alone): dev/prod config split, hermetic external-path e2e rehearsal + operator-attested live UAT, all 20 contract gaps triaged (19 republished into `docs/plugin-contract.md`, GAP-06 filed against PLUG-11), and one UAT gap (G-14-2 narrow-viewport chip health reachability) closed by a gap-closure plan with a pinned 375px browser gate. Remaining before milestone close: `/gsd-secure-phase 14` (security enforcement gate)
 
 ## Current Milestone: v1.1.0 Plugin Ecosystem
 
@@ -137,4 +137,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-15 after Phase 13 completion (per-item curation & installable app)*
+*Last updated: 2026-08-18 after Phase 14 completion (Google Drive source, built out-of-repo)*
