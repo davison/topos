@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1.0
 milestone_name: Plugin Ecosystem
 current_phase: 14
-status: completed
+status: milestone_shipped
 stopped_at: Phase 14 UI-SPEC approved
 last_updated: "2026-08-18T14:12:52.351Z"
 last_activity: 2026-08-18
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 Phase: 14
 Plan: Not started
-Status: All phases complete
+Status: Milestone v1.1.0 shipped 2026-08-18 — next milestone not yet defined (/gsd-new-milestone)
 Progress: [████████████████████] 26/26 plans (100%) — 3/4 phases complete
 Last activity: 2026-08-18 — Phase 14 complete
 
