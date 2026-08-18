@@ -353,4 +353,135 @@ assert_drained "$PGID"
 CURRENT_PGID=""
 echo "==> Case 3 PASS"
 
-echo "==> dev-guard-smoke: all three cases passed"
+# ---------------------------------------------------------------------
+# Case 4: isolation refusal — a dev config whose index path resolves
+# inside the (fake, $WORK-rooted) topos state root is refused by the
+# topos-devguard pre-flight before any child process starts (ISOL-01).
+# ---------------------------------------------------------------------
+echo "==> Case 4: isolation refusal on an unisolated dev config"
+P4="$(free_port)"
+cat > "$WORK/devcfg-case4.toml" <<CFG
+[server]
+listen = "127.0.0.1:$P4"
+
+[index]
+path = "$WORK/no-such-data/topos/index.db"
+
+[plugins]
+dir = "$WORK/dev-smoke-plugins"
+external_dir = "$WORK/dev-smoke-plugins-external"
+CFG
+rm -f "$WORK/ui-started"
+
+run_case 120 dev "DEV_PORT=$P4" "DEV_CONFIG=$WORK/devcfg-case4.toml" "DEV_KERNEL_CMD=sh $WORK/hold.sh $P4 4" "DEV_UI_CMD=sh $WORK/ui.sh"
+RC4=$?
+assert_no_real_port_leak || exit 1
+if [ "$RC4" -ne 0 ]; then
+  echo "FAIL: case 4 (isolation refusal) failed" >&2
+  exit 1
+fi
+STATUS4="$(cat "$WORK/status" 2>/dev/null || echo "")"
+if [ -z "$STATUS4" ] || [ "$STATUS4" = "0" ]; then
+  echo "FAIL: case 4 expected a non-zero recorded exit status, got '${STATUS4:-<none>}'" >&2
+  cat "$WORK/log" >&2 || true
+  exit 1
+fi
+if ! grep -q '\[index\] path' "$WORK/log"; then
+  echo "FAIL: case 4 output did not name the offending [index] path key" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+# No child was ever started: the fake UI's marker never appeared, and
+# the process group drained (the same inspection the squatter case
+# relies on — a surviving child would keep the group non-empty).
+if [ -f "$WORK/ui-started" ]; then
+  echo "FAIL: case 4 started the UI child despite the isolation refusal" >&2
+  exit 1
+fi
+assert_drained "$PGID"
+CURRENT_PGID=""
+echo "==> Case 4 PASS"
+
+# ---------------------------------------------------------------------
+# Case 5: the escape hatch — the same unisolated config with
+# DEV_ISOLATION_BYPASS set proceeds past the guard, with the bypass
+# banner naming the permitted path on stderr (ISOL-01's explicit,
+# loud opt-out; T-15-20).
+# ---------------------------------------------------------------------
+echo "==> Case 5: escape hatch proceeds loudly"
+P5="$(free_port)"
+sed "s/$P4/$P5/" "$WORK/devcfg-case4.toml" > "$WORK/devcfg-case5.toml"
+
+# DEV_KERNEL_CMD=false: the recipe must get PAST the guard and then
+# fail at the kernel-death gate — that later, different failure is the
+# proof the guard let it through.
+run_case 120 dev "DEV_PORT=$P5" "DEV_CONFIG=$WORK/devcfg-case5.toml" "DEV_ISOLATION_BYPASS=1" "DEV_READY_TIMEOUT=3" "DEV_KERNEL_CMD=false"
+RC5=$?
+assert_no_real_port_leak || exit 1
+if [ "$RC5" -ne 0 ]; then
+  echo "FAIL: case 5 (escape hatch) failed" >&2
+  exit 1
+fi
+if ! grep -q "ISOLATION BYPASSED" "$WORK/log"; then
+  echo "FAIL: case 5 output did not contain the bypass warning banner" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+if ! grep -q "PERMITTED VIOLATION" "$WORK/log"; then
+  echo "FAIL: case 5 banner did not list the permitted path" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+if ! grep -q "kernel exited during startup" "$WORK/log"; then
+  echo "FAIL: case 5 did not reach the kernel-death gate — did the guard refuse despite the bypass?" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+assert_drained "$PGID"
+CURRENT_PGID=""
+echo "==> Case 5 PASS"
+
+# ---------------------------------------------------------------------
+# Case 6: port mismatch — a dev config whose listen port disagrees with
+# the recipe's DEV_PORT fails by name BEFORE the readiness gate could
+# mask it as a timeout: elapsed wall time must stay far below the
+# readiness timeout (ISOL-02; T-15-19).
+# ---------------------------------------------------------------------
+echo "==> Case 6: stale dev config port mismatch fails fast"
+P6="$(free_port)"
+P6_OTHER="$(free_port)"
+gen_dev_config "$P6_OTHER" "$WORK/devcfg-case6.toml"
+
+CASE6_START="$(date +%s)"
+run_case 120 dev "DEV_PORT=$P6" "DEV_CONFIG=$WORK/devcfg-case6.toml" "DEV_READY_TIMEOUT=60" "DEV_KERNEL_CMD=sh $WORK/hold.sh $P6 4" "DEV_UI_CMD=sh $WORK/ui.sh"
+RC6=$?
+CASE6_ELAPSED=$(( $(date +%s) - CASE6_START ))
+assert_no_real_port_leak || exit 1
+if [ "$RC6" -ne 0 ]; then
+  echo "FAIL: case 6 (port mismatch) failed" >&2
+  exit 1
+fi
+STATUS6="$(cat "$WORK/status" 2>/dev/null || echo "")"
+if [ -z "$STATUS6" ] || [ "$STATUS6" = "0" ]; then
+  echo "FAIL: case 6 expected a non-zero recorded exit status, got '${STATUS6:-<none>}'" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+if ! grep -q "$P6_OTHER" "$WORK/log" || ! grep -q "expected dev port $P6" "$WORK/log"; then
+  echo "FAIL: case 6 output did not name both the config's port and the expected dev port" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+# Far below the 60s readiness timeout: the refusal must come from the
+# guard, not from the readiness gate timing out. The budget allows for
+# the plugins prerequisite's (cached) rebuild.
+if [ "$CASE6_ELAPSED" -ge 30 ]; then
+  echo "FAIL: case 6 took ${CASE6_ELAPSED}s — a fast pre-flight refusal regressed into a wait (readiness timeout was 60s)" >&2
+  cat "$WORK/log" >&2
+  exit 1
+fi
+assert_drained "$PGID"
+CURRENT_PGID=""
+echo "==> Case 6 PASS"
+
+echo "==> dev-guard-smoke: all six cases passed"

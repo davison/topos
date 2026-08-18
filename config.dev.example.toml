@@ -38,5 +38,32 @@ path = "@CHECKOUT@/bin/topos-dev-index.db"
 # in a worktree launches only the plugin binaries that worktree's own
 # `plugins` prerequisite just built — never another checkout's binaries,
 # and never the operator's production plugins.dir.
+#
+# external_dir must STAY present even when you use no external plugins:
+# omitting the key makes the kernel fall back to its platform data
+# default inside the installed instance's own state root, and the
+# topos-devguard pre-flight `make dev` runs refuses exactly that.
 dir = "@CHECKOUT@/bin/plugins"
 external_dir = "@CHECKOUT@/bin/plugins-external-dev"
+
+# --- per-checkout plugin stores -------------------------------------
+#
+# A source's own store path (its `path` key) is the one writable
+# location this template cannot pre-fill for you — stores are declared
+# per source. The rule: every source's store path in a dev config MUST
+# sit under this checkout, in a per-checkout directory like the
+# @CHECKOUT@/bin/plugin-state/... shape below — the placeholder is what
+# gives each checkout (and each git worktree) its own store. Copying a
+# [sources.*] block from your production config WITHOUT changing its
+# path is the specific mistake the topos-devguard pre-flight refuses:
+# it would point this dev run's store at the very files the installed
+# instance is using.
+#
+# Example — a dev WhatsApp source with its own linked-device store.
+# This is a SEPARATE linked device from your installed instance's:
+# linking here does not disturb the installed instance's session, and
+# each store needs its own QR scan.
+#
+# [sources.whatsapp-dev]
+# plugin = "topos-plugin-whatsapp"
+# path = "@CHECKOUT@/bin/plugin-state/whatsapp"

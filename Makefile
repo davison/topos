@@ -482,8 +482,25 @@ dev-config:
 # a process-group kill is the only teardown that reliably reaps
 # `go run`'s kernel child, the kernel's own plugin subprocesses, and
 # npm's node child together.
+# DEV_ISOLATION_BYPASS is the isolation guard's explicit escape hatch:
+# empty by default; ANY non-empty value switches the topos-devguard
+# pre-flight below to warn-only, which prints a loud multi-line banner
+# to stderr listing EVERY path it is permitting and then proceeds. It
+# is the deliberate companion to the DEV_CONFIG override above:
+# running the dev loop against the operator's production config now
+# requires BOTH (`make dev DEV_CONFIG=$$HOME/.config/topos/config.toml
+# DEV_ISOLATION_BYPASS=1`) — DEV_CONFIG says which config, and this
+# variable says the operator accepts that the dev run will read and
+# write the installed instance's own config and state. There is no
+# partial or per-key form: the guard either refuses or announces
+# everything it lets through. Like every other guard in this recipe,
+# the check runs regardless of what DEV_KERNEL_CMD/DEV_UI_CMD are
+# overridden to — overriding the children changes WHICH children run,
+# never whether a guard runs.
+DEV_ISOLATION_BYPASS ?=
+
 dev: plugins dev-config
-	go run ./cmd/topos-devguard --config "$(DEV_CONFIG)" --expected-port $(DEV_PORT)
+	go run ./cmd/topos-devguard --config "$(DEV_CONFIG)" --expected-port $(DEV_PORT) $(if $(DEV_ISOLATION_BYPASS),--warn-only)
 	@if ! command -v ss >/dev/null 2>&1; then \
 		echo "make dev: 'ss' (iproute2) is required by the dev port guard — install iproute2" >&2; \
 		exit 1; \
