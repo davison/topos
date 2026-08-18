@@ -222,6 +222,23 @@
 	// together (CR-01).
 	const CHIP_ROW_GAP_PX = 8;
 
+	// Minimum width the row must be able to seat before visibleChipCount's
+	// G-14-2 floor forces one chip inline (14-06-PLAN.md Task 2). This is
+	// the chip's non-text furniture, verified live in the browser at 375px
+	// (not guessed — probe: row 327px, trailing 87px, add-source 44px,
+	// overflow trigger 73px, leaving a 99px overflow budget): health dot
+	// 8px + its two 6px gaps, trust-badged plugin icon 14px, button padding
+	// 10px left + 6px right, wrapper right padding 4px, the 32px fixed-size
+	// actions trigger, and the wrapper's 1px borders = 88px. A chip at
+	// exactly this width still shows its dot, icon, ellipsized name and
+	// menu — a functional hover target, not a sliver — and in the common
+	// forced-single-chip case the overflow trigger disappears entirely, so
+	// the chip springs well past this minimum. Kept as a named constant
+	// (rather than re-derived) for the same reason as CHIP_ROW_GAP_PX
+	// above; the e2e spec 14-chip-health-narrow-viewport.spec.ts pins its
+	// own copy — change both together.
+	const MIN_INLINE_CHIP_PX = 88;
+
 	const DOT_TONE_CLASS: Record<HealthTone, string> = {
 		success: 'bg-success',
 		warning: 'bg-warning',
@@ -350,13 +367,20 @@
 		reservedWidth + addSourceWidth + (addSourceWidth > 0 ? CHIP_ROW_GAP_PX : 0)
 	);
 
+	// The MIN_INLINE_CHIP_PX floor stays bounded and non-oscillating
+	// (T-06-10's property, preserved): the forced chip shrinks purely in
+	// CSS layout (the `shrinkable` prop below), so the NATURAL widths in
+	// `chipWidths` — read from the never-shrinkable measurement clones —
+	// are unchanged by it, and a re-measure cannot feed the shrink back
+	// into this count.
 	let visibleCount = $derived(
 		visibleChipCount(
 			chipWidths,
 			availableWidth,
 			combinedReservedWidth,
 			overflowTriggerWidth,
-			CHIP_ROW_GAP_PX
+			CHIP_ROW_GAP_PX,
+			MIN_INLINE_CHIP_PX
 		)
 	);
 	let visibleSources = $derived(participatingSources.slice(0, visibleCount));
@@ -480,6 +504,15 @@
 		  instance count.
 		-->
 		<div class="mt-4 flex flex-nowrap items-center gap-2 overflow-hidden" bind:this={rowEl}>
+			<!--
+			  shrinkable (G-14-2): only the VISIBLE row's chips may give way —
+			  a floor-forced chip truncates its display name harder rather
+			  than pushing the reserved trailing controls out of the clipped
+			  row. The overflow-popover clones are laid out in a column
+			  (shrinking would compress height, not width) and the invisible
+			  measurement clones exist to report NATURAL width — neither is
+			  marked.
+			-->
 			{#each visibleSources as source (source.name)}
 				<SourceChip
 					{source}
@@ -488,6 +521,7 @@
 					{onrefresh}
 					{onedit}
 					busy={filterBusy}
+					shrinkable
 				/>
 			{/each}
 

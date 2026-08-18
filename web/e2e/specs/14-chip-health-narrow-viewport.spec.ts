@@ -29,11 +29,12 @@ const LONG_ID = 'gdrive-long';
 const LONG_NAME = 'Google Drive Personal Archive';
 
 // Must stay in step with WebspaceHeader.svelte's MIN_INLINE_CHIP_PX (the
-// named constant Task 2 introduces beside CHIP_ROW_GAP_PX). Case 3 below
-// asserts the forced chip's rendered box is at least this wide, so a drift
-// between the two constants fails loudly here rather than silently
-// rendering a broken sliver.
-const MIN_INLINE_CHIP_PX = 112;
+// named constant Task 2 introduces beside CHIP_ROW_GAP_PX — 88px, the
+// chip's live-measured non-text furniture). Case 3 below asserts the
+// forced chip's rendered box is at least this wide, so a drift between
+// the two constants fails loudly here rather than silently rendering a
+// broken sliver.
+const MIN_INLINE_CHIP_PX = 88;
 
 const mocks = mockInstances(6);
 const longSource: FixtureSourceSpec = {
@@ -207,7 +208,7 @@ test.describe('14-06: chip health detail reachable at a narrow viewport (G-14-2)
 			expect(
 				chipBox.width,
 				`the forced chip's rendered width ${chipBox.width}px must be at least MIN_INLINE_CHIP_PX (${MIN_INLINE_CHIP_PX}px, in step with WebspaceHeader.svelte)`
-			).toBeGreaterThanOrEqual(MIN_INLINE_CHIP_PX * 0.6);
+			).toBeGreaterThanOrEqual(MIN_INLINE_CHIP_PX);
 
 			await page.unroute(`${kernel.baseURL}/api/sources`);
 		});

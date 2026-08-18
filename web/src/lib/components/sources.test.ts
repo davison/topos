@@ -430,4 +430,38 @@ describe('visibleChipCount', () => {
 		// One pixel short of that total no longer fits all three.
 		expect(visibleChipCount([10, 10, 10], 53, 0, 8, 8)).toBeLessThan(3);
 	});
+
+	// --- The G-14-2 minimum-inline-chip floor (14-06-PLAN.md Task 2) ---
+	// Layout used below: one 230px chip (the debug session's long-named
+	// chip), 375px row, 150px reserved, 40px trigger, 8px gap. The plain
+	// budget is 225; the chip + trailing gap (238) overruns it; the
+	// overflow budget is 225 - 40 - 16 = 169.
+
+	it('floors a zero count at one chip when the overflow budget can seat the minimum — the G-14-2 trigger stays in the row', () => {
+		expect(visibleChipCount([230], 375, 150, 40, 8, 112)).toBe(1);
+	});
+
+	it('omitting the minimum-chip argument still returns zero — the default preserves the pre-14-06 contract exactly', () => {
+		expect(visibleChipCount([230], 375, 150, 40, 8)).toBe(0);
+	});
+
+	it('a budget too small to seat even the minimum still returns zero — the floor is budget-gated, never unconditional', () => {
+		// availableWidth 200: overflow budget = 200 - 150 - 40 - 16 = -6 < 112.
+		expect(visibleChipCount([230], 200, 150, 40, 8, 112)).toBe(0);
+	});
+
+	it('an empty chip-widths array returns zero regardless of the minimum-chip argument — there is no chip to force', () => {
+		expect(visibleChipCount([], 500, 0, 8, 0, 112)).toBe(0);
+	});
+
+	it('a layout where chips already fit returns the same count with and without the minimum — the floor only ever raises a zero', () => {
+		const without = visibleChipCount([10, 10], 100, 0, 8, 8);
+		const withMin = visibleChipCount([10, 10], 100, 0, 8, 8, 112);
+		expect(withMin).toBe(without);
+		expect(withMin).toBe(2);
+	});
+
+	it('forces exactly one chip, never more — with two oversized chips the second still relegates to the Phase 6 overflow design', () => {
+		expect(visibleChipCount([230, 230], 375, 150, 40, 8, 112)).toBe(1);
+	});
 });

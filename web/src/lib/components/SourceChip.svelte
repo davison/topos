@@ -84,7 +84,15 @@
 		onfilter,
 		onrefresh,
 		onedit,
-		busy = false
+		busy = false,
+		// shrinkable (14-06, G-14-2): for the measured header row ONLY. A
+		// floor-forced chip at narrow widths must give way itself — its
+		// display name truncating harder — rather than pushing the row's
+		// reserved trailing controls (Refresh all, add-source "+") out of
+		// the clipped row. Defaults to false so every other render site
+		// (overflow-popover clones, measurement clones) keeps today's
+		// no-shrink behaviour byte-identically.
+		shrinkable = false
 	}: {
 		source: SourceStatus;
 		selected: boolean;
@@ -104,6 +112,7 @@
 		// one while an unrelated write is in flight is harmless, so neither
 		// is gated on this flag.
 		busy?: boolean;
+		shrinkable?: boolean;
 	} = $props();
 
 	let tone = $derived(healthTone(source));
@@ -303,7 +312,12 @@
 
 <div
 	class={cn(
-		'group flex h-11 shrink-0 items-center rounded-full border border-border bg-card pr-1',
+		'group flex h-11 items-center rounded-full border border-border bg-card pr-1',
+		// Mutually exclusive shrink alternatives keyed on the prop — never
+		// both emitted (14-06, G-14-2): a shrinkable row chip may give way
+		// (min-w-0 lets the truncating name span actually shrink); every
+		// other render site keeps the original no-shrink utility.
+		shrinkable ? 'min-w-0 shrink' : 'shrink-0',
 		selected && 'border-primary bg-primary'
 	)}
 >
@@ -317,7 +331,7 @@
 						aria-pressed={selected}
 						aria-describedby={chipDescId}
 						onclick={() => onfilter(source.name)}
-						class="flex max-w-48 items-center gap-1.5 self-stretch rounded-full pr-1.5 pl-2.5"
+						class="flex min-w-0 max-w-48 items-center gap-1.5 self-stretch rounded-full pr-1.5 pl-2.5"
 					>
 						<span
 							class={cn(
@@ -373,7 +387,7 @@
 					variant="ghost"
 					size="icon"
 					class={cn(
-						'size-8 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 max-md:opacity-100',
+						'size-8 shrink-0 rounded-full opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 max-md:opacity-100',
 						selected &&
 							'text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground'
 					)}

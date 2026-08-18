@@ -378,13 +378,30 @@ export function worstHealthTone(sources: SourceStatus[]): HealthTone {
  * identical count, and a budget that goes negative (reserved and trigger
  * widths alone exceed the available width) naturally floors the result
  * at zero rather than a negative count.
+ *
+ * `minInlineChipWidth` (14-06, G-14-2): when the accumulation above lands
+ * on ZERO chips — the narrow-viewport case where even the first chip's
+ * natural width overruns the reduced budget — the count is floored at one
+ * chip, provided the row genuinely has a chip to show and the overflow
+ * budget can seat at least `minInlineChipWidth` of it. The default of 0
+ * disables the floor entirely, preserving the previous contract exactly —
+ * which is why the call-site-composition note above and the existing
+ * tests hold unmodified. The gate is deliberately the OVERFLOW budget,
+ * not the plain budget: a forced chip coexists with the overflow trigger
+ * in every case where anything was relegated, so the trigger's width must
+ * already be charged. Exactly one chip is forced — never more — so the
+ * Phase 6 UI-07 overflow design still owns everything past the first
+ * chip. The caller is responsible for making that forced chip shrinkable:
+ * this arithmetic promises only that space for a minimum-width chip
+ * exists, not that the chip's natural width fits.
  */
 export function visibleChipCount(
 	chipWidths: number[],
 	availableWidth: number,
 	reservedWidth: number,
 	overflowTriggerWidth: number,
-	gapWidth: number
+	gapWidth: number,
+	minInlineChipWidth: number = 0
 ): number {
 	const budget = availableWidth - reservedWidth;
 	const gapsAmong = (n: number) => (n > 0 ? (n - 1) * gapWidth : 0);
@@ -405,6 +422,12 @@ export function visibleChipCount(
 		if (used + candidateGap + width > overflowBudget) break;
 		used += candidateGap + width;
 		count += 1;
+	}
+	// The G-14-2 floor: only ever raises a zero, only when a chip exists,
+	// and only when the overflow budget can seat a minimum-width chip. A
+	// zero minInlineChipWidth disables it (the pre-14-06 contract).
+	if (count === 0 && minInlineChipWidth > 0 && chipWidths.length > 0 && overflowBudget >= minInlineChipWidth) {
+		return 1;
 	}
 	return count;
 }
