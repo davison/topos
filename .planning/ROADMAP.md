@@ -65,18 +65,31 @@ Full phase details, success criteria, and plan lists: [milestones/v1.1.0-ROADMAP
 
   1. `make install` with no argument installs the **latest** GitHub release's published artifacts, and `make install <version>` installs that tag's — kernel to `$PREFIX/bin`, plugins to `$PREFIX/lib/topos/plugins`, with `PREFIX` configurable and defaulting to `/usr/local`. Install is download-and-copy only: it completes on a machine with no Go toolchain. (INST-01, INST-02)
   2. The operator starts the installed instance by typing `topos` from PATH: it serves on port 7777, reads config and writes state in the existing home/XDG locations unchanged, and discovers its plugins from the installed plugins directory — the operator's live instance migrates onto installed artifacts without touching their config or index. (INST-03)
-  3. `make install-signal` is an explicit opt-in that builds the cgo Signal plugin locally into the installed plugins directory, and the installed instance picks it up — the base install path stays toolchain-free because the Signal binary is deliberately excluded from published releases. (INST-04)
+  3. `make install-signal` is an explicit opt-in that builds the cgo Signal plugin locally into the installed *external* plugins directory, and the installed instance picks it up via the one-time consent-and-pin flow — the base install path stays toolchain-free because the Signal binary is deliberately excluded from published releases. Trusted-dir placement is refused by Phase 13's build-manifest verification; the external-tier path is the operator-confirmed resolution (2026-08-18). (INST-04)
   4. `make uninstall` removes exactly what was installed — prefix binaries and plugins — and leaves the operator's config, kernel index, and plugin stores completely untouched, verifiably so. (INST-05)
   5. The installed instance and a dev run from the checkout run **simultaneously** with neither noticing the other: the dev run binds a non-7777 port and keeps every writable artifact (dev config, kernel index, all plugin stores including a separate WhatsApp link for real-source dev runs) in .gitignored per-checkout or `/tmp` paths, so a dev run or a test run never reads or writes the home/XDG locations the installed instance owns. (ISOL-01, ISOL-02, ISOL-03)
 
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 15-01-PLAN.md — Installed layout end to end: `make install` for an explicit tag, checksum-verified, and the kernel's installed-layout plugin resolution (tracer)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 15-02-PLAN.md — Latest-release resolution, `make uninstall`, and the filesystem plugin added to the published asset set
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 15-03-PLAN.md — `make install-signal` / `make uninstall-signal`, and a behavioural proof that the base install needs no toolchain
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 15-04-PLAN.md — `cmd/topos-devguard` isolation refusal, the dev loop's move to port 7778, and the per-checkout plugin-store convention
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 15-05-PLAN.md — The committed side-by-side simultaneity proof, the gate documentation, and the migration runbook
 
 **Notes**:
