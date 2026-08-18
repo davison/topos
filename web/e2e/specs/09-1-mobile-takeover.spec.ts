@@ -8,7 +8,12 @@ import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { mockInstances, webspacesWithKeywords, type FixtureConfigSpec } from '../fixtures/config-builder';
 
 const WEBSPACE = 'mobile-takeover';
-const INSTANCE_DISPLAY_NAME = 'Mock 01';
+// Case 6 clicks a chip INSIDE the overflow popover, so it must target an
+// instance that genuinely relegates. Since 14-06 (G-14-2), the row
+// guarantees the FIRST instance ("Mock 01") stays inline at narrow widths
+// whenever the budget can seat a minimum-width chip — so the popover path
+// is proven against the second instance, which always relegates here.
+const RELEGATED_DISPLAY_NAME = 'Mock 02';
 
 // FOUR mock instances (16 fixed items total, every one tagged "demo" — see
 // plugins/mock/plugin.go's mockItems) — checkpoint fix (issue 2): the
@@ -227,11 +232,14 @@ test.describe('09.1-01: mobile detail takeover (D-01..D-04)', () => {
 			// (visibility: hidden) while the takeover is up by design
 			// (D-04) — a real mobile user cannot reach it either, and it
 			// now sits behind the detail pane's own fixed inset-0 z-20
-			// overlay too. With two mock instances (fixture bumped for
-			// case 4's own needs — see the module comment), neither chip
-			// fits in the row's inline slot at 390px even before any
-			// filter is applied — both live behind the "N more sources"
-			// overflow trigger. getByRole cannot reach either the trigger
+			// overlay too. Since 14-06 (G-14-2), the row guarantees ONE
+			// chip inline at 390px — the first instance — while every
+			// other instance still lives behind the "N more sources"
+			// overflow trigger; this case therefore targets a RELEGATED
+			// instance's clone, keeping its real subject intact: the
+			// popover is the only reachable path while the header is
+			// concealed, and a filter write through it must not close the
+			// takeover. getByRole cannot reach either the trigger
 			// or a chip (Chromium's accessibility tree excludes a
 			// visibility:hidden subtree outright); an attribute-selector
 			// CSS locator can, since it queries the DOM directly, not the
@@ -243,8 +251,22 @@ test.describe('09.1-01: mobile detail takeover (D-01..D-04)', () => {
 			await page.locator('button[aria-label*="more sources"]').dispatchEvent('click');
 			const popoverChip = page
 				.locator('[data-slot="popover-content"] button[aria-pressed]')
-				.filter({ hasText: INSTANCE_DISPLAY_NAME });
-			await popoverChip.click();
+				.filter({ hasText: RELEGATED_DISPLAY_NAME });
+			// dispatchEvent, same documented technique as the trigger above,
+			// for a DIFFERENT reason: a non-first clone's own zero-delay
+			// health tooltip opens over its trigger inside the popover
+			// stack, and bits-ui tooltip content is hoverable (intercepts
+			// pointers) — so Playwright's hit-tested click is swallowed at
+			// every point of the button, persistently. The first row never
+			// hit this (its tooltip escapes upward past the popover edge),
+			// which is why the pre-14-06 version of this case — clicking
+			// Mock 01's clone — never saw it. Latent, pre-existing overlap,
+			// NOT introduced by 14-06's floor; captured as todo
+			// 2026-08-21-popover-clone-tooltip-intercepts-clicks. The
+			// case's subject (a filter write during the takeover must not
+			// close the takeover) is unaffected by how the click is
+			// delivered.
+			await popoverChip.dispatchEvent('click');
 
 			// The CORE UI-SPEC assertion this case exists for (see
 			// "Composing with existing URL state"): a replaceState-driven

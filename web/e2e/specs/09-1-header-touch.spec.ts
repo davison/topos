@@ -15,16 +15,20 @@
 // TWO webspaces share one fixture (D-03: still one kernel per file), each
 // attaching a different subset of the same three mock instances — verified
 // live (not assumed) against WebspaceHeader's visibleChipCount budget at
-// 390px: a single participating chip fits inline with room to spare, but
-// as soon as a SECOND chip participates the row's reserved trailing space
-// (Refresh all + the add-source trigger + the overflow trigger itself)
-// leaves less room than even one chip needs, so two or more participating
-// instances push ALL of them behind the "+N more sources" popover with
-// none left inline. SINGLE_WEBSPACE (one participating chip) is what makes
-// cases 1-5, 7-9 possible at all — a genuinely visible-at-rest, tappable
-// trigger with no overflow in the way; MULTI_WEBSPACE (three participating
-// chips, all deferred) is case 6's own proof that the overflow popover
-// still surfaces every chip a narrow viewport cannot fit inline.
+// 390px, under the 14-06 rule (G-14-2): ONE chip is guaranteed inline
+// whenever the overflow budget can seat a minimum-width chip
+// (MIN_INLINE_CHIP_PX), and everything past that first chip relegates to
+// the "+N more sources" popover. The guarantee is budget-gated, not
+// unconditional: when a selection makes "Clear filters" appear, the
+// widened reserved trailing group drops the overflow budget below the
+// minimum and even a single participating chip legitimately relegates —
+// which is exactly the state case 3 drives. SINGLE_WEBSPACE (one
+// participating chip) is what makes cases 1-5, 7-9 possible at all — a
+// genuinely visible-at-rest, tappable trigger with no overflow in the
+// way; MULTI_WEBSPACE (three participating chips: the first held inline
+// by the floor, the other two deferred) is case 6's own proof that the
+// overflow popover still surfaces every chip a narrow viewport cannot
+// fit inline.
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { attachedWebspace, mockInstances, type FixtureConfigSpec } from '../fixtures/config-builder';
 
@@ -174,12 +178,12 @@ test.describe('09.1-04: header touch adaptation (09.1-TOUCH)', () => {
 			const popover = page.locator('[data-slot="popover-content"]');
 			await expect(popover).toBeVisible();
 			await expect(popover.getByText('More sources', { exact: true })).toBeVisible();
-			// All three participating instances are guaranteed to have
-			// overflowed at this width (verified live: with two or more
-			// participating chips, the row's reserved trailing space leaves
-			// less room than even one chip needs) — proving the popover
-			// genuinely surfaces a chip that did not fit inline, not merely
-			// that it opens.
+			// Under the 14-06 rule (G-14-2), the FIRST participating
+			// instance is held inline by the minimum-chip floor at this
+			// width; everything past it — including Mock 03 — is guaranteed
+			// to have overflowed. Asserting on Mock 03 (never Mock 01, the
+			// floor's own chip) proves the popover genuinely surfaces a
+			// chip that did not fit inline, not merely that it opens.
 			await expect(popover.getByRole('button', { name: 'Mock 03', exact: true })).toBeVisible();
 		});
 

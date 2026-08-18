@@ -556,6 +556,31 @@ already produces.
   the WARNING tone — explicitly asserting it is NOT the destructive tone
   — with the contract-exact shadowing tooltip.
 
+## `web/e2e/specs/14-chip-health-narrow-viewport.spec.ts` — chip health reachable at mobile width
+
+Phase 14's gap closure (14-06-PLAN.md, G-14-2): converts the UAT item
+that failed — "the popover is not shown at all unless the viewport is
+wide enough to accommodate it" — from a manual re-check into a gate.
+Six cases at 375×812 (plus one desktop-parity case at 1280×900) prove
+that a long-named source chip stays in the header row at mobile width,
+that hovering it opens the styled health popover fully inside the
+viewport with its sentence wrapped rather than clipped, that `Refresh
+all` and the add-source `+` survive alongside the forced chip, that
+exactly ONE chip is forced (the Phase 6 overflow design still owns
+everything past the first), and that 14-02's option-b
+accessible-description surface is untouched.
+
+The one thing a future reader most needs to know: the popover machinery
+was never the defect — `.planning/debug/popover-hidden-narrow-viewport.md`
+proved it wraps, flips and shifts correctly down to 375px whenever a
+trigger exists, cross-engine. The diagnosed failure was TRIGGER
+disappearance (`visibleChipCount` flooring at zero and relegating every
+chip into the "+N" pill), and the fix is a budget-gated minimum-chip
+floor (`MIN_INLINE_CHIP_PX`, WebspaceHeader.svelte). A regression here
+will therefore present as a missing trigger — case 1's chip locator
+failing — not a missing popover. The spec pins its own copy of
+`MIN_INLINE_CHIP_PX`; change it and the component's constant together.
+
 ## `web/e2e/specs/uat-08-whatsapp-qr-link.spec.ts` — the WhatsApp QR pairing flow
 
 Covers the in-app QR pairing surface (08-04-PLAN.md, D-01/D-02/D-03) end
