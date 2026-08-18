@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -355,6 +355,43 @@ gdrive-external-rehearsal:
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && TOPOS_GDRIVE_BIN=$(TOPOS_GDRIVE_BIN) npx playwright test --project=$(E2E_PROJECT) e2e/specs/14-gdrive-external-rehearsal.spec.ts $(E2E_ARGS)
+
+# PREFIX is the install root `make install` places a published release
+# into: the kernel at $(PREFIX)/bin/topos, plugin binaries at
+# $(PREFIX)/lib/topos/plugins/ (INST-01). /usr/local matches the FHS
+# convention for locally-installed software; override per-invocation
+# (`make install VERSION=1.1.0 PREFIX=$$HOME/.local`) for a no-sudo
+# user-local install. scripts/install.sh reads this via its environment.
+PREFIX ?= /usr/local
+
+# install downloads a published release's artifacts, verifies every
+# file's SHA-256 against that release's own checksums.txt, and places
+# them under $(PREFIX) — see scripts/install.sh for the full sequence
+# (preflight -> stage -> verify -> place; $(PREFIX) is untouched until
+# everything has verified). The version is passed as a make variable
+# (`make install VERSION=1.1.0`, with or without the leading v) —
+# following the dev/e2e precedent of variables over goal-name hacks —
+# and is required: an empty VERSION fails loud here rather than letting
+# the script guess. Needs curl + sha256sum, no Go toolchain, no
+# credentials (public releases). An unwritable $(PREFIX) fails loud
+# naming `sudo make install`; nothing here ever escalates itself.
+install:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "make install: VERSION is required — e.g. make install VERSION=1.1.0" >&2; \
+		exit 1; \
+	fi
+	PREFIX="$(PREFIX)" ./scripts/install.sh "$(VERSION)"
+
+# install-check runs the hermetic behavioural guard for `make install`
+# (scripts/install-smoke.sh): builds a fixture release on local disk,
+# installs from it via install.sh's TOPOS_RELEASE_BASE_URL file:// test
+# seam — no network, no credentials — and asserts the installed kernel
+# at $PREFIX/bin/topos launches the installed plugin from
+# $PREFIX/lib/topos/plugins with the stock relative [plugins] dir
+# (INST-03). Like dev-check, it only ever binds ephemeral ports it
+# selects itself, so it is safe to run while a real kernel is up.
+install-check:
+	./scripts/install-smoke.sh
 
 # dev-config generates $(DEV_CONFIG) from the tracked config.dev.example.toml
 # template, substituting the @CHECKOUT@ placeholder with $(CURDIR) — but

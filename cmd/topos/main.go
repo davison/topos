@@ -142,16 +142,67 @@ func configPath() string {
 }
 
 // pluginsDir resolves cfg.Plugins.Dir relative to the running executable
-// when it is not already absolute.
+// when it is not already absolute. The thin wrapper exists so
+// resolvePluginsDir stays pure (no os.Executable call) and every one of
+// its branches can be pinned by tests that build real directory trees.
 func pluginsDir(cfg *config.Config) (string, error) {
-	if filepath.IsAbs(cfg.Plugins.Dir) {
-		return cfg.Plugins.Dir, nil
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolve executable path: %w", err)
 	}
-	return filepath.Join(filepath.Dir(exe), cfg.Plugins.Dir), nil
+	return resolvePluginsDir(cfg, filepath.Dir(exe)), nil
+}
+
+// resolvePluginsDir computes the trusted plugins directory from
+// cfg.Plugins.Dir and the running executable's directory (exeDir), in
+// three ordered branches:
+//
+//  1. An absolute cfg.Plugins.Dir is returned verbatim — an operator who
+//     typed an absolute path gets exactly that path, regardless of what
+//     exists on disk or what the executable's directory is named.
+//  2. Otherwise the executable-relative join (exeDir + the relative
+//     configured value) is used when it exists as a directory — the
+//     checkout layout, where bin/topos sits beside bin/plugins/.
+//  3. Otherwise, when exeDir itself is named "bin", the installed-layout
+//     sibling formed from exeDir's parent plus "lib", "topos", and the
+//     configured relative value is used if it exists as a directory.
+//     This second probe exists because `make install` writes the kernel
+//     to <prefix>/bin and its plugins to <prefix>/lib/topos/plugins
+//     (INST-01) — so an installed $PREFIX/bin/topos with the stock
+//     relative `[plugins] dir = "plugins"` value would otherwise look
+//     for $PREFIX/bin/plugins, a directory the installer never creates
+//     (INST-03). The existence probes — not a compiled-in prefix — are
+//     what let the same published binary serve both a checkout build and
+//     an installed instance.
+//
+// When neither candidate exists, the executable-relative join is
+// returned anyway, so a "no plugins found" failure still names the
+// primary, documented location rather than the installed-layout
+// fallback.
+func resolvePluginsDir(cfg *config.Config, exeDir string) string {
+	if filepath.IsAbs(cfg.Plugins.Dir) {
+		return cfg.Plugins.Dir
+	}
+	primary := filepath.Join(exeDir, cfg.Plugins.Dir)
+	if isDir(primary) {
+		return primary
+	}
+	if filepath.Base(exeDir) == "bin" {
+		sibling := filepath.Join(filepath.Dir(exeDir), "lib", "topos", cfg.Plugins.Dir)
+		if isDir(sibling) {
+			return sibling
+		}
+	}
+	return primary
+}
+
+// isDir reports whether path exists and is a directory. Any stat error
+// (not-exist, permission, anything else) counts as "not a directory" —
+// resolvePluginsDir's probes must never turn a stat failure into a
+// startup error, only into falling through to the next candidate.
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // defaultExternalPluginsDir resolves the per-OS platform data directory
