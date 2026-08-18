@@ -464,4 +464,17 @@ describe('visibleChipCount', () => {
 	it('forces exactly one chip, never more — with two oversized chips the second still relegates to the Phase 6 overflow design', () => {
 		expect(visibleChipCount([230, 230], 375, 150, 40, 8, 112)).toBe(1);
 	});
+
+	it('forces the sole participating chip inline even when the multi-chip overflow-budget formula alone would not have room for it (single-source WR-01 regression)', () => {
+		// budget = 375-150=225; overflowBudget = 225-40-16=169 (< 200, so
+		// the floor as originally written declined); true single-chip
+		// ceiling = budget-gapWidth = 217 (>= 200) — the chip must still be
+		// forced, because forcing the only chip renders no trigger at all.
+		expect(visibleChipCount([230], 375, 150, 40, 8, 200)).toBe(1);
+	});
+
+	it('still declines to force the sole chip when even the trigger-free ceiling cannot seat the minimum', () => {
+		// budget = 200-150=50; single-chip ceiling = 50-8=42 < 88.
+		expect(visibleChipCount([230], 200, 150, 40, 8, 88)).toBe(0);
+	});
 });

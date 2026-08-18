@@ -386,10 +386,13 @@ export function worstHealthTone(sources: SourceStatus[]): HealthTone {
  * budget can seat at least `minInlineChipWidth` of it. The default of 0
  * disables the floor entirely, preserving the previous contract exactly —
  * which is why the call-site-composition note above and the existing
- * tests hold unmodified. The gate is deliberately the OVERFLOW budget,
- * not the plain budget: a forced chip coexists with the overflow trigger
- * in every case where anything was relegated, so the trigger's width must
- * already be charged. Exactly one chip is forced — never more — so the
+ * tests hold unmodified. The gate depends on how many chips remain: with
+ * two or more candidates a forced chip coexists with the overflow trigger
+ * (something is always left to relegate), so the trigger's width is
+ * charged via the OVERFLOW budget; with exactly ONE candidate, forcing it
+ * leaves nothing to relegate — no trigger ever renders — so the true
+ * ceiling is the plain budget minus the one trailing gap (WR-01,
+ * 14-REVIEW-GAPS.md). Exactly one chip is forced — never more — so the
  * Phase 6 UI-07 overflow design still owns everything past the first
  * chip. The caller is responsible for making that forced chip shrinkable:
  * this arithmetic promises only that space for a minimum-width chip
@@ -424,10 +427,16 @@ export function visibleChipCount(
 		count += 1;
 	}
 	// The G-14-2 floor: only ever raises a zero, only when a chip exists,
-	// and only when the overflow budget can seat a minimum-width chip. A
+	// and only when the applicable budget can seat a minimum-width chip. A
 	// zero minInlineChipWidth disables it (the pre-14-06 contract).
-	if (count === 0 && minInlineChipWidth > 0 && chipWidths.length > 0 && overflowBudget >= minInlineChipWidth) {
-		return 1;
+	if (count === 0 && minInlineChipWidth > 0 && chipWidths.length > 0) {
+		// Forcing the ONLY candidate chip leaves nothing to relegate, so no
+		// overflow trigger will ever render for it — the true ceiling is
+		// the plain budget minus one trailing gap, not the multi-chip
+		// overflow-budget formula (which needlessly reserves the trigger's
+		// width plus an extra gap that will never be spent). WR-01.
+		const forcedBudget = chipWidths.length === 1 ? budget - gapWidth : overflowBudget;
+		if (forcedBudget >= minInlineChipWidth) return 1;
 	}
 	return count;
 }
