@@ -193,7 +193,7 @@ Plans:
   3. Syncs after the first are incremental (changed items only), not a full folder re-listing.
   4. The plugin lives in its own repository, is installed through the external-plugin path, and carries the untrusted badge in the running app — with any place the published contract or mock fell short written down as a contract gap.
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -203,7 +203,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-03-PLAN.md — Author the plugin PRD and bootstrap the out-of-repo clean room, then hand off to its own GSD project
+- [x] 14-03-PLAN.md — Author the plugin PRD and bootstrap the out-of-repo clean room, then hand off to its own GSD project
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -223,7 +223,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 8/8 | Complete    | 2026-08-15 |
-| 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 2/5 | In Progress|  |
+| 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 3/5 | In Progress|  |
 
 ## Backlog
 
