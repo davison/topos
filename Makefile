@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -386,6 +386,19 @@ PREFIX ?= /usr/local
 # here ever escalates itself.
 install:
 	PREFIX="$(PREFIX)" ./scripts/install.sh $(VERSION)
+
+# uninstall removes the PREFIX ARTIFACTS ONLY (INST-05): the kernel at
+# $(PREFIX)/bin/topos and the topos-plugin-* binaries directly inside
+# $(PREFIX)/lib/topos/plugins, then removes those directories with a
+# non-recursive rmdir only when they are left empty. The operator's
+# config file, kernel index, and plugin stores are NEVER touched —
+# scripts/uninstall.sh names no path outside the prefix and offers no
+# data-removal flag at all; that absence is the guarantee. Idempotent:
+# a second run is a clean no-op that exits 0. Safe while the installed
+# kernel is running (removal is by unlink; the live process keeps its
+# already-open files).
+uninstall:
+	PREFIX="$(PREFIX)" ./scripts/uninstall.sh
 
 # install-check runs the hermetic behavioural guard for `make install`
 # (scripts/install-smoke.sh): builds a fixture release on local disk,

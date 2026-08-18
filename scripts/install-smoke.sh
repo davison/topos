@@ -345,8 +345,11 @@ echo "==> Case PASS: unwritable prefix"
 echo "==> Case: idempotent re-run"
 IDEM_PREFIX="$WORK/prefix-idem"
 
+# manifest_of_prefix <dir>: recursive path+SHA-256 manifest, sorted for
+# stable comparison. xargs -r so an empty tree yields an empty manifest
+# rather than sha256sum reading stdin.
 manifest_of_prefix() {
-  (cd "$1" && find . -type f | LC_ALL=C sort | xargs sha256sum)
+  (cd "$1" && find . -type f | LC_ALL=C sort | xargs -r sha256sum)
 }
 
 run_install "$IDEM_PREFIX" "file://$WORK/release"
@@ -434,6 +437,166 @@ kill "$KERNEL_PID" 2>/dev/null || true
 wait "$KERNEL_PID" 2>/dev/null || true
 KERNEL_PID=""
 echo "==> Case PASS: live replacement"
+
+# ---------------------------------------------------------------------
+# Case: uninstall data-safety cycle — the real INST-05 gate. A seeded
+# home/XDG tree (config, index, a plugin store) must be byte-identical
+# across a full install+uninstall cycle, and the prefix must be clean
+# afterwards.
+# ---------------------------------------------------------------------
+echo "==> Case: uninstall data-safety cycle"
+SEED_HOME="$WORK/seed-home"
+SEED_CONFIG="$WORK/seed-xdg-config"
+SEED_DATA="$WORK/seed-xdg-data"
+mkdir -p "$SEED_HOME" "$SEED_CONFIG/topos" "$SEED_DATA/topos/whatsapp-store"
+echo '[server]' > "$SEED_CONFIG/topos/config.toml"
+printf 'operator index bytes' > "$SEED_DATA/topos/index.db"
+printf 'linked-device session' > "$SEED_DATA/topos/whatsapp-store/session.db"
+
+seed_manifest() {
+  { manifest_of_prefix "$SEED_HOME"; manifest_of_prefix "$SEED_CONFIG"; manifest_of_prefix "$SEED_DATA"; }
+}
+
+seed_manifest > "$WORK/seed-before"
+
+CYCLE_PREFIX="$WORK/prefix-cycle"
+HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
+  PREFIX="$CYCLE_PREFIX" TOPOS_RELEASE_BASE_URL="file://$WORK/release" \
+  ./scripts/install.sh "$TAG" >/dev/null
+
+HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
+  PREFIX="$CYCLE_PREFIX" ./scripts/uninstall.sh >"$WORK/uninstall-cycle.out"
+
+seed_manifest > "$WORK/seed-after"
+if ! cmp -s "$WORK/seed-before" "$WORK/seed-after"; then
+  echo "FAIL: the install+uninstall cycle changed the operator's seeded tree:" >&2
+  diff "$WORK/seed-before" "$WORK/seed-after" >&2 || true
+  exit 1
+fi
+if [ -e "$CYCLE_PREFIX/bin/topos" ]; then
+  fail "uninstall left the kernel binary at $CYCLE_PREFIX/bin/topos"
+fi
+if [ -e "$CYCLE_PREFIX/lib/topos/plugins" ]; then
+  fail "uninstall left the plugins directory at $CYCLE_PREFIX/lib/topos/plugins"
+fi
+echo "==> Case PASS: uninstall data-safety cycle"
+
+# ---------------------------------------------------------------------
+# Case: idempotent uninstall — a second run exits 0, reports nothing
+# left to remove, and changes nothing on disk.
+# ---------------------------------------------------------------------
+echo "==> Case: idempotent uninstall"
+manifest_of_prefix "$CYCLE_PREFIX" > "$WORK/uninstall-manifest-1"
+UN2_RC=0
+UN2_OUT="$(PREFIX="$CYCLE_PREFIX" ./scripts/uninstall.sh 2>&1)" || UN2_RC=$?
+if [ "$UN2_RC" -ne 0 ]; then
+  fail "second uninstall exited $UN2_RC, expected 0
+$UN2_OUT"
+fi
+if ! printf '%s' "$UN2_OUT" | grep -q "nothing left to remove"; then
+  fail "second uninstall did not report that nothing was left to remove
+$UN2_OUT"
+fi
+manifest_of_prefix "$CYCLE_PREFIX" > "$WORK/uninstall-manifest-2"
+if ! cmp -s "$WORK/uninstall-manifest-1" "$WORK/uninstall-manifest-2"; then
+  fail "second uninstall changed bytes in $CYCLE_PREFIX"
+fi
+echo "==> Case PASS: idempotent uninstall"
+
+# ---------------------------------------------------------------------
+# Case: foreign file in the plugins directory — a hand-placed file
+# survives, its directory survives, and the uninstall says so.
+# ---------------------------------------------------------------------
+echo "==> Case: uninstall leaves a foreign file"
+FOREIGN_PREFIX="$WORK/prefix-foreign"
+PREFIX="$FOREIGN_PREFIX" TOPOS_RELEASE_BASE_URL="file://$WORK/release" \
+  ./scripts/install.sh "$TAG" >/dev/null
+printf 'operator notes — not ours to delete' > "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt"
+FOREIGN_DIGEST_BEFORE="$(sha256sum "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" | cut -d' ' -f1)"
+
+FOREIGN_RC=0
+FOREIGN_OUT="$(PREFIX="$FOREIGN_PREFIX" ./scripts/uninstall.sh 2>&1)" || FOREIGN_RC=$?
+if [ "$FOREIGN_RC" -ne 0 ]; then
+  fail "uninstall with a foreign file exited $FOREIGN_RC, expected 0
+$FOREIGN_OUT"
+fi
+if [ ! -f "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" ]; then
+  fail "uninstall removed the operator's hand-placed file — the removal set must be closed"
+fi
+FOREIGN_DIGEST_AFTER="$(sha256sum "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" | cut -d' ' -f1)"
+if [ "$FOREIGN_DIGEST_BEFORE" != "$FOREIGN_DIGEST_AFTER" ]; then
+  fail "the hand-placed file's digest changed across uninstall"
+fi
+if [ ! -d "$FOREIGN_PREFIX/lib/topos/plugins" ]; then
+  fail "uninstall removed a non-empty plugins directory — directory cleanup must be non-recursive rmdir only"
+fi
+if ! printf '%s' "$FOREIGN_OUT" | grep -q "left in place (not empty)"; then
+  fail "uninstall did not report the surviving directory and its contents
+$FOREIGN_OUT"
+fi
+echo "==> Case PASS: uninstall leaves a foreign file"
+
+# ---------------------------------------------------------------------
+# Case: uninstall under a live kernel — removal is by unlink, so the
+# running process keeps serving on its already-open files.
+# ---------------------------------------------------------------------
+echo "==> Case: uninstall under a live kernel"
+UNLIVE_PORT="$(free_port)"
+cat > "$WORK/config-unlive.toml" <<EOF
+[server]
+listen = "127.0.0.1:$UNLIVE_PORT"
+
+[index]
+path = "$WORK/index-unlive/index.db"
+
+[plugins]
+dir = "plugins"
+
+[sync]
+interval = "1h"
+
+[sources.mock]
+plugin = "topos-plugin-mock"
+base_url = "install-smoke-unused"
+token = "install-smoke-unused"
+EOF
+
+HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/xdg-config" XDG_DATA_HOME="$WORK/xdg-data" \
+  "$PREFIX_DIR/bin/topos" serve --config "$WORK/config-unlive.toml" \
+  >"$WORK/kernel-unlive.log" 2>&1 &
+KERNEL_PID=$!
+
+i=0
+until curl -fsS "http://127.0.0.1:$UNLIVE_PORT/api/sources" >/dev/null 2>&1; do
+  if ! kill -0 "$KERNEL_PID" 2>/dev/null; then
+    echo "--- kernel log ---" >&2
+    cat "$WORK/kernel-unlive.log" >&2 || true
+    fail "uninstall under a live kernel: kernel exited before listening"
+  fi
+  i=$((i + 1))
+  if [ "$i" -ge 30 ]; then
+    fail "uninstall under a live kernel: kernel never listened on 127.0.0.1:$UNLIVE_PORT"
+  fi
+  sleep 1
+done
+
+UNLIVE_RC=0
+UNLIVE_OUT="$(PREFIX="$PREFIX_DIR" ./scripts/uninstall.sh 2>&1)" || UNLIVE_RC=$?
+if [ "$UNLIVE_RC" -ne 0 ]; then
+  fail "uninstall under a live kernel exited $UNLIVE_RC, expected 0
+$UNLIVE_OUT"
+fi
+if ! curl -fsS "http://127.0.0.1:$UNLIVE_PORT/api/sources" >/dev/null 2>&1; then
+  fail "the running kernel stopped answering after the uninstall — unlink-based removal must leave the live process untouched"
+fi
+if ! kill -0 "$KERNEL_PID" 2>/dev/null; then
+  fail "the running kernel died during the uninstall"
+fi
+
+kill "$KERNEL_PID" 2>/dev/null || true
+wait "$KERNEL_PID" 2>/dev/null || true
+KERNEL_PID=""
+echo "==> Case PASS: uninstall under a live kernel"
 
 # ---------------------------------------------------------------------
 # Case: latest-resolution validator (offline) — source the script (the
