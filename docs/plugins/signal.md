@@ -83,17 +83,24 @@ binary the manifest doesn't recognize.
 
 **The fix, step by step:**
 
-1. Build the plugin locally: `make signal` (see Install Requirements,
-   above).
-2. Place the built `topos-plugin-signal` binary in the **external**
-   plugin directory (`[plugins] external_dir`), not the trusted one.
-3. Add it through the app's untrusted-add consent flow — the same
+1. Build and place in one command: `make install-signal` — the
+   supported form for an operator running an installed instance. It
+   builds through the same `signal` definition (see Install
+   Requirements, above) and places the binary in the external plugin
+   directory atomically; see
+   [`docs/install.md`'s Signal section](../install.md#signal-on-an-installed-instance)
+   for the destination default and its override. Working from a
+   checkout, the equivalent longhand is: `make signal`, then place the
+   built `topos-plugin-signal` binary in the **external** plugin
+   directory (`[plugins] external_dir`) yourself — not the trusted one.
+2. Add it through the app's untrusted-add consent flow — the same
    explicit consent-and-pin path any other external, unverified binary
    goes through (`docs/plugin-contract.md`'s "Pinning").
-4. It now runs pinned, badged untrusted. Re-running `make signal` later
-   produces new bytes and requires re-accepting the changed binary through
-   the chip's own re-pin flow — exactly like any other pinned external
-   plugin whose bytes changed.
+3. It now runs pinned, badged untrusted. Re-running `make
+   install-signal` (or `make signal`) later produces new bytes and
+   requires re-accepting the changed binary through the chip's own
+   re-pin flow — exactly like any other pinned external plugin whose
+   bytes changed.
 
 **Whoever builds the whole repository together is unaffected.** `make
 build` and `make dev` both build the Signal plugin as part of their own

@@ -105,6 +105,58 @@ subprocesses are never truncated mid-execution. The running process
 keeps executing its old code until you restart it — restart the
 kernel to pick up the new release.
 
+## Signal on an installed instance
+
+The Signal plugin binary is deliberately **never** a published release
+artifact: it is this project's only cgo build, dynamically linking the
+system SQLCipher library, so a binary built on one distro carries no
+promise of running on another. An installed instance gets Signal
+support through an explicit opt-in instead:
+
+```sh
+make install-signal
+```
+
+This is the **only** install-surface command that needs a toolchain —
+a Go toolchain, a C compiler, and the system `sqlcipher` package (see
+[`docs/plugins/signal.md`](plugins/signal.md) for the per-distro
+package names and the SQLite version floor). The base `make install`
+stays download-and-copy only, and the hermetic gate proves it by
+running the install with failing compiler shims first on `PATH`.
+
+`make install-signal` builds the plugin through the repository's
+single `signal` build definition and places the binary in the
+installed instance's **external** plugin directory — by default
+`$XDG_DATA_HOME/topos/plugins-external` (or
+`~/.local/share/topos/plugins-external`), matching the kernel's own
+default. If your config's `[plugins] external_dir` names a different
+directory, point the installer at it:
+
+```sh
+make install-signal TOPOS_EXTERNAL_PLUGINS_DIR=/path/to/external-dir
+```
+
+**Why the external directory, and why there is a one-time consent
+step.** The installed kernel verifies every binary in its *trusted*
+plugins directory against the build manifest linked into the kernel at
+release time. A binary you built locally cannot be in that manifest —
+it did not exist when the released kernel was linked — so a
+trusted-directory placement would be refused at launch. That refusal
+is the trust model working as designed, not a limitation to route
+around. The supported path is the external tier: after
+`make install-signal`, you add the Signal source once through the
+app's untrusted-add consent flow, and it runs pinned and badged
+untrusted from then on. Re-running `make install-signal` produces new
+bytes, which the kernel surfaces as a pin mismatch — re-accept the
+changed binary through the chip's re-pin flow.
+
+`make uninstall` never touches this binary (it lives outside
+`$PREFIX`); remove it with:
+
+```sh
+make uninstall-signal
+```
+
 ## Verifying the install machinery itself
 
 ```sh
