@@ -3,6 +3,7 @@ created: 2026-08-17T11:40:00.000Z
 title: Dev/test servers must not use the production port 7777
 area: kernel
 severity: minor
+resolves_phase: 15
 files:
   - Makefile
   - config.dev.example.toml
