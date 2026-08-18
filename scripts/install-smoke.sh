@@ -435,4 +435,88 @@ wait "$KERNEL_PID" 2>/dev/null || true
 KERNEL_PID=""
 echo "==> Case PASS: live replacement"
 
+# ---------------------------------------------------------------------
+# Case: latest-resolution validator (offline) — source the script (the
+# source-guard seam: defines functions, runs nothing) and drive
+# validate_latest_url with a table of effective URLs. Exactly one shape
+# is accepted; every refusal names a distinct reason (T-15-06/T-15-07).
+# ---------------------------------------------------------------------
+echo "==> Case: latest-resolution validator (offline)"
+
+# The source-guard itself: sourcing must produce no output and start no
+# download — anything on stdout/stderr here is a guard regression.
+SOURCE_OUT="$( (source ./scripts/install.sh) 2>&1 )"
+if [ -n "$SOURCE_OUT" ]; then
+  fail "sourcing scripts/install.sh produced output — the source-guard is broken:
+$SOURCE_OUT"
+fi
+
+# validate_case <expect: accept|refuse> <input-url> <required-fragment>
+# Runs the validator in a sourced subshell; on accept, the emitted tag
+# must equal <required-fragment>; on refuse, the exit must be non-zero
+# and the message must contain <required-fragment>.
+validate_case() {
+  local expect="$1" input="$2" required="$3"
+  local rc=0 out
+  out="$( (source ./scripts/install.sh && validate_latest_url "$input") 2>&1 )" || rc=$?
+  if [ "$expect" = "accept" ]; then
+    if [ "$rc" -ne 0 ]; then
+      fail "validator refused an acceptable URL '$input': $out"
+    fi
+    if [ "$out" != "$required" ]; then
+      fail "validator accepted '$input' but extracted tag '$out', expected '$required'"
+    fi
+  else
+    if [ "$rc" -eq 0 ]; then
+      fail "validator accepted '$input', expected a refusal (${required})"
+    fi
+    if ! printf '%s' "$out" | grep -q "$required"; then
+      fail "validator refused '$input' but without the expected named reason '$required':
+$out"
+    fi
+  fi
+}
+
+# The one acceptable shape: this repository's own three-part release-tag
+# URL, with the tag extracted as the trailing path segment.
+validate_case accept "https://github.com/davison/topos/releases/tag/v1.2.3" "v1.2.3"
+# Nightly-shaped tag: refused by the three-part shape guard.
+validate_case refuse "https://github.com/davison/topos/releases/tag/nightly" "not a three-part stable"
+# Prerelease-suffixed tag: refused by the same shape guard's anchoring.
+validate_case refuse "https://github.com/davison/topos/releases/tag/v1.2.3-rc.1" "not a three-part stable"
+# Off-host URL: refused by the scheme/host guard.
+validate_case refuse "https://evil.example.com/davison/topos/releases/tag/v1.2.3" "scheme/host is not https://github.com"
+# Plain-http URL: also the scheme/host guard.
+validate_case refuse "http://github.com/davison/topos/releases/tag/v1.2.3" "scheme/host is not https://github.com"
+# Different repository's release path: refused by the repo-path guard.
+validate_case refuse "https://github.com/eve/malice/releases/tag/v1.2.3" "not this repository's release-tag path"
+# Empty input: refused by name.
+validate_case refuse "" "empty effective URL"
+
+echo "==> Case PASS: latest-resolution validator (offline)"
+
+# ---------------------------------------------------------------------
+# Case: latest-resolution end to end (network) — runs the real resolver
+# against the real release host. When the network is unreachable this
+# case SKIPS LOUDLY, naming itself and the reason (the gdrive rehearsal
+# spec's skip-loudly discipline) — it must never pass silently.
+# ---------------------------------------------------------------------
+echo "==> Case: latest-resolution end to end (network)"
+if ! curl -fsSI --max-time 10 "https://github.com" >/dev/null 2>&1; then
+  echo "==> Case SKIP: latest-resolution end to end (network) — https://github.com is unreachable from here; the resolver was NOT exercised against the live endpoint"
+else
+  LATEST_RC=0
+  LATEST_TAG="$( (source ./scripts/install.sh \
+    && validate_latest_url "$(resolve_latest_effective_url)") 2>&1 )" || LATEST_RC=$?
+  if [ "$LATEST_RC" -ne 0 ]; then
+    fail "latest-resolution end to end: resolver/validator failed against the live endpoint:
+$LATEST_TAG"
+  fi
+  if ! printf '%s' "$LATEST_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    fail "latest-resolution end to end: resolved tag '$LATEST_TAG' is not three-part stable semver"
+  fi
+  echo "    resolved latest stable release: $LATEST_TAG"
+  echo "==> Case PASS: latest-resolution end to end (network)"
+fi
+
 echo "==> install-smoke: all cases passed"

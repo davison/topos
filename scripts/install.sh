@@ -4,7 +4,22 @@
 # $PREFIX/lib/topos/plugins/, each SHA-256-verified against that
 # release's own checksums.txt BEFORE anything is written to $PREFIX.
 #
-# Usage: install.sh <version>       (with or without a leading "v")
+# Usage: install.sh [version]       (with or without a leading "v")
+#
+# With no version argument, the latest published STABLE release is
+# resolved (INST-02) by following the release root's `latest` redirect
+# and validating the effective URL it lands on: scheme and host must be
+# exactly https://github.com, the path must be this repository's own
+# release-tag path, and the trailing tag must be three-part
+# v<major>.<minor>.<patch> semver — which structurally excludes the
+# moving `nightly` prerelease tag and any prerelease-suffixed tag, as a
+# second guard the script enforces itself rather than trusting the
+# endpoint's prerelease-exclusion semantics (T-15-06/T-15-07). No
+# credential, token, or GitHub CLI is involved.
+#
+# This file is source-guarded: sourcing it defines its functions and
+# runs nothing — the seam scripts/install-smoke.sh uses to drive the
+# validator offline. Only direct execution runs the install flow.
 #
 # Environment:
 #   PREFIX                  install root      (default /usr/local)
@@ -36,12 +51,67 @@ fail() {
   exit 1
 }
 
+# resolve_latest_effective_url: issues a redirect-following HEAD request
+# against the release root's `latest` path and prints the final
+# effective URL. Deliberately decides NOTHING about whether that answer
+# is acceptable — validate_latest_url below is the sole authority on
+# that, so the network step and the safety check stay independently
+# testable.
+resolve_latest_effective_url() {
+  curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    "${TOPOS_RELEASE_BASE_URL:-https://github.com/davison/topos/releases}/latest"
+}
+
+# validate_latest_url <effective-url>: validates the URL the `latest`
+# redirect landed on and prints the release tag it names. Refuses by
+# name (T-15-06/T-15-07) when: the input is empty; the scheme/host are
+# not exactly https://github.com; the path is not this repository's own
+# release-tag path; or the trailing segment is not a bare three-part
+# v<digits>.<digits>.<digits> tag. The tag-shape check is a second,
+# independent prerelease guard: the `latest` endpoint already excludes
+# prereleases by definition, and this makes that exclusion something
+# this script enforces rather than trusts — the moving `nightly` tag
+# and any `-rc`/`-beta` suffixed tag both fail the shape.
+validate_latest_url() {
+  local url="${1:-}"
+  if [ -z "$url" ]; then
+    fail "latest-release resolution returned an empty effective URL"
+  fi
+  case "$url" in
+    https://github.com/*) ;;
+    *)
+      fail "latest-release URL refused: scheme/host is not https://github.com — got: $url"
+      ;;
+  esac
+  local path="${url#https://github.com}"
+  case "$path" in
+    /davison/topos/releases/tag/*) ;;
+    *)
+      fail "latest-release URL refused: not this repository's release-tag path (/davison/topos/releases/tag/...) — got: $url"
+      ;;
+  esac
+  local tag="${path#/davison/topos/releases/tag/}"
+  if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    fail "latest-release URL refused: tag '$tag' is not a three-part stable v<major>.<minor>.<patch> release (prerelease/nightly tags are never auto-selected)"
+  fi
+  printf '%s' "$tag"
+}
+
+main() {
+
 VERSION_ARG="${1:-}"
 if [ -z "$VERSION_ARG" ]; then
-  fail "a release version is required — usage: install.sh <version> (e.g. 1.1.0 or v1.1.0)"
+  # No version given: resolve the latest published stable release
+  # (INST-02) — resolve, then validate, then continue into the exact
+  # tag-based flow an explicit version takes.
+  EFFECTIVE_URL="$(resolve_latest_effective_url)" \
+    || fail "could not resolve the latest release from ${TOPOS_RELEASE_BASE_URL:-https://github.com/davison/topos/releases}/latest — pass an explicit version (make install VERSION=<tag>) if the network is unavailable"
+  TAG="$(validate_latest_url "$EFFECTIVE_URL")"
+  echo "install: resolved latest stable release: $TAG"
+else
+  # Normalise to a single tag form: accept "1.1.0" or "v1.1.0", use "v1.1.0".
+  TAG="v${VERSION_ARG#v}"
 fi
-# Normalise to a single tag form: accept "1.1.0" or "v1.1.0", use "v1.1.0".
-TAG="v${VERSION_ARG#v}"
 
 PREFIX="${PREFIX:-/usr/local}"
 TOPOS_RELEASE_BASE_URL="${TOPOS_RELEASE_BASE_URL:-https://github.com/davison/topos/releases}"
@@ -163,3 +233,11 @@ echo "install: release $TAG installed into $PREFIX"
 for path in "${WRITTEN[@]}"; do
   echo "install:   wrote $path"
 done
+
+}
+
+# Source-guard: executed directly, run the install flow; sourced (the
+# install-smoke test seam), define functions only and do nothing else.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

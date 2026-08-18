@@ -368,19 +368,24 @@ PREFIX ?= /usr/local
 # file's SHA-256 against that release's own checksums.txt, and places
 # them under $(PREFIX) — see scripts/install.sh for the full sequence
 # (preflight -> stage -> verify -> place; $(PREFIX) is untouched until
-# everything has verified). The version is passed as a make variable
-# (`make install VERSION=1.1.0`, with or without the leading v) —
-# following the dev/e2e precedent of variables over goal-name hacks —
-# and is required: an empty VERSION fails loud here rather than letting
-# the script guess. Needs curl + sha256sum, no Go toolchain, no
-# credentials (public releases). An unwritable $(PREFIX) fails loud
-# naming `sudo make install`; nothing here ever escalates itself.
+# everything has verified). Two first-class forms:
+#   make install                 — resolves the LATEST published stable
+#                                  release (INST-02) by following the
+#                                  releases/latest redirect; the script
+#                                  validates the landing URL's host,
+#                                  repository path, and three-part
+#                                  v<maj>.<min>.<patch> tag shape, so a
+#                                  prerelease or the moving nightly tag
+#                                  can never be auto-selected
+#   make install VERSION=1.1.0   — installs exactly that tag (with or
+#                                  without the leading v)
+# Both follow the dev/e2e precedent of variables over goal-name hacks.
+# Needs curl + sha256sum only — no Go toolchain, no credential, no
+# token, no GitHub CLI (public releases download anonymously). An
+# unwritable $(PREFIX) fails loud naming `sudo make install`; nothing
+# here ever escalates itself.
 install:
-	@if [ -z "$(VERSION)" ]; then \
-		echo "make install: VERSION is required — e.g. make install VERSION=1.1.0" >&2; \
-		exit 1; \
-	fi
-	PREFIX="$(PREFIX)" ./scripts/install.sh "$(VERSION)"
+	PREFIX="$(PREFIX)" ./scripts/install.sh $(VERSION)
 
 # install-check runs the hermetic behavioural guard for `make install`
 # (scripts/install-smoke.sh): builds a fixture release on local disk,
