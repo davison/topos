@@ -19,6 +19,18 @@
 # preflight loop, mktemp -d work dir, cleanup trap, loud FAIL: messages
 # naming the specific violation, ephemeral self-selected ports only
 # (safe to run while a real kernel holds 127.0.0.1:7777).
+#
+# Beyond the happy path, five named hardening cases pin every refusal
+# and repair behaviour: corrupted asset (checksum mismatch aborts,
+# $PREFIX stays empty), traversal-shaped manifest (a checksums.txt path
+# escaping the staging tree is rejected by name, nothing created),
+# unwritable prefix (fails loud naming the directory and the sudo
+# re-run, never escalates, target stays read-only and empty),
+# idempotent re-run (two installs of one tag leave byte-identical
+# prefix trees), and live replacement (re-installing over a RUNNING
+# kernel succeeds and lands the new file — the case that would fail if
+# placement ever wrote directly over the destination instead of
+# renaming into it).
 
 set -euo pipefail
 
@@ -212,5 +224,215 @@ wait "$KERNEL_PID" 2>/dev/null || true
 KERNEL_PID=""
 
 echo "==> Case PASS: installed kernel finds installed plugins (stock config)"
+
+# run_install_expect_fail <prefix> <base-url>: runs install.sh expecting
+# a non-zero exit; captures combined output into $INSTALL_OUT and the
+# exit status into $INSTALL_RC. A zero exit is the caller's assertion to
+# make — this helper only ever records.
+run_install() {
+  INSTALL_RC=0
+  INSTALL_OUT="$(PREFIX="$1" TOPOS_RELEASE_BASE_URL="$2" ./scripts/install.sh "$TAG" 2>&1)" \
+    || INSTALL_RC=$?
+}
+
+# assert_prefix_untouched <prefix>: asserts no kernel binary and no
+# plugin entries were placed. The writability preflight may legitimately
+# have created the (empty) directories themselves — a failed install's
+# defined state is "no FILES placed", not "no directories exist".
+assert_prefix_untouched() {
+  local prefix="$1"
+  if [ -e "$prefix/bin/topos" ]; then
+    fail "a failed install left $prefix/bin/topos behind"
+  fi
+  if [ -d "$prefix/lib/topos/plugins" ] && [ -n "$(ls -A "$prefix/lib/topos/plugins")" ]; then
+    fail "a failed install left entries in $prefix/lib/topos/plugins"
+  fi
+}
+
+# ---------------------------------------------------------------------
+# Case: corrupted asset — a byte appended to one published file makes
+# its recorded digest stale; the install must abort naming that asset
+# and place nothing.
+# ---------------------------------------------------------------------
+echo "==> Case: corrupted asset"
+CORRUPT_BASE="$WORK/release-corrupt"
+mkdir -p "$CORRUPT_BASE/download"
+cp -r "$WORK/release/download/$TAG" "$CORRUPT_BASE/download/$TAG"
+printf 'x' >> "$CORRUPT_BASE/download/$TAG/topos-plugin-mock"
+
+run_install "$WORK/prefix-corrupt" "file://$CORRUPT_BASE"
+if [ "$INSTALL_RC" -eq 0 ]; then
+  fail "corrupted asset: install exited 0, expected a checksum refusal"
+fi
+if ! printf '%s' "$INSTALL_OUT" | grep -q "topos-plugin-mock"; then
+  fail "corrupted asset: refusal did not name the failing asset
+$INSTALL_OUT"
+fi
+assert_prefix_untouched "$WORK/prefix-corrupt"
+echo "==> Case PASS: corrupted asset"
+
+# ---------------------------------------------------------------------
+# Case: traversal-shaped manifest — a checksums.txt line whose path
+# escapes the staging directory must be rejected by name before any
+# file is created (T-15-02).
+# ---------------------------------------------------------------------
+echo "==> Case: traversal-shaped manifest"
+TRAVERSAL_BASE="$WORK/release-traversal"
+mkdir -p "$TRAVERSAL_BASE/download"
+cp -r "$WORK/release/download/$TAG" "$TRAVERSAL_BASE/download/$TAG"
+BOGUS_HASH="$(printf 'traversal' | sha256sum | cut -d' ' -f1)"
+printf '%s  plugins/../../../traversal-escape\n' "$BOGUS_HASH" \
+  >> "$TRAVERSAL_BASE/download/$TAG/checksums.txt"
+
+run_install "$WORK/prefix-traversal" "file://$TRAVERSAL_BASE"
+if [ "$INSTALL_RC" -eq 0 ]; then
+  fail "traversal-shaped manifest: install exited 0, expected a rejection"
+fi
+if ! printf '%s' "$INSTALL_OUT" | grep -q "traversal-escape"; then
+  fail "traversal-shaped manifest: rejection did not name the offending line
+$INSTALL_OUT"
+fi
+if [ -e "$WORK/traversal-escape" ] || [ -e "$WORK/release-traversal/traversal-escape" ]; then
+  fail "traversal-shaped manifest: a file escaped the staging tree"
+fi
+assert_prefix_untouched "$WORK/prefix-traversal"
+echo "==> Case PASS: traversal-shaped manifest"
+
+# ---------------------------------------------------------------------
+# Case: unwritable prefix — must fail loud naming the directory and the
+# sudo re-run form, must never escalate itself, and must leave the
+# read-only target exactly as it found it (an installer that had
+# escalated would have written into it).
+# ---------------------------------------------------------------------
+echo "==> Case: unwritable prefix"
+RO_PREFIX="$WORK/prefix-readonly"
+mkdir -p "$RO_PREFIX"
+chmod 555 "$RO_PREFIX"
+
+run_install "$RO_PREFIX" "file://$WORK/release"
+RO_RC="$INSTALL_RC"
+RO_OUT="$INSTALL_OUT"
+chmod_restored=false
+if [ "$RO_RC" -eq 0 ]; then
+  chmod 755 "$RO_PREFIX"; chmod_restored=true
+  fail "unwritable prefix: install exited 0, expected a refusal"
+fi
+if ! printf '%s' "$RO_OUT" | grep -q "$RO_PREFIX"; then
+  chmod 755 "$RO_PREFIX"; chmod_restored=true
+  fail "unwritable prefix: refusal did not name the unwritable directory
+$RO_OUT"
+fi
+if ! printf '%s' "$RO_OUT" | grep -q "sudo make install"; then
+  chmod 755 "$RO_PREFIX"; chmod_restored=true
+  fail "unwritable prefix: refusal did not name the sudo make install re-run
+$RO_OUT"
+fi
+MODE_AFTER="$(stat -c '%a' "$RO_PREFIX")"
+if [ "$MODE_AFTER" != "555" ]; then
+  fail "unwritable prefix: target directory mode changed to $MODE_AFTER — the installer must not alter it"
+fi
+if [ -n "$(ls -A "$RO_PREFIX")" ]; then
+  fail "unwritable prefix: target directory is no longer empty — an installer that escalated would have written into it"
+fi
+[ "$chmod_restored" = true ] || chmod 755 "$RO_PREFIX"
+echo "==> Case PASS: unwritable prefix"
+
+# ---------------------------------------------------------------------
+# Case: idempotent re-run — installing the same tag twice into one
+# prefix succeeds both times and leaves byte-identical trees (the
+# supported repair path: re-verify, re-place, no bookkeeping).
+# ---------------------------------------------------------------------
+echo "==> Case: idempotent re-run"
+IDEM_PREFIX="$WORK/prefix-idem"
+
+manifest_of_prefix() {
+  (cd "$1" && find . -type f | LC_ALL=C sort | xargs sha256sum)
+}
+
+run_install "$IDEM_PREFIX" "file://$WORK/release"
+if [ "$INSTALL_RC" -ne 0 ]; then
+  fail "idempotent re-run: first install failed (rc=$INSTALL_RC)
+$INSTALL_OUT"
+fi
+manifest_of_prefix "$IDEM_PREFIX" > "$WORK/idem-manifest-1"
+
+run_install "$IDEM_PREFIX" "file://$WORK/release"
+if [ "$INSTALL_RC" -ne 0 ]; then
+  fail "idempotent re-run: second install failed (rc=$INSTALL_RC)
+$INSTALL_OUT"
+fi
+manifest_of_prefix "$IDEM_PREFIX" > "$WORK/idem-manifest-2"
+
+if ! cmp -s "$WORK/idem-manifest-1" "$WORK/idem-manifest-2"; then
+  diff "$WORK/idem-manifest-1" "$WORK/idem-manifest-2" >&2 || true
+  fail "idempotent re-run: the two installs left different bytes in $IDEM_PREFIX"
+fi
+echo "==> Case PASS: idempotent re-run"
+
+# ---------------------------------------------------------------------
+# Case: live replacement — re-running the install while the installed
+# kernel is RUNNING must succeed and land the new file. This is the
+# case that fails if placement ever writes directly over the
+# destination path (text-file-busy / torn write) instead of renaming
+# into it (T-15-04).
+# ---------------------------------------------------------------------
+echo "==> Case: live replacement"
+LIVE_PORT="$(free_port)"
+cat > "$WORK/config-live.toml" <<EOF
+[server]
+listen = "127.0.0.1:$LIVE_PORT"
+
+[index]
+path = "$WORK/index-live/index.db"
+
+[plugins]
+dir = "plugins"
+
+[sync]
+interval = "1h"
+
+[sources.mock]
+plugin = "topos-plugin-mock"
+base_url = "install-smoke-unused"
+token = "install-smoke-unused"
+EOF
+
+HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/xdg-config" XDG_DATA_HOME="$WORK/xdg-data" \
+  "$PREFIX_DIR/bin/topos" serve --config "$WORK/config-live.toml" \
+  >"$WORK/kernel-live.log" 2>&1 &
+KERNEL_PID=$!
+
+i=0
+until curl -fsS "http://127.0.0.1:$LIVE_PORT/api/sources" >/dev/null 2>&1; do
+  if ! kill -0 "$KERNEL_PID" 2>/dev/null; then
+    echo "--- kernel log ---" >&2
+    cat "$WORK/kernel-live.log" >&2 || true
+    fail "live replacement: kernel exited before listening"
+  fi
+  i=$((i + 1))
+  if [ "$i" -ge 30 ]; then
+    fail "live replacement: kernel never listened on 127.0.0.1:$LIVE_PORT"
+  fi
+  sleep 1
+done
+
+INODE_BEFORE="$(stat -c '%i' "$PREFIX_DIR/bin/topos")"
+run_install "$PREFIX_DIR" "file://$WORK/release"
+if [ "$INSTALL_RC" -ne 0 ]; then
+  fail "live replacement: install over a running kernel failed (rc=$INSTALL_RC)
+$INSTALL_OUT"
+fi
+INODE_AFTER="$(stat -c '%i' "$PREFIX_DIR/bin/topos")"
+if [ "$INODE_BEFORE" = "$INODE_AFTER" ]; then
+  fail "live replacement: on-disk kernel is not a new file — placement must rename a fresh file into place, never write over the destination"
+fi
+if ! kill -0 "$KERNEL_PID" 2>/dev/null; then
+  fail "live replacement: the running kernel died during the re-install"
+fi
+
+kill "$KERNEL_PID" 2>/dev/null || true
+wait "$KERNEL_PID" 2>/dev/null || true
+KERNEL_PID=""
+echo "==> Case PASS: live replacement"
 
 echo "==> install-smoke: all cases passed"

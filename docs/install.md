@@ -73,6 +73,38 @@ drift. Any mismatch aborts the install with the failing file named, and
 leaves `$PREFIX` byte-for-byte unchanged: nothing is placed until every
 asset has verified.
 
+## What a failed install leaves behind
+
+Every refusal is designed to leave `$PREFIX` in a defined state:
+
+- **Checksum mismatch** — the install aborts naming the failing file,
+  and nothing has been written to `$PREFIX`: verification runs to
+  completion before placement ever starts. The two installed
+  directories may exist (they are created by the early writability
+  probe) but contain no new files.
+- **Missing asset** — a download that returns an HTTP error aborts
+  naming the asset and the release tag, before verification and before
+  any placement. `$PREFIX` is untouched.
+- **Unwritable prefix** — probed up front, before any download work is
+  done. The install fails naming the exact directory it cannot write
+  and the `sudo make install` re-run form. The installer never
+  escalates itself, so an unwritable prefix is left exactly as it was
+  found — byte-for-byte, permission-for-permission.
+
+## Re-running an install
+
+Re-running an install of the same version into the same prefix is safe
+and is the supported repair path: every asset is re-downloaded,
+re-verified, and re-placed, ending in a byte-identical tree. There is
+no version bookkeeping and no skip-if-present shortcut — a damaged or
+partially missing install is fixed by simply running it again.
+
+Installing over a **running** instance is also safe: each file is
+renamed into place atomically, so the running kernel and its plugin
+subprocesses are never truncated mid-execution. The running process
+keeps executing its old code until you restart it — restart the
+kernel to pick up the new release.
+
 ## Verifying the install machinery itself
 
 ```sh
