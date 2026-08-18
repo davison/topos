@@ -49,20 +49,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INST-01 | — | Pending |
-| INST-02 | — | Pending |
-| INST-03 | — | Pending |
-| INST-04 | — | Pending |
-| INST-05 | — | Pending |
-| ISOL-01 | — | Pending |
-| ISOL-02 | — | Pending |
-| ISOL-03 | — | Pending |
+| INST-01 | Phase 15 | Pending |
+| INST-02 | Phase 15 | Pending |
+| INST-03 | Phase 15 | Pending |
+| INST-04 | Phase 15 | Pending |
+| INST-05 | Phase 15 | Pending |
+| ISOL-01 | Phase 15 | Pending |
+| ISOL-02 | Phase 15 | Pending |
+| ISOL-03 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.2.0 requirements: 8 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8 ✓
+- Unmapped: 0
+
+Phase 15 (Installed Instance & Dev Isolation) is the milestone's single phase, at
+the user's explicit direction: install and dev isolation are one indivisible
+capability, since an installed instance is only proven safe at the moment a dev
+instance runs beside it without either noticing.
 
 ---
 *Requirements defined: 2026-08-18*
-*Last updated: 2026-08-18 after initial definition*
+*Last updated: 2026-08-18 after roadmap creation (all 8 requirements mapped to Phase 15)*

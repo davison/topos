@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: Dev/Prod Separation
 status: planning
-last_updated: "2026-08-18T18:18:13.737Z"
+last_updated: "2026-08-18T19:25:00.000Z"
 last_activity: 2026-08-18
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 14 — google-drive-source-built-out-of-repo
+**Current focus:** Phase 15 — installed-instance-and-dev-isolation
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-08-18 — Milestone v1.2.0 started
+Phase: 15 — Installed Instance & Dev Isolation
+Plan: — (no plans yet)
+Status: Ready to plan
+Last activity: 2026-08-18 — v1.2.0 roadmap created (single phase, 8/8 requirements mapped)
 
 ## Performance Metrics
 
@@ -122,6 +122,7 @@ Last activity: 2026-08-18 — Milestone v1.2.0 started
 
 v1.0's evolution history (phase insertions 5–7, 07.1, 09.1; the WhatsApp shift to Phase 8; Phases 9–10 additions) is archived in `milestones/v1.0-ROADMAP.md` and summarized in MILESTONES.md.
 
+- 2026-08-18 — v1.2.0 roadmap created: one phase (15), numbering continued from v1.1.0's Phase 14. Single-phase milestone at the user's explicit direction — install and dev isolation are one indivisible capability, since an installed instance is only proven safe at the moment a dev instance runs beside it without either noticing. All 8 requirements (INST-01..05, ISOL-01..03) map to Phase 15.
 - 2026-08-12 — v1.1.0 roadmap created: 4 phases (11-14), numbering continued from v1.0's Phase 10. Coarse granularity compressed the research summary's five suggested phases into four — per-item marks and PWA merged into a single web-app phase (Phase 13) since both are independent, UI-surface work. One hard dependency only: Phase 11 (external loading) → Phase 14 (Google Drive). Phase 12's filesystem plugin binary carries the external-path rehearsal criterion, the research-recommended checkpoint before Phase 14's OAuth/API work.
 
 ### Decisions
@@ -192,12 +193,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-15T17:33:14.109Z
-Stopped at: Phase 14 UI-SPEC approved
-Resume file: /home/darren/projects/davison/topos/.planning/phases/14-google-drive-source-built-out-of-repo/14-UI-SPEC.md
+Last session: 2026-08-18T19:25:00.000Z
+Stopped at: v1.2.0 roadmap created — Phase 15 defined, awaiting planning
+Resume file: /home/darren/projects/davison/topos/.planning/ROADMAP.md
 
 ## Operator Next Steps
 
-- Plan Phase 14 with /gsd-discuss-phase 14 (or /gsd-plan-phase 14 directly)
-- Open design questions to settle during phase discuss/spec (from research/SUMMARY.md "Gaps to Address"):
-  - Phase 14: Google OAuth credential distribution (bring-your-own is the requirement's stated position — confirm at spec time)
+- Plan Phase 15 with /gsd-discuss-phase 15 (or /gsd-plan-phase 15 directly)
+- Open questions to settle during phase discuss/spec:
+  - Which release artifact names/checksums `make install` consumes, and how it authenticates to the GitHub API (public releases need no token, but rate limits apply)
+  - Whether `PREFIX=/usr/local` install needs sudo escalation inside the recipe or documents `sudo make install`
+  - Where the dev-side state root lives concretely (per-checkout .gitignored dir vs /tmp) and how plugin stores — especially the WhatsApp link store — are pointed at it
