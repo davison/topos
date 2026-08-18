@@ -236,3 +236,13 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 Plans:
 
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+
+### Phase 999.2: Move functional plugins to topos-plugins sibling repo (BACKLOG)
+
+**Goal:** [Captured 2026-08-18, prompted by the Phase 14 clean-room experiment] Restructure the plugin repos: create a new sibling repo `topos-plugins` holding all functional plugins as sub-directories — moving paperless, silverbullet, proton, whatsapp, filesystem, and signal out of this repo, and folding in the gdrive plugin from `topos-plugin-gdrive`. Only the mock plugins remain in the kernel repo, to facilitate documentation and testing. Rationale: the kernel repo's relationship with in-tree plugins is unmaintainable — plugin knowledge leaks across the Makefile, build manifests, and directory layout. **Open question (needs discuss-phase before planning):** the trust model — in-repo plugins currently inherit trust by directory location (see pending todo "Plugin trust tier is directory-location, not provenance"), and moving every functional plugin out-of-repo forces that question: what distinguishes a first-party plugin from `topos-plugins` from any other external binary? Interacts with 999.1 (distribution/certification) and the Phase 14 contract-gap triage (14-05).
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with /gsd-review-backlog when ready)
