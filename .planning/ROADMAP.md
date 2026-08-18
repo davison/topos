@@ -193,7 +193,7 @@ Plans:
   3. Syncs after the first are incremental (changed items only), not a full folder re-listing.
   4. The plugin lives in its own repository, is installed through the external-plugin path, and carries the untrusted badge in the running app — with any place the published contract or mock fell short written down as a contract gap.
 
-**Plans**: 5/6 plans executed (5 waves + 1 gap-closure wave)
+**Plans**: 6/6 plans executed (5 waves + 1 gap-closure wave)
 
 Plans:
 **Wave 1**
@@ -215,7 +215,7 @@ Plans:
 
 **Gap closure** *(from 14-UAT.md — G-14-2, Test 2 / SRC-06)*
 
-- [ ] 14-06-PLAN.md — Guarantee an inline source chip at narrow viewports so chip health detail stays reachable, plus the 375px Playwright gate
+- [x] 14-06-PLAN.md — Guarantee an inline source chip at narrow viewports so chip health detail stays reachable, plus the 375px Playwright gate
 
 ## Progress
 
@@ -227,7 +227,7 @@ Phases execute in numeric order: 11 → 12 → 13 → 14 (decimal insertions, if
 | 11. External Plugins & the Trust Boundary | v1.1.0 | 7/7 | Complete    | 2026-08-13 |
 | 12. Filesystem Source | v1.1.0 | 11/11 | Complete    | 2026-08-14 |
 | 13. Per-Item Curation & Installable App | v1.1.0 | 8/8 | Complete    | 2026-08-15 |
-| 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 5/5 | In Progress|  |
+| 14. Google Drive Source, Built Out-of-Repo | v1.1.0 | 6/6 | In Progress|  |
 
 ## Backlog
 

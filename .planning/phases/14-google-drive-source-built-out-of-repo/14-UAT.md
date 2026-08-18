@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 14-google-drive-source-built-out-of-repo
 source: [14-VERIFICATION.md]
 started: 2026-08-18T15:05:00.000Z
-updated: 2026-08-18T16:20:00.000Z
+updated: 2026-08-21T00:00:00.000Z
 ---
 
 ## Current Test
@@ -18,15 +18,15 @@ result: pass — operator explicitly ACCEPTED the regression as-is (2026-08-18).
 
 ### 2. Long health-message legibility on narrow viewports
 expected: With a chip whose health sentence is long (e.g. an external untrusted plugin with a stale sync time), the popover/described text remains legible and usefully laid out on a narrow (mobile-width) viewport. This is 14-UI-SPEC's single unconfirmed item, declared `verification: backstop` in 14-04-PLAN.md — it was correctly never claimed VERIFIED and needs one human visual check.
-result: issue
-reported: "the popover is not shown at all unless the viewport is wide enough to accommodate it"
-severity: major
+result: pass
+reported: "the popover is not shown at all unless the viewport is wide enough to accommodate it" (original failure, 2026-08-18)
+resolution: "Gap G-14-2 closed by 14-06 (budget-gated inline-chip floor); operator re-ran the exact scenario at the plan's blocking human-verify checkpoint and approved (2026-08-21). Pinned permanently by web/e2e/specs/14-chip-health-narrow-viewport.spec.ts."
 
 ## Summary
 
 total: 2
-passed: 1
-issues: 1
+passed: 2
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -35,7 +35,9 @@ blocked: 0
 
 - gap_id: G-14-2
   truth: "With a long chip health sentence, the popover remains legible and usefully laid out on a narrow (mobile-width) viewport"
-  status: failed
+  status: resolved
+  resolved_by: 14-06-PLAN.md
+  resolved_at: 2026-08-21
   reason: "User reported: the popover is not shown at all unless the viewport is wide enough to accommodate it"
   severity: major
   test: 2
