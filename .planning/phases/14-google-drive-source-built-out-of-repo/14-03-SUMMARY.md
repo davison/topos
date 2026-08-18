@@ -10,14 +10,15 @@ requires:
     provides: "topos serve/sync --config flag + TOPOS_CONFIG env var (non-production host config for later UAT)"
 provides:
   - "14-PLUGIN-PRD.md — the sole hand-off document into the separate topos-plugin-gdrive GSD project"
-  - "topos-plugin-gdrive sibling repository bootstrapped as a clean-room project (go.mod, vendored contract snapshot, CLAUDE.md rule file, seeded CONTRACT-GAPS.md, PRD.md, README.md, LICENSE, .gitignore), no remote configured yet"
+  - "topos-plugin-gdrive sibling repository bootstrapped as a clean-room project (go.mod, vendored contract snapshot, CLAUDE.md rule file, seeded CONTRACT-GAPS.md, PRD.md, README.md, LICENSE, .gitignore), published to GitHub and pushed"
+  - "Built topos-plugin-gdrive binary at /home/darren/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive, with a gap log carrying 20 real entries (GAP-01 through GAP-20)"
 affects: [14-04, 14-05, phase-14-uat]
 
 # Actuals (#2632)
 actuals:
-  tokens: 4600
-  tasks: 2
-  commits: 1
+  tokens: 4800
+  tasks: 3
+  commits: 2
 
 # Tech tracking
 tech-stack:
@@ -40,16 +41,18 @@ key-files:
     - /home/darren/projects/davison/topos-plugin-gdrive/contract/plugin.proto
     - /home/darren/projects/davison/topos-plugin-gdrive/contract/PROVENANCE.md
     - /home/darren/projects/davison/topos-plugin-gdrive/contract/mock/ (vendored copy of plugins/mock)
+    - /home/darren/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive (built binary, produced by the clean-room sessions, not by this plan's execution)
   modified: []
 
 key-decisions:
   - "PROVENANCE.md pins the vendored copy to topos commit 0d5ee289a6fed621a9d3e599625cf1405b500d82 (this plan's own worktree base) rather than a commit made during this plan's own execution, so the recorded SHA resolves in the topos repository both before and after this worktree merges"
-  - "go.mod's sdk requirement uses a placeholder pseudo-version (v0.0.0) since no Go source exists yet in the sibling repo and no real dependency resolution is possible until the clean-room sessions begin writing code (Task 2 explicitly forbids writing plugin source this task)"
+  - "go.mod's sdk requirement uses a placeholder pseudo-version (v0.0.0) since no Go source existed at bootstrap time; the clean-room sessions resolved a real dependency once they began writing code"
+  - "Task 3 verification treats the sibling repository's uncommitted .planning/config.json modification and untracked .gsd/ directory as out of scope — they belong to the operator's own clean-room GSD sessions there, not to this plan, and this plan's execution stayed strictly read-only toward that repository"
 
 patterns-established:
   - "Sibling-repo bootstrap without Go source: a go.mod declaring the module and its one dependency, with zero .go files outside a vendored contract/ subtree, so the clean-room boundary (D-06) is structurally enforced from the first commit"
 
-requirements-completed: []
+requirements-completed: [SRC-05, SRC-06]
 
 coverage:
   - id: D1
@@ -65,39 +68,43 @@ coverage:
     requirement: SRC-06
     verification:
       - kind: other
-        ref: "git rev-parse --is-inside-work-tree; test -f for every required file; git remote (empty); find . -name '*.go' -not -path './contract/*' (empty); git cat-file -e <provenance SHA> in the topos repo; git status --porcelain in the topos worktree (empty) — all PASS"
+        ref: "git rev-parse --is-inside-work-tree; test -f for every required file; git remote (empty at bootstrap time); find . -name '*.go' -not -path './contract/*' (empty); git cat-file -e <provenance SHA> in the topos repo; git status --porcelain in the topos worktree (empty) — all PASS"
         status: pass
     human_judgment: false
   - id: D3
-    description: "Task 3 (checkpoint:human-action, gate=blocking-human): publish the sibling repository under the operator's own GitHub identity and run its own clean-room GSD project to a first working binary and a non-empty gap log"
+    description: "Task 3 (checkpoint:human-action, gate=blocking-human): publish the sibling repository under the operator's own GitHub identity and run its own clean-room GSD project to a first working binary and a non-empty gap log — resolved"
     requirement: SRC-06
-    verification: []
+    verification:
+      - kind: other
+        ref: "git -C topos-plugin-gdrive remote -v shows origin -> git@github.com:davison/topos-plugin-gdrive.git (fetch+push); git status --porcelain=v1 --branch shows '## main...origin/main' with no ahead/behind divergence (main is pushed and in sync with origin/main); file(1) on the binary confirms a static Go ELF executable; running the binary directly with no arguments and with --help, with no plugin host present, both print the standard hashicorp/go-plugin subprocess-safety message ('This binary is a plugin. These are not meant to be executed directly...') and exit 1 immediately — sensible behavior, no attempt to reach a kernel, no hang; grep -c '^### GAP-' CONTRACT-GAPS.md returns 20 (GAP-01 through GAP-20), well beyond the two seeded entries"
+        status: pass
     human_judgment: true
-    rationale: "Publishing a public repository under the operator's own GitHub account, and running a separate GSD project's own planning/execution cycle in fresh sessions, are both explicitly non-automatable steps this plan's own gate names — no agent-held credential is used for repo creation, and the clean-room discipline (D-06) requires the actual plugin build to happen outside this session entirely."
+    rationale: "Publishing under the operator's own GitHub identity and running the sibling repo's own clean-room GSD sessions were, by design, non-automatable steps performed entirely outside any GSD session in this repository. This plan's role in resolving the checkpoint is to verify the outcome (real, pushed remote; a working binary; a genuinely populated gap log) read-only, which the evidence above confirms."
 
 # Metrics
-duration: ~25min
-completed: 2026-08-15
-status: halted
+duration: ~30min (Tasks 1-2) + ~10min (Task 3 verification, this continuation)
+completed: 2026-08-18
+status: complete
 ---
 
 # Phase 14 Plan 03: Google Drive Plugin Hand-Off — PRD + Clean-Room Bootstrap Summary
 
-**14-PLUGIN-PRD.md authored as the sole hand-off document, and the `topos-plugin-gdrive` sibling repository bootstrapped as a clean-room GSD project (vendored contract snapshot, CLAUDE.md rule file, CONTRACT-GAPS.md seeded with two entries, no plugin code written) — paused at the blocking-human hand-off checkpoint (Task 3).**
+**14-PLUGIN-PRD.md authored as the sole hand-off document, the `topos-plugin-gdrive` sibling repository bootstrapped as a clean-room GSD project and published under the operator's own GitHub identity, and its own clean-room sessions produced a built binary and a 20-entry gap log — the blocking-human hand-off checkpoint (Task 3) is resolved.**
 
 ## Performance
 
-- **Duration:** ~25 min
+- **Duration:** ~30 min (Tasks 1-2, 2026-08-15) + ~10 min (Task 3 verification, this continuation, 2026-08-18)
 - **Started:** 2026-08-15T22:26:00Z (approx)
 - **Completed (through Task 2):** 2026-08-15T22:58:00Z
-- **Tasks:** 2 of 3 complete; Task 3 is a `checkpoint:human-action` this plan is intentionally halted at
-- **Files modified:** 1 in this repository (`14-PLUGIN-PRD.md`); 19 files created in the separate sibling repository (outside this worktree, not part of this repository's own commit)
+- **Resumed and completed (Task 3):** 2026-08-18, verification-only continuation
+- **Tasks:** 3 of 3 complete
+- **Files modified:** 1 in this repository (`14-PLUGIN-PRD.md`, Task 1) plus this SUMMARY; 19 files created in the separate sibling repository at bootstrap (outside this worktree), with further Go source, the built binary, and 18 additional gap-log entries added by the sibling repository's own clean-room sessions (also outside this worktree and this repository's own commits)
 
 ## Accomplishments
 
 - **Task 1 — `14-PLUGIN-PRD.md`:** the sole hand-off document into the separate `topos-plugin-gdrive` GSD project. Contains all 13 required sections (product statement, inputs, locked decisions, declared configuration, match vocabulary, health states, Drive API surface, recommended stack, design guidance, open questions, prohibitions, build/install/verify, deliverables), reproduces the three declared extras fields and both environment variable names, reproduces all four health-state sentences byte-identically to 14-UI-SPEC.md's Copywriting Contract, names both recommended Go modules with their verified versions and legitimacy-audit disposition, states the export ceiling (10 MB) and the drive-wide scope of the changes feed, states that `Describe` must not validate credentials or call Drive, and leaves both open questions unanswered as directed. Cites no path under `kernel`, `cmd`, `web`, or `internal`, and no plugin source other than the mock plugin.
-- **Task 2 — sibling repository bootstrap:** `/home/darren/projects/davison/topos-plugin-gdrive` initialized as its own git repository (`main` branch, one commit, no remote). Contains a `go.mod` declaring `github.com/davison/topos-plugin-gdrive` and requiring `github.com/davison/topos/sdk`, with zero Go source outside the vendored `contract/` directory; a vendored snapshot of `docs/plugin-contract.md`, `proto/topos/v1/plugin.proto`, and the complete `plugins/mock` package under `contract/`, with `PROVENANCE.md` recording the topos commit SHA the snapshot was copied at (`0d5ee289a6fed621a9d3e599625cf1405b500d82`); `CLAUDE.md` (the D-06 clean-room rule file); `CONTRACT-GAPS.md` seeded with `GAP-01` (token storage) and `GAP-02` (sync-state cache), both found before any plugin code exists; `PRD.md` (copied from `14-PLUGIN-PRD.md` with a do-not-edit-here header); `README.md`, `LICENSE`, and `.gitignore`.
-- **Task 3 — hand-off checkpoint:** reached and left open. See "Checkpoint" below.
+- **Task 2 — sibling repository bootstrap:** `/home/darren/projects/davison/topos-plugin-gdrive` initialized as its own git repository (`main` branch, one commit, no remote at bootstrap time). Contains a `go.mod` declaring `github.com/davison/topos-plugin-gdrive` and requiring `github.com/davison/topos/sdk`, with zero Go source outside the vendored `contract/` directory; a vendored snapshot of `docs/plugin-contract.md`, `proto/topos/v1/plugin.proto`, and the complete `plugins/mock` package under `contract/`, with `PROVENANCE.md` recording the topos commit SHA the snapshot was copied at (`0d5ee289a6fed621a9d3e599625cf1405b500d82`); `CLAUDE.md` (the D-06 clean-room rule file); `CONTRACT-GAPS.md` seeded with `GAP-01` (token storage) and `GAP-02` (sync-state cache), both found before any plugin code exists; `PRD.md` (copied from `14-PLUGIN-PRD.md` with a do-not-edit-here header); `README.md`, `LICENSE`, and `.gitignore`.
+- **Task 3 — hand-off checkpoint resolved:** the sibling repository is published at `git@github.com:davison/topos-plugin-gdrive.git`, `main` pushed and in sync with `origin/main`. The clean-room sessions run entirely outside this repository produced a built, static Go binary at **`/home/darren/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive`** and grew `CONTRACT-GAPS.md` from the two seeded entries to 20 entries (`GAP-01` through `GAP-20`). See "Task 3 Verification Evidence" below for the exact checks run.
 
 ## Task Commits
 
@@ -105,89 +112,78 @@ Each completed task was committed atomically:
 
 1. **Task 1: Author the plugin repository's PRD — the only hand-off document** - `31408c8` (docs) — in this repository (`topos`).
 2. **Task 2: Bootstrap the plugin repository as a closed clean room** - `d3210ea` (chore) — in the separate sibling repository `topos-plugin-gdrive`, not this repository. No commit was made in this repository for Task 2: its own `files_modified` scope is entirely the sibling repository, outside this checkout.
-3. **Task 3: Hand off to the plugin repository's own sessions** — not started. `checkpoint:human-action`, `gate="blocking-human"`. See "Checkpoint" below.
+3. **Task 3: Hand off to the plugin repository's own sessions** — `checkpoint:human-action`, `gate="blocking-human"`, resolved by the operator outside any GSD session in this repository (publishing the sibling repo under their own GitHub identity, and running its own clean-room GSD project). This continuation performed read-only verification of that outcome (no commits, pushes, or modifications made to the sibling repository) and commits this rewritten SUMMARY.md.
 
-**Plan metadata:** not yet committed — the plan is not complete; this SUMMARY and any state-tracking updates are deferred until Task 3 resolves and this plan is re-executed to completion.
+**Plan metadata:** this SUMMARY.md rewrite is the plan-completion commit for this repository; no other files in this repository require updating to close out the plan.
 
 ## Files Created/Modified
 
 In this repository (`topos`):
 - `.planning/phases/14-google-drive-source-built-out-of-repo/14-PLUGIN-PRD.md` - the hand-off PRD (Task 1)
+- `.planning/phases/14-google-drive-source-built-out-of-repo/14-03-SUMMARY.md` - this file, rewritten from `status: halted` to `status: complete` (this continuation)
 
-In the sibling repository (`/home/darren/projects/davison/topos-plugin-gdrive`, outside this worktree):
-- `go.mod` - module `github.com/davison/topos-plugin-gdrive`, requires `github.com/davison/topos/sdk`, no Go source
+In the sibling repository (`/home/darren/projects/davison/topos-plugin-gdrive`, outside this worktree, verified read-only — not modified by this plan):
+- `go.mod` - module `github.com/davison/topos-plugin-gdrive`, requires `github.com/davison/topos/sdk`
 - `CLAUDE.md` - the D-06 clean-room rule file
-- `CONTRACT-GAPS.md` - seeded with `GAP-01`, `GAP-02`
+- `CONTRACT-GAPS.md` - grown from the seeded `GAP-01`/`GAP-02` to 20 entries (`GAP-01`–`GAP-20`) by the sibling repo's own clean-room sessions
 - `PRD.md` - copy of `14-PLUGIN-PRD.md` with a do-not-edit-here header
-- `README.md` - build/install/auth/gap-log pointers
-- `LICENSE` - copied from this repository's own `LICENSE` (Apache 2.0)
-- `.gitignore` - built binary, editor detritus, local token/cache file patterns
+- `README.md`, `LICENSE`, `.gitignore`
 - `contract/plugin-contract.md`, `contract/plugin.proto`, `contract/PROVENANCE.md`, `contract/mock/` - vendored snapshot of the four published inputs' surface
+- `topos-plugin-gdrive` - **the built binary** (25.7 MB, static Go ELF executable, x86-64, built 2026-08-18 — produced entirely by the sibling repo's own clean-room sessions, not by this plan)
+- Go source files under the module root (not enumerated here — out of this plan's clean-room scope to inspect beyond the checkpoint's own verification requirements)
 
 ## Decisions Made
 
 - **PROVENANCE.md's pinned SHA is the worktree's own base commit** (`0d5ee289a6fed621a9d3e599625cf1405b500d82`), not a commit produced by this plan's own execution — this SHA already exists in the topos repository both now and after this worktree eventually merges, so the acceptance criterion "a 40-character topos commit SHA that resolves in this repository" holds unconditionally rather than depending on merge timing.
-- **`go.mod`'s `sdk` requirement uses a placeholder pseudo-version** (`v0.0.0`) rather than a resolvable tagged version, since Task 2 explicitly forbids writing any Go source this task — there is nothing yet to `go mod tidy` against, and pinning a real version is exactly the kind of decision the clean-room sessions (not this session) should make once they start writing code.
+- **`go.mod`'s `sdk` requirement used a placeholder pseudo-version** (`v0.0.0`) at bootstrap time, since Task 2 explicitly forbade writing any Go source in that task — the clean-room sessions resolved a real dependency once they began writing plugin code themselves.
+- **Task 3 verification stayed strictly read-only toward the sibling repository.** No commit, push, or file modification was made there by this continuation. The repository's own uncommitted `.planning/config.json` change and untracked `.gsd/` directory were observed and left untouched, per the resume instructions — they belong to the operator's own sessions in that repository.
 
 ## Deviations from Plan
 
-None - Tasks 1 and 2 executed exactly as written, and every automated/inspectable acceptance criterion for both tasks was verified directly (see `coverage` block) rather than assumed.
+None - Tasks 1 and 2 executed exactly as written and were verified directly against disk state in the original execution. Task 3's resolution (publishing + clean-room build) happened entirely outside any GSD session, exactly as the checkpoint instructed; this continuation's role was to verify that outcome for real rather than accept the resume signal at face value, which it did (see evidence below) rather than deviating from the plan's own verification spec.
 
 ## Issues Encountered
 
 None.
 
+## Task 3 Verification Evidence
+
+Performed read-only against `/home/darren/projects/davison/topos-plugin-gdrive` (no commits, pushes, or file writes made there):
+
+1. **Remote + push state.**
+   - `git -C topos-plugin-gdrive remote -v` → `origin  git@github.com:davison/topos-plugin-gdrive.git (fetch)` and `(push)`.
+   - `git -C topos-plugin-gdrive status --porcelain=v1 --branch` → `## main...origin/main` with no `[ahead N]` / `[behind N]` annotation — `main` is fully in sync with the pushed `origin/main`.
+   - `git -C topos-plugin-gdrive log --oneline -5` shows real commit history culminating in `527abb6`.
+
+2. **Binary, no host present.**
+   - `file topos-plugin-gdrive` → `ELF 64-bit LSB executable, x86-64, ... statically linked, Go BuildID=...` (25,715,226 bytes, built 2026-08-18T11:34).
+   - Ran directly with no arguments: prints `This binary is a plugin. These are not meant to be executed directly. Please execute the program that consumes these plugins, which will load any plugins automatically` and exits 1 immediately.
+   - Ran with `--help`: identical message, identical exit 1.
+   - This is the standard `hashicorp/go-plugin` subprocess-safety response — sensible, immediate, and it makes no attempt to reach or block on a kernel connection. Satisfies the checkpoint's "reports something sensible when run with no host present" requirement.
+
+3. **Gap log.**
+   - `grep -n '^### GAP-' CONTRACT-GAPS.md` in the sibling repo lists `GAP-01` through `GAP-20` — 20 entries, 18 beyond the two seeded by Task 2.
+
+**Binary path for plan 14-04 (install/UAT) and 14-05 (gap triage):**
+
+```
+/home/darren/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive
+```
+
 ## User Setup Required
 
-**This plan is paused at a blocking-human checkpoint that requires manual action outside any GSD session.** See "Checkpoint" below for the exact two steps required before this plan can be resumed and completed.
-
-## Checkpoint
-
-**Type:** human-action
-**Gate:** blocking-human
-**Plan:** 14-03
-**Progress:** 2/3 tasks complete
-
-### Completed Tasks
-
-| Task | Name | Commit | Files |
-|------|------|--------|-------|
-| 1 | Author the plugin repository's PRD | `31408c8` (topos repo) | `.planning/phases/14-google-drive-source-built-out-of-repo/14-PLUGIN-PRD.md` |
-| 2 | Bootstrap the plugin repository as a closed clean room | `d3210ea` (sibling repo, `topos-plugin-gdrive`) | `go.mod`, `CLAUDE.md`, `CONTRACT-GAPS.md`, `PRD.md`, `README.md`, `LICENSE`, `.gitignore`, `contract/` |
-
-### Current Task
-
-**Task 3:** Hand off to the plugin repository's own sessions
-**Status:** blocked — awaiting human action
-**Blocked by:** two steps that cannot be performed from any GSD session — see below.
-
-### Checkpoint Details
-
-Everything automatable from this repository is done. `14-PLUGIN-PRD.md` is written and committed here; the sibling repository at `/home/darren/projects/davison/topos-plugin-gdrive` is initialized with its rule file, its seeded gap log, the vendored contract snapshot, and a copy of the PRD, and has no remote.
-
-Two things remain, and neither can be done from this session:
-
-1. **Publish the plugin repository under the operator's own GitHub account.** D-05 puts the plugin at `github.com/davison/topos-plugin-gdrive` as a public repository, matching the module path already declared in `go.mod`. Creating and pushing a public repository under the operator's own identity is a human step, not an agent's — it is the moment the code becomes findable, forkable, and permanent.
-2. **Run the plugin repository's own GSD project to a first working binary and a non-empty gap log.** D-06 requires the plugin to be written in that repository, in its own sessions, against nothing but the four published inputs already vendored under `contract/`. This session has the entire topos kernel in its context, so it is precisely the session that must not write the plugin. Open the plugin repository in fresh sessions and run its own planning and execution cycle from `PRD.md`. Its `CLAUDE.md` states the rules those sessions work under; every question the four inputs cannot answer goes into `CONTRACT-GAPS.md` as it is encountered, including the ones that make the published contract look incomplete.
-
-### Awaiting
-
-Resume this plan once there is a binary that builds and a gap log with real entries in it. Phase 14's remaining plans consume both: plan 14-04 installs the binary through the untrusted external path and runs the live UAT, and plan 14-05 triages the gap log back into the published contract.
-
-**Resume signal:** Type "handed off" together with the absolute path of the built binary, or describe what blocked.
-
-**Verification the checkpoint itself specifies:** the sibling repository has a remote pointing at the public GitHub home and its main branch is pushed; a built binary named `topos-plugin-gdrive` exists and reports something sensible when run with no host present; `CONTRACT-GAPS.md` has more entries than the two seeded here, or a recorded statement that the clean-room sessions genuinely found no further gaps.
+None remaining. The checkpoint that previously required manual action (publish under the operator's own GitHub identity; run the sibling repo's own clean-room GSD sessions to a first binary and gap log) is resolved — both steps were completed by the operator outside any GSD session, and this continuation verified the outcome.
 
 ## Next Phase Readiness
 
-- This plan is **not** ready to be marked complete. `status: halted` in this SUMMARY's frontmatter reflects that: any plan depending on 14-03 (directly or transitively) should be reported blocked until this plan is re-executed past Task 3 and re-summarized as `status: complete`.
-- Phase 14's remaining plans (14-04 install/UAT, 14-05 gap triage) are both blocked on the two human steps named above — neither can proceed until a real `topos-plugin-gdrive` binary and gap log exist.
-- STATE.md, ROADMAP.md, and REQUIREMENTS.md are deliberately **not** updated by this execution (worktree mode; the orchestrator owns those writes after all wave agents complete) — and in any case should not record this plan as complete until the checkpoint resolves.
+- This plan **is** ready to be marked complete. `status: complete` in this SUMMARY's frontmatter reflects that.
+- Phase 14's remaining plans are unblocked: plan 14-04 installs the binary at `/home/darren/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive` through the untrusted external plugin path and runs the live UAT; plan 14-05 triages the 20-entry gap log back into the published contract.
+- STATE.md, ROADMAP.md, and REQUIREMENTS.md are deliberately **not** updated by this execution (worktree mode; the orchestrator owns those writes after all wave agents complete).
 
 ---
 *Phase: 14-google-drive-source-built-out-of-repo*
-*Halted at checkpoint: 2026-08-15*
+*Completed: 2026-08-18 (Tasks 1-2: 2026-08-15; Task 3 checkpoint resolved and verified: 2026-08-18)*
 
 ## Self-Check: PASSED
 
-`.planning/phases/14-google-drive-source-built-out-of-repo/14-PLUGIN-PRD.md` confirmed present on disk in this worktree. Commit `31408c8` confirmed present via `git log --oneline --all` in this worktree. `/home/darren/projects/davison/topos-plugin-gdrive` confirmed present on disk as its own git work tree with commit `d3210ea` (`git -C ... log --oneline`), no remote, and every file listed above present. Both Task 1 and Task 2 automated/inspectable acceptance criteria re-verified directly against disk state (not assumed) before this SUMMARY was written.
+`.planning/phases/14-google-drive-source-built-out-of-repo/14-PLUGIN-PRD.md` confirmed present on disk in this worktree. Commit `31408c8` confirmed present via `git log --oneline --all` in this worktree. `/home/darren/projects/davison/topos-plugin-gdrive` confirmed present on disk as its own git work tree with commit `d3210ea` present in its history, remote `origin` pointing at `git@github.com:davison/topos-plugin-gdrive.git`, `main` in sync with `origin/main`, a built binary at `topos-plugin-gdrive` (static ELF, verified via `file`), and `CONTRACT-GAPS.md` carrying 20 entries (`GAP-01`–`GAP-20`). All Task 3 checkpoint verification requirements re-checked directly against disk/git state (not assumed) before this SUMMARY was rewritten.
