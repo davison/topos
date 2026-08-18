@@ -391,6 +391,27 @@ func runSync(path string) error {
 }
 
 func runServe(path string) error {
+	// Register the shutdown-signal handler BEFORE anything below can spawn
+	// a plugin subprocess — supervisor.NewSupervisor launches every
+	// configured plugin during construction, and hashicorp/go-plugin
+	// children do not die with their parent. With registration at the old
+	// position (just before the accept loop), there was a real startup
+	// window — plugins alive, handler not yet installed — in which a
+	// SIGINT/SIGTERM killed the kernel with the Go runtime's default
+	// disposition: no deferred teardown ran and any child that had already
+	// written its go-plugin handshake line survived as a live orphan.
+	// That is exactly the window a service-manager stop lands in when it
+	// arrives during startup, and the window the shutdown_signal_test
+	// regression gate hits on a slow CI runner (it signals at the first
+	// observable plugin child). A signal arriving mid-boot is simply held
+	// in sigCh until the select at the bottom of this function, so boot
+	// completes and the ordinary graceful teardown runs — the same
+	// register-before-spawn ordering runSync has always had via
+	// NotifyContext.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, shutdownSignals...)
+	defer signal.Stop(sigCh)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logger := setupLogger()
@@ -483,11 +504,11 @@ func runServe(path string) error {
 	//
 	// SIGKILL, a panic and an OOM-kill remain uncoverable — nothing
 	// in-process can catch them. Those paths still orphan by design.
+	//
+	// sigCh itself is registered at the TOP of this function — before the
+	// supervisor spawns any plugin — so no signal can slip through the
+	// startup window; see the comment there.
 	srv := &http.Server{Addr: listen, Handler: router}
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, shutdownSignals...)
-	defer signal.Stop(sigCh)
 
 	serveErr := make(chan error, 1)
 	go func() {

@@ -20,11 +20,26 @@
 // The assertions deliberately distinguish a live orphan from a zombie:
 // the reported symptom was live processes, not un-reaped exit statuses.
 //
+// Second act (shutdown-reap-flake-recurrence): the fix above originally
+// registered signal.Notify at the BOTTOM of runServe — after the
+// supervisor had already spawned the plugin subprocesses — leaving a
+// startup window in which a signal still killed the kernel by default
+// disposition and orphaned any child that survived its parent's death.
+// This test signals at the first observable plugin child, which lands
+// inside that window on a starved CI runner (~50% of runs) but almost
+// never on a fast dev box at a 50ms poll. Hence two hardenings: the
+// precondition polls at 1ms so the earliest-instant timing is exercised
+// on every machine, and the kernel's wait status is asserted un-signalled
+// — death BY the shutdown signal is the mechanism itself and fails
+// deterministically whenever the window is hit, unlike the orphan check,
+// which additionally needs the child to win a handshake-write race.
+//
 // Linux-only: child discovery reads /proc. This project targets a Linux
 // desktop (topos/CLAUDE.md).
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -314,13 +329,22 @@ func TestServeReapsPluginSubprocessesOnShutdownSignal(t *testing.T) {
 			// Precondition: wait for a real plugin subprocess to exist.
 			// Without this the test could pass vacuously by signalling a
 			// kernel that had not launched anything yet.
+			//
+			// The 1ms poll is load-bearing, not impatience: signalling at
+			// the EARLIEST observable instant of plugin life is what
+			// exercises the startup window (child spawned, handler not yet
+			// registered) in which the kernel once died by default
+			// disposition and orphaned the child. At the original 50ms
+			// granularity a fast machine finished the whole boot inside a
+			// single poll interval, so only a starved CI runner ever
+			// reached the window — the flake WAS this window.
 			var children []int
 			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				if children = procChildren(t, kpid); len(children) > 0 {
 					break
 				}
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(time.Millisecond)
 			}
 			if len(children) == 0 {
 				t.Fatalf("kernel launched no plugin subprocess within the timeout; kernel output:\n%s", kernelLog())
@@ -337,7 +361,35 @@ func TestServeReapsPluginSubprocessesOnShutdownSignal(t *testing.T) {
 			}
 
 			select {
-			case <-waited:
+			case waitErr := <-waited:
+				// The kernel must never die BY the shutdown signal itself: a
+				// wait status of "signal: interrupt/terminated" means the
+				// signal was still at its default disposition — no handler,
+				// no defers, no teardown — which is precisely the startup-
+				// window mechanism. Asserting on it is deterministic where
+				// the orphan check below is not: the orphan only
+				// materialises when the un-reaped child ALSO survives its
+				// parent's death (it loses a handshake-write race against
+				// the closing pipes more often than not), which is why the
+				// original flake fired on ~50% of CI runs rather than all.
+				//
+				// A non-zero EXIT is legitimate and deliberately accepted:
+				// on the group-directed rows this 1ms-poll timing can kill
+				// the INFANT plugin child (go-plugin's own "eat the
+				// interrupts" handler is not installed yet either), so the
+				// kernel's launch of that source fails and runServe returns
+				// an error — through fatal(), exit 1, WITH the deferred
+				// teardown having run. The orphan assertions below remain
+				// the leak guard for that path.
+				var exitErr *exec.ExitError
+				if errors.As(waitErr, &exitErr) {
+					if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+						t.Errorf("kernel was killed BY %v instead of handling it (default disposition — teardown skipped): %v; kernel output:\n%s",
+							tc.sig, waitErr, kernelLog())
+					}
+				} else if waitErr != nil {
+					t.Errorf("kernel wait failed: %v; kernel output:\n%s", waitErr, kernelLog())
+				}
 			case <-time.After(serverShutdownTimeout + 20*time.Second):
 				t.Fatalf("kernel did not exit after %v; kernel output:\n%s", tc.sig, kernelLog())
 			}
