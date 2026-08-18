@@ -21,6 +21,7 @@
 
 - `milestones/v1.1.0-ROADMAP.md` — full phase details (4 phases, all plans)
 - `milestones/v1.1.0-REQUIREMENTS.md` — all v1.1.0 requirements with outcomes
+- `milestones/v1.1.0-phases/` — complete phase execution history (plans, summaries, verifications, UAT, reviews)
 - `.planning/v1.1.0-MILESTONE-AUDIT.md` — cross-phase integration audit
 
 ## v1.0 MVP (Shipped: 2026-08-12)
