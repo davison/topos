@@ -599,6 +599,91 @@ KERNEL_PID=""
 echo "==> Case PASS: uninstall under a live kernel"
 
 # ---------------------------------------------------------------------
+# Case: toolchain tripwire — the base install must be download-and-copy
+# ONLY (INST-04's other half). Failing shims for the Go tool, the
+# conventional C compiler names, and the web build's package manager go
+# FIRST on PATH; if the install ever reaches for any of them, the shim
+# records a marker and fails. This proves the no-toolchain property as
+# a behaviour, not as a promise about the script's text (T-15-14).
+# `make` itself is deliberately excluded — the recipe is invoked
+# through it.
+# ---------------------------------------------------------------------
+echo "==> Case: toolchain tripwire"
+SHIM_DIR="$WORK/toolchain-shims"
+TRIPWIRE_MARKER="$WORK/toolchain-tripped"
+mkdir -p "$SHIM_DIR"
+for tool in go cc gcc clang npm node; do
+  cat > "$SHIM_DIR/$tool" <<SHIM
+#!/bin/sh
+echo "TRIPWIRE: \$0 invoked with: \$*" >> "$TRIPWIRE_MARKER"
+exit 1
+SHIM
+  chmod +x "$SHIM_DIR/$tool"
+done
+
+TRIP_RC=0
+TRIP_OUT="$(PATH="$SHIM_DIR:$PATH" PREFIX="$WORK/prefix-tripwire" \
+  TOPOS_RELEASE_BASE_URL="file://$WORK/release" \
+  ./scripts/install.sh "$TAG" 2>&1)" || TRIP_RC=$?
+if [ "$TRIP_RC" -ne 0 ]; then
+  fail "toolchain tripwire: the base install failed with hostile toolchain shims on PATH (rc=$TRIP_RC) — it must not need any of them
+$TRIP_OUT"
+fi
+if [ -f "$TRIPWIRE_MARKER" ]; then
+  echo "FAIL: toolchain tripwire: the base install invoked a toolchain:" >&2
+  cat "$TRIPWIRE_MARKER" >&2
+  exit 1
+fi
+if [ ! -f "$WORK/prefix-tripwire/bin/topos" ]; then
+  fail "toolchain tripwire: install exited 0 but placed no kernel"
+fi
+echo "==> Case PASS: toolchain tripwire"
+
+# ---------------------------------------------------------------------
+# Case: Signal removal — uninstall-signal reaches exactly one path. A
+# planted unrelated file and the directory itself both survive, and a
+# second run is a clean, visible no-op (T-15-15).
+# ---------------------------------------------------------------------
+echo "==> Case: Signal removal"
+SIG_EXT="$WORK/signal-external"
+mkdir -p "$SIG_EXT"
+printf 'not a signal binary — not ours to delete' > "$SIG_EXT/other-external-plugin"
+printf 'fake signal binary bytes' > "$SIG_EXT/topos-plugin-signal"
+SIG_MARKER_DIGEST_BEFORE="$(sha256sum "$SIG_EXT/other-external-plugin" | cut -d' ' -f1)"
+
+SIGRM_RC=0
+SIGRM_OUT="$(TOPOS_EXTERNAL_PLUGINS_DIR="$SIG_EXT" ./scripts/install-signal.sh --uninstall 2>&1)" || SIGRM_RC=$?
+if [ "$SIGRM_RC" -ne 0 ]; then
+  fail "Signal removal exited $SIGRM_RC, expected 0
+$SIGRM_OUT"
+fi
+if [ -e "$SIG_EXT/topos-plugin-signal" ]; then
+  fail "Signal removal left the Signal binary in place"
+fi
+if [ ! -f "$SIG_EXT/other-external-plugin" ]; then
+  fail "Signal removal deleted an unrelated file — the removal set must be exactly one path"
+fi
+SIG_MARKER_DIGEST_AFTER="$(sha256sum "$SIG_EXT/other-external-plugin" | cut -d' ' -f1)"
+if [ "$SIG_MARKER_DIGEST_BEFORE" != "$SIG_MARKER_DIGEST_AFTER" ]; then
+  fail "Signal removal changed an unrelated file's bytes"
+fi
+if [ ! -d "$SIG_EXT" ]; then
+  fail "Signal removal removed the external directory itself"
+fi
+
+SIGRM2_RC=0
+SIGRM2_OUT="$(TOPOS_EXTERNAL_PLUGINS_DIR="$SIG_EXT" ./scripts/install-signal.sh --uninstall 2>&1)" || SIGRM2_RC=$?
+if [ "$SIGRM2_RC" -ne 0 ]; then
+  fail "second Signal removal exited $SIGRM2_RC, expected 0
+$SIGRM2_OUT"
+fi
+if ! printf '%s' "$SIGRM2_OUT" | grep -q "already absent"; then
+  fail "second Signal removal did not report an already-absent outcome
+$SIGRM2_OUT"
+fi
+echo "==> Case PASS: Signal removal"
+
+# ---------------------------------------------------------------------
 # Case: latest-resolution validator (offline) — source the script (the
 # source-guard seam: defines functions, runs nothing) and drive
 # validate_latest_url with a table of effective URLs. Exactly one shape
