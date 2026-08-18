@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -318,6 +318,43 @@ e2e:
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
+
+# TOPOS_GDRIVE_BIN is the absolute path to the real, built
+# topos-plugin-gdrive binary this target's one spec
+# (web/e2e/specs/14-gdrive-external-rehearsal.spec.ts) drives on the
+# untrusted external path. This binary is never built by this repository,
+# at any commit (D-08's clean-room boundary) — it comes from the separate,
+# out-of-repo `topos-plugin-gdrive` checkout (14-03-SUMMARY.md). Defaults
+# to that checkout's own conventional location on this operator's machine;
+# override on the command line for a different checkout
+# (`make gdrive-external-rehearsal TOPOS_GDRIVE_BIN=/path/to/binary`).
+TOPOS_GDRIVE_BIN ?= $(HOME)/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive
+
+# gdrive-external-rehearsal builds the identical fixture artifact set "e2e"
+# builds (SPA, mock/mockstrict/filesystem, external-demo, the kernel binary
+# under the e2e manifest), then runs ONLY
+# web/e2e/specs/14-gdrive-external-rehearsal.spec.ts, with TOPOS_GDRIVE_BIN
+# exported into the Playwright process's own environment so the spec can
+# resolve the real, out-of-repo Drive binary. Deliberately NOT a
+# prerequisite of "e2e" and deliberately never adds the Drive binary to
+# bin/plugins/, MANIFEST_E2E_BINARIES, or any other manifest recipe above —
+# this binary is never built by this repository and never enters a trusted
+# directory (14-04-PLAN.md Task 1's own acceptance criterion). Run with
+# TOPOS_GDRIVE_BIN unset (or pointed at a nonexistent path) and this spec's
+# own top-level test.skip guard skips loudly, naming the variable, rather
+# than silently passing — see the spec's own file header.
+gdrive-external-rehearsal:
+	npm --prefix web ci
+	npm --prefix web run build
+	mkdir -p bin/plugins
+	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
+	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
+	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
+	$(MAKE) external-demo
+	MANIFEST="$$($(MANIFEST_GEN_E2E))" && \
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
+	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
+	cd web && TOPOS_GDRIVE_BIN=$(TOPOS_GDRIVE_BIN) npx playwright test --project=$(E2E_PROJECT) e2e/specs/14-gdrive-external-rehearsal.spec.ts $(E2E_ARGS)
 
 # dev-config generates $(DEV_CONFIG) from the tracked config.dev.example.toml
 # template, substituting the @CHECKOUT@ placeholder with $(CURDIR) — but

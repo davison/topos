@@ -367,6 +367,54 @@ never be proven end to end in a real browser.
   geometry (bounded 3:4 aspect ratio) and that extracted text flows
   beside the float, both against a real browser.
 
+## `web/e2e/specs/14-gdrive-external-rehearsal.spec.ts` — the Google Drive plugin, genuinely out-of-repo
+
+`topos-plugin-gdrive` (Phase 14, SRC-05/SRC-06) goes one step further than
+`topos-plugin-external-demo` above: it is not built by this repository at
+all, in any form, at any commit. It is developed, planned, and built
+entirely inside a separate `davison/topos-plugin-gdrive` clean-room GSD
+project (D-08) — `.planning/phases/14-google-drive-source-built-out-of-repo/
+14-PLUGIN-PRD.md` is the sole hand-off document into that project, and
+`14-03-SUMMARY.md` records the hand-off's built-binary evidence — and its
+built binary is copied onto a developer's machine by hand, outside every
+`make` target this repository defines.
+
+- **Gated by `TOPOS_GDRIVE_BIN`, never built here.** The spec reads this
+  environment variable for the real binary's absolute path and skips the
+  whole file loudly — naming the variable in its own skip message — when
+  it is unset or does not point at an existing file. Set it to the sibling
+  checkout's built binary and run `make gdrive-external-rehearsal`
+  (`TOPOS_GDRIVE_BIN` doubles as a make variable there, defaulting to that
+  checkout's own conventional location; override either the exported shell
+  variable or the make variable to point at a different checkout).
+- **Proves exactly what a browser can prove without a Google account.**
+  Configured with `pluginBinaries: []` and the Drive binary named ONLY
+  under `externalPluginBinaries` — the identical load-bearing fixture
+  choice `12-external-rehearsal.spec.ts`'s own header documents, repeated
+  here rather than reinvented, since a binary present in both directories
+  resolves as trusted (Phase 11 D-11) and would make this spec prove
+  nothing — the plugin is discovered with tier `external`, its chip
+  carries the untrusted badge and the accessible-description disclosure,
+  and its `Describe` RPC answers (credential-free, since the host
+  trial-launches `Describe` before an operator has finished typing) with
+  all three declared extras — both credential fields marked secret, the
+  folder field not — and the `folders` match vocabulary. Configured with
+  its two credential extras referencing `GDRIVE_CLIENT_ID`/
+  `GDRIVE_CLIENT_SECRET` (two environment variables the fixture kernel's
+  own explicit environment allowlist deliberately never sets), the source
+  reports itself unreachable with the exact "Not authorized …" sentence
+  from `14-UI-SPEC.md`'s health-state table — never a healthy but empty
+  stream. Every one of these assertions is proven by generic host code,
+  with nothing in this repository's own source naming this plugin.
+- **Never built, linked, or manifested by `make e2e`, `make build`, or any
+  other target in this repository.** `make gdrive-external-rehearsal` is
+  the only entry point, and it never writes the Drive binary into
+  `bin/plugins/` or any manifest.
+
+**What it deliberately cannot prove** — the three criteria that need a
+real Google account are covered instead by a recorded live run; see "What
+stays manual, and why", below.
+
 ## `web/e2e/specs/12-*.spec.ts` — the filesystem source, real end to end
 
 Unlike every other real-source plugin (paperless/silverbullet/proton/
@@ -531,9 +579,10 @@ never builds, not a gap in the shipped SPA code).
 
 ## What stays manual, and why
 
-Four items remain manual, accepted risk — non-deterministic timing
-windows a browser driver cannot reliably provoke, or requiring hardware
-or a real browser install this harness cannot have:
+Five items remain manual, accepted risk — non-deterministic timing
+windows a browser driver cannot reliably provoke, requiring hardware or a
+real browser install this harness cannot have, or requiring a real Google
+account this harness must never be given:
 
 1. **Killing the kernel between the `config.toml.bak` write and the
    atomic rename during a config save.** The window is a handful of
@@ -557,11 +606,24 @@ or a real browser install this harness cannot have:
    Content-Type, the manifest `<link>`, ServiceWorker registration and
    scope, and zero `/api/` entries in Cache Storage) is covered by
    `13-pwa-manifest-sw.spec.ts`.
+5. **The three Google Drive criteria that need a real Google account**
+   (Phase 14, SRC-05): authorizing once and syncing again across a kernel
+   restart with no re-authorization; documents in the configured folder —
+   including Workspace-native Docs, Sheets and Slides via export — reaching
+   the stream with previews and correct deep links to the Drive web UI;
+   and the second and subsequent syncs pulling only changed items from
+   Google rather than a full folder re-listing. No hermetic harness can
+   fabricate a real Google Drive account, a real OAuth consent flow, or
+   observe Google's own incremental change feed. Covered instead by a
+   recorded, filled-in run against a real Drive, per
+   `.planning/phases/14-google-drive-source-built-out-of-repo/
+   14-LIVE-UAT.md` — mirroring how item 3's real-device WhatsApp pairing
+   spike is recorded rather than automated.
 
 Recording this here, in shipped documentation, is deliberate: the
 standing rule below says future UI work extends this suite, and a reader
 who only sees the suite's specs (never this file) could reasonably assume
-it covers everything. It does not — these three remain an accepted,
+it covers everything. It does not — these five remain an accepted,
 explicitly-scoped gap, not a silent one.
 
 ## What changed
