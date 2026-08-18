@@ -338,7 +338,7 @@ credential value, ever.
 | 4 | Criterion 4 — untrusted badge, matching pin, gap log entries recorded | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
 | 5 | Health — never authorized | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
 | 6 | Health — expired/revoked | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
-| 7 | Health — rate limited | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass; this state is noted above as genuinely difficult to provoke deliberately — recorded pass solely on the operator's blanket report, not a witnessed specific observation |
+| 7 | Health — rate limited | not-reached | corrected 2026-08-18 per security audit T-14.4-06 (operator confirmed the blanket report cannot cover this state) | This state is noted above as genuinely difficult to provoke deliberately; per this document's own rule ("note honestly if this state could not be reached this run rather than marking it passed") it is recorded as not reached. The state's UI rendering is separately covered by unit tests over the health-tone/tooltip branches. |
 | 8 | Health — folder inaccessible | yes | operator-attested (live run by operator, 2026-08-18; blanket "everything passes" report) | not recorded — operator attested pass |
 
 **Anything to carry into the gap triage (14-05):**
