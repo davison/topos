@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -410,6 +410,31 @@ uninstall:
 # selects itself, so it is safe to run while a real kernel is up.
 install-check:
 	./scripts/install-smoke.sh
+
+# install-signal is the explicit opt-in INST-04 describes: it builds the
+# cgo Signal plugin LOCALLY (via the `signal` prerequisite — the one
+# place the cgo/libsqlcipher build definition lives, requiring a Go
+# toolchain, a C compiler, and the system sqlcipher package) and places
+# the binary in the installed instance's EXTERNAL plugin directory. It
+# is the only compiled path in the whole install surface — the base
+# `make install` stays download-and-copy only (proven by the
+# install-check toolchain-tripwire case). The destination is the
+# external directory, never $(PREFIX)/lib/topos/plugins: a locally
+# built binary is absent from the released kernel's link-time build
+# manifest, so a trusted-directory placement would be refused at launch
+# (manifest_unverified). The external tier's consent-and-pin flow is
+# the supported path — see docs/plugins/signal.md and docs/install.md.
+install-signal: signal
+	./scripts/install-signal.sh
+
+# uninstall-signal removes the locally built Signal binary from the
+# external plugin directory — exactly one file, never the directory or
+# anything else in it. Deliberately separate from `uninstall`: the
+# Signal binary lives OUTSIDE $(PREFIX), in a directory `uninstall` is
+# forbidden to touch (its removal set is closed over what `install`
+# writes into the prefix).
+uninstall-signal:
+	./scripts/install-signal.sh --uninstall
 
 # dev-config generates $(DEV_CONFIG) from the tracked config.dev.example.toml
 # template, substituting the @CHECKOUT@ placeholder with $(CURDIR) — but
