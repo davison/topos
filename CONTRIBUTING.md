@@ -36,8 +36,9 @@ make dev
 ```
 
 Runs the kernel (`go run ./cmd/topos serve`) and the SvelteKit dev
-server together; Vite proxies `/api` requests to `127.0.0.1:7777`, so
-edits to either side hot-reload independently. The kernel binary built
+server together; Vite proxies `/api` requests to `127.0.0.1:7778` —
+the dev port; an installed instance keeps `7777`, so both can run side
+by side — and edits to either side hot-reload independently. The kernel binary built
 this way never embeds a built SPA — only `make build`'s production build
 does that.
 
@@ -52,19 +53,33 @@ rebuild never touches the binaries the kernel actually loads, and a
 plugin-side code change (including a plugin's declared icon) can go
 silently stale. See `config.example.toml`'s `[plugins] dir` comment.
 
-It also refuses to start when `127.0.0.1:7777` is already in use,
-naming the process already holding it and that process's PID, and it
-will not start the Vite dev server against a kernel it did not itself
-just start — this is the failure mode the guard exists to prevent: a
-working-looking UI silently proxying to a stale kernel running old
-code. A kernel that dies during startup for any other reason (compile
-error, config error, bind failure) produces the same loud, non-zero
-failure instead of a half-started stack.
+Before starting anything, `make dev` runs the isolation pre-flight
+(`cmd/topos-devguard`): a dev config whose config file, index, plugin
+directories, or any source store path resolves inside the installed
+instance's own config or state roots is refused, naming the config
+key, the resolved path, and the root it falls inside. The same check
+refuses a stale dev config whose `[server] listen` port disagrees with
+`DEV_PORT`, naming both values (delete the generated `config.dev.toml`
+and the generator writes a fresh one). The only bypass is the explicit
+`DEV_ISOLATION_BYPASS=1` variable, which prints a loud banner listing
+every path it permits — see
+[`docs/testing.md`](docs/testing.md)'s "The real config and the dev
+config" for the full account.
+
+It also refuses to start when the dev port `127.0.0.1:7778` is already
+in use, naming the process already holding it and that process's PID,
+and it will not start the Vite dev server against a kernel it did not
+itself just start — this is the failure mode the guard exists to
+prevent: a working-looking UI silently proxying to a stale kernel
+running old code. A kernel that dies during startup for any other
+reason (compile error, config error, bind failure) produces the same
+loud, non-zero failure instead of a half-started stack.
 
 `DEV_PORT`, `DEV_HOST`, and `DEV_READY_TIMEOUT` can be overridden on
-the `make` command line (e.g. `make dev DEV_PORT=9999`) if your
-`[server] listen` config uses a non-default address — `DEV_PORT` must
-stay in step with `web/vite.config.ts`'s hardcoded proxy target if you
+the `make` command line (e.g. `make dev DEV_PORT=9999`) if your dev
+config uses a non-default address — `DEV_PORT` must stay in step with
+your dev config's `[server] listen` value (the pre-flight enforces
+this) and with `web/vite.config.ts`'s hardcoded proxy target if you
 change it.
 
 ## Testing
@@ -74,6 +89,9 @@ make test               # go build + go test across all workspace modules, inclu
 make test-portable       # same, minus the cgo Signal plugin — what CI runs
 make e2e                 # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check            # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
+make docs-check           # scripts/check-doc-links.sh — every relative doc link resolves
+make install-check        # scripts/install-smoke.sh — hermetic guard for `make install`/`uninstall`
+make isolation-check      # scripts/simultaneity-smoke.sh — dev + installed side by side (ISOL-03)
 ```
 
 `make test`/`make test-portable` need no network access or live

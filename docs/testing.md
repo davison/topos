@@ -5,10 +5,13 @@ each one covers, when to run it, how to write a new browser spec, and the
 standing rule that keeps the browser suite from decaying beside the UI it
 guards.
 
-None of the four gates below needs credentials, network access, or a
-`.env` file. That was not always true — see "What changed", below.
+None of the seven gates below needs credentials or a `.env` file, and
+none needs the network — with one explicit exception: `make
+install-check` carries a single live latest-release case that skips
+loudly, naming itself, when the network is unreachable. That was not
+always true — see "What changed", below.
 
-## The four gates
+## The seven gates
 
 ### `make test` — every Go module, including the cgo Signal plugin
 
@@ -32,12 +35,16 @@ already established for the build side.
 
 ### `make dev-check` — the hermetic guard for `make dev`
 
-Runs `scripts/dev-guard-smoke.sh`, which exercises `make dev`'s port-guard
-and readiness-gate behaviour (squatter on the dev port, kernel dying
-during startup, the happy path) using ephemeral ports it selects itself.
-Needs no network access, no live credentials, and no config file — it is
-safe to run at any time, including while a real kernel is up on
-`127.0.0.1:7777`.
+Runs `scripts/dev-guard-smoke.sh`, which exercises `make dev`'s guard
+behaviour across six cases: squatter on the dev port, kernel dying
+during startup, the happy path, the isolation refusal (an unisolated
+dev config is refused by name before any child starts), the
+`DEV_ISOLATION_BYPASS` escape hatch (proceeds, with the loud banner),
+and a stale dev config's port mismatch failing in seconds rather than
+as a readiness-gate timeout. Uses ephemeral ports it selects itself.
+Needs no network access, no live credentials, and no config file — it
+is safe to run at any time, including while a real kernel is up on the
+production port `127.0.0.1:7777`.
 
 ### `make e2e` — the hermetic browser suite, the pre-ship gate
 
@@ -49,6 +56,49 @@ Playwright browser if needed, and runs the spec tree in
 credential-requiring automated check in this repository (see "What
 changed"). It needs no network access, no live source credentials, and
 no `.env` file.
+
+### `make docs-check` — every relative doc link resolves
+
+Runs `scripts/check-doc-links.sh` over the maintained documentation set
+(repo-root markdown, `docs/`, `web/`, `plugins/`): every relative link
+and image target must resolve to a real file. Deliberately never checks
+external URLs — a network-dependent gate is a flaky gate. No network,
+no credentials, no config file.
+
+### `make install-check` — the hermetic guard for `make install`
+
+Runs `scripts/install-smoke.sh`: builds a fixture release on local
+disk, installs from it through the real `scripts/install.sh` (via its
+`TOPOS_RELEASE_BASE_URL` `file://` test seam — the seam changes WHICH
+release is fetched, never which checks run), and asserts the installed
+kernel launches the installed plugin from `$PREFIX/lib/topos/plugins`
+with the stock relative `[plugins] dir` (INST-01/INST-03). Its cases
+also pin every refusal and repair behaviour: corrupted asset,
+traversal-shaped manifest, unwritable prefix, idempotent re-run, live
+replacement over a running kernel, the uninstall data-safety cycle
+(a seeded home/XDG tree byte-identical across install+uninstall),
+foreign-file survival, uninstall under a live kernel, the toolchain
+tripwire (the base install completes with failing compiler shims first
+on `PATH`), Signal removal, and the latest-release URL validator.
+Hermetic and offline except one live latest-release resolution case,
+which skips loudly by name when the network is unreachable. Safe beside
+a running kernel — every port is ephemeral and self-selected.
+
+### `make isolation-check` — the dev/installed simultaneity gate
+
+Runs `scripts/simultaneity-smoke.sh`, the committed ISOL-03 proof: an
+installed-shaped instance (installed through the real install script,
+resolving config through home/XDG) and a checkout-shaped dev instance
+(whose config must first pass the real `cmd/topos-devguard`) run side
+by side, each answering only its own webspace set; the installed
+tree's recursive digest manifest is byte-identical across a dev
+instance's sync and index write; its file set is unchanged during
+concurrent operation; and the production listen default and `DEV_PORT`
+default are asserted different by reading both from source — without
+binding either port. No network, no credentials, no config file
+outside its own temp tree; a real-port safety baseline is re-asserted
+after every case, so it is safe to run while the operator's own
+installed instance is serving.
 
 ## The real config and the dev config
 
@@ -63,6 +113,23 @@ order: the `--config <path>` flag on `topos serve`/`topos sync`; then the
 `config.dev.example.toml` template) — so the dev loop never reads or
 writes the operator's production config, index, or plugins directory.
 
+The two instances deliberately bind different ports: the dev loop
+serves on `127.0.0.1:7778` (`DEV_PORT`, matched by the template's
+`[server] listen` and Vite's `/api` proxy target) while the installed
+instance keeps `127.0.0.1:7777` (the kernel's compiled-in default), so
+both can run at the same time (ISOL-02; `make isolation-check` pins
+this contract). And since 15-04 the isolation is mechanical, not
+conventional: before starting anything, `make dev` runs
+`cmd/topos-devguard` against its config and refuses — naming the
+config key, the resolved path, and the root it falls inside — when any
+writable path the config declares (the config file itself, the index,
+either plugin directory including the omitted-`external_dir` default,
+or any source's own store path) resolves inside the topos config or
+state roots the installed instance owns (ISOL-01). The same invocation
+refuses a stale dev config whose listen port disagrees with
+`DEV_PORT`, naming both values, before the readiness gate could mask
+the drift as a timeout.
+
 Because the generated path is derived from the checkout root (`CURDIR`),
 each git worktree of this repo gets its OWN `config.dev.toml`. This is
 the concrete defect that split closes: a Phase 13 UAT run (2026-08-14)
@@ -71,10 +138,32 @@ through the shared production config, and the build-manifest gate
 correctly refused all six trusted plugins as unverified. `make dev` in a
 worktree now runs entirely inside that worktree.
 
-`make dev DEV_CONFIG=<path>` runs the dev loop against any other config,
-including the operator's own production one
-(`make dev DEV_CONFIG=$HOME/.config/topos/config.toml`) — the escape
-hatch back, in one make variable.
+`make dev DEV_CONFIG=<path>` runs the dev loop against any other
+config — but a config that reaches the installed instance's own
+locations now also needs the guard's explicit escape hatch,
+`DEV_ISOLATION_BYPASS` (any non-empty value switches the guard to
+warn-only, printing a loud banner that lists every path it is
+permitting). Running the dev loop against the operator's own
+production config therefore takes both, deliberately:
+`make dev DEV_CONFIG=$HOME/.config/topos/config.toml
+DEV_ISOLATION_BYPASS=1` — the first says which config, the second says
+the operator accepts that the dev run will read and write the
+installed instance's own config and state. There is no partial or
+per-key bypass.
+
+### The per-checkout plugin-store convention
+
+A source's own store path (its `path` key — a WhatsApp linked-device
+session store, most consequentially) is the one writable location the
+dev template cannot pre-fill, because stores are declared per source.
+The convention, documented and demonstrated in
+`config.dev.example.toml`: every source store in a dev config sits
+under the checkout, in a per-checkout directory
+(`@CHECKOUT@/bin/plugin-state/...`), so each checkout — and each git
+worktree — gets its own. Copying a source block from the production
+config without changing its path is the specific mistake the guard
+refuses: it would point the dev run's store (or a fresh device link)
+at the very files the installed instance is using.
 
 The hermetic Playwright harness is unaffected by any of this: it already
 isolates each spec via its own `XDG_CONFIG_HOME`/`XDG_DATA_HOME`
@@ -705,6 +794,17 @@ drives, both from the trusted directory (`12-filesystem-tracer.spec.ts`,
 and, for criterion 5's rehearsal, from the external one
 (`12-external-rehearsal.spec.ts`). See "`web/e2e/specs/12-*.spec.ts` —
 the filesystem source, real end to end", above.
+
+**2026-08-19**: Phase 15 (the installed instance) adds the last three
+gates: `make docs-check` (previously an undocumented target) joins the
+map, and `make install-check` / `make isolation-check` land alongside
+the install surface itself. The dev loop moved off the production port
+to `127.0.0.1:7778` in the same phase — the installed instance owns
+`7777`, and dev isolation became a mechanical pre-flight
+(`cmd/topos-devguard`) rather than a convention: a dev config that
+would read or write the installed instance's config or state refuses
+to start, and the only bypass is the loud, explicit
+`DEV_ISOLATION_BYPASS`.
 
 ## Standing rule
 
