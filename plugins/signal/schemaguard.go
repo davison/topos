@@ -31,6 +31,15 @@ import (
 //     read-set column present, and readOwnAci/readConversations/
 //     readMessages (covering readAttachments/readReactions) all
 //     returned non-zero rows against the real database.
+//   - 1760: verified 2026-08-19 (260819-jc1 quick task), against Arch
+//     package signal-desktop 8.22.0-1 — a real Signal Desktop release
+//     boundary crossed since the 1740 verification (which stayed on
+//     8.21.0-1), unlike the 1730->1740 advance. Verified via the same
+//     unchanged tooling, schema_readset.go's declared read set and
+//     live_schema_test.go's TestLiveSchemaReadSet: every read-set column
+//     present across all five tables, and readOwnAci/readConversations/
+//     readMessages (covering readAttachments/readReactions) all
+//     returned non-zero rows against the real database.
 //
 // Raising this constant is a deliberate act, performed only after
 // re-running that same introspection (schema_readset.go's declared read
@@ -40,7 +49,7 @@ import (
 // app version number, since app version and schema version do not move
 // in lockstep. The trigger for re-verification is guardSchemaVersion
 // firing, not a Signal Desktop upgrade notification.
-const highestSupportedSchemaVersion = 1740
+const highestSupportedSchemaVersion = 1760
 
 // guardSchemaVersion reads PRAGMA user_version on db and fails loudly,
 // naming both the version found and the highest supported, if it exceeds
