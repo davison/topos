@@ -91,11 +91,15 @@ Full phase details, success criteria, and plan lists: [milestones/v1.2.0-ROADMAP
   4. Every escalation path named in the standing security todo is closed by a **committed test that fails if its gate is removed**: trust cannot be granted by editing config, by dropping a file into the trusted directory, or by shadowing a trusted plugin name with a different binary. (TRUST-04)
   5. The operator can see *why* a plugin holds the tier it holds — a verification failure names the cause on the source chip and in logs, and never silently downgrades a plugin the operator believes is trusted.
 
-**Plans**: TBD (set by `/gsd-plan-phase 16`)
+**Plans**: 5 plans
 
 Plans:
 
-- [ ] TBD
+- [ ] 16-01-PLAN.md — Tracer: ed25519-signed release-manifest format, verifier, embedded key set, two-arm launch gate, and the topos-provenance CLI
+- [ ] 16-02-PLAN.md — Tier derives from provenance, not from Dirs; both plugin directories become pure search paths (D-11)
+- [ ] 16-03-PLAN.md — TRUST-04: committed escalation tests (config edit, file drop, shadowing) plus their browser-visible half
+- [ ] 16-04-PLAN.md — TRUST-02: the topos-plugins sibling repo, its signing workflow, one real signed release, and the embedded key
+- [ ] 16-05-PLAN.md — Install-time verification, signed-provenance e2e coverage, and the canonical trust-model documentation
 
 **Notes**:
 
