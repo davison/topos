@@ -20,19 +20,9 @@ Open one webspace and instantly see and grok all related information across ever
 - **v1.1.0 Plugin Ecosystem shipped 2026-08-18** — 4 phases (11–14), 32 plans + 2 gap closures + 5 quick tasks, 309 commits in 6 days. Third-party plugin path proven end-to-end: external trust tier (provenance + pins + manifest gate), Google Drive source built clean-room out-of-repo against the published contract, per-item curation, PWA install. Milestone audit passed (11/11 requirements), phase-14 security audit 26/26 closed. See `.planning/MILESTONES.md` and `milestones/v1.1.0-*`.
 - **v1.2.0 Dev/Prod Separation: Phase 15 complete 2026-08-19** (single-phase milestone, 5 plans + 1 inline gap-closure round) — the operator's live instance migrated to `make install`-ed artifacts and runs beside the checkout's dev loop with mechanical isolation (topos-devguard pre-flight, dev port 7778, `make isolation-check` simultaneity gate). Milestone ready to close (`/gsd-complete-milestone`); the completion tag publishes the first release carrying topos-plugin-filesystem. Remaining seeded candidates for later milestones: kernel OAuth/secrets services for plugins (requirement-grade todo), Signal schema-version verify-and-accept tooling (operator's Signal Desktop currently ahead of the accepted list — quick-task route), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
 
-## Current Milestone: v1.2.0 Dev/Prod Separation
+## Current Milestone
 
-**Goal:** The operator runs topos daily from installed release artifacts while developing the next milestone from the checkout — the two instances can never clash on port, config, or state.
-
-**Target features:**
-- `make install [version]` — downloads the tag's GitHub release artifacts (no version → latest release), installs the kernel to `$PREFIX/bin` (default `/usr/local`, prefix configurable) and plugins to `$PREFIX/lib/topos/plugins`; installed default config points at that plugins dir; `topos` starts from PATH
-- `make install-signal` — explicit opt-in target that builds the cgo Signal plugin locally into the libexec plugins dir (base install stays toolchain-free: download + copy only)
-- `make uninstall` — removes prefix binaries/plugins; never touches config or state
-- Installed instance keeps config and local state in current home/XDG locations, unchanged
-- Full dev-side isolation — dev runs from the checkout use .gitignored//tmp config and state: kernel index, plugin stores (incl. a separate WhatsApp link for real-source dev runs), everything per-checkout; dev never touches the XDG/home locations
-- Dev port separation — dev/test servers move off production port 7777 (closes the pending todo)
-
-**Key context:** Builds on v1.1.0's 14-01 precursor (`--config`/`TOPOS_CONFIG`, per-checkout dev config). Run mode is manual from PATH — no service management this milestone. Natural end-to-end proof: the operator's live instance migrates to `make install`-ed artifacts and both instances run simultaneously.
+None — v1.2.0 Dev/Prod Separation shipped 2026-08-19 (see `.planning/MILESTONES.md`). Next milestone starts with `/gsd-new-milestone`; strongest seeded candidates: kernel OAuth/secrets services for plugins (requirement-grade todo) and the 999.x backlog (distribution/dev guide/certification, `topos-plugins` repo restructure).
 
 ## Requirements
 
@@ -120,6 +110,10 @@ Deferred candidates (not this milestone): Google Drive source plugin moved to Va
 | Real upstream logo marks for paperless-ngx/SilverBullet; generic Lucide glyphs for Proton/Signal/WhatsApp | Recognizability where a permissively-usable mark exists; a real WhatsApp/Meta mark would misrepresent an unofficial client (SilverBullet has no vector mark upstream — its square dock PNG is wrapped in an `<svg><image>` data URI, upstream's own technique) | Phase 9: shipped — legibility at 14–16px and brand-policy recheck both confirmed at UAT |
 | Signal plugin binary excluded from published release/nightly artifacts (option-b, user-decided at checkpoint) | Every published artifact stays static CGO_ENABLED=0 and runs on any distro; a runner-built cgo binary links Ubuntu's SQLCipher with no execution in CI to catch a mismatch; `make signal` is the already-documented local build | Phase 10: shipped — release path proven live against GitHub API; decision recorded dated in docs/releasing.md |
 | `.planning/` is source of truth for milestones; GitHub is a one-way mirror via idempotent `scripts/sync-milestones.sh` (GSD has no native GitHub-milestone sync) | Bidirectional sync makes an unreviewed GitHub edit authoritative; lookup-by-title create-or-patch reconciles the pre-existing v1.0 milestone without duplicating; script has no delete path at all | Phase 10: shipped — verified live twice against real milestone #1, idempotency confirmed |
+| Installed layout resolved by existence probe, never a compiled-in prefix | The same published binary must serve a checkout (`bin/plugins`) and an installed instance (`$PREFIX/lib/topos/plugins`) with the stock relative config; probing gated on the FHS `bin` dir name keeps checkout builds unaffected | Phase 15: ✓ Good — live migration needed one config fix (a pre-existing absolute dir), exactly the case the runbook documents |
+| checksums.txt is the single install manifest; verify-before-place with atomic renames | A second hardcoded asset list drifts from what release.yml publishes; placement after full verification leaves `$PREFIX` byte-unchanged on any abort; same-dir renames survive a live kernel | Phase 15: shipped — pinned by 15 hermetic install-smoke cases incl. live replacement |
+| Locally built Signal binary installs into the external trust tier, never the trusted dir | A local build can't be in the released kernel's link-time manifest; routing around that gate would reverse the Phase 13 trust decision — consent-and-pin is the supported path | Phase 15: ✓ Good — live-verified through a real schema-bump re-pin the same day (260819-jc1) |
+| Dev isolation is a mechanical pre-flight (topos-devguard), not a convention | The two prior footguns (dev reading prod config, port clash) are invisible until they've done damage; the guard parses config with the kernel's own loader and refuses before any child starts; the only bypass banners every permitted path | Phase 15: shipped — 15 Go subtests + 6 dev-check cases; simultaneity pinned by `make isolation-check` |
 
 ## Evolution
 
@@ -139,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-19 after Phase 15 (v1.2.0 Dev/Prod Separation complete)*
+*Last updated: 2026-08-19 after v1.2.0 milestone*

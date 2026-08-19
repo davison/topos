@@ -2,10 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: Dev/Prod Separation
-current_phase: 15
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 15 complete — milestone v1.2.0 ready to close
-last_updated: "2026-08-19T12:46:40.657Z"
+last_updated: "2026-08-19T14:15:06.920Z"
 last_activity: 2026-08-19
 last_activity_desc: Phase 15 complete
 progress:
@@ -14,6 +13,7 @@ progress:
   total_plans: 5
   completed_plans: 5
   percent: 100
+current_phase: 15
 current_phase_name: installed-instance-dev-isolation
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-08-19 - Completed quick task 260819-jc1: accept new Signal Desktop schema version after live read-set verification
+Phase: Milestone v1.2.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-08-19 — Milestone v1.2.0 completed and archived
 
 ## Performance Metrics
 
@@ -200,11 +200,16 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and deferred at milestone close (v1.2.0, 2026-08-19) — none are v1.2.0 scope; all carry from earlier milestones:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| todo | signal-schema-version-verify-and-accept-tooling (minor, tooling) | pending | v1.0 close, 2026-08-12 |
+| debug | filesystem-items-missing-from-stream | diagnosed | v1.2.0 close, 2026-08-19 |
+| debug | popover-hidden-narrow-viewport | diagnosed (fix shipped 14-06; session left open) | v1.2.0 close, 2026-08-19 |
+| debug | shutdown-reap-flake-recurrence | awaiting_human_verify | v1.2.0 close, 2026-08-19 |
+| todo | signal-schema-version-verify-and-accept-tooling (minor, tooling) | pending | v1.0 close, re-deferred v1.2.0 (manual flow re-run 260819-jc1) |
+| todo | kernel-oauth-and-secrets-services-for-plugins (major, kernel) | pending — next-milestone candidate | v1.2.0 close, 2026-08-19 |
+| todo | popover-clone-tooltip-intercepts-clicks (minor, web) | pending | v1.2.0 close, 2026-08-19 |
 
 ## Session Continuity
 
@@ -214,8 +219,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 15 with /gsd-discuss-phase 15 (or /gsd-plan-phase 15 directly)
-- Open questions to settle during phase discuss/spec:
-  - Which release artifact names/checksums `make install` consumes, and how it authenticates to the GitHub API (public releases need no token, but rate limits apply)
-  - Whether `PREFIX=/usr/local` install needs sudo escalation inside the recipe or documents `sudo make install`
-  - Where the dev-side state root lives concretely (per-checkout .gitignored dir vs /tmp) and how plugin stores — especially the WhatsApp link store — are pointed at it
+- Start the next milestone with /gsd-new-milestone

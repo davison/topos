@@ -1,5 +1,30 @@
 # Milestones
 
+## v1.2.0 Dev/Prod Separation (Shipped: 2026-08-19)
+
+**Delivered:** topos became an installed application — the operator now runs it daily from checksum-verified release artifacts under `/usr/local` while developing the next milestone from the checkout, with the two instances mechanically incapable of clashing on port, config, or state.
+
+**Stats:** 1 phase (15), 5 plans + 1 inline gap-closure round + 1 related quick task, 15 tasks, 42 commits over 2 days (2026-08-18 → 2026-08-19). 158 files changed, +7,428/−121.
+
+**Closeout:** override — phase 15 verification-passed (8/8 after one gap-closure round), live UAT 2/2 (real migration + side-by-side dev run on the operator's machine), security review 25/25 threats closed (`threats_open: 0`), code review 0 critical. Known verification overrides: 6 (see STATE.md Deferred Items) — all pre-existing carried context (3 stale debug sessions, 3 pending todos incl. the requirement-grade kernel OAuth/secrets abstraction), none v1.2.0 scope.
+
+**Key accomplishments:**
+
+1. **`make install`** — stage → verify → place release installer: asset list derived from the release's own checksums.txt behind a strict path allowlist, every SHA-256 verified before a byte reaches `$PREFIX`, atomic same-directory renames safe over a running kernel; bare `make install` resolves the latest *stable* release through a host/path/tag-shape-validated redirect (nightly/prerelease structurally excluded, no token or GitHub CLI).
+2. **One binary, two layouts** — `resolvePluginsDir`'s existence probe lets the same published kernel serve a checkout (`bin/plugins`) and an installed instance (`$PREFIX/lib/topos/plugins`) with the stock relative config value; no config edit to migrate (INST-03).
+3. **Data-safe uninstall + Signal opt-in** — `make uninstall` removes exactly what install placed (closed removal set, non-recursive, seeded home/XDG tree proven byte-identical across a full cycle); `make install-signal` builds the cgo plugin locally into the external trust tier via the consent-and-pin flow — the trusted-manifest gate untouched — while a hostile-toolchain tripwire proves the base install is download-and-copy only.
+4. **Mechanical dev isolation** — `cmd/topos-devguard` (the kernel's own config parser, component-wise root containment, cwd-faithful source-path resolution) refuses any dev run that would touch the installed instance's config or state before a single child starts; the only bypass is one variable that banners every path it permits; the dev loop moved to 7778 with stale-config port drift refused by name in seconds.
+5. **The simultaneity gate** — `make isolation-check` pins ISOL-03 as a committed test: an installed-shaped and a dev-shaped instance serve side by side, each answering only its own webspaces, with the installed tree byte-identical across a live dev sync-and-write — the guarantee that decays silently is now a gate that runs.
+6. **Operator-facing surface completed** — releases now publish `topos-plugin-filesystem` (closing the silent source loss for installed instances), docs/testing.md maps all seven gates, and docs/install.md carries the followed-in-anger migration runbook (checkout → installed, losing nothing, with back-out).
+
+**Archives:**
+
+- `milestones/v1.2.0-ROADMAP.md` — full phase details
+- `milestones/v1.2.0-REQUIREMENTS.md` — all 8 requirements (INST-01..05, ISOL-01..03) with outcomes
+- `milestones/v1.2.0-phases/` — complete phase execution history (plans, summaries, verification, UAT, review, security)
+
+---
+
 ## v1.1.0 Plugin Ecosystem (Shipped: 2026-08-18)
 
 **Delivered:** topos opened to third-party plugins behind an explicit, provenance-derived trust boundary — proven end-to-end by a Google Drive source plugin built in a clean-room repository against the published contract alone and installed through the untrusted external path — plus per-item curation and PWA installability.
