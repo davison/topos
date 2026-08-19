@@ -70,28 +70,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REPO-01 | TBD | Pending |
-| REPO-02 | TBD | Pending |
-| REPO-03 | TBD | Pending |
-| REPO-04 | TBD | Pending |
-| REPO-05 | TBD | Pending |
-| TRUST-01 | TBD | Pending |
-| TRUST-02 | TBD | Pending |
-| TRUST-03 | TBD | Pending |
-| TRUST-04 | TBD | Pending |
-| DIST-01 | TBD | Pending |
-| DIST-02 | TBD | Pending |
-| DIST-03 | TBD | Pending |
-| DIST-04 | TBD | Pending |
-| PULL-01 | TBD | Pending |
-| PULL-02 | TBD | Pending |
-| DOCS-01 | TBD | Pending |
+| REPO-01 | Phase 17 | Pending |
+| REPO-02 | Phase 17 | Pending |
+| REPO-03 | Phase 17 | Pending |
+| REPO-04 | Phase 17 | Pending |
+| REPO-05 | Phase 17 | Pending |
+| TRUST-01 | Phase 16 | Pending |
+| TRUST-02 | Phase 16 | Pending |
+| TRUST-03 | Phase 16 | Pending |
+| TRUST-04 | Phase 16 | Pending |
+| DIST-01 | Phase 17 | Pending |
+| DIST-02 | Phase 17 | Pending |
+| DIST-03 | Phase 17 | Pending |
+| DIST-04 | Phase 17 | Pending |
+| PULL-01 | Phase 18 | Pending |
+| PULL-02 | Phase 18 | Pending |
+| DOCS-01 | Phase 18 | Pending |
 
 **Coverage:**
 - v1.3.0 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16 ⚠️ (roadmap pending)
+- Mapped to phases: 16 ✓
+- Unmapped: 0
+
+**By phase:**
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| 16. Provenance-Based Plugin Trust | TRUST-01, TRUST-02, TRUST-03, TRUST-04 | 4 |
+| 17. The Plugin Repo Split | REPO-01..05, DIST-01, DIST-02, DIST-03, DIST-04 | 9 |
+| 18. Pull-by-URL Install & the Plugin Developer Guide | PULL-01, PULL-02, DOCS-01 | 3 |
 
 ---
 *Requirements defined: 2026-08-19*
-*Last updated: 2026-08-19 after initial definition*
+*Last updated: 2026-08-19 after roadmap creation (16/16 mapped to Phases 16–18)*

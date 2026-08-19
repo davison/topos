@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Plugin Repo Split
 status: planning
-last_updated: "2026-08-19T15:44:37.164Z"
+last_updated: "2026-08-19T16:00:00.000Z"
 last_activity: 2026-08-19
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19 after v1.2.0 milestone)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Planning next milestone (/gsd-new-milestone)
+**Current focus:** v1.3.0 Plugin Repo Split — Phases 16–18 roadmapped; next is Phase 16 (Provenance-Based Plugin Trust), which requires discuss-phase before planning
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 16 — Provenance-Based Plugin Trust (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-19 — Milestone v1.3.0 started
+Status: Roadmap created, awaiting phase discussion
+Last activity: 2026-08-19 — v1.3.0 roadmap created (3 phases, 16/16 requirements mapped)
 
 ## Performance Metrics
 
@@ -128,6 +128,7 @@ Last activity: 2026-08-19 — Milestone v1.3.0 started
 
 v1.0's evolution history (phase insertions 5–7, 07.1, 09.1; the WhatsApp shift to Phase 8; Phases 9–10 additions) is archived in `milestones/v1.0-ROADMAP.md` and summarized in MILESTONES.md.
 
+- 2026-08-19 — v1.3.0 roadmap created: three phases (16–18), numbering continued from v1.2.0's Phase 15 (the two 999.x directories in `.planning/phases/` are backlog holding areas, not executed phases). Coarse granularity, but the ordering was forced rather than chosen: today's trusted tier *is* the in-repo directory plus a link-time build manifest, so moving every functional plugin out of the repo destroys the trust basis. Provenance verification therefore lands first (Phase 16) while the in-repo plugins still exist as fallback, the move and the sibling repo's release pipeline land second (Phase 17), and the third-party path — pull-by-URL + dev guide — spends that machinery last (Phase 18). Phase 17 deliberately holds nine requirements: a half-moved plugin set is not a deliverable and the operator's live instance must keep every source syncing through the migration. Promoted backlog 999.2 in full (it became Phases 16 + 17) and the pull-by-URL/dev-guide half of 999.1 (Phase 18); certification, marketplace, and the in-app install UI stay in backlog.
 - 2026-08-18 — v1.2.0 roadmap created: one phase (15), numbering continued from v1.1.0's Phase 14. Single-phase milestone at the user's explicit direction — install and dev isolation are one indivisible capability, since an installed instance is only proven safe at the moment a dev instance runs beside it without either noticing. All 8 requirements (INST-01..05, ISOL-01..03) map to Phase 15.
 - 2026-08-12 — v1.1.0 roadmap created: 4 phases (11-14), numbering continued from v1.0's Phase 10. Coarse granularity compressed the research summary's five suggested phases into four — per-item marks and PWA merged into a single web-app phase (Phase 13) since both are independent, UI-surface work. One hard dependency only: Phase 11 (external loading) → Phase 14 (Google Drive). Phase 12's filesystem plugin binary carries the external-path rehearsal criterion, the research-recommended checkpoint before Phase 14's OAuth/API work.
 
@@ -209,10 +210,12 @@ Items acknowledged and deferred at milestone close (v1.2.0, 2026-08-19) — none
 
 ## Session Continuity
 
-Last session: 2026-08-19T12:46:40.645Z
-Stopped at: Phase 15 complete — milestone v1.2.0 ready to close
+Last session: 2026-08-19T16:00:00.000Z
+Stopped at: v1.3.0 roadmap created — Phases 16–18, 16/16 requirements mapped
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review `.planning/ROADMAP.md` (Phases 16–18) and `.planning/REQUIREMENTS.md` traceability
+- Run `/gsd-discuss-phase 16` **before** planning — the trust model is this milestone's open design question (flagged by backlog 999.2): what distinguishes a first-party `topos-plugins` binary from any other external binary? Sigstore/cosign keyless, a kernel-embedded key, GitHub artifact attestations, and a signed checksums manifest are all live candidates with very different costs for a single-operator desktop tool
+- Then `/gsd-plan-phase 16`
