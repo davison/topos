@@ -21,10 +21,10 @@ current_phase_name: installed-instance-dev-isolation
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
+See: .planning/PROJECT.md (updated 2026-08-19 after v1.2.0 milestone)
 
 **Core value:** Open one webspace and instantly see and grok all related information across every silo — without visiting each data store individually.
-**Current focus:** Phase 15 — installed-instance-dev-isolation
+**Current focus:** Planning next milestone (/gsd-new-milestone)
 
 ## Current Position
 
