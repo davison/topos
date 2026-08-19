@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2.0
-milestone_name: Dev/Prod Separation
-status: Awaiting next milestone
-stopped_at: Phase 15 complete — milestone v1.2.0 ready to close
-last_updated: "2026-08-19T14:15:06.920Z"
+milestone: v1.3.0
+milestone_name: Plugin Repo Split
+status: planning
+last_updated: "2026-08-19T15:44:37.164Z"
 last_activity: 2026-08-19
-last_activity_desc: Phase 15 complete
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
-current_phase: 15
-current_phase_name: installed-instance-dev-isolation
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.2.0 milestone)
 
 ## Current Position
 
-Phase: Milestone v1.2.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-08-19 — Milestone v1.2.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-08-19 — Milestone v1.3.0 started
 
 ## Performance Metrics
 

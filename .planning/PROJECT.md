@@ -20,9 +20,18 @@ Open one webspace and instantly see and grok all related information across ever
 - **v1.1.0 Plugin Ecosystem shipped 2026-08-18** — 4 phases (11–14), 32 plans + 2 gap closures + 5 quick tasks, 309 commits in 6 days. Third-party plugin path proven end-to-end: external trust tier (provenance + pins + manifest gate), Google Drive source built clean-room out-of-repo against the published contract, per-item curation, PWA install. Milestone audit passed (11/11 requirements), phase-14 security audit 26/26 closed. See `.planning/MILESTONES.md` and `milestones/v1.1.0-*`.
 - **v1.2.0 Dev/Prod Separation: Phase 15 complete 2026-08-19** (single-phase milestone, 5 plans + 1 inline gap-closure round) — the operator's live instance migrated to `make install`-ed artifacts and runs beside the checkout's dev loop with mechanical isolation (topos-devguard pre-flight, dev port 7778, `make isolation-check` simultaneity gate). Milestone ready to close (`/gsd-complete-milestone`); the completion tag publishes the first release carrying topos-plugin-filesystem. Remaining seeded candidates for later milestones: kernel OAuth/secrets services for plugins (requirement-grade todo), Signal schema-version verify-and-accept tooling (operator's Signal Desktop currently ahead of the accepted list — quick-task route), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
 
-## Current Milestone
+## Current Milestone: v1.3.0 Plugin Repo Split
 
-None — v1.2.0 Dev/Prod Separation shipped 2026-08-19 (see `.planning/MILESTONES.md`). Next milestone starts with `/gsd-new-milestone`; strongest seeded candidates: kernel OAuth/secrets services for plugins (requirement-grade todo) and the 999.x backlog (distribution/dev guide/certification, `topos-plugins` repo restructure).
+**Goal:** Move all functional plugins out of the kernel repo into a sibling `topos-plugins` repo with its own releases, backed by a real first-party trust mechanism — making the kernel↔plugin boundary the same one third-party authors use.
+
+**Target features:**
+- Repo restructure: sibling repo `topos-plugins` holds paperless, silverbullet, proton, whatsapp, filesystem, and signal as subdirectories, with gdrive folded in from `topos-plugin-gdrive`; only mock/mockstrict remain in the kernel repo (docs, testing, e2e). Kernel-repo plugin knowledge (Makefile, build manifests, layout assumptions) unwinds with the move.
+- First-party trust solved properly: provenance-based trust (signed/attested topos-plugins releases the kernel verifies) replaces trust-by-directory-location — closes the standing "trust tier is directory-location, not provenance" security todo.
+- Independent distribution: topos-plugins gets its own CI/release pipeline and install path; kernel and plugins install separately (the same path future third-party plugins will use).
+- Pull-by-URL plugin install, CLI first: a command downloads a plugin from a URL, verifies it, and lands it in the correct trust tier; in-app UI flow deferred.
+- Plugin development guide: the restructured kernel repo (contract + mocks only) documented as the clean reference for third-party authors.
+
+**Out of this milestone:** certification/blessing scheme (999.1 remainder stays in backlog); in-app install-from-URL UI. Trust-model design flagged for discuss-phase before planning; Signal's cgo local-build path must survive the move; GAP-06 (fully-`extras` source config) rides along only if the gdrive fold-in surfaces it.
 
 ## Requirements
 
@@ -133,4 +142,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-19 after v1.2.0 milestone*
+*Last updated: 2026-08-19 — milestone v1.3.0 Plugin Repo Split started*
