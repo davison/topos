@@ -62,50 +62,21 @@ fail() {
   exit 1
 }
 
-free_port() {
-  python3 -c '
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-'
-}
+# Shared fixture-release builder and free-port helper (extracted 15-05;
+# simultaneity-smoke.sh sources the same definitions).
+# shellcheck source=scripts/smoke-lib.sh
+source "$SCRIPT_DIR/smoke-lib.sh"
+free_port() { smoke_free_port; }
 
 # ---------------------------------------------------------------------
 # Fixture release: build the mock plugin, link a kernel whose manifest
-# covers exactly that binary, and assemble the release-shaped tree.
+# covers exactly that binary, and assemble the release-shaped tree —
+# see smoke_build_fixture_release in scripts/smoke-lib.sh.
 # ---------------------------------------------------------------------
 TAG="v0.0.0-install-smoke"
 
 echo "==> building fixture release ($TAG)"
-mkdir -p bin/plugins
-go build -o bin/plugins/topos-plugin-mock ./plugins/mock
-
-# Same generator invocation the Makefile's MANIFEST_GEN_* variables use,
-# over exactly the one fixture binary; the -ldflags -X symbol path must
-# match the Makefile's MANIFEST_LDFLAGS_VAR — a trusted-tier binary
-# absent from the kernel's link-time manifest is refused at launch
-# (kernel/pluginhost.VerifyTrustedBinary), which is precisely why the
-# fixture kernel cannot be an unmanifested build.
-MANIFEST="$(go run ./cmd/topos-manifest bin/plugins/topos-plugin-mock)"
-CGO_ENABLED=0 go build \
-  -ldflags "-X github.com/davison/topos/kernel/pluginhost.buildManifest=$MANIFEST" \
-  -o "$WORK/topos" ./cmd/topos
-
-# Assemble download/<tag>/: flat basenames, exactly like the published
-# release assets, plus a checksums.txt over the RELATIVE layout
-# ("topos", "plugins/topos-plugin-mock") that release.yml records.
-RELEASE_DIR="$WORK/release/download/$TAG"
-mkdir -p "$RELEASE_DIR"
-cp "$WORK/topos" "$RELEASE_DIR/topos"
-cp bin/plugins/topos-plugin-mock "$RELEASE_DIR/topos-plugin-mock"
-
-CHK="$WORK/chk"
-mkdir -p "$CHK/plugins"
-cp "$WORK/topos" "$CHK/topos"
-cp bin/plugins/topos-plugin-mock "$CHK/plugins/topos-plugin-mock"
-(cd "$CHK" && sha256sum topos plugins/topos-plugin-mock) > "$RELEASE_DIR/checksums.txt"
+smoke_build_fixture_release "$WORK" "$TAG"
 
 # ---------------------------------------------------------------------
 # Case: happy-path install into a temp PREFIX from the file:// fixture.

@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal isolation-check
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -441,6 +441,20 @@ install-signal: signal
 # writes into the prefix).
 uninstall-signal:
 	./scripts/install-signal.sh --uninstall
+
+# isolation-check runs the committed ISOL-03 gate
+# (scripts/simultaneity-smoke.sh): an installed-shaped instance and a
+# checkout-shaped dev instance run side by side, each answering only
+# its own webspaces, with the installed tree proven byte-identical
+# across a dev run and its file set unchanged during concurrent
+# operation — plus the static assertion that the production listen
+# default and DEV_PORT differ. Hermetic and offline: no network, no
+# credentials, no config file outside its own temp tree, every listener
+# an ephemeral port it picks itself — safe to run while the operator's
+# own installed instance is serving on the production port (a real-port
+# safety baseline is re-asserted after every case).
+isolation-check:
+	./scripts/simultaneity-smoke.sh
 
 # dev-config generates $(DEV_CONFIG) from the tracked config.dev.example.toml
 # template, substituting the @CHECKOUT@ placeholder with $(CURDIR) — but
