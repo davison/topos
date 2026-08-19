@@ -211,13 +211,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 	} else {
 		candidates = append(candidates, candidate{"[plugins] external_dir", absolutize(cfg.Plugins.ExternalDir, configDir)})
 	}
+	// A source's own path is resolved by the PLUGIN SUBPROCESS against
+	// its working directory — the kernel launches plugins with no
+	// cmd.Dir override, so the real resolution base is the kernel
+	// process's own cwd, not the config file's directory. The guard
+	// mirrors that: relative source paths resolve against the guard's
+	// own working directory, which under `make dev` is the same
+	// checkout root the kernel is started from. Resolving against the
+	// config directory here produced a false clear when the guard was
+	// invoked from a cwd inside a topos root against a config kept
+	// elsewhere (15-VERIFICATION.md gap 1).
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(stderr, "devguard: resolve working directory: %v\n", err)
+		return 1
+	}
 	for name, src := range cfg.Sources {
 		if strings.TrimSpace(src.Path) == "" {
 			continue
 		}
 		candidates = append(candidates, candidate{
 			fmt.Sprintf("[sources.%s] path", name),
-			absolutize(src.Path, configDir),
+			absolutize(src.Path, cwd),
 		})
 	}
 

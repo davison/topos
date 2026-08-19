@@ -345,6 +345,51 @@ external_dir = "%s/bin/plugins-external-dev"
 		}
 	})
 
+	// A relative [sources.*] path resolves against the process working
+	// directory — the kernel launches plugin subprocesses with no
+	// cmd.Dir override, so cwd (not the config file's directory) is the
+	// real resolution base. These two cases pin 15-VERIFICATION.md's
+	// gap 1: the pre-fix guard resolved against the config directory
+	// and printed a false OK when invoked from a cwd inside a topos
+	// root against a config kept elsewhere.
+	t.Run("relative source path resolves against cwd inside the state root and is a violation", func(t *testing.T) {
+		tmp := t.TempDir()
+		_, stateRoot, checkout := guardEnv(t, tmp)
+		if err := os.MkdirAll(stateRoot, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := writeConfig(t, filepath.Join(checkout, "config.dev.toml"), isolatedConfig(checkout, `
+[sources.whatsapp]
+plugin = "topos-plugin-whatsapp"
+path = "whatsapp-store"
+`))
+		t.Chdir(stateRoot)
+
+		code, stdout, _ := runGuard(t, "--config", cfg)
+		if code == 0 {
+			t.Fatalf("expected a violation for a relative source path resolving into the state root via cwd, got exit 0\n%s", stdout)
+		}
+		if !strings.Contains(stdout, "[sources.whatsapp] path") {
+			t.Errorf("violation does not name the source's key path:\n%s", stdout)
+		}
+	})
+
+	t.Run("relative source path resolves against a checkout cwd and is clean", func(t *testing.T) {
+		tmp := t.TempDir()
+		_, _, checkout := guardEnv(t, tmp)
+		cfg := writeConfig(t, filepath.Join(checkout, "config.dev.toml"), isolatedConfig(checkout, `
+[sources.whatsapp]
+plugin = "topos-plugin-whatsapp"
+path = "bin/plugin-state/whatsapp"
+`))
+		t.Chdir(checkout)
+
+		code, stdout, stderr := runGuard(t, "--config", cfg)
+		if code != 0 {
+			t.Fatalf("expected exit 0 for a relative source path under a checkout cwd, got %d\n%s%s", code, stdout, stderr)
+		}
+	})
+
 	t.Run("expected-port match with isolated config exits 0", func(t *testing.T) {
 		tmp := t.TempDir()
 		_, _, checkout := guardEnv(t, tmp)

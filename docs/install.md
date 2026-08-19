@@ -18,12 +18,22 @@ a single prefix.
 ## Installing a release
 
 ```sh
-make install VERSION=1.1.0
+make install                  # latest published stable release
+make install VERSION=1.1.0    # a specific release
 ```
 
-`VERSION` names the release tag, with or without the leading `v`
-(`1.1.0` and `v1.1.0` are the same release). It is required — there is
-no implicit "latest" yet.
+With no `VERSION`, the latest published **stable** release is resolved
+by following the releases/`latest` redirect, and the landing URL is
+validated before anything downloads: the host must be exactly
+`https://github.com`, the path must be this repository's own
+release-tag path, and the tag must be bare three-part
+`v<major>.<minor>.<patch>` semver — so a prerelease or the moving
+`nightly` tag can never be auto-selected. The resolved tag is printed
+before the download starts. No credential, token, or GitHub CLI is
+involved.
+
+`VERSION` names a specific release tag, with or without the leading
+`v` (`1.1.0` and `v1.1.0` are the same release).
 
 ### `PREFIX`
 
