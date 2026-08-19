@@ -94,11 +94,24 @@ Full phase details, success criteria, and plan lists: [milestones/v1.2.0-ROADMAP
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 16-01-PLAN.md — Tracer: ed25519-signed release-manifest format, verifier, embedded key set, two-arm launch gate, and the topos-provenance CLI
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 16-02-PLAN.md — Tier derives from provenance, not from Dirs; both plugin directories become pure search paths (D-11)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 16-03-PLAN.md — TRUST-04: committed escalation tests (config edit, file drop, shadowing) plus their browser-visible half
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 16-04-PLAN.md — TRUST-02: the topos-plugins sibling repo, its signing workflow, one real signed release, and the embedded key
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 16-05-PLAN.md — Install-time verification, signed-provenance e2e coverage, and the canonical trust-model documentation
 
 **Notes**:
