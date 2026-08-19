@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 Phase: 15
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-08-19 — Phase 15 complete
+Last activity: 2026-08-19 - Completed quick task 260819-jc1: accept new Signal Desktop schema version after live read-set verification
 
 ## Performance Metrics
 
@@ -175,7 +175,6 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - ⚠️ [Pre-existing, surfaced during Phase 10] Flaky CI: `kernel/httpapi` `TestExecLinkSpawner_StreamsLinesInOrderAndExitsClean` + `_KillTerminatesLongRunningSubprocess` fail intermittently on GitHub runners (subprocess yields no lines / kill doesn't terminate), pass locally. Route to `/gsd-debug "flaky ExecLinkSpawner tests in kernel/httpapi on CI"`.
 - ⚠️ [Phase 10, advisory] 10-REVIEW.md warnings open: web/README.md non-link references, duplicated release-asset lists across workflows, test-portable CGO_ENABLED scoping. Fix via `/gsd-code-review 10 --fix`.
 - ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix`.
-- ⚠️ [Post-15 UAT, operational] Operator's Signal Desktop schema version is newer than the Signal plugin's accepted list — Signal source refuses to sync (the deliberate safety floor) until the verify-and-accept quick-task flow runs (cf. 260805-lry; pending todo signal-schema-version-verify-and-accept-tooling).
 - ⚠️ [Phase 8, ongoing operational risk] WhatsApp linked-device route can still be de-linked or banned by Meta at any time; plugin degrades honestly (named health states, captured rows survive) but there is no recovery beyond re-linking.
 
 ### Quick Tasks Completed
@@ -197,6 +196,7 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 | 260811-rqc | header branding lockup: app icon + topos wordmark + tagline, top-right of header, muted (human-verified live) | 2026-08-11 | 55e133e | [260811-rqc-header-branding-app-icon-topos-wordmark-](./quick/260811-rqc-header-branding-app-icon-topos-wordmark-/) |
 | 11 | (fast) fix webspace page title: '{webspace} — topos' replaces pre-rename '— webspaces' (+ smoke e2e assertion) | 2026-08-11 | ce9f985 | — |
 | 260814-mkl | Fix CI check:e2e failure: declare unlinkSync in e2e node:fs ambient shim | 2026-08-14 | 66d4012 | [260814-mkl-fix-ci-check-e2e-failure-declare-unlinks](./quick/260814-mkl-fix-ci-check-e2e-failure-declare-unlinks/) |
+| 260819-jc1 | accept new Signal Desktop schema version after live read-set verification (1740→1760, signal-desktop 8.22.0-1; operator-approved live render check) | 2026-08-19 | 3acc5fa | [260819-jc1-accept-new-signal-desktop-schema-version](./quick/260819-jc1-accept-new-signal-desktop-schema-version/) |
 
 ## Deferred Items
 
