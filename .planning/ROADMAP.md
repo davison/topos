@@ -20,7 +20,7 @@ whose success criteria could not be observed until the next phase landed.
 
 ## Phases
 
-- [ ] **Phase 15: Installed Instance & Dev Isolation** - `make install` / `install-signal` / `uninstall` from published release artifacts, plus full dev-side port, config, and state isolation from the checkout
+- [x] **Phase 15: Installed Instance & Dev Isolation** - `make install` / `install-signal` / `uninstall` from published release artifacts, plus full dev-side port, config, and state isolation from the checkout (completed 2026-08-19)
 
 <details>
 <summary>✅ v1.0 MVP (Phases 1–10) — SHIPPED 2026-08-12</summary>
@@ -107,7 +107,7 @@ Phases execute in numeric order: 15 (decimal insertions, if any, run between the
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. Installed Instance & Dev Isolation | v1.2.0 | 5/5 | In Progress|  |
+| 15. Installed Instance & Dev Isolation | v1.2.0 | 5/5 | Complete    | 2026-08-19 |
 
 ## Backlog
 

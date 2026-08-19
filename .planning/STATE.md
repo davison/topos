@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.2.0
 milestone_name: Dev/Prod Separation
 current_phase: 15
-current_phase_name: installed-instance-dev-isolation
-status: verifying
-stopped_at: Completed 15-05-PLAN.md — all phase 15 plans done
-last_updated: "2026-08-19T00:09:54.923Z"
-last_activity: 2026-08-18
-last_activity_desc: v1.2.0 roadmap created (single phase, 8/8 requirements mapped)
+status: completed
+stopped_at: Phase 15 complete — milestone v1.2.0 ready to close
+last_updated: "2026-08-19T12:46:40.657Z"
+last_activity: 2026-08-19
+last_activity_desc: Phase 15 complete
 progress:
   total_phases: 1
   completed_phases: 1
   total_plans: 5
   completed_plans: 5
   percent: 100
+current_phase_name: installed-instance-dev-isolation
 ---
 
 # Project State
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-08-15 after Phase 13 completion)
 
 ## Current Position
 
-Phase: 15 (installed-instance-dev-isolation) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-08-18 — Phase 15 execution started
+Phase: 15
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-08-19 — Phase 15 complete
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 124
+- Total plans completed: 129
 - Average duration: —
 - Total execution time: —
 
@@ -61,6 +61,7 @@ Last activity: 2026-08-18 — Phase 15 execution started
 | 12 | 11 | - | - |
 | 13 | 8 | - | - |
 | 14 | 6 | - | - |
+| 15 | 5 | - | - |
 
 **Recent Trend:**
 
@@ -152,6 +153,10 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - [Phase 13] Undo toast closures act on the webspace where the toast was created, never the currently-viewed one (13-07 gap closure).
 - [Phase 13] `load()` rejects stale navigation generations before any side effect — the `loadState = 'loading'` write sits behind the generation guard, so a stale-gen call is a true no-op (13-08 / G-13-1; pinned by a RED-first browser spec asserting on the rendered stream).
 - [Phase 13] PWA never-stale update flow: ServiceWorker update surfaces through the shared toast layer; the installed app always lands on the new build after a kernel upgrade.
+- [Phase 15] Installed-layout plugin resolution is an existence probe (exe dir named `bin` → `<prefix>/lib/topos/<dir>` sibling), never a compiled-in prefix — one published binary serves checkout and installed layouts.
+- [Phase 15] checksums.txt is the single install manifest (allowlist-validated, verified before any placement); uninstall's removal set is closed over what install writes, with no recursive deletion anywhere.
+- [Phase 15] A locally built Signal binary installs into the external trust tier via consent-and-pin — the trusted-manifest gate is never weakened; the base install is toolchain-free by tripwire proof.
+- [Phase 15] Dev isolation is mechanical: topos-devguard (kernel's own config parser, component-wise containment, cwd-based source-path resolution matching the kernel's real base) refuses pre-flight; the only bypass banners every permitted path; dev loop owns 7778, installed owns 7777.
 
 ### Pending Todos
 
@@ -170,6 +175,7 @@ v1.0 decision log archived: full table in PROJECT.md Key Decisions; per-plan dec
 - ⚠️ [Pre-existing, surfaced during Phase 10] Flaky CI: `kernel/httpapi` `TestExecLinkSpawner_StreamsLinesInOrderAndExitsClean` + `_KillTerminatesLongRunningSubprocess` fail intermittently on GitHub runners (subprocess yields no lines / kill doesn't terminate), pass locally. Route to `/gsd-debug "flaky ExecLinkSpawner tests in kernel/httpapi on CI"`.
 - ⚠️ [Phase 10, advisory] 10-REVIEW.md warnings open: web/README.md non-link references, duplicated release-asset lists across workflows, test-portable CGO_ENABLED scoping. Fix via `/gsd-code-review 10 --fix`.
 - ⚠️ [Phase 6] 06-REVIEW.md WR-01 still open (advisory): client-side `highlightText` in `web/src/lib/format.ts` bulk-lowercases then indexes positionally — highlight spans mis-position after case-fold-expanding characters (e.g. İ). Narrow, untested edge case; fix via `/gsd-code-review 6 --fix`.
+- ⚠️ [Post-15 UAT, operational] Operator's Signal Desktop schema version is newer than the Signal plugin's accepted list — Signal source refuses to sync (the deliberate safety floor) until the verify-and-accept quick-task flow runs (cf. 260805-lry; pending todo signal-schema-version-verify-and-accept-tooling).
 - ⚠️ [Phase 8, ongoing operational risk] WhatsApp linked-device route can still be de-linked or banned by Meta at any time; plugin degrades honestly (named health states, captured rows survive) but there is no recovery beyond re-linking.
 
 ### Quick Tasks Completed
@@ -202,8 +208,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T00:09:54.912Z
-Stopped at: Completed 15-05-PLAN.md — all phase 15 plans done
+Last session: 2026-08-19T12:46:40.645Z
+Stopped at: Phase 15 complete — milestone v1.2.0 ready to close
 Resume file: None
 
 ## Operator Next Steps

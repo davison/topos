@@ -1,7 +1,7 @@
 ---
 phase: 15-installed-instance-dev-isolation
 verified: 2026-08-19T02:05:00Z
-status: human_needed
+status: passed
 score: 8/8 requirement-level truths verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,14 +9,17 @@ re_verification:
   previous_status: gaps_found
   previous_score: 7/8
   gaps_closed:
+
     - "ISOL-01 — devguard's relative [sources.*] path resolution base (Gap 1)"
     - "docs/install.md 'Installing a release' section contradicting the shipped no-argument latest-release path (Gap 2)"
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "With the installed instance replaced by `make install`, run `make install-signal`, restart the installed kernel, and add the Signal source through the app's untrusted-add consent flow."
     expected: "The source syncs and the chip shows the untrusted badge rather than a launch failure."
     why_human: "Requires the operator's real Signal Desktop database and a real UI consent interaction — not reproducible hermetically."
+
   - test: "Follow the roadmap's 5-step UAT: note the running checkout instance's webspace/mark/health state → `make install` → start `topos` from PATH → confirm identical state on 7777 → run `make dev` alongside and confirm 7778 comes up with neither instance showing the other's data → `make uninstall` and confirm config/index/marks survive."
     expected: "All 5 steps succeed with no data loss and no visible clash."
     why_human: "Requires the operator's real installed instance, real personal data (webspaces, marks, WhatsApp/Signal links), and real concurrent process observation — not reproducible hermetically."
@@ -59,6 +62,7 @@ current doc text, not accepted on the commit message's word:
    using `t.Chdir`) pin both sides. `go test ./cmd/topos-devguard/ -v` re-run live: all
    subtests pass, including the two new ones. `make dev-check` re-run live: 6/6 cases
    still pass (no regression from the resolution-base change).
+
 2. **Gap 2 fix, confirmed:** `docs/install.md`'s "Installing a release" section now shows
    both forms (`make install` for latest, `make install VERSION=<tag>` for a pin),
    documents the host/path/tag-shape validation and the printed-tag/no-credentials

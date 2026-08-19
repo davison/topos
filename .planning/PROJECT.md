@@ -18,7 +18,7 @@ Open one webspace and instantly see and grok all related information across ever
 - Release engineering live: change-gated nightlies, tag-triggered release artifacts (static CGO_ENABLED=0; Signal plugin deliberately excluded, built locally via `make signal`), GitHub milestone mirror script
 - Known operational risk: WhatsApp linked-device session can be de-linked/banned by Meta at any time; plugin degrades honestly, captured messages survive
 - **v1.1.0 Plugin Ecosystem shipped 2026-08-18** — 4 phases (11–14), 32 plans + 2 gap closures + 5 quick tasks, 309 commits in 6 days. Third-party plugin path proven end-to-end: external trust tier (provenance + pins + manifest gate), Google Drive source built clean-room out-of-repo against the published contract, per-item curation, PWA install. Milestone audit passed (11/11 requirements), phase-14 security audit 26/26 closed. See `.planning/MILESTONES.md` and `milestones/v1.1.0-*`.
-- **Current milestone:** v1.2.0 Dev/Prod Separation (defined 2026-08-18) — install story + full dev-side isolation so the operator runs installed artifacts daily while developing from the checkout. Remaining seeded candidates for later milestones: kernel OAuth/secrets services for plugins (requirement-grade todo), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
+- **v1.2.0 Dev/Prod Separation: Phase 15 complete 2026-08-19** (single-phase milestone, 5 plans + 1 inline gap-closure round) — the operator's live instance migrated to `make install`-ed artifacts and runs beside the checkout's dev loop with mechanical isolation (topos-devguard pre-flight, dev port 7778, `make isolation-check` simultaneity gate). Milestone ready to close (`/gsd-complete-milestone`); the completion tag publishes the first release carrying topos-plugin-filesystem. Remaining seeded candidates for later milestones: kernel OAuth/secrets services for plugins (requirement-grade todo), Signal schema-version verify-and-accept tooling (operator's Signal Desktop currently ahead of the accepted list — quick-task route), backlog 999.1 (distribution/dev guide/certification) and 999.2 (`topos-plugins` repo restructure + trust-model discussion)
 
 ## Current Milestone: v1.2.0 Dev/Prod Separation
 
@@ -66,13 +66,7 @@ Open one webspace and instantly see and grok all related information across ever
 
 - ✓ Per-item curation (KERN-09, KERN-10, UI-13, UI-14) — users get the last word on webspace contents: exclude any stream item (single, bulk, or from the detail pane) with a 5s undo toast, marks persist in the kernel index and survive re-sync/restart/index-rebuild while always outranking automatic match rules, an excluded-items view lists exactly what was removed and un-excludes on click; app installs as a PWA on desktop and mobile (ServiceWorker + manifest/assets, update notice via the shared toast layer) — Phase 13 (verified 5/5 after one gap-closure plan closed G-13-1, the cross-webspace undo skeleton strand, with a stale-generation entry guard in `load()` pinned by a RED-first browser spec)
 
-### Active
-
-- [ ] `make install [version]` installs GitHub release artifacts (kernel + plugins, default latest) under a configurable prefix; `topos` starts from PATH
-- [ ] `make install-signal` builds the cgo Signal plugin locally into the installed plugins dir
-- [ ] `make uninstall` removes installed binaries/plugins without touching config or state
-- [ ] Installed instance uses home/XDG config and state; dev checkout runs use .gitignored//tmp config and state exclusively (index, plugin stores, everything)
-- [ ] Dev/test servers run off production port 7777
+- ✓ Installed instance and dev isolation (INST-01..05, ISOL-01..03) — `make install [VERSION=<tag>]` downloads a release's artifacts, verifies every SHA-256 against that release's own checksums.txt before placement, and installs `$PREFIX/bin/topos` + `$PREFIX/lib/topos/plugins` via atomic renames (bare `make install` resolves the latest stable release through a host/path/tag-shape-validated redirect — nightly/prerelease structurally excluded); the installed kernel resolves the lib-tree plugins with the stock relative `[plugins] dir` (no config edit, checkout builds unaffected); `make install-signal` builds the cgo Signal plugin locally into the external trust tier (consent-and-pin, trusted-manifest gate untouched) while the base install is proven toolchain-free by a hostile-shim tripwire; `make uninstall` removes exactly what install placed (seeded home/XDG tree proven byte-identical across a full cycle); dev isolation is a mechanical pre-flight (`cmd/topos-devguard` refuses any dev config reaching the installed instance's config/state roots, sole bypass is a loud banner variable) with the dev loop moved to 7778; `make isolation-check` pins the simultaneity guarantee as a committed gate — Phase 15 (verified 8/8 after one inline gap-closure round; live-UAT'd: real migration + side-by-side dev run on the operator's machine)
 
 Deferred candidates (not this milestone): Google Drive source plugin moved to Validated (shipped v1.1.0). Kernel OAuth/secrets services for plugins; IMAP-vanilla refactor with provider extensions; OneDrive plugin; pull-by-URL distribution, dev guide, certification; `topos-plugins` repo restructure. Advisory review items (10-REVIEW warnings, 06-REVIEW WR-01) and pending todos ride along only if a phase touches their area.
 
@@ -145,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-18 after starting milestone v1.2.0 Dev/Prod Separation*
+*Last updated: 2026-08-19 after Phase 15 (v1.2.0 Dev/Prod Separation complete)*
