@@ -157,6 +157,78 @@ changed binary through the chip's re-pin flow.
 make uninstall-signal
 ```
 
+## Migrating from a checkout build to an installed instance
+
+The path this section covers: you have a running instance started from
+a checkout build (`make build`, or the `make dev` loop), and you want
+it running from installed release artifacts instead — losing nothing.
+
+**What is preserved, and why.** Your config file, your kernel index —
+including every mark in it — and every plugin store (your WhatsApp
+linked-device session most importantly) all live in the home/XDG
+locations (`~/.config/topos/`, `~/.local/share/topos/`), which the
+installer never reads and never writes. Installing touches only the
+prefix (`$PREFIX/bin` and `$PREFIX/lib/topos/plugins`). There is
+nothing to export, copy, or back up first — though nothing stops you
+backing up anyway.
+
+**The steps:**
+
+1. **Stop the running instance.** Installing over a live one succeeds
+   too (see "Re-running an install") — but the running process keeps
+   executing its old code until restarted, so stopping first keeps the
+   before/after line clean.
+2. **Run the install** — `make install` for the latest stable release,
+   or `make install VERSION=<tag>` for a specific one. The printed
+   summary shows the resolved tag, the prefix, and every path written.
+3. **Check the one config case that needs attention.** If your config's
+   `[plugins] dir` is an **absolute** path pointing into your checkout
+   (e.g. `/home/you/topos/bin/plugins`), the installed kernel will keep
+   resolving your checkout's plugin binaries — an absolute value is
+   honoured verbatim, by design. Two ways out: clear the key back to
+   the stock relative `"plugins"` (the default), so the installed
+   layout resolves `$PREFIX/lib/topos/plugins` automatically; or point
+   it at the installed plugins directory explicitly. The installer
+   deliberately does not edit your config to do this for you — it
+   never touches your config at all.
+4. **Start the installed instance** — `topos serve` (with
+   `$PREFIX/bin` on your `PATH`). It serves on the same address your
+   config's `[server] listen` names — `127.0.0.1:7777` by default.
+   Confirm it is the installed binary that is running:
+   `command -v topos` should print `$PREFIX/bin/topos`, and
+   `ls -l $PREFIX/bin/topos` shows the install time.
+5. **Verify nothing was lost.** The webspace list is unchanged; an
+   item you had marked is still marked; each source's chip shows the
+   same health state it had before. WhatsApp is still linked (the
+   session store never moved), and Signal — if you use it — needs the
+   one-time `make install-signal` opt-in described in the Signal
+   section above.
+
+**Backing out.** `make uninstall` removes exactly what `make install`
+placed and leaves everything you own — config, index, marks, plugin
+stores — in place. A checkout build still runs afterwards, against the
+same config and data, exactly as before.
+
+**Running a dev instance alongside.** The checkout's `make dev` loop
+runs beside the installed instance by design — its own port (7778),
+its own per-checkout config and state, and a pre-flight guard that
+refuses to touch what the installed instance owns. That story lives in
+[`docs/testing.md`](testing.md)'s "The real config and the dev config"
+section rather than being retold here.
+
+### Troubleshooting a migration
+
+- **Every source reports a launch failure (binary not found).** The
+  installed kernel is not finding its plugins — almost always the
+  absolute-`[plugins] dir` case in step 3 above: your config still
+  points at the checkout. Apply one of that step's two remedies.
+- **The Signal source reports `manifest_unverified`.** A locally built
+  Signal binary is sitting in the trusted plugins directory, where the
+  released kernel's build manifest cannot vouch for it. See
+  [Signal on an installed instance](#signal-on-an-installed-instance)
+  — `make install-signal` places it in the external directory and the
+  one-time consent flow takes it from there.
+
 ## Verifying the install machinery itself
 
 ```sh
