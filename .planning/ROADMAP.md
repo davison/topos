@@ -91,7 +91,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.2.0-ROADMAP
   4. Every escalation path named in the standing security todo is closed by a **committed test that fails if its gate is removed**: trust cannot be granted by editing config, by dropping a file into the trusted directory, or by shadowing a trusted plugin name with a different binary. (TRUST-04)
   5. The operator can see *why* a plugin holds the tier it holds — a verification failure names the cause on the source chip and in logs, and never silently downgrades a plugin the operator believes is trusted.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -108,7 +108,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 16-04-PLAN.md — TRUST-02: the topos-plugins sibling repo, its signing workflow, one real signed release, and the embedded key
+- [x] 16-04-PLAN.md — TRUST-02: the topos-plugins sibling repo, its signing workflow, one real signed release, and the embedded key
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -180,7 +180,7 @@ Phases execute in numeric order: 16 → 17 → 18 (decimal insertions, if any, r
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 16. Provenance-Based Plugin Trust | v1.3.0 | 3/5 | In Progress|  |
+| 16. Provenance-Based Plugin Trust | v1.3.0 | 4/5 | In Progress|  |
 | 17. The Plugin Repo Split | v1.3.0 | 0/TBD | Not started | - |
 | 18. Pull-by-URL Install & the Plugin Developer Guide | v1.3.0 | 0/TBD | Not started | - |
 
