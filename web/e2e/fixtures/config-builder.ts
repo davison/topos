@@ -7,7 +7,7 @@
 import { isAbsolute, join } from 'node:path';
 import { writeFileSync } from 'node:fs';
 import { stringify } from 'smol-toml';
-import { hashPluginBinary } from './plugin-binaries';
+import { hashPluginBinary, hashPluginBinaryAtPath } from './plugin-binaries';
 
 /** One [sources.<id>] block, mirroring kernel/config.Source's toml tags. */
 export interface FixtureSourceSpec {
@@ -90,6 +90,31 @@ export interface FixtureConfigSpec {
 	// is byte-identical to before this field existed. Never hashed into
 	// [plugins.pins] — that table is for the external tier only.
 	trustedBinaryLinks?: { name: string; srcPath: string }[];
+	// externalBinaryLinks (16-03-PLAN.md Task 2, gap closure): the EXTERNAL
+	// directory's own sibling of trustedBinaryLinks above — each entry
+	// symlinks an arbitrary source binary into `plugins.external_dir`
+	// under its OWN caller-chosen destination name, which need not match
+	// the source file's own basename. This exists because
+	// externalPluginBinaries (above) always resolves `srcDir/name` to
+	// `destDir/name` — the SAME name both sides — which is exactly wrong
+	// once trust became provenance-driven (Phase 16, D-11): a binary NAME
+	// covered by the kernel's own link-time build manifest (e.g.
+	// `topos-plugin-mockstrict`, `topos-plugin-filesystem` —
+	// `MANIFEST_E2E_BINARIES`, Makefile) now resolves TierTrusted from
+	// ANY directory it is found in, including the external one, since
+	// tier is a pure function of provenance rather than of location
+	// (success criterion 1: "trust is no longer a property of
+	// location"). A fixture that genuinely needs to prove "this real
+	// binary, loaded from the external directory, resolves external
+	// tier" must therefore place it under a name the manifest does NOT
+	// cover — this field is that seam, mirroring
+	// kernel/pluginhost/manifestgate_test.go's own
+	// buildRenamedMockPluginDirForManifestGate precedent at the Go level.
+	// Never hashed into [plugins.pins] — that table is keyed by the same
+	// renamed destination name a fixture using this field must pin
+	// against, so it is the fixture's own responsibility, not
+	// buildConfig's, exactly like trustedBinaryLinks above.
+	externalBinaryLinks?: { name: string; srcPath: string }[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is how a spec reaches a mock-plugin fixture env
@@ -175,6 +200,14 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 	const pins: Record<string, string> = {};
 	for (const name of spec.externalPluginBinaries ?? []) {
 		pins[name] = hashPluginBinary(name, spec.externalPluginBinariesSrcDir);
+	}
+	// externalBinaryLinks (16-03-PLAN.md Task 2, gap closure): each entry's
+	// OWN destination name is pinned against the OWN source path's bytes —
+	// the renamed-destination sibling of the loop above, since
+	// hashPluginBinary's `srcDir + name` join does not apply to an
+	// arbitrary, independently-named source path.
+	for (const link of spec.externalBinaryLinks ?? []) {
+		pins[link.name] = hashPluginBinaryAtPath(link.srcPath);
 	}
 
 	return {

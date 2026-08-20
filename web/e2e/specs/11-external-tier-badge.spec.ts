@@ -1,16 +1,34 @@
 // Phase 11's own tracer proof, end to end (11-01-PLAN.md Task 3): a real
 // kernel booted by the hermetic harness discovers one plugin from EACH
-// tier — topos-plugin-mock (trusted, PLUGIN_BIN_DIR) and
-// topos-plugin-mockstrict (external, a SECOND fixture directory this
-// plan's config-builder/kernel fixture changes introduce) — syncs both,
-// and the browser shows the untrusted trust badge on exactly the
-// external-tier chip. Proves PLUG-06 (external discovery/launch) and the
-// chip half of PLUG-08 (trust badge) together, on one thin path, exactly
-// as this whole plan's <objective> states.
+// tier — topos-plugin-mock (trusted, PLUGIN_BIN_DIR) and mockstrict
+// (external, a SECOND fixture directory this plan's config-builder/
+// kernel fixture changes introduce) — syncs both, and the browser shows
+// the untrusted trust badge on exactly the external-tier chip. Proves
+// PLUG-06 (external discovery/launch) and the chip half of PLUG-08
+// (trust badge) together, on one thin path, exactly as this whole plan's
+// <objective> states.
+//
+// 16-03-PLAN.md Task 2 (gap closure, D-11): the external-tier participant
+// is linked under the RENAMED destination `topos-plugin-mockstrict-untrusted`
+// via `externalBinaryLinks`, rather than under its own name via the
+// plain `externalPluginBinaries` this spec originally used. Once trust
+// became provenance-driven (Phase 16), `topos-plugin-mockstrict` — a
+// name the kernel's OWN link-time build manifest covers
+// (`MANIFEST_E2E_BINARIES`, Makefile) — resolves TierTrusted from ANY
+// directory, including the external one (success criterion 1: "trust is
+// no longer a property of location"), which would make this spec prove
+// nothing under its original fixture. The renamed destination is the
+// SAME real mockstrict binary and behaves identically (its own Go
+// binary carries no argv[0]/filename-dependent logic) — only its name is
+// absent from the manifest, restoring the genuine "no evidence, external
+// tier" case this spec exists to prove.
+import { join } from 'node:path';
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
+import { PLUGIN_BIN_DIR } from '../fixtures/plugin-binaries';
 
 const WEBSPACE = 'trust-boundary';
+const MOCKSTRICT_EXTERNAL_BINARY = 'topos-plugin-mockstrict-untrusted';
 
 // keywords ['demo', 'fixture'] deliberately spans both corpora's declared
 // vocabulary field: mock's own field is "labels" (its corpus carries
@@ -24,14 +42,16 @@ const configSpec: FixtureConfigSpec = {
 		{ id: 'mock', plugin: 'topos-plugin-mock', displayName: 'Mock Source' },
 		{
 			id: 'mockstrict',
-			plugin: 'topos-plugin-mockstrict',
+			plugin: MOCKSTRICT_EXTERNAL_BINARY,
 			path: '/tmp/e2e-11-mockstrict-unused',
 			displayName: 'Mockstrict Corpus'
 		}
 	],
 	webspaces: [{ name: WEBSPACE, keywords: ['demo', 'fixture'] }],
 	pluginBinaries: ['topos-plugin-mock'],
-	externalPluginBinaries: ['topos-plugin-mockstrict']
+	externalBinaryLinks: [
+		{ name: MOCKSTRICT_EXTERNAL_BINARY, srcPath: join(PLUGIN_BIN_DIR, 'topos-plugin-mockstrict') }
+	]
 };
 
 test.use({ configSpec });
