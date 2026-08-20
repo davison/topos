@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.3.0
 milestone_name: Plugin Repo Split
-current_phase: 16
-current_phase_name: provenance-based-plugin-trust
-status: executing
+current_phase: 17
+current_phase_name: The Plugin Repo Split
+status: planning
 stopped_at: Phase 16 context gathered
-last_updated: "2026-08-20T16:25:57.413Z"
+last_updated: "2026-08-20T21:46:13.314Z"
 last_activity: 2026-08-20
 last_activity_desc: Phase 16 execution started
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 7
-  completed_plans: 5
-  percent: 0
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -28,16 +28,16 @@ See: .planning/PROJECT.md (updated 2026-08-19 after v1.2.0 milestone)
 
 ## Current Position
 
-Phase: 16 (provenance-based-plugin-trust) — EXECUTING
-Plan: 1 of 7
-Status: Executing Phase 16
-Last activity: 2026-08-20 — Phase 16 execution started
+Phase: 17 — The Plugin Repo Split
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-20 — Phase 16 complete, transitioned to Phase 17
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 129
+- Total plans completed: 136
 - Average duration: —
 - Total execution time: —
 
@@ -62,6 +62,7 @@ Last activity: 2026-08-20 — Phase 16 execution started
 | 13 | 8 | - | - |
 | 14 | 6 | - | - |
 | 15 | 5 | - | - |
+| 16 | 7 | - | - |
 
 **Recent Trend:**
 

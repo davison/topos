@@ -31,7 +31,7 @@ live instance must come out the other side with every source still syncing.
 
 ## Phases
 
-- [ ] **Phase 16: Provenance-Based Plugin Trust** - The kernel derives trust from verifiable artifact provenance rather than directory location, closing the standing escalation paths
+- [x] **Phase 16: Provenance-Based Plugin Trust** - The kernel derives trust from verifiable artifact provenance rather than directory location, closing the standing escalation paths (completed 2026-08-20)
 - [ ] **Phase 17: The Plugin Repo Split** - All seven functional plugins move to the `topos-plugins` sibling repo with its own CI, releases, and install path; the kernel repo keeps contract + mocks only
 - [ ] **Phase 18: Pull-by-URL Install & the Plugin Developer Guide** - One CLI command takes a plugin from URL to running source in the tier its provenance earns, documented for third-party authors
 
@@ -185,7 +185,7 @@ Phases execute in numeric order: 16 → 17 → 18 (decimal insertions, if any, r
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 16. Provenance-Based Plugin Trust | v1.3.0 | 7/7 | In Progress|  |
+| 16. Provenance-Based Plugin Trust | v1.3.0 | 7/7 | Complete    | 2026-08-20 |
 | 17. The Plugin Repo Split | v1.3.0 | 0/TBD | Not started | - |
 | 18. Pull-by-URL Install & the Plugin Developer Guide | v1.3.0 | 0/TBD | Not started | - |
 
