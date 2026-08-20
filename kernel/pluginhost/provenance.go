@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -216,14 +217,47 @@ func mustDecodeProvenancePublicKey(b64 string) ed25519.PublicKey {
 // leave it unset and rely on embeddedProvenanceKeys alone.
 var provenanceKeysExtra string
 
+// provenanceKeyIDPattern is the restricted charset ValidateProvenanceKeyID
+// enforces (16-REVIEW.md WR-02): letters, digits, ".", "_", and "-" only.
+// Crucially this EXCLUDES "," and "=" — the two characters
+// FormatProvenanceKeys's comma-separated "keyid=<base64 pubkey>" spec uses
+// as its own delimiters. A key id containing either would silently break
+// the format's own round trip (a "," splits one segment into bogus ones; a
+// bare "=" shifts where ParseProvenanceKeys cuts the id from the base64
+// value) rather than being rejected at the point the id is actually
+// chosen.
+var provenanceKeyIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// ValidateProvenanceKeyID rejects a key id outright — before it is ever
+// embedded in a FormatProvenanceKeys spec or accepted by ParseProvenanceKeys
+// — if it is empty or contains any character outside
+// provenanceKeyIDPattern. cmd/topos-provenance's keygen and sign
+// subcommands call this on their own --key-id flag so a typo (most
+// concretely a stray "," or "=") fails loudly with a clear, actionable
+// error naming the exact key id chosen, rather than surfacing later as an
+// opaque "malformed provenance key segment" parse failure deep inside
+// AcceptedProvenanceKeys — a failure mode whose actual effect
+// (AcceptedProvenanceKeys fails safe and simply trusts nothing extra, per
+// its own doc comment) is easy to miss during a release-key rotation.
+func ValidateProvenanceKeyID(id string) error {
+	if id == "" {
+		return errors.New("pluginhost: provenance key id must not be empty")
+	}
+	if !provenanceKeyIDPattern.MatchString(id) {
+		return fmt.Errorf("pluginhost: provenance key id %q contains a character outside the allowed charset (letters, digits, \".\", \"_\", \"-\") — in particular \",\" and \"=\" are the spec's own delimiters and would silently break FormatProvenanceKeys/ParseProvenanceKeys's round trip", id)
+	}
+	return nil
+}
+
 // ParseProvenanceKeys parses spec — the comma-separated "keyid=<base64
 // pubkey>" format FormatProvenanceKeys produces — into a []ProvenanceKey
 // sorted by key id. An empty (or whitespace-only) spec is NOT an error:
 // it returns an empty, non-nil slice. Every other malformed shape — a
-// segment with no "=", an empty key id, or a base64 value whose decoded
-// length is not ed25519.PublicKeySize — is REJECTED outright, naming the
-// offending segment; nothing is ever silently dropped, mirroring
-// ParseManifest's own never-silently-drop discipline (manifest.go).
+// segment with no "=", an empty or out-of-charset key id (see
+// ValidateProvenanceKeyID), or a base64 value whose decoded length is not
+// ed25519.PublicKeySize — is REJECTED outright, naming the offending
+// segment; nothing is ever silently dropped, mirroring ParseManifest's own
+// never-silently-drop discipline (manifest.go).
 func ParseProvenanceKeys(spec string) ([]ProvenanceKey, error) {
 	trimmed := strings.TrimSpace(spec)
 	if trimmed == "" {
@@ -238,8 +272,8 @@ func ParseProvenanceKeys(spec string) ([]ProvenanceKey, error) {
 		}
 		id := segment[:idx]
 		encoded := segment[idx+1:]
-		if strings.TrimSpace(id) == "" {
-			return nil, fmt.Errorf("pluginhost: malformed provenance key segment %q: empty key id", segment)
+		if err := ValidateProvenanceKeyID(id); err != nil {
+			return nil, fmt.Errorf("pluginhost: malformed provenance key segment %q: %w", segment, err)
 		}
 		raw, err := base64.StdEncoding.DecodeString(encoded)
 		if err != nil {

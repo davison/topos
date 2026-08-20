@@ -469,11 +469,65 @@ func TestParseProvenanceKeys_MalformedSegmentsAreRejected(t *testing.T) {
 		"=abc",
 		"id=not-valid-base64!!!",
 		"id=" + base64.StdEncoding.EncodeToString([]byte("too-short")),
+		// 16-REVIEW.md WR-02: a key id outside ValidateProvenanceKeyID's
+		// restricted charset must be rejected too, not merely a bare "="
+		// or empty id — "key id!" contains a space and "!", neither of
+		// which is a format delimiter, so this exercises the CHARSET
+		// check specifically, distinct from the "missing =" and "empty
+		// id" cases above.
+		"key id!=" + base64.StdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize)),
 	}
 	for _, spec := range cases {
 		if _, err := ParseProvenanceKeys(spec); err == nil {
 			t.Errorf("ParseProvenanceKeys(%q): expected an error, got nil", spec)
 		}
+	}
+}
+
+// TestValidateProvenanceKeyID_AcceptsAndRejects (16-REVIEW.md WR-02) pins
+// the restricted charset directly: every character
+// FormatProvenanceKeys/ParseProvenanceKeys's own "keyid=<base64>"
+// delimiters rely on ("," and "=") must be rejected, along with an empty
+// id, while ordinary identifier-shaped ids (letters, digits, ".", "_",
+// "-") are accepted.
+func TestValidateProvenanceKeyID_AcceptsAndRejects(t *testing.T) {
+	valid := []string{"topos-plugins-2026a", "a", "key.id_v2", "ABC123"}
+	for _, id := range valid {
+		if err := ValidateProvenanceKeyID(id); err != nil {
+			t.Errorf("ValidateProvenanceKeyID(%q): expected nil, got %v", id, err)
+		}
+	}
+
+	invalid := []string{"", "has,comma", "has=equals", "has space", "has/slash", "has\tcontrol"}
+	for _, id := range invalid {
+		if err := ValidateProvenanceKeyID(id); err == nil {
+			t.Errorf("ValidateProvenanceKeyID(%q): expected an error, got nil", id)
+		}
+	}
+}
+
+// TestParseProvenanceKeys_FormatProvenanceKeys_RoundTripsSurvivesEveryValidCharsetChar
+// (16-REVIEW.md WR-02) proves the round trip holds for a key id using
+// every character class ValidateProvenanceKeyID allows in combination —
+// letters, digits, ".", "_", "-" — not just the single-letter ids the
+// tracer round-trip test above uses.
+func TestParseProvenanceKeys_FormatProvenanceKeys_RoundTripsSurvivesEveryValidCharsetChar(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("ed25519.GenerateKey: %v", err)
+	}
+	const id = "Release-Key.v2_2026a"
+	if err := ValidateProvenanceKeyID(id); err != nil {
+		t.Fatalf("test fixture id %q itself fails ValidateProvenanceKeyID: %v", id, err)
+	}
+
+	spec := FormatProvenanceKeys([]ProvenanceKey{{ID: id, PublicKey: pub}})
+	parsed, err := ParseProvenanceKeys(spec)
+	if err != nil {
+		t.Fatalf("ParseProvenanceKeys(%q): %v", spec, err)
+	}
+	if len(parsed) != 1 || parsed[0].ID != id {
+		t.Fatalf("expected round-trip id %q, got %+v", id, parsed)
 	}
 }
 

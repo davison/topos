@@ -86,6 +86,9 @@ func runKeygen(args []string) error {
 	if strings.TrimSpace(*keyID) == "" {
 		return errors.New("keygen: --key-id is required")
 	}
+	if err := pluginhost.ValidateProvenanceKeyID(*keyID); err != nil {
+		return fmt.Errorf("keygen: %w", err)
+	}
 	if strings.TrimSpace(*outDir) == "" {
 		return errors.New("keygen: --out-dir is required")
 	}
@@ -140,6 +143,9 @@ func runSign(args []string) error {
 	}
 	if strings.TrimSpace(*keyID) == "" {
 		return errors.New("sign: --key-id is required")
+	}
+	if err := pluginhost.ValidateProvenanceKeyID(*keyID); err != nil {
+		return fmt.Errorf("sign: %w", err)
 	}
 	if strings.TrimSpace(*repo) == "" {
 		return errors.New("sign: --repo is required")
