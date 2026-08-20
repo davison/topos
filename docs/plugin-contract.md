@@ -205,43 +205,57 @@ entirely on the kernel side of the process boundary.
 
 ## Trust tiers
 
-The kernel scans two plugin directories, never one:
+The kernel scans two plugin directories, and both are **pure search paths**
+— places the kernel looks for a binary named by `[sources.<id>] plugin`,
+and nothing more. Neither directory grants a tier; which one a binary
+happens to sit in is a location fact, not a trust fact.
 
-- **Trusted** — `[plugins] dir`, default `plugins`, the directory this
-  repository's own `make build`/`make dev` populates. A binary resolved
-  from here is `pluginhost.TierTrusted`.
-- **External** — `[plugins] external_dir`. A binary resolved from here is
-  `pluginhost.TierExternal`. Omitted (the common case — most operators
-  never set this key), it defaults to a per-OS platform data directory
-  with no config required: `$XDG_DATA_HOME/topos/plugins-external`
-  (falling back to `~/.local/share/topos/plugins-external` when
-  `XDG_DATA_HOME` is unset) on Linux, `~/Library/Application
-  Support/topos/plugins-external` on macOS, and
-  `%LOCALAPPDATA%\topos\plugins-external` on Windows. The kernel never
-  creates this directory itself — an operator who never drops a binary
-  there simply has an empty external tier, which is a legitimate,
-  unremarkable state, not an error.
+- **Trusted-directory search path** — `[plugins] dir`, default
+  `plugins`, the directory this repository's own `make build`/
+  `make dev` populates.
+- **External-directory search path** — `[plugins] external_dir`.
+  Omitted (the common case — most operators never set this key), it
+  defaults to a per-OS platform data directory with no config required:
+  `$XDG_DATA_HOME/topos/plugins-external` (falling back to
+  `~/.local/share/topos/plugins-external` when `XDG_DATA_HOME` is unset)
+  on Linux, `~/Library/Application Support/topos/plugins-external` on
+  macOS, and `%LOCALAPPDATA%\topos\plugins-external` on Windows. The
+  kernel never creates this directory itself — an operator who never
+  drops a binary there simply has an empty external tier, which is a
+  legitimate, unremarkable state, not an error.
 
-**Tier is derived exclusively from which directory a binary resolved
-from, launch time — never from anything the plugin itself declares.**
-There is no `Describe`-reported "I am trusted" field, no signature, no
-allowlist of known-good `source_type` values: the kernel decides tier
-purely by asking "which directory did I find this binary's bytes in,"
-and that answer is set once at launch and never re-derived from a live
-RPC afterward. This is a structural choice, not an oversight — a plugin
-process is not a trustworthy witness to its own trustworthiness.
+**Tier is decided per binary by `pluginhost.EvaluateTrust`, from the
+provenance evidence the artifact itself carries, wherever that binary
+sits** — a signed release manifest, or (during the Phase 17 transition)
+the kernel's link-time build manifest. There is no `Describe`-reported "I
+am trusted" field, no allowlist of known-good `source_type` values: tier
+is set once at launch and never re-derived from a live RPC afterward,
+because a plugin process is not a trustworthy witness to its own
+trustworthiness. Two consequences this phase's tests pin: a binary in the
+external directory CAN evaluate to `pluginhost.TierTrusted` when it
+carries valid evidence, and a binary in the trusted directory evaluates
+to `pluginhost.TierExternal` when it carries none.
 
-**The shadow rule.** If a binary of the same filename exists in BOTH
-directories, the kernel launches the trusted copy and ignores the
-external one, logging a named warning identifying the shadowed binary. A
-binary can never impersonate a trusted plugin by choosing a colliding
-filename in the external directory — the trusted directory always wins,
-silently to the running kernel (loudly to its own logs), never the other
-way around. When the trusted copy wins a collision, `GET /api/sources`
-also carries a `launch_advisory: "shadowed"` on that instance's own entry
+**The collision rule.** If a binary of the same filename exists in BOTH
+directories, the kernel evaluates both candidates and whichever carries
+valid evidence wins; if neither carries evidence, or both do, the
+existing trusted-first search order decides which copy launches. A
+candidate that a manifest positively names with a digest that no longer
+matches what's on disk is a tamper refusal — that resolves to the
+refusal itself and never falls back to launching the other copy instead.
+A binary can never impersonate a trusted plugin merely by choosing a
+colliding filename in the external directory; only carrying (or lacking)
+verifiable evidence decides the winner, and every collision is logged by
+name at the launch-time call site. When the trusted-first tiebreak
+resolves a collision, `GET /api/sources` also carries a
+`launch_advisory: "shadowed"` on that instance's own entry
 (`13-05-PLAN.md`, `D-14`) — a structured, UI-visible fact, not only a log
 line, so an operator can see that the plugin they separately consented
 to pin is not the one actually running.
+
+See [`docs/plugin-trust.md`](plugin-trust.md) for the authoritative trust
+model — the two evidence sources, the on-disk manifest format, and what
+does and does not earn trust — rather than restating it here.
 
 **Trusted status is a build-provenance fact, not a filesystem-location
 proxy (`13-05-PLAN.md`, `D-12`/`D-13`).** Which directory a binary sits
