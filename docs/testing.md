@@ -75,11 +75,16 @@ kernel launches the installed plugin from `$PREFIX/lib/topos/plugins`
 with the stock relative `[plugins] dir` (INST-01/INST-03). Its cases
 also pin every refusal and repair behaviour: corrupted asset,
 traversal-shaped manifest, unwritable prefix, idempotent re-run, live
-replacement over a running kernel, the uninstall data-safety cycle
-(a seeded home/XDG tree byte-identical across install+uninstall),
-foreign-file survival, uninstall under a live kernel, the toolchain
-tripwire (the base install completes with failing compiler shims first
-on `PATH`), Signal removal, and the latest-release URL validator.
+replacement over a running kernel, the install-time provenance step
+(16-05-PLAN.md Task 1, [`docs/plugin-trust.md`](plugin-trust.md)) — a
+provenance-free release installs unchanged, a validly-signed release
+verifies and installs, and a binary altered after signing aborts naming
+it with the target prefix byte-identical before/after — the uninstall
+data-safety cycle (a seeded home/XDG tree byte-identical across
+install+uninstall), foreign-file survival, uninstall under a live
+kernel, the toolchain tripwire (the base install completes with
+failing compiler shims first on `PATH`), Signal removal, and the
+latest-release URL validator.
 Hermetic and offline except one live latest-release resolution case,
 which skips loudly by name when the network is unreachable. Safe beside
 a running kernel — every port is ephemeral and self-selected.
@@ -626,7 +631,7 @@ specs build on).
   `excluded_count` assertions stay hermetic under a shared worker-scoped
   kernel.
 
-## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` / `16-file-drop-external-tier.spec.ts` — the trust-tier states, real binaries
+## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` / `16-file-drop-external-tier.spec.ts` / `16-signed-provenance-tier.spec.ts` — the trust-tier states, real binaries
 
 Phase 13's own trust-tier hardening (13-06-PLAN.md, D-12/D-13/D-14) and
 Phase 16's provenance-based rewrite (16-03-PLAN.md, D-11) together
@@ -634,9 +639,11 @@ prove every bypass path the folded todo
 (`2026-08-13-plugin-trust-tier-is-directory-location-not-provenance.md`)
 documented is closed by real kernel code and a real browser, not only
 by `kernel/pluginhost`'s own unit tests (`manifestgate_test.go`,
-`escalation_test.go` — see below). None of the three specs builds a
-new plugin binary — each is driven entirely by binaries the existing
-`make e2e` recipe already produces.
+`escalation_test.go` — see below). See
+[`docs/plugin-trust.md`](plugin-trust.md) for the trust model these
+specs exercise. None of the four specs builds a new plugin binary — each
+is driven entirely by binaries the existing `make e2e` recipe already
+produces.
 
 - **`13-manifest-unverified.spec.ts`** (D-05/D-12/D-13, repointed by
   16-03-PLAN.md Task 2 for D-11) — links a TAMPERED copy of the real
@@ -664,6 +671,21 @@ new plugin binary — each is driven entirely by binaries the existing
   trusted directory, while a healthy `topos-plugin-mock` control chip
   alongside it is unaffected — and that the refusal names the dropped
   binary in the kernel's own log.
+- **`16-signed-provenance-tier.spec.ts`** (16-05-PLAN.md Task 2, D-01/
+  D-05/D-07/D-12) — the positive half of success criterion 1, in the
+  EXTERNAL directory: links the real `topos-plugin-mockstrict` binary
+  under two RENAMED destinations (neither a `MANIFEST_E2E_BINARIES`
+  name, so the link-time arm cannot be what grants trust), signs each
+  independently through the real `topos-provenance` CLI via the
+  link-time `provenanceKeysExtra` key seam `make e2e` injects
+  (Makefile), and records no pin for either. Proves a validly signed
+  external-directory binary renders healthy and trusted with no badge
+  and no re-pin remedy, its items sync, and its sibling — signed then
+  had its OWN `.provenance.sig` deleted before boot — resolves the
+  untrusted path instead: badge, no launch, no synced items. Both cases
+  share one kernel boot, since Playwright forbids varying a
+  worker-scoped fixture option across `test.describe` blocks in one
+  file.
 - **`13-shadowed-advisory.spec.ts`** (D-14) — links
   `bin/plugins/topos-plugin-mock` into BOTH the hermetic trusted and
   external directories under the identical name, with a real pin

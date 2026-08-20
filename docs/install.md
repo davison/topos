@@ -83,6 +83,27 @@ drift. Any mismatch aborts the install with the failing file named, and
 leaves `$PREFIX` byte-for-byte unchanged: nothing is placed until every
 asset has verified.
 
+## Provenance verification
+
+Checksum verification (above) proves transport integrity — "these are
+the bytes `checksums.txt` named" — never publisher authenticity. A
+release that also publishes a signed provenance manifest
+(`*.provenance.json`/`*.provenance.sig`, see
+[`docs/plugin-trust.md`](plugin-trust.md) for the full format) gets a
+second, independent check: still inside the same verify stage, still
+before anything is placed, the installer runs the same
+`topos-provenance verify` the kernel's own launch gate calls. A release
+carrying no provenance files at all — every release this repository has
+published to date — makes this step a documented no-op; the install
+proceeds exactly as it always has.
+
+The installer resolves the verifier itself needs, in order: a
+`topos-provenance` binary published alongside the release in the staged
+payload; one already installed at `$PREFIX/bin/topos-provenance` from a
+prior install; or one already on `PATH`. A release that ships provenance
+evidence but for which no verifier can be resolved is a loud abort, never
+a silent skip — shipped evidence must be checked.
+
 ## What a failed install leaves behind
 
 Every refusal is designed to leave `$PREFIX` in a defined state:
@@ -92,6 +113,14 @@ Every refusal is designed to leave `$PREFIX` in a defined state:
   completion before placement ever starts. The two installed
   directories may exist (they are created by the early writability
   probe) but contain no new files.
+- **Provenance refusal** — a release carrying signed provenance evidence
+  whose signature does not verify, names an unknown key, or names a
+  digest that no longer matches the downloaded bytes aborts naming the
+  binary, before any placement. `$PREFIX` is untouched — identical in
+  shape to a checksum mismatch, just a second, independent check that
+  catches what checksum verification alone cannot (an attacker who
+  swaps a binary and regenerates `checksums.txt` still cannot forge a
+  signature).
 - **Missing asset** — a download that returns an HTTP error aborts
   naming the asset and the release tag, before verification and before
   any placement. `$PREFIX` is untouched.
@@ -232,12 +261,25 @@ section rather than being retold here.
   installed kernel is not finding its plugins — almost always the
   absolute-`[plugins] dir` case in step 3 above: your config still
   points at the checkout. Apply one of that step's two remedies.
-- **The Signal source reports `manifest_unverified`.** A locally built
-  Signal binary is sitting in the trusted plugins directory, where the
-  released kernel's build manifest cannot vouch for it. See
-  [Signal on an installed instance](#signal-on-an-installed-instance)
-  — `make install-signal` places it in the external directory and the
-  one-time consent flow takes it from there.
+- **A source reports `manifest_unverified`.** As of Phase 16 this one
+  value covers refusals from either trust arm
+  ([`docs/plugin-trust.md`](plugin-trust.md)) — the specific cause is
+  named in the source's own `last_error` text, never a separate field:
+  - **A locally built Signal binary** sitting in the trusted plugins
+    directory, where the released kernel's link-time build manifest
+    cannot vouch for it. See
+    [Signal on an installed instance](#signal-on-an-installed-instance)
+    — `make install-signal` places it in the external directory and the
+    one-time consent flow takes it from there.
+  - **A missing signature file, an unknown signing key id, or a digest
+    mismatch** against a signed release manifest — run
+    `topos-provenance verify --dir <plugins dir>` against the binary
+    directly for the exact diagnostic; see
+    [`docs/plugin-trust.md`](plugin-trust.md#verifying-by-hand) for the
+    invocation.
+  In every case there is no re-pin/trust remedial action for this
+  reason — the only path to running a binary neither arm vouches for is
+  the existing external-tier consent-and-pin flow.
 
 ## Verifying the install machinery itself
 

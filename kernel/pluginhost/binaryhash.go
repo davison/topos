@@ -18,11 +18,17 @@ import (
 // benefit.
 //
 // This is an integrity/identity check (content addressing), never an
-// authenticity one: a matching digest proves "the same bytes I saw before",
-// never "published by someone I trust" — there is no signature or publisher
-// verification anywhere in this design (11-RESEARCH.md's V6 Cryptography
-// note: SHA-256 here is narrowly an integrity control, not a cryptographic
-// authentication feature).
+// authenticity one on its own: a matching digest proves "the same bytes I
+// saw before", never by itself "published by someone I trust" (11-RESEARCH.md's
+// V6 Cryptography note: SHA-256 here is narrowly an integrity control, not a
+// cryptographic authentication feature). Publisher authentication DOES exist
+// elsewhere in this design, as of Phase 16: a validly-signed release manifest
+// (see provenance.go's VerifySignedProvenance/EvaluateTrust, and
+// docs/plugin-trust.md for the full model) is exactly that — an ed25519
+// signature over a manifest naming this HashBinary digest, verified against
+// the kernel's own embedded accepted-key set. HashBinary itself still only
+// ever proves integrity; it is the caller (EvaluateTrust) that adds
+// authenticity on top, by also checking a signature.
 func HashBinary(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

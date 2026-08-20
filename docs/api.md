@@ -736,11 +736,18 @@ ever renders; none of them is decided client-side.
   `launch_failure`, never on parsing `last_error`'s free text** — the
   message string is for a human to read, and a copy edit to it must never
   change what the UI offers to do. `"manifest_unverified"` names a
-  trusted-directory binary absent from, or not matching, the kernel's
-  link-time build manifest (`docs/plugin-contract.md`'s "Trust tiers");
-  unlike `"pin_mismatch"`, there is no re-pin/trust remedial action for
-  this reason — the only path to running an unverified trusted-directory
-  binary is the existing external-tier consent-and-pin flow.
+  binary that neither of this kernel's two trust arms vouches for
+  (`docs/plugin-trust.md`): the link-time build manifest, or (as of
+  Phase 16) a validly-signed release manifest. **This one value now
+  covers both evidence arms unchanged** — the vocabulary itself is
+  additive-free, and the specific cause (absent from the link-time
+  manifest; unknown signing key; a signature that does not verify; a
+  digest that no longer matches what a manifest names) is carried only in
+  `last_error`'s message text, never in a new field. A client must still
+  branch on `launch_failure` alone; unlike `"pin_mismatch"`, there is no
+  re-pin/trust remedial action for this reason — the only path to running
+  a binary neither arm vouches for is the existing external-tier
+  consent-and-pin flow.
 - **`launch_advisory`** (`13-05-PLAN.md`, `D-14`) is a **CLOSED-VOCABULARY**
   field, empty or `"shadowed"` today, populated ONLY on an entry that DID
   launch (a probe-derived entry — never alongside a populated

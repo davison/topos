@@ -275,17 +275,29 @@ for a worked example from the one plugin an operator routinely rebuilds
 locally against a release kernel — the exact shape that hits this
 refusal in practice, and the consent-and-pin path out of it.
 
-**A manifest match is an integrity control, not publisher authentication
-— be honest about what it proves.** A matching SHA-256 tells you "the
-bytes on disk are the exact bytes this kernel was built alongside," and
-nothing more: there is no signature, no publisher identity, no
-supply-chain attestation anywhere in this mechanism (mirroring
-`kernel/pluginhost/binaryhash.go`'s own doc comment — "narrowly an
-integrity control, not a cryptographic authentication feature"). It does
-not prove who wrote the plugin's source code, that the source code is
-trustworthy, or that the binary does what its name implies — it proves
-only that these are the same bytes a build you already trust produced.
-Do not read "verified by the build manifest" as "verified safe."
+**A link-time manifest match is an integrity control, not publisher
+authentication — be honest about what it proves.** A matching SHA-256
+tells you "the bytes on disk are the exact bytes this kernel was built
+alongside," and nothing more: there is no signature, no publisher
+identity, and no supply-chain attestation in the link-time build-manifest
+arm specifically (mirroring `kernel/pluginhost/binaryhash.go`'s own doc
+comment — "narrowly an integrity control, not a cryptographic
+authentication feature"). It does not prove who wrote the plugin's source
+code, that the source code is trustworthy, or that the binary does what
+its name implies — it proves only that these are the same bytes a build
+you already trust produced. Do not read "verified by the build manifest"
+as "verified safe."
+
+**Publisher authentication DOES exist elsewhere in this design, as of
+Phase 16.** A validly-signed release manifest — an ed25519 signature over
+a manifest naming this binary's SHA-256, verified against the kernel's
+own embedded accepted-key set — is exactly the publisher-authentication
+fact the paragraph above says the link-time arm alone cannot provide: it
+proves the binary was produced by whoever controls that signing key, not
+merely that it matches some earlier build. See
+[`docs/plugin-trust.md`](plugin-trust.md) for the full model — the two
+evidence sources, the on-disk manifest format, and what does and does not
+earn trust — rather than restating it here.
 
 **`[sources.<id>] plugin` must be a bare binary filename.** The value
 resolves directly inside one of the two configured directories above and
