@@ -279,14 +279,17 @@ func TestDiscoverBinaries_FollowsSymlinkedBinaries(t *testing.T) {
 }
 
 // TestDiscoverAllTiered_NameInBothDirectoriesResolvesToTrustedOnly proves
-// D-11's shadow rule at the discovery level: a binary name present in
-// BOTH the trusted and external directories appears EXACTLY ONCE in
-// DiscoverAllTiered's result, tagged TierTrusted — the trusted copy
-// always wins a two-tier name collision.
+// D-11's replacement collision rule at the discovery level: a binary name
+// present in BOTH the trusted and external directories, where the trusted
+// copy carries evidence (installTrustedManifest — the link-time arm),
+// appears EXACTLY ONCE in DiscoverAllTiered's result, tagged TierTrusted
+// — the evidence-carrying copy wins a two-tier name collision, never the
+// directory alone.
 func TestDiscoverAllTiered_NameInBothDirectoriesResolvesToTrustedOnly(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-shadowed")
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-shadowed")
@@ -321,6 +324,7 @@ func TestDiscoverTiered_ExclusionPolicyAppliesUniformlyAcrossBothTiers(t *testin
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-mock")
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-mockstrict")
@@ -358,6 +362,7 @@ func TestDiscoverTiered_ExclusionPolicyAppliesUniformlyAcrossBothTiers(t *testin
 func TestDiscoverAllTiered_AbsentExternalDirectoryIsEmptyTierNotAnError(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 
 	got, err := DiscoverAllTiered(Dirs{Trusted: trustedDir, External: filepath.Join(t.TempDir(), "does-not-exist")})
 	if err != nil {
@@ -404,6 +409,37 @@ func TestDiscoverAllTiered_SymlinkedExternalBinaryIsDiscovered(t *testing.T) {
 	want := []TieredBinary{{Name: "topos-plugin-example", Tier: TierExternal}}
 	if len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("expected a symlinked external binary %+v, got %+v", want, got)
+	}
+}
+
+// TestDiscoverAllTiered_DigestMismatchStillAppearsTaggedExternal proves
+// T-16-11: a binary whose signed manifest names it with a MISMATCHED
+// digest (a tamper refusal from EvaluateTrust) still APPEARS in
+// DiscoverAllTiered's listing — so the picker and describe endpoints keep
+// seeing it — but is tagged TierExternal, never silently dropped or
+// mistaken for a legitimately trusted binary. The listing call itself
+// returns a nil error; the refusal is re-asserted at launch, the only
+// place that runs code.
+func TestDiscoverAllTiered_DigestMismatchStillAppearsTaggedExternal(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-tampered")
+	keyID, priv := installProvenanceTestKey(t)
+	hash := mustHashBinary(t, filepath.Join(trustedDir, "topos-plugin-tampered"))
+	writeSignedManifest(t, trustedDir, "topos-plugins-v0.1.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-tampered", SHA256: hash, Version: "0.1.0", Contract: "topos.v1"}},
+		keyID, priv)
+
+	// Tamper the binary bytes AFTER the manifest above was computed from
+	// the original ones.
+	mutateLastByte(t, filepath.Join(trustedDir, "topos-plugin-tampered"))
+
+	got, err := DiscoverAllTiered(Dirs{Trusted: trustedDir})
+	if err != nil {
+		t.Fatalf("expected a nil error even with a tamper refusal present, got: %v", err)
+	}
+	want := []TieredBinary{{Name: "topos-plugin-tampered", Tier: TierExternal}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("expected the tampered binary to still appear, tagged %+v, got %+v", want, got)
 	}
 }
 
