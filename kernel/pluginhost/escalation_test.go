@@ -219,9 +219,18 @@ func TestEscalation_ShadowingCannotInheritTrust(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected a refusal for a name-shadowed binary whose bytes differ from the vouched digest, got tier %q with no error", tier)
 		}
-		if tier == TierTrusted {
-			t.Fatalf("must never resolve %q for a digest-mismatched shadow", TierTrusted)
-		}
+		// 16-06-PLAN.md Task 1 (16-VERIFICATION.md gap 1 / CR-01 / WR-01):
+		// tier is now DELIBERATELY TierTrusted on this refusal — a signed
+		// manifest positively named "topos-plugin-mock" with a digest that
+		// no longer matches, so this is a trusted-tier refusal on the
+		// wire (matching docs/api.md's dropped-binary worked example),
+		// exactly as EvaluateTrust's own doc comment now states. Tier is
+		// a REPORTING field only; err (still non-nil, still
+		// ErrProvenanceUnverified below) is what actually refuses this
+		// binary — no subprocess is ever created, and D-13's
+		// never-demote-and-run rule is unchanged: this assertion no
+		// longer treats tier==TierTrusted as itself an escalation,
+		// because the returned error is what launch() gates on.
 		if tier == TierExternal {
 			t.Fatalf("expected a REFUSAL, not a demotion to %q — a manifest positively naming this binary with a different digest must never fall back to external tier", TierExternal)
 		}
