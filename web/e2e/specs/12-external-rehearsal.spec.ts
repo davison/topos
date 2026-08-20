@@ -4,12 +4,7 @@
 // mockstrict tracer (11-external-tier-badge.spec.ts) but against real
 // source work instead of a bare Describe/Match stub. The load-bearing
 // fixture choice: this spec deliberately omits topos-plugin-filesystem from
-// `pluginBinaries` (the trusted-dir list) and names it ONLY in
-// `externalPluginBinaries` — Phase 11 D-11 resolves a binary present in
-// BOTH directories as trusted, which would silently make this spec prove
-// nothing. `pluginBinaries: []` makes the trusted directory legitimately
-// empty (D-09) rather than accidentally re-adding the filesystem binary
-// there.
+// `pluginBinaries` (the trusted-dir list).
 //
 // This spec does NOT re-prove Phase 11's own mechanics (the add-flow
 // warning, the re-pin flow, the binary-changed state) — those already have
@@ -17,12 +12,32 @@
 // proves exactly one new thing: a real, full-featured source plugin behaves
 // identically on the external path — same discovery, same pin
 // verification, same launch, same sync, same badge.
+//
+// 16-03-PLAN.md Task 2 (gap closure, D-11): the external-tier binary is
+// linked under the RENAMED destination `topos-plugin-filesystem-untrusted`
+// via `externalBinaryLinks`, rather than under its own name via the
+// plain `externalPluginBinaries` this spec originally used. Once trust
+// became provenance-driven (Phase 16), `topos-plugin-filesystem` — a
+// name the kernel's OWN link-time build manifest covers
+// (`MANIFEST_E2E_BINARIES`, Makefile) — resolves TierTrusted from ANY
+// directory it is found in, including the external one (success
+// criterion 1: "trust is no longer a property of location"), which
+// would silently make this spec prove nothing under its original
+// fixture (the ORIGINAL header comment's own "Phase 11 D-11 would
+// otherwise resolve it as trusted if it were present in both
+// directories" concern turns out to apply even to a SINGLE placement,
+// once tier stopped being directory-derived at all). The renamed
+// destination is the SAME real filesystem plugin binary and behaves
+// identically (no argv[0]/filename-dependent logic) — only its name is
+// absent from the manifest, restoring the genuine "no evidence, external
+// tier" case this spec exists to prove.
 import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
 import { mkdtempCorpus } from '../fixtures/corpus';
 import type { FixtureConfigSpec } from '../fixtures/config-builder';
+import { PLUGIN_BIN_DIR } from '../fixtures/plugin-binaries';
 
 // The same minimal-but-structurally-valid PDF fixture 12-filesystem-tracer
 // and 12-filesystem-recursion use — a real %PDF- header through a real
@@ -47,7 +62,7 @@ const MARKDOWN_CONTENT = '# Household notes\n\nSomething to remember.\n';
 
 const PDF_FILENAME = 'invoice.pdf';
 const MARKDOWN_FILENAME = 'notes.md';
-const FILESYSTEM_BINARY = 'topos-plugin-filesystem';
+const FILESYSTEM_BINARY = 'topos-plugin-filesystem-untrusted';
 const SOURCE_ID = 'docs-folder';
 const DISPLAY_NAME = 'Household Docs (external)';
 const WEBSPACE = 'household-external';
@@ -72,11 +87,13 @@ const configSpec: FixtureConfigSpec = {
 	],
 	webspaces: [{ name: WEBSPACE, keywords: [basename(corpusDir)] }],
 	// The load-bearing part (see file header): the filesystem binary is
-	// named ONLY here, never in pluginBinaries below — Phase 11 D-11 would
-	// otherwise resolve it as trusted if it were present in both
-	// directories.
+	// linked ONLY here, under a RENAMED destination the kernel's own
+	// link-time build manifest does not cover (Phase 16, D-11) — never
+	// in pluginBinaries below, and never under its own name.
 	pluginBinaries: [],
-	externalPluginBinaries: [FILESYSTEM_BINARY]
+	externalBinaryLinks: [
+		{ name: FILESYSTEM_BINARY, srcPath: join(PLUGIN_BIN_DIR, 'topos-plugin-filesystem') }
+	]
 };
 
 test.use({ configSpec });
