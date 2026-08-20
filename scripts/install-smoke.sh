@@ -410,6 +410,105 @@ KERNEL_PID=""
 echo "==> Case PASS: live replacement"
 
 # ---------------------------------------------------------------------
+# Case: provenance — no provenance files installs exactly as before
+# (D-09/TRUST-03's no-regression pin, 16-05-PLAN.md Task 1). The base
+# fixture release built above (smoke_build_fixture_release) carries no
+# *.provenance.json at all — every real release this repository has
+# published to date is shaped exactly like this — so the new
+# provenance-verification step inside install.sh must be a documented
+# no-op and the install must place exactly the same file set it always
+# has.
+# ---------------------------------------------------------------------
+echo "==> Case: provenance — no provenance files installs exactly as before"
+NOPROV_PREFIX="$WORK/prefix-provenance-none"
+run_install "$NOPROV_PREFIX" "file://$WORK/release"
+if [ "$INSTALL_RC" -ne 0 ]; then
+  fail "provenance no-op case: install of a provenance-free release failed (rc=$INSTALL_RC)
+$INSTALL_OUT"
+fi
+if [ ! -f "$NOPROV_PREFIX/bin/topos" ] || [ ! -f "$NOPROV_PREFIX/lib/topos/plugins/topos-plugin-mock" ]; then
+  fail "provenance no-op case: expected files were not placed"
+fi
+echo "==> Case PASS: provenance — no provenance files installs exactly as before"
+
+# ---------------------------------------------------------------------
+# Case: provenance — a valid signed manifest verifies and installs
+# (16-05-PLAN.md Task 1). A second, separately-built fixture release
+# (smoke_build_fixture_release_with_provenance) carries a real
+# .provenance.json/.provenance.sig pair for topos-plugin-mock plus a
+# topos-provenance CLI relinked to trust the throwaway key that signed
+# it — install.sh must resolve that STAGED CLI (tier 1 of its own
+# resolution order) and verify successfully before placing anything.
+# ---------------------------------------------------------------------
+echo "==> building fixture release with signed provenance ($TAG)"
+PROV_WORK="$WORK/provenance-fixture"
+mkdir -p "$PROV_WORK"
+smoke_build_fixture_release_with_provenance "$PROV_WORK" "$TAG"
+PROV_MANIFEST_NAME="$(cat "$PROV_WORK/provenance-manifest-name")"
+PROV_SIG_NAME="${PROV_MANIFEST_NAME%.provenance.json}.provenance.sig"
+
+echo "==> Case: provenance — valid signed manifest verifies and installs"
+PROV_PREFIX="$WORK/prefix-provenance-valid"
+run_install "$PROV_PREFIX" "file://$PROV_WORK/release"
+if [ "$INSTALL_RC" -ne 0 ]; then
+  fail "provenance valid case: install of a validly-signed release failed (rc=$INSTALL_RC)
+$INSTALL_OUT"
+fi
+if [ ! -f "$PROV_PREFIX/bin/topos" ] || [ ! -f "$PROV_PREFIX/lib/topos/plugins/topos-plugin-mock" ]; then
+  fail "provenance valid case: expected files were not placed"
+fi
+echo "==> Case PASS: provenance — valid signed manifest verifies and installs"
+
+# ---------------------------------------------------------------------
+# Case: provenance — a binary altered AFTER signing aborts, naming it,
+# and leaves the target prefix byte-identical to its pre-run state
+# (16-05-PLAN.md Task 1). checksums.txt is regenerated over the
+# TAMPERED bytes so the pre-existing SHA-256 pass alone would succeed —
+# this is deliberately NOT the "corrupted asset" case above (which tests
+# transport-integrity failure): it proves provenance catches what
+# checksum verification alone cannot — bytes swapped consistently with a
+# regenerated manifest, but whose SIGNATURE (cut against the original
+# bytes, unforgeable without the private key) no longer matches.
+# ---------------------------------------------------------------------
+echo "==> Case: provenance — binary altered after signing aborts, naming it"
+TAMPER_BASE="$WORK/release-provenance-tampered"
+mkdir -p "$TAMPER_BASE/download"
+cp -r "$PROV_WORK/release/download/$TAG" "$TAMPER_BASE/download/$TAG"
+printf 'x' >> "$TAMPER_BASE/download/$TAG/topos-plugin-mock"
+
+TAMPER_CHK="$(mktemp -d)"
+mkdir -p "$TAMPER_CHK/plugins"
+cp "$TAMPER_BASE/download/$TAG/topos" "$TAMPER_CHK/topos"
+cp "$TAMPER_BASE/download/$TAG/topos-provenance" "$TAMPER_CHK/topos-provenance"
+cp "$TAMPER_BASE/download/$TAG/topos-plugin-mock" "$TAMPER_CHK/plugins/topos-plugin-mock"
+cp "$TAMPER_BASE/download/$TAG/$PROV_MANIFEST_NAME" "$TAMPER_CHK/plugins/$PROV_MANIFEST_NAME"
+cp "$TAMPER_BASE/download/$TAG/$PROV_SIG_NAME" "$TAMPER_CHK/plugins/$PROV_SIG_NAME"
+(cd "$TAMPER_CHK" && sha256sum topos topos-provenance "plugins/topos-plugin-mock" "plugins/$PROV_MANIFEST_NAME" "plugins/$PROV_SIG_NAME") \
+  > "$TAMPER_BASE/download/$TAG/checksums.txt"
+rm -rf "$TAMPER_CHK"
+
+TAMPER_PREFIX="$WORK/prefix-provenance-tampered"
+mkdir -p "$TAMPER_PREFIX"
+manifest_of_prefix "$TAMPER_PREFIX" > "$WORK/provenance-tampered-before"
+
+run_install "$TAMPER_PREFIX" "file://$TAMPER_BASE"
+if [ "$INSTALL_RC" -eq 0 ]; then
+  fail "provenance tampered case: install exited 0, expected a provenance refusal"
+fi
+if ! printf '%s' "$INSTALL_OUT" | grep -q "topos-plugin-mock"; then
+  fail "provenance tampered case: refusal did not name the binary
+$INSTALL_OUT"
+fi
+
+manifest_of_prefix "$TAMPER_PREFIX" > "$WORK/provenance-tampered-after"
+if ! cmp -s "$WORK/provenance-tampered-before" "$WORK/provenance-tampered-after"; then
+  diff "$WORK/provenance-tampered-before" "$WORK/provenance-tampered-after" >&2 || true
+  fail "provenance tampered case: the target prefix changed across the failed install"
+fi
+assert_prefix_untouched "$TAMPER_PREFIX"
+echo "==> Case PASS: provenance — binary altered after signing aborts, naming it"
+
+# ---------------------------------------------------------------------
 # Case: uninstall data-safety cycle — the real INST-05 gate. A seeded
 # home/XDG tree (config, index, a plugin store) must be byte-identical
 # across a full install+uninstall cycle, and the prefix must be clean

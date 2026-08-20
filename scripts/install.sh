@@ -151,8 +151,16 @@ fi
 # IS the manifest (it is what release.yml's own one-place-only ASSETS
 # list produced); a second hardcoded list here is exactly the drift that
 # comment guards against. Every derived relative path must match an
-# allowlist shape: exactly "topos", or "plugins/" followed by a plugin
-# binary name of lowercase letters, digits and hyphens. Anything
+# allowlist shape: exactly "topos", exactly "topos-provenance" (16-05-
+# PLAN.md Task 1: a release MAY optionally publish the provenance
+# verifier CLI itself as an asset — see the provenance-verification step
+# below), "plugins/" followed by a plugin binary name of lowercase
+# letters, digits and hyphens, or "plugins/" followed by a provenance
+# file shape (D-05/D-07: *.provenance.json / *.provenance.sig, whose
+# basenames combine a release repo and tag and so may contain dots the
+# plain-binary-name shape below forbids — validated instead as "no path
+# separators, no leading dot" so a provenance file cannot itself smuggle
+# a traversal path, T-15-02's own discipline, extended). Anything
 # absolute, anything with a parent-directory segment, anything else at
 # all is rejected by name — the manifest's paths are untrusted text that
 # becomes local write paths (T-15-02).
@@ -168,11 +176,24 @@ while IFS= read -r line; do
   case "$rel" in
     topos)
       ;;
+    topos-provenance)
+      ;;
     plugins/*)
       name="${rel#plugins/}"
-      if ! printf '%s' "$name" | grep -Eq '^[a-z0-9-]+$'; then
-        fail "checksums.txt names a disallowed path (rejected): $line"
-      fi
+      case "$name" in
+        *.provenance.json | *.provenance.sig)
+          case "$name" in
+            */* | .*)
+              fail "checksums.txt names a disallowed path (rejected): $line"
+              ;;
+          esac
+          ;;
+        *)
+          if ! printf '%s' "$name" | grep -Eq '^[a-z0-9-]+$'; then
+            fail "checksums.txt names a disallowed path (rejected): $line"
+          fi
+          ;;
+      esac
       ;;
     *)
       fail "checksums.txt names a disallowed path (rejected): $line"
@@ -198,6 +219,13 @@ for rel in "${ASSETS[@]}"; do
   fi
 done
 
+# A staged topos-provenance CLI needs its execute bit set BEFORE it can be
+# invoked by the provenance-verification step below (curl -o never sets
+# it) — placement's own chmod 0755 happens later and is a separate copy.
+if [ -f "$STAGE/topos-provenance" ]; then
+  chmod +x "$STAGE/topos-provenance"
+fi
+
 # --- verify -----------------------------------------------------------
 # Every asset must verify before ANY placement begins — an abort here
 # leaves $PREFIX byte-unchanged.
@@ -205,6 +233,55 @@ if ! (cd "$STAGE" && sha256sum -c checksums.txt >"$STAGE/verify.out" 2>&1); then
   failed="$(grep -v ': OK$' "$STAGE/verify.out" 2>/dev/null || true)"
   fail "SHA-256 verification failed for release $TAG — nothing was written to $PREFIX
 ${failed}"
+fi
+
+# --- verify: provenance (D-09's install-time arm, 16-05-PLAN.md Task 1) -
+# SHA-256 (above) proves transport integrity only — "these are the bytes
+# checksums.txt named" — never publisher authenticity. A staged payload
+# that ALSO carries at least one *.provenance.json runs the second,
+# independent check here, still before any placement: the same
+# `topos-provenance verify` the kernel's own launch gate calls
+# (kernel/pluginhost.VerifySignedProvenance) is invoked over the staged
+# plugins directory, and a failure aborts naming the binary — nothing has
+# been placed yet either way. A payload with NO provenance files at all
+# (every release this repository has published to date, and any future
+# one that simply doesn't opt in) makes this a documented no-op: the
+# install proceeds exactly as it always has (TRUST-03).
+#
+# Verifier resolution order, tried in sequence — a payload that ships
+# evidence must have that evidence checked, so failing to resolve ANY
+# verifier is a loud abort here, never a silent skip:
+#   1. a topos-provenance binary present in the STAGED payload itself
+#      (a release may legitimately publish one alongside its plugins);
+#   2. one already installed at $BIN_DIR/topos-provenance (a prior
+#      install's own copy);
+#   3. one already on PATH.
+PROVENANCE_FILES=()
+if [ -d "$STAGE/plugins" ]; then
+  for f in "$STAGE"/plugins/*.provenance.json; do
+    [ -e "$f" ] || continue
+    PROVENANCE_FILES+=("$f")
+  done
+fi
+
+if [ "${#PROVENANCE_FILES[@]}" -gt 0 ]; then
+  PROVENANCE_VERIFIER=""
+  if [ -x "$STAGE/topos-provenance" ]; then
+    PROVENANCE_VERIFIER="$STAGE/topos-provenance"
+  elif [ -x "$BIN_DIR/topos-provenance" ]; then
+    PROVENANCE_VERIFIER="$BIN_DIR/topos-provenance"
+  elif command -v topos-provenance >/dev/null 2>&1; then
+    PROVENANCE_VERIFIER="$(command -v topos-provenance)"
+  fi
+
+  if [ -z "$PROVENANCE_VERIFIER" ]; then
+    fail "release $TAG carries ${#PROVENANCE_FILES[@]} signed provenance manifest(s) but no topos-provenance verifier could be resolved (checked the staged payload, $BIN_DIR/topos-provenance, and PATH) — a payload that ships evidence must have that evidence checked; nothing was written to $PREFIX"
+  fi
+
+  if ! "$PROVENANCE_VERIFIER" verify --dir "$STAGE/plugins" >"$STAGE/provenance-verify.out" 2>&1; then
+    fail "provenance verification failed for release $TAG — nothing was written to $PREFIX
+$(cat "$STAGE/provenance-verify.out")"
+  fi
 fi
 
 # --- place ------------------------------------------------------------
@@ -217,6 +294,7 @@ WRITTEN=()
 for rel in "${ASSETS[@]}"; do
   case "$rel" in
     topos) dest="$BIN_DIR/topos" ;;
+    topos-provenance) dest="$BIN_DIR/topos-provenance" ;;
     plugins/*) dest="$PLUGINS_DIR/${rel#plugins/}" ;;
   esac
   destdir="$(dirname "$dest")"
