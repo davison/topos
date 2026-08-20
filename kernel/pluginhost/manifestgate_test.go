@@ -294,6 +294,13 @@ func TestLaunch_ManifestGate_DiscoverRecordsRefusalAndSiblingsStillLaunch(t *tes
 	if failures[0].Reason != LaunchFailureManifestUnverified {
 		t.Errorf("expected reason %q, got %q", LaunchFailureManifestUnverified, failures[0].Reason)
 	}
+	// 16-06-PLAN.md Task 1 (16-VERIFICATION.md gap 1 / CR-01 / WR-01): a
+	// tamper refusal is a TRUSTED-tier refusal — a manifest positively
+	// named this binary — so the wire tier field GET /api/sources exposes
+	// must never be the empty zero value.
+	if failures[0].Tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, failures[0].Tier)
+	}
 }
 
 // TestLaunch_ManifestGate_ReconcileClearsFailureOnceRestored proves
@@ -536,6 +543,58 @@ func TestLaunch_ManifestGate_SignedDigestMismatchIsManifestUnverifiedError(t *te
 	}
 	if !strings.Contains(muErr.Error(), "topos-plugin-mock") {
 		t.Errorf("expected Error() to name the binary, got: %q", muErr.Error())
+	}
+}
+
+// TestLaunch_ManifestGate_DiscoverSignedArmRefusalReportsTrustedTier exists
+// because 16-VERIFICATION.md gap 1 (CR-01/WR-01) found that the signed
+// arm's tamper refusal previously reported an EMPTY tier on the wire — the
+// only prior regression net for this branch
+// (TestLaunch_ManifestGate_SignedDigestMismatchIsManifestUnverifiedError)
+// called launch() directly and asserted only the error type, never the
+// LaunchFailure the real Discover() path records. This test drives the
+// SAME fixture shape through Discover() instead, so the refusal is
+// observed exactly as GET /api/sources would see it: a
+// LaunchFailureManifestUnverified entry whose Tier is TierTrusted, because
+// a validly-signed manifest positively named this binary before its bytes
+// were mutated.
+func TestLaunch_ManifestGate_DiscoverSignedArmRefusalReportsTrustedTier(t *testing.T) {
+	dir := copyMockBinaryToFreshDir(t)
+	restore := OverrideBuildManifest(map[string]string{}) // empty link-time manifest
+	defer restore()
+	keyID, priv := installProvenanceTestKey(t)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	writeSignedManifest(t, dir, "topos-plugins-v0.1.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "0.1.0", Contract: "topos.v1"}},
+		keyID, priv)
+
+	// Tamper the binary AFTER the manifest above was computed from the
+	// original bytes.
+	mutateLastByte(t, dir+"/topos-plugin-mock")
+
+	sources := map[string]config.Source{"tampered": {Plugin: "topos-plugin-mock"}}
+
+	h, err := Discover(context.Background(), Dirs{Trusted: dir}, nil, sources, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	defer h.Shutdown()
+
+	if len(h.Plugins()) != 0 {
+		t.Fatalf("expected zero launched plugins (no subprocess should ever be created), got %+v", h.Plugins())
+	}
+	failures := h.LaunchFailures()
+	if len(failures) != 1 {
+		t.Fatalf("expected exactly one launch failure, got %+v", failures)
+	}
+	if failures[0].Instance != "tampered" {
+		t.Errorf("expected the launch failure to name instance %q, got %q", "tampered", failures[0].Instance)
+	}
+	if failures[0].Reason != LaunchFailureManifestUnverified {
+		t.Errorf("expected reason %q, got %q", LaunchFailureManifestUnverified, failures[0].Reason)
+	}
+	if failures[0].Tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, failures[0].Tier)
 	}
 }
 
