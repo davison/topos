@@ -29,6 +29,7 @@ kernel/webui/build/*
 /plugins/filesystem/filesystem
 /paperless
 /topos-manifest
+/topos-provenance
 
 # Playwright e2e artifacts (traces, screenshots, html report) — never
 # committed; make e2e regenerates them on every run.

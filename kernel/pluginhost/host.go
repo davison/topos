@@ -143,30 +143,59 @@ func (e *pinMismatchError) toLaunchFailure() LaunchFailure {
 
 // manifestUnverifiedError carries the structured facts a caller (Discover,
 // Reconcile) needs to build a LaunchFailure record for a trusted-directory
-// binary that failed manifest verification (13-05-PLAN.md Task 3) —
-// mirroring pinMismatchError's shape exactly (instance, plugin,
-// displayName, tier, currentHash), minus a "pinned/expected" field: unlike
-// a pin mismatch, there is nothing for an operator to re-pin here — the
-// only field this failure class has to show is what's actually on disk.
+// binary that failed trust verification (13-05-PLAN.md Task 3, widened by
+// 16-01-PLAN.md Task 1 to the two-arm coexistence rule, D-10/D-13) —
+// mirroring pinMismatchError's shape (instance, plugin, displayName,
+// tier, currentHash), minus a "pinned/expected" field: unlike a pin
+// mismatch, there is nothing for an operator to re-pin here — the only
+// field this failure class has to show is what's actually on disk. cause
+// carries EvaluateTrust's own diagnostic text (when evaluation returned
+// an error) so Error() names WHICH arm failed and why, rather than only
+// the generic wire-vocabulary reason (LaunchFailureManifestUnverified,
+// value "manifest_unverified" — deliberately reused rather than widened,
+// so web/src/lib/api.ts's closed union, docs/api.md, and the existing
+// chip-health precedence chain stay untouched, TRUST-03).
 type manifestUnverifiedError struct {
 	instance, plugin, displayName string
 	tier                          Tier
 	currentHash                   string
+	// cause is EvaluateTrust's own returned error (nil for the plain
+	// "neither arm names this binary at all" case) — carried as a real
+	// error, not just its text, so Unwrap below can expose whichever
+	// sentinel (ErrManifestUnverified from the link-time arm,
+	// ErrProvenanceUnverified from the signed arm) the underlying tamper
+	// refusal actually wrapped.
+	cause error
 }
 
-// Error names the instance, the binary, and the on-disk digest — the
-// fail-loudly-by-name convention pinMismatchError's own Error method
-// establishes, extended here.
+// Error names the instance, the binary, the on-disk digest, and (when
+// available) EvaluateTrust's own cause text — the fail-loudly-by-name
+// convention pinMismatchError's own Error method establishes, extended
+// here to name which of the two trust arms (D-10) refused and why.
 func (e *manifestUnverifiedError) Error() string {
-	return fmt.Sprintf(
-		"pluginhost: instance %q binary %q is not verified by the kernel's build manifest (current=%s)",
+	msg := fmt.Sprintf(
+		"pluginhost: instance %q binary %q is not verified by the kernel's build manifest or any signed release manifest (current=%s)",
 		e.instance, e.plugin, e.currentHash,
 	)
+	if e.cause != nil {
+		msg += ": " + e.cause.Error()
+	}
+	return msg
 }
 
-// Unwrap makes errors.Is(err, ErrManifestUnverified) true for every
-// *manifestUnverifiedError, mirroring pinMismatchError.Unwrap.
-func (e *manifestUnverifiedError) Unwrap() error { return ErrManifestUnverified }
+// Unwrap makes BOTH errors.Is(err, ErrManifestUnverified) (the
+// wire-vocabulary-preserving sentinel this failure class has always
+// carried, TRUST-03) AND, when the underlying refusal came from the
+// signed arm, errors.Is(err, ErrProvenanceUnverified) true for every
+// *manifestUnverifiedError — the multi-error Unwrap() []error form
+// (Go 1.20+) lets both sentinels resolve through one wrapped error
+// without picking a single "primary" cause.
+func (e *manifestUnverifiedError) Unwrap() []error {
+	if e.cause != nil {
+		return []error{ErrManifestUnverified, e.cause}
+	}
+	return []error{ErrManifestUnverified}
+}
 
 // toLaunchFailure converts e into the exported LaunchFailure shape
 // Host.launchFailures stores — mirroring pinMismatchError's own method.
@@ -883,22 +912,26 @@ func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool
 // pin that cannot yet exist would make it structurally impossible to ever
 // add a first external source.
 //
-// Manifest verification (13-05-PLAN.md Task 3, D-12/D-13): immediately
+// Trust verification (13-05-PLAN.md Task 3, D-12/D-13; widened by
+// 16-01-PLAN.md Task 1 to the two-arm coexistence rule, D-10): immediately
 // after resolveBinaryDetailed resolves a TRUSTED-tier binary, and BEFORE
-// exec.Command is ever constructed, launch calls VerifyTrustedBinary. A
-// binary absent from, or not matching, the kernel's link-time build
-// manifest returns a *manifestUnverifiedError (wrapping
-// ErrManifestUnverified) and creates NO subprocess at all — UNLIKE the
-// pin-mismatch block above, this gate runs for describeOnly (trial)
-// launches TOO: the external-tier pin check skips trial launches because
-// a first pin cannot exist before the trial ever runs, but a trusted
-// binary either is in the manifest or it isn't — that fact doesn't
-// depend on whether this is a real or a trial launch, and letting the
-// add-source picker's trial launch execute an unverified dropped binary
-// would hand an attacker code execution through the describe path
-// (T-13-06). Verification never demotes-and-runs: an unverifiable
-// trusted binary's only path to running remains the existing explicit
-// external-tier consent and pin flow.
+// exec.Command is ever constructed, launch calls EvaluateTrust
+// (provenance.go) — the single authority consulting BOTH the link-time
+// build manifest AND every validly-signed release manifest in dirs;
+// neither arm can silently substitute for the other, and EITHER arm
+// succeeding grants trusted-tier eligibility. A binary verified by
+// neither arm, or refused as tampered by either, returns a
+// *manifestUnverifiedError (wrapping ErrManifestUnverified) and creates
+// NO subprocess at all — UNLIKE the pin-mismatch block above, this gate
+// runs for describeOnly (trial) launches TOO: the external-tier pin check
+// skips trial launches because a first pin cannot exist before the trial
+// ever runs, but a trusted binary either verifies or it doesn't — that
+// fact doesn't depend on whether this is a real or a trial launch, and
+// letting the add-source picker's trial launch execute an unverified
+// dropped binary would hand an attacker code execution through the
+// describe path (T-13-06). Verification never demotes-and-runs: an
+// unverifiable trusted binary's only path to running remains the existing
+// explicit external-tier consent and pin flow.
 func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
 	binPath, tier, shadowed, err := resolveBinaryDetailed(dirs, src.Plugin, logger)
 	if err != nil {
@@ -919,20 +952,28 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 
 	// manifestHash carries the trusted-tier binary's verified on-disk
 	// SHA-256 out of this block into the returned *Plugin — see the
-	// Plugin.manifestHash field's own doc comment.
+	// Plugin.manifestHash field's own doc comment. D-10 (16-01-PLAN.md
+	// Task 1): trusted-tier eligibility is now decided by the single
+	// EvaluateTrust authority, which itself consults both evidence
+	// sources — see this function's own doc comment above.
 	var manifestHash string
 	if tier == TierTrusted {
-		hash, verifyErr := VerifyTrustedBinary(src.Plugin, binPath)
-		if verifyErr != nil {
+		trust, evalErr := EvaluateTrust(dirs, src.Plugin, binPath)
+		for _, diag := range trust.Diagnostics {
+			logger.Warn("provenance evaluation diagnostic (D-10/T-16-07)",
+				"instance", name, "binary", src.Plugin, "detail", diag)
+		}
+		if evalErr != nil || trust.Tier != TierTrusted {
 			return nil, &manifestUnverifiedError{
 				instance:    name,
 				plugin:      src.Plugin,
 				displayName: instanceDisplayName,
 				tier:        tier,
-				currentHash: hash,
+				currentHash: trust.Hash,
+				cause:       evalErr,
 			}
 		}
-		manifestHash = hash
+		manifestHash = trust.Hash
 	}
 
 	// rawSrc is this instance's own RAW (unexpanded) config.Source — the

@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal isolation-check
+.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal isolation-check provenance-check
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -276,6 +276,17 @@ docs-check:
 # ever binds ephemeral ports it selects itself.
 dev-check:
 	./scripts/dev-guard-smoke.sh
+
+# provenance-check runs the hermetic round-trip gate for the signed
+# release-manifest trust arm (16-01-PLAN.md Task 3,
+# scripts/provenance-smoke.sh): keygen -> sign -> verify -> tamper ->
+# refuse, including the link-time provenanceKeysExtra key-injection
+# seam (D-12) a dev/e2e build uses to trust its own locally signed
+# fixtures. Needs no network and no config; safe to run while a real
+# kernel is up, since it only ever writes inside its own temp
+# directory.
+provenance-check:
+	./scripts/provenance-smoke.sh
 
 # e2e builds a fresh SPA, builds ONLY the mock, mockstrict, and filesystem
 # plugins (deliberately NOT the "plugins" target's full real-plugin set —
