@@ -157,40 +157,52 @@ func isRegularFileFollowingSymlinks(dir string, e os.DirEntry) bool {
 	return info.Mode().IsRegular()
 }
 
-// Tier names which of the two configured plugin directories a binary
-// resolved from (Phase 11, PLUG-06/PLUG-07). Trust is derived EXCLUSIVELY
-// from this provenance fact — never from anything a plugin declares about
-// itself via Describe, its filename, or a config key — so Tier is set
-// once, at ResolveBinary time, and never overwritten from RPC data
-// afterward (T-11-01).
+// Tier is a plugin binary's trust classification, derived EXCLUSIVELY
+// from verifiable provenance (D-11, 16-CONTEXT.md): a link-time
+// build-manifest entry (manifest.go, the transitional arm Phase 17
+// retires) or a validly-signed release manifest (provenance.go). Tier is
+// NEVER derived from a directory, a filename, a config key, or anything a
+// plugin declares about itself via Describe — Dirs.Trusted and
+// Dirs.External (below) are pure search paths, retained only for config
+// compatibility, and confer nothing on their own. Tier is set once, at
+// resolveBinaryDetailed/EvaluateTrust time, and never overwritten from
+// RPC data afterward (T-11-01, extended by D-11).
 type Tier string
 
 const (
-	// TierTrusted names a binary that resolved from Dirs.Trusted — built
-	// from the davison/topos repo itself (`make build`/`make dev`).
+	// TierTrusted names a binary EvaluateTrust verified against the
+	// link-time build manifest OR a validly-signed release manifest
+	// (D-10: either arm grants trusted) — never a binary that merely sits
+	// in Dirs.Trusted.
 	TierTrusted Tier = "trusted"
-	// TierExternal names a binary that resolved from Dirs.External — code
-	// topos did not build and cannot vouch for. Untrusted, not sandboxed:
-	// an external-tier plugin runs with the same OS-level access as any
-	// other plugin process (11-CONTEXT.md's explicit out-of-scope note on
-	// sandboxing).
+	// TierExternal names a binary EvaluateTrust could not verify against
+	// either evidence source — code topos cannot vouch for, wherever it
+	// sits on disk. Untrusted, not sandboxed: an external-tier plugin
+	// runs with the same OS-level access as any other plugin process
+	// (11-CONTEXT.md's explicit out-of-scope note on sandboxing).
 	TierExternal Tier = "external"
 )
 
-// Dirs is the two configured plugin directories every discovery and
-// launch call site addresses a plugin binary through, replacing the
-// single pluginsDir string every pre-Phase-11 call site used. Either
-// field may be empty or name a directory that does not yet exist on
-// disk — both are legitimate empty-tier states, never an error (mirrors
-// DiscoverAllBinaries' own missing-directory contract, extended to two
-// directories).
+// Dirs is the two configured plugin SEARCH PATHS every discovery and
+// launch call site addresses a plugin binary through (D-11): the kernel
+// looks for a binary by name in either directory, then asks EvaluateTrust
+// what tier the bytes it found actually hold. Neither field grants
+// anything by itself — editing plugins.dir/plugins.external_dir in
+// config changes only WHERE the kernel searches, never WHAT it trusts.
+// Either field may be empty or name a directory that does not yet exist
+// on disk — both are legitimate empty-tier states, never an error
+// (mirrors DiscoverAllBinaries' own missing-directory contract, extended
+// to two directories).
 type Dirs struct {
-	// Trusted is the existing single plugin directory (PluginsConfig.Dir)
-	// every plugin binary resolved from before Phase 11 — code built from
-	// the davison/topos repo.
+	// Trusted is the first search path (PluginsConfig.Dir) — historically
+	// the directory `make build`/`make dev` populate, but that history
+	// confers nothing: a binary here with no provenance evidence resolves
+	// TierExternal exactly like one in External.
 	Trusted string
-	// External is the second, untrusted directory Phase 11 introduces
-	// (PluginsConfig.ExternalDir, D-09) — code topos did not build.
+	// External is the second search path (PluginsConfig.ExternalDir,
+	// D-09) — historically the "untrusted" directory, but a binary here
+	// carrying valid provenance resolves TierTrusted exactly like one in
+	// Trusted (D-11, success criterion 1: trust is location-independent).
 	External string
 }
 
@@ -204,68 +216,118 @@ type TieredBinary struct {
 // DiscoverAllTiered is the two-tier SECURITY-AUTHORITY listing (the
 // direct analogue of DiscoverAllBinaries, widened to two directories):
 // every binary discoverable in EITHER configured directory, tagged with
-// the tier it resolved to, sorted by name and de-duplicated. Callers that
-// need to know "is this a legitimately launchable binary, and if so
-// which tier" — kernel/httpapi/config.go's DescribePluginHandler
-// membership check chief among them (T-11-02) — use this function, never
-// DiscoverTiered, for the identical reason DiscoverAllBinaries exists
-// alongside DiscoverBinaries: a UI-policy exclusion must never also gate
-// what may legitimately be described or launched.
+// the PROVENANCE-DERIVED tier it evaluates to (D-11), sorted by name and
+// de-duplicated. Callers that need to know "is this a legitimately
+// launchable binary, and if so which tier" — kernel/httpapi/config.go's
+// DescribePluginHandler membership check chief among them (T-11-02) — use
+// this function, never DiscoverTiered, for the identical reason
+// DiscoverAllBinaries exists alongside DiscoverBinaries: a UI-policy
+// exclusion must never also gate what may legitimately be described or
+// launched.
 //
-// D-11's shadow rule: a binary name present in BOTH directories resolves
-// to TierTrusted and appears exactly once in the result — the trusted
-// copy always wins a name collision, never silently (see ResolveBinary,
-// below, for the launch-time half of this rule, which additionally logs
-// the collision by name). A directory that is empty, missing, or whose
-// Dirs field is the empty string contributes nothing and never errors —
-// two absent directories return an empty (never nil) slice with a nil
-// error, the same "operator hasn't installed anything yet" legitimacy
-// DiscoverAllBinaries already grants a single missing directory.
+// This call HASHES EVERY DISCOVERED BINARY on every invocation and caches
+// nothing (D-11): a replaced binary is never served from a stale trust
+// decision, and the added per-call hashing cost on the picker and
+// describe endpoints (kernel/httpapi/config.go) is the accepted price of
+// that guarantee (T-16-12).
+//
+// D-11's collision rule (replacing the obsolete D-14
+// trusted-shadows-external rule, which assumed location conferred trust):
+// a binary name present in BOTH directories is evaluated on BOTH
+// candidate paths, and whichever evaluates TierTrusted wins; if neither
+// (or both) evaluate TierTrusted, the existing trusted-first search order
+// decides — but the winning tier is always the one actually EARNED by the
+// winning bytes, never assumed from directory alone. The collision itself
+// is logged by name at resolveBinaryDetailed, the launch-time call site
+// that holds a logger — this discovery-only function deliberately has
+// none, so it stays a pure, side-effect-free listing (beyond the hashing
+// cost noted above).
+//
+// A tamper-refusal error from EvaluateTrust for either candidate does NOT
+// abort the whole listing (T-16-11): the binary stays discoverable,
+// tagged TierExternal, so no listing consumer can ever infer trust from a
+// refusal — the refusal itself is re-asserted at launch, the only place
+// that runs code.
+//
+// A directory that is empty, missing, or whose Dirs field is the empty
+// string contributes nothing and never errors — two absent directories
+// return an empty (never nil) slice with a nil error, the same "operator
+// hasn't installed anything yet" legitimacy DiscoverAllBinaries already
+// grants a single missing directory.
 func DiscoverAllTiered(dirs Dirs) ([]TieredBinary, error) {
-	tierOf := make(map[string]Tier)
-
+	trustedNames := make(map[string]bool)
 	if dirs.Trusted != "" {
 		names, err := DiscoverAllBinaries(dirs.Trusted)
 		if err != nil {
 			return nil, fmt.Errorf("pluginhost: discover trusted plugins: %w", err)
 		}
 		for _, name := range names {
-			tierOf[name] = TierTrusted
+			trustedNames[name] = true
 		}
 	}
 
+	externalNames := make(map[string]bool)
 	if dirs.External != "" {
 		names, err := DiscoverAllBinaries(dirs.External)
 		if err != nil {
 			return nil, fmt.Errorf("pluginhost: discover external plugins: %w", err)
 		}
 		for _, name := range names {
-			if _, alreadyTrusted := tierOf[name]; alreadyTrusted {
-				// D-11: trusted shadows external — the name stays mapped
-				// to TierTrusted, set above; only the sorted-set MEMBERSHIP
-				// changes here (it already does, since the map key already
-				// exists), never the tier value. The loud, named log line
-				// this rule also requires lives in ResolveBinary, the
-				// launch-time call site, which has a logger to write to —
-				// this discovery-only function deliberately has none, so it
-				// stays a pure, side-effect-free listing.
-				continue
-			}
-			tierOf[name] = TierExternal
+			externalNames[name] = true
 		}
 	}
 
-	names := make([]string, 0, len(tierOf))
-	for name := range tierOf {
+	seen := make(map[string]bool, len(trustedNames)+len(externalNames))
+	for name := range trustedNames {
+		seen[name] = true
+	}
+	for name := range externalNames {
+		seen[name] = true
+	}
+
+	names := make([]string, 0, len(seen))
+	for name := range seen {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	out := make([]TieredBinary, 0, len(names))
 	for _, name := range names {
-		out = append(out, TieredBinary{Name: name, Tier: tierOf[name]})
+		var trustedPath, externalPath string
+		if trustedNames[name] {
+			trustedPath = filepath.Join(dirs.Trusted, name)
+		}
+		if externalNames[name] {
+			externalPath = filepath.Join(dirs.External, name)
+		}
+		out = append(out, TieredBinary{Name: name, Tier: evaluateListingTier(dirs, name, trustedPath, externalPath)})
 	}
 	return out, nil
+}
+
+// evaluateListingTier is DiscoverAllTiered's per-name, side-effect-free
+// (no logger, D-11) tier evaluation. It shares resolveBinaryDetailed's
+// collision precedence — prefer whichever candidate evaluates
+// TierTrusted; if neither does (or a candidate refuses as tampered),
+// TierExternal — without resolveBinaryDetailed's logging, launch-time
+// not-found error, or shadowed-flag bookkeeping, none of which a listing
+// call needs. A tamper-refusal error from EvaluateTrust is deliberately
+// swallowed here into TierExternal (T-16-11): the listing must keep
+// showing the binary, never abort, and never let a listing consumer
+// infer trust from a refusal — launch is the only place that re-asserts
+// the refusal and the only place that runs code.
+func evaluateListingTier(dirs Dirs, name, trustedPath, externalPath string) Tier {
+	if trustedPath != "" {
+		if trust, err := EvaluateTrust(dirs, name, trustedPath); err == nil && trust.Tier == TierTrusted {
+			return TierTrusted
+		}
+	}
+	if externalPath != "" {
+		if trust, err := EvaluateTrust(dirs, name, externalPath); err == nil && trust.Tier == TierTrusted {
+			return TierTrusted
+		}
+	}
+	return TierExternal
 }
 
 // DiscoverTiered is the two-tier UI-POLICY catalog (the analogue of
@@ -341,23 +403,27 @@ func validatePluginBinaryName(name string) error {
 // resolveBinaryDetailed, below, which this is now a thin wrapper over),
 // so tier is set from provenance at exactly one point and never
 // re-derived or overwritten from anything the plugin process itself
-// later reports. Its signature and behavior are UNCHANGED by the D-14
-// shadowing-advisory work (13-05-PLAN.md Task 3) — see
-// resolveBinaryDetailed's own doc comment for the widened contract new
-// call sites (launch, below) use instead.
+// later reports. Its signature is UNCHANGED by the D-11 provenance
+// rewrite (16-02-PLAN.md Task 1) — tier is sourced from
+// resolveBinaryDetailed's returned Trust.Tier — so the many existing
+// (path, tier, err) call sites compile unchanged. err here can now name
+// EITHER "binary not found in either directory" OR a tamper refusal from
+// EvaluateTrust (a validly-signed manifest naming this binary with a
+// digest that does not match what's on disk); callers that need to tell
+// the two apart use resolveBinaryDetailed directly (launch, below, does).
 func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, err error) {
-	path, tier, _, err = resolveBinaryDetailed(dirs, name, logger)
-	return path, tier, err
+	path, trust, _, err := resolveBinaryDetailed(dirs, name, logger)
+	return path, trust.Tier, err
 }
 
 // resolveBinaryDetailed is ResolveBinary's full-detail implementation,
-// additionally reporting whether the resolved TRUSTED copy shadowed a
-// same-named regular file in dirs.External (D-14) — the fact launch()
-// carries out of the resolver and onto the returned *Plugin so
-// ProbeSources can surface it as SourceHealth.LaunchAdvisory, rather than
-// only the named hclog.Warn line below (kept exactly where it was: a
-// shadow must never be silent even when nothing downstream reads the
-// returned flag).
+// additionally reporting the full Trust value (D-11, 16-02-PLAN.md Task
+// 1: Hash and Evidence, not just Tier) and whether the resolved binary
+// collided with a same-named regular file in the OTHER configured
+// directory (D-14's shadowed flag, repurposed here — see the collision
+// rule below) — the facts launch() carries out of the resolver and onto
+// the returned *Plugin so ProbeSources can surface shadowed as
+// SourceHealth.LaunchAdvisory, and Trust.Hash as manifestHash.
 //
 // Confinement contract (CR-01, 11-REVIEW.md; T-11-35): name is validated
 // by validatePluginBinaryName as this function's FIRST statement, before
@@ -368,51 +434,94 @@ func ResolveBinary(dirs Dirs, name string, logger hclog.Logger) (path string, ti
 // config-validation end of the same chain (see that function's doc
 // comment for why the rule is duplicated rather than imported).
 //
-// Resolution order implements D-11's shadow rule: dirs.Trusted is
-// consulted first. When name exists there AS A REGULAR FILE (T-11-36:
-// os.Stat, which follows symlinks — the e2e harness's symlinked plugin
-// fixtures depend on this — but never a directory or other non-regular
-// entry), resolveBinaryDetailed returns that path with TierTrusted
-// immediately — but first checks whether name ALSO exists in
-// dirs.External, and if so emits a named hclog.Warn line carrying the
-// colliding binary name (a shadow must never be silent) AND reports
-// shadowed=true. When name does not resolve to a regular file in
-// dirs.Trusted, dirs.External is checked next; a hit there returns
-// TierExternal (shadowed is always false for an external-tier
-// resolution — only a trusted copy can shadow, never the reverse).
+// Search order (D-11): dirs.Trusted is consulted first, then
+// dirs.External — that order now decides only WHICH FILE wins a name
+// collision, never what tier it holds. A hit in exactly one directory is
+// evaluated via EvaluateTrust(dirs, name, path) and its result (Trust,
+// err) is returned directly — err may be nil (Tier is TierTrusted or
+// TierExternal), or a tamper-refusal error from EvaluateTrust (D-13:
+// verification never demotes-and-runs; the caller must not treat this as
+// "binary not found").
+//
+// A name present in BOTH directories (the replacement for the obsolete
+// D-14 trusted-shadows-external rule, which assumed location conferred
+// trust) evaluates trust of BOTH candidate paths: whichever evaluates
+// TierTrusted wins; if both evaluate the same way, the trusted-first
+// search order above decides, exactly as it always has. Either way this
+// emits an hclog.Warn naming the colliding binary, both paths, and which
+// one won and why (its evidence, or the absence of evidence) — a shadow
+// must never be silent, and the operator must be able to see which bytes
+// are actually about to run — and sets shadowed=true whenever the
+// collision existed at all, regardless of which copy won, so the
+// existing LaunchAdvisoryShadowed surface keeps working. Every
+// Trust.Diagnostics entry collected while evaluating either candidate is
+// also emitted via logger.Warn naming the binary, so a malformed or
+// wrongly-keyed manifest file is visible to the operator rather than
+// swallowed (T-16-07).
+//
 // Neither directory holding name returns an error naming the binary and
 // both directories searched — an empty Dirs field is treated as
 // "nothing to check there", not a separate failure mode, mirroring
 // DiscoverAllBinaries' own missing-directory-is-empty-state contract.
-func resolveBinaryDetailed(dirs Dirs, name string, logger hclog.Logger) (path string, tier Tier, shadowed bool, err error) {
-	if err := validatePluginBinaryName(name); err != nil {
-		return "", "", false, err
+func resolveBinaryDetailed(dirs Dirs, name string, logger hclog.Logger) (path string, trust Trust, shadowed bool, err error) {
+	if verr := validatePluginBinaryName(name); verr != nil {
+		return "", Trust{}, false, verr
+	}
+	if logger == nil {
+		logger = hclog.NewNullLogger()
 	}
 
+	var trustedPath, externalPath string
 	if dirs.Trusted != "" {
-		trustedPath := filepath.Join(dirs.Trusted, name)
-		if info, statErr := os.Stat(trustedPath); statErr == nil && info.Mode().IsRegular() {
-			if dirs.External != "" {
-				externalPath := filepath.Join(dirs.External, name)
-				if extInfo, extStatErr := os.Stat(externalPath); extStatErr == nil && extInfo.Mode().IsRegular() {
-					if logger == nil {
-						logger = hclog.NewNullLogger()
-					}
-					logger.Warn("plugin binary name shadowed: trusted copy wins, external copy ignored (D-11)",
-						"binary", name)
-					shadowed = true
-				}
-			}
-			return trustedPath, TierTrusted, shadowed, nil
+		p := filepath.Join(dirs.Trusted, name)
+		if info, statErr := os.Stat(p); statErr == nil && info.Mode().IsRegular() {
+			trustedPath = p
 		}
 	}
-
 	if dirs.External != "" {
-		externalPath := filepath.Join(dirs.External, name)
-		if info, statErr := os.Stat(externalPath); statErr == nil && info.Mode().IsRegular() {
-			return externalPath, TierExternal, false, nil
+		p := filepath.Join(dirs.External, name)
+		if info, statErr := os.Stat(p); statErr == nil && info.Mode().IsRegular() {
+			externalPath = p
 		}
 	}
 
-	return "", "", false, fmt.Errorf("plugin binary %q not found in trusted directory %q or external directory %q", name, dirs.Trusted, dirs.External)
+	logDiagnostics := func(candidatePath string, diags []string) {
+		for _, diag := range diags {
+			logger.Warn("provenance evaluation diagnostic (D-11/T-16-07)",
+				"binary", name, "path", candidatePath, "detail", diag)
+		}
+	}
+
+	switch {
+	case trustedPath != "" && externalPath != "":
+		shadowed = true
+		trustedTrust, trustedErr := EvaluateTrust(dirs, name, trustedPath)
+		logDiagnostics(trustedPath, trustedTrust.Diagnostics)
+		externalTrust, externalErr := EvaluateTrust(dirs, name, externalPath)
+		logDiagnostics(externalPath, externalTrust.Diagnostics)
+
+		if trustedErr == nil && trustedTrust.Tier == TierTrusted {
+			logger.Warn("plugin binary name collides across trusted and external directories: trusted copy carries evidence and wins (D-11)",
+				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", trustedTrust.Evidence)
+			return trustedPath, trustedTrust, shadowed, nil
+		}
+		if externalErr == nil && externalTrust.Tier == TierTrusted {
+			logger.Warn("plugin binary name collides across trusted and external directories: external copy carries evidence and wins (D-11)",
+				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", externalTrust.Evidence)
+			return externalPath, externalTrust, shadowed, nil
+		}
+		logger.Warn("plugin binary name collides across trusted and external directories: neither copy carries evidence, trusted-first search order decides (D-11)",
+			"binary", name, "trusted_path", trustedPath, "external_path", externalPath)
+		return trustedPath, trustedTrust, shadowed, trustedErr
+	case trustedPath != "":
+		trust, err = EvaluateTrust(dirs, name, trustedPath)
+		logDiagnostics(trustedPath, trust.Diagnostics)
+		return trustedPath, trust, false, err
+	case externalPath != "":
+		trust, err = EvaluateTrust(dirs, name, externalPath)
+		logDiagnostics(externalPath, trust.Diagnostics)
+		return externalPath, trust, false, err
+	default:
+		return "", Trust{}, false, fmt.Errorf("plugin binary %q not found in trusted directory %q or external directory %q", name, dirs.Trusted, dirs.External)
+	}
 }
