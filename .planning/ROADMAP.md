@@ -91,7 +91,7 @@ Full phase details, success criteria, and plan lists: [milestones/v1.2.0-ROADMAP
   4. Every escalation path named in the standing security todo is closed by a **committed test that fails if its gate is removed**: trust cannot be granted by editing config, by dropping a file into the trusted directory, or by shadowing a trusted plugin name with a different binary. (TRUST-04)
   5. The operator can see *why* a plugin holds the tier it holds — a verification failure names the cause on the source chip and in logs, and never silently downgrades a plugin the operator believes is trusted.
 
-**Plans**: 7 plans — 5/5 executed, 2 gap-closure plans pending (verification returned `gaps_found`)
+**Plans**: 7/7 plans executed — 5/5 executed, 2 gap-closure plans pending (verification returned `gaps_found`)
 
 Plans:
 **Wave 1**
@@ -116,8 +116,8 @@ Plans:
 
 **Wave 6** *(gap closure — 16-VERIFICATION.md `gaps_found`, 4/6 must-haves verified; the two plans below are independent and run in parallel)*
 
-- [ ] 16-06-PLAN.md — Gap 1: EvaluateTrust's two tamper-refusal paths report the trusted tier on the wire, pinned by real-path regression tests on both arms and a browser assertion (CR-01/WR-01, success criterion 5)
-- [ ] 16-07-PLAN.md — Gap 2: rewrite docs/plugin-contract.md's stale directory-derived "Trust tiers" section to the shipped evidence-based model and defer to docs/plugin-trust.md (CR-02)
+- [x] 16-06-PLAN.md — Gap 1: EvaluateTrust's two tamper-refusal paths report the trusted tier on the wire, pinned by real-path regression tests on both arms and a browser assertion (CR-01/WR-01, success criterion 5)
+- [x] 16-07-PLAN.md — Gap 2: rewrite docs/plugin-contract.md's stale directory-derived "Trust tiers" section to the shipped evidence-based model and defer to docs/plugin-trust.md (CR-02)
 
 **Notes**:
 
@@ -185,7 +185,7 @@ Phases execute in numeric order: 16 → 17 → 18 (decimal insertions, if any, r
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 16. Provenance-Based Plugin Trust | v1.3.0 | 5/5 | In Progress|  |
+| 16. Provenance-Based Plugin Trust | v1.3.0 | 7/7 | In Progress|  |
 | 17. The Plugin Repo Split | v1.3.0 | 0/TBD | Not started | - |
 | 18. Pull-by-URL Install & the Plugin Developer Guide | v1.3.0 | 0/TBD | Not started | - |
 
