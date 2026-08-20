@@ -9,6 +9,7 @@ package pluginhost
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -459,14 +460,24 @@ func TestResolveBinary_LocationSymmetric(t *testing.T) {
 	}
 }
 
-// TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence proves
+// TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence proved
 // D-11's replacement collision rule directly, independent of directory
-// search order: when only the EXTERNAL candidate carries provenance
-// evidence (the two candidate files hold DIFFERENT bytes, so the trusted
-// copy cannot incidentally match the signed manifest's digest too), the
-// EXTERNAL copy wins the collision — never the trusted-first ordering the
-// obsolete D-14 rule would have applied regardless of evidence — and the
-// collision is still logged by name.
+// search order, under an assumption 16-REVIEW.md CR-01 (this iteration's
+// fix) disproved: "the trusted copy cannot incidentally match the signed
+// manifest's digest too." It can't MATCH, but it doesn't need to — it only
+// needs to be NAMED. VerifySignedProvenance scans every manifest in BOTH
+// dirs.Trusted and dirs.External before deciding (D-08, provenance.go), so
+// the manifest living in externalDir — which correctly names the external
+// copy's own digest — is ALSO consulted while evaluating the trusted
+// copy, and the trusted copy's DIFFERENT bytes necessarily mismatch that
+// same entry. That is a genuine tamper refusal on the trusted side (not
+// "no evidence" — VerifySignedProvenance has no "not applicable to this
+// candidate" outcome once a manifest names the collision's filename: only
+// match or mismatch), and per the collision rule a tamper refusal on
+// EITHER candidate must win outright, never fall back to launching the
+// other copy. This test now proves exactly that: the collision refuses,
+// naming the trusted-side refusal, rather than silently launching the
+// external copy — and the collision is still logged by name.
 func TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence(t *testing.T) {
 	trustedDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(trustedDir, "topos-plugin-collision"), []byte("trusted-side-bytes"), 0o755); err != nil {
@@ -487,14 +498,17 @@ func TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence(t *testin
 	logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
 
 	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-collision", logger)
-	if err != nil {
-		t.Fatalf("ResolveBinary: %v", err)
+	if err == nil {
+		t.Fatalf("expected the trusted-side mismatch (against the externally-vouched digest) to refuse the collision (path=%q, tier=%q), not launch either copy silently", path, tier)
 	}
-	if want := filepath.Join(externalDir, "topos-plugin-collision"); path != want {
-		t.Errorf("expected the EXTERNAL path %q to win the collision (it carries the evidence), got %q", want, path)
+	if !errors.Is(err, ErrProvenanceUnverified) {
+		t.Fatalf("expected errors.Is(err, ErrProvenanceUnverified), got: %v", err)
+	}
+	if want := filepath.Join(trustedDir, "topos-plugin-collision"); path != want {
+		t.Errorf("expected the refusal to be reported against the trusted-side path %q (it is checked first), got %q", want, path)
 	}
 	if tier != TierTrusted {
-		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
+		t.Errorf("expected tier %q (a refusal is a trusted-tier refusal on the wire — err is what actually refuses), got %q", TierTrusted, tier)
 	}
 	if !strings.Contains(buf.String(), "topos-plugin-collision") {
 		t.Errorf("expected the emitted warning to name the colliding binary, got: %s", buf.String())

@@ -259,7 +259,27 @@ func TestEscalation_ShadowingCannotInheritTrust(t *testing.T) {
 		}
 	})
 
-	t.Run("cross-directory shadow resolves to whichever copy carries evidence and logs the collision by name", func(t *testing.T) {
+	// 16-REVIEW.md CR-01 (this iteration's fix) corrected this subtest's
+	// own expectation. It was originally written to prove "whichever
+	// copy carries evidence wins," expecting err == nil and the
+	// external copy's path back. That passed only because of the exact
+	// bug CR-01 closes: VerifySignedProvenance scans EVERY manifest in
+	// BOTH dirs.Trusted and dirs.External before deciding (D-08,
+	// provenance.go), so the signed manifest living in externalDir —
+	// which correctly names the external copy's own digest — is ALSO
+	// consulted while evaluating the trusted copy, and the trusted
+	// copy's unrelated bytes necessarily mismatch that same entry. That
+	// makes the trusted copy a genuine tamper refusal in its own right
+	// (not "no evidence" — VerifySignedProvenance's own precedence rule
+	// has no "not applicable to this candidate" outcome once a manifest
+	// names the collision's filename: only match or mismatch). The
+	// pre-fix collision resolver's two independent `if err == nil`
+	// checks silently discarded that trusted-side refusal and returned
+	// the external copy instead — exactly CR-01's scenario 1. With the
+	// fix, the trusted-side refusal now wins outright, matching
+	// docs/plugin-contract.md's invariant that a tamper refusal never
+	// falls back to launching the other copy.
+	t.Run("cross-directory shadow: a same-named manifest that vouches for one copy makes the OTHER copy's differing bytes a tamper refusal, which wins the collision", func(t *testing.T) {
 		trustedDir := t.TempDir()
 		externalDir := t.TempDir()
 
@@ -279,17 +299,131 @@ func TestEscalation_ShadowingCannotInheritTrust(t *testing.T) {
 		logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
 
 		path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-crossshadow", logger)
-		if err != nil {
-			t.Fatalf("ResolveBinary: %v", err)
+		if err == nil {
+			t.Fatalf("expected the trusted-side mismatch (against the externally-vouched digest) to refuse the collision (path=%q, tier=%q), not launch either copy silently", path, tier)
 		}
-		if want := filepath.Join(externalDir, "topos-plugin-crossshadow"); path != want {
-			t.Errorf("expected the copy WITH evidence (%s) to win the collision, got %q", want, path)
+		if !errors.Is(err, ErrProvenanceUnverified) {
+			t.Fatalf("expected errors.Is(err, ErrProvenanceUnverified), got: %v", err)
+		}
+		if want := filepath.Join(trustedDir, "topos-plugin-crossshadow"); path != want {
+			t.Errorf("expected the refusal to be reported against the trusted-side path %q (it is checked first), got %q", want, path)
 		}
 		if tier != TierTrusted {
-			t.Errorf("expected tier %q, got %q", TierTrusted, tier)
+			t.Errorf("expected tier %q (a refusal is a trusted-tier refusal on the wire — err is what actually refuses), got %q", TierTrusted, tier)
 		}
 		if !strings.Contains(buf.String(), "topos-plugin-crossshadow") {
 			t.Errorf("expected the collision to be logged by name, got: %s", buf.String())
+		}
+	})
+
+	// 16-REVIEW.md CR-01 (this iteration's fix): a tamper refusal on
+	// EITHER side of a cross-directory collision must win outright and
+	// refuse — never be silently overridden by the other candidate's
+	// clean resolution. Before the fix, resolveBinaryDetailed's two
+	// independent `if trustedErr == nil && ...` / `if externalErr == nil
+	// && ...` checks meant a tampered candidate satisfied neither branch,
+	// so nothing refused on its behalf: direction (a) fell through to
+	// the OTHER candidate's clean win (launching bytes the docs promise
+	// can never launch), and direction (b) fell through to the final
+	// `return trustedPath, trustedTrust, shadowed, trustedErr` with
+	// trustedErr == nil, silently dropping the external tamper.
+	t.Run("cross-directory: trusted-side tamper refusal wins even though the external copy independently resolves clean", func(t *testing.T) {
+		const name = "topos-plugin-crossshadow-trustedtamper"
+		trustedDir := t.TempDir()
+		externalDir := t.TempDir()
+
+		// The external copy's bytes are what the (shared, name-keyed)
+		// link-time manifest actually vouches for — a genuine clean win
+		// via the link-time arm.
+		externalPath := filepath.Join(externalDir, name)
+		if err := os.WriteFile(externalPath, []byte("external-side-correct-bytes"), 0o755); err != nil {
+			t.Fatalf("write external fixture: %v", err)
+		}
+		correctHash := mustHashBinary(t, externalPath)
+		restore := OverrideBuildManifest(map[string]string{name: correctHash})
+		defer restore()
+
+		// The trusted copy shares the same NAME but different bytes — a
+		// genuine tamper: the manifest positively names this binary with
+		// a digest that no longer matches what's on disk at the trusted
+		// path.
+		trustedPath := filepath.Join(trustedDir, name)
+		if err := os.WriteFile(trustedPath, []byte("trusted-side-tampered-bytes"), 0o755); err != nil {
+			t.Fatalf("write trusted fixture: %v", err)
+		}
+
+		var buf bytes.Buffer
+		logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
+
+		path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, name, logger)
+		if err == nil {
+			t.Fatalf("expected the trusted-side tamper refusal to win the collision (path=%q, tier=%q) — it must never fall back to launching the external copy instead", path, tier)
+		}
+		if !errors.Is(err, ErrManifestUnverified) {
+			t.Fatalf("expected errors.Is(err, ErrManifestUnverified), got: %v", err)
+		}
+		if path != trustedPath {
+			t.Errorf("expected the refusal to be reported against the tampered trusted-side path %q, got %q — a caller must never be handed the external copy's path alongside a trusted-side refusal", trustedPath, path)
+		}
+	})
+
+	// Mirror of the previous subtest, with the roles of trusted/external
+	// swapped: here the TRUSTED copy is the one that resolves clean, and
+	// the EXTERNAL copy is the tamper refusal. This is deliberately NOT
+	// constructed as "external tampered, trusted has literally zero
+	// evidence" (16-REVIEW.md CR-01's second numbered scenario) — that
+	// exact combination turns out to be unreachable given how
+	// VerifySignedProvenance/VerifyTrustedBinary actually work: both
+	// arms look up their manifest entry purely by NAME (never scoped to
+	// a directory or a specific candidate's path — see
+	// VerifySignedProvenance's own doc comment on scanning being
+	// EXHAUSTIVE across dirs.Trusted and dirs.External before deciding,
+	// D-08), so once any manifest names the colliding binary at all,
+	// EVERY same-named candidate is classified match-or-mismatch against
+	// that one entry — never "not evaluated." A trusted copy can only
+	// have "zero evidence" if the name is absent from every manifest
+	// everywhere, but then the external copy's tamper (which requires
+	// the name to be PRESENT with a mismatching digest) could not exist
+	// either. This mirrored construction (trusted CLEAN WIN, external
+	// TAMPER REFUSAL, both against the shared link-time entry) is the
+	// nearest reachable equivalent, and still exercises the exact code
+	// path this fix touches: the `if externalErr != nil` check must fire
+	// and win BEFORE `if trustedTrust.Tier == TierTrusted` ever gets a
+	// chance to return the trusted copy while silently dropping evidence
+	// that the external copy sharing its name was tampered.
+	t.Run("cross-directory: external-side tamper refusal wins even though the trusted copy independently resolves clean", func(t *testing.T) {
+		const name = "topos-plugin-crossshadow-externaltamper"
+		trustedDir := t.TempDir()
+		externalDir := t.TempDir()
+
+		// The trusted copy's bytes are what the (shared, name-keyed)
+		// link-time manifest actually vouches for — a genuine clean win
+		// via the link-time arm.
+		trustedPath := filepath.Join(trustedDir, name)
+		if err := os.WriteFile(trustedPath, []byte("trusted-side-correct-bytes"), 0o755); err != nil {
+			t.Fatalf("write trusted fixture: %v", err)
+		}
+		correctHash := mustHashBinary(t, trustedPath)
+		restore := OverrideBuildManifest(map[string]string{name: correctHash})
+		defer restore()
+
+		// The external copy shares the same NAME but different bytes —
+		// a genuine tamper against the very same manifest entry that
+		// just cleanly vouched for the trusted copy.
+		externalPath := filepath.Join(externalDir, name)
+		if err := os.WriteFile(externalPath, []byte("external-side-tampered-bytes"), 0o755); err != nil {
+			t.Fatalf("write external fixture: %v", err)
+		}
+
+		path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, name, hclog.NewNullLogger())
+		if err == nil {
+			t.Fatalf("expected the external-side tamper refusal to win the collision (path=%q, tier=%q) — it must never be silently dropped in favor of the trusted copy's own clean resolution", path, tier)
+		}
+		if !errors.Is(err, ErrManifestUnverified) {
+			t.Fatalf("expected errors.Is(err, ErrManifestUnverified), got: %v", err)
+		}
+		if path != externalPath {
+			t.Errorf("expected the refusal to be reported against the tampered external-side path %q, got %q — a caller must never be handed the trusted copy's path while the external copy sharing its name is a tamper refusal", externalPath, path)
 		}
 	})
 }

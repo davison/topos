@@ -500,19 +500,35 @@ func resolveBinaryDetailed(dirs Dirs, name string, logger hclog.Logger) (path st
 		externalTrust, externalErr := EvaluateTrust(dirs, name, externalPath)
 		logDiagnostics(externalPath, externalTrust.Diagnostics)
 
-		if trustedErr == nil && trustedTrust.Tier == TierTrusted {
+		// A tamper refusal on EITHER candidate wins outright — it must never
+		// be silently overridden by the other candidate's clean resolution
+		// (docs/plugin-contract.md's collision rule: "resolves to the
+		// refusal itself and never falls back to launching the other copy
+		// instead").
+		if trustedErr != nil {
+			logger.Warn("plugin binary name collides across trusted and external directories: trusted copy is a tamper refusal, refusing regardless of the external copy (D-11)",
+				"binary", name, "trusted_path", trustedPath, "external_path", externalPath)
+			return trustedPath, trustedTrust, shadowed, trustedErr
+		}
+		if externalErr != nil {
+			logger.Warn("plugin binary name collides across trusted and external directories: external copy is a tamper refusal, refusing regardless of the trusted copy (D-11)",
+				"binary", name, "trusted_path", trustedPath, "external_path", externalPath)
+			return externalPath, externalTrust, shadowed, externalErr
+		}
+
+		if trustedTrust.Tier == TierTrusted {
 			logger.Warn("plugin binary name collides across trusted and external directories: trusted copy carries evidence and wins (D-11)",
 				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", trustedTrust.Evidence)
 			return trustedPath, trustedTrust, shadowed, nil
 		}
-		if externalErr == nil && externalTrust.Tier == TierTrusted {
+		if externalTrust.Tier == TierTrusted {
 			logger.Warn("plugin binary name collides across trusted and external directories: external copy carries evidence and wins (D-11)",
 				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", externalTrust.Evidence)
 			return externalPath, externalTrust, shadowed, nil
 		}
 		logger.Warn("plugin binary name collides across trusted and external directories: neither copy carries evidence, trusted-first search order decides (D-11)",
 			"binary", name, "trusted_path", trustedPath, "external_path", externalPath)
-		return trustedPath, trustedTrust, shadowed, trustedErr
+		return trustedPath, trustedTrust, shadowed, nil
 	case trustedPath != "":
 		trust, err = EvaluateTrust(dirs, name, trustedPath)
 		logDiagnostics(trustedPath, trust.Diagnostics)
