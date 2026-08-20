@@ -159,13 +159,13 @@ The kernel discovers plugins by scanning a plugins directory for binaries,
 not from a compile-time list — this is what lets a kernel build ship
 without a Signal-plugin's cgo/C-toolchain requirement for a user who
 doesn't configure Signal. As of this contract generation the kernel scans
-**two** directories, not one — see "Trust tiers and pinning", below, for
-the full shape; the short version is that `[plugins] dir` (default
-`plugins`, resolved relative to the running `topos` executable) is
-unchanged, and a second, independently configured directory
-(`[plugins] external_dir`) is scanned alongside it, with a binary's
-directory of origin determining how much the kernel — and, downstream, its
-own UI — trusts it.
+**two** directories, not one — see "Trust tiers", below, for the full
+shape; the short version is that `[plugins] dir` (default `plugins`,
+resolved relative to the running `topos` executable) is unchanged, and a
+second, independently configured directory (`[plugins] external_dir`) is
+scanned alongside it. Both are search paths only — a binary's tier is
+decided from the provenance evidence it carries, not from which of the
+two the kernel found it in.
 
 For each configured `[sources.<name>]` entry, the kernel launches
 `<resolved-dir>/<plugin-binary-name>` as a subprocess and negotiates the
@@ -258,32 +258,35 @@ model — the two evidence sources, the on-disk manifest format, and what
 does and does not earn trust — rather than restating it here.
 
 **Trusted status is a build-provenance fact, not a filesystem-location
-proxy (`13-05-PLAN.md`, `D-12`/`D-13`).** Which directory a binary sits
-in still decides which tier it's a CANDIDATE for (the two directories
-above remain real install conveniences — `D-16` — and are unchanged),
-but a trusted-DIRECTORY binary must additionally verify against a
-link-time **build-provenance manifest** before it is ever launched: at kernel build
-time, `cmd/topos-manifest` hashes the exact plugin binaries that build
-just produced and links the resulting name→SHA-256 table into the kernel
-binary itself via `-ldflags -X`. At launch time, the kernel re-hashes the
-trusted-directory binary and checks it against that embedded table —
-absent from the table, or hashed differently than the table records, and
-the binary refuses to launch (`launch_failure: "manifest_unverified"`),
-**including the add-source picker's own trial ("describe") launch**, so
-a dropped binary can never reach code execution through that path
-either. A kernel built with no manifest at all (a bare `go build`, or a
-build recipe that skipped the generator) trusts NOTHING in the trusted
-directory — there is deliberately no fallback to directory-derived trust
-if the manifest is missing. **Verification never demotes-and-runs**: an
-unverifiable trusted-directory binary's only path to running at all
-remains the existing external-tier consent-and-pin flow described
-below — moving (or symlinking) it into the external directory and adding
-it as a new external-tier source. The two production paths a real build
-takes are `make build`/`make build-portable`/`make dev` (which rebuild
-every trusted plugin binary and regenerate the manifest before linking
-the kernel, every time) and a manually invoked bare `go build` (which
-carries no manifest and therefore launches no trusted-tier plugin at
-all) — there is no supported path in between. See
+proxy (`13-05-PLAN.md`, `D-12`/`D-13`).** The two directories remain real
+install conveniences (`D-16`) and nothing more — sitting in either one is
+not itself a step toward trust. At launch time the kernel re-hashes the
+binary it found and checks it against its evidence — the link-time
+build-manifest table OR a validly-signed release manifest, either arm
+sufficient — before the binary is ever launched. The link-time arm works
+like this: at kernel build time, `cmd/topos-manifest` hashes the exact
+plugin binaries that build just produced and links the resulting
+name→SHA-256 table into the kernel binary itself via `-ldflags -X`.
+Absent from that table, or hashed differently than the table records, and
+a binary relying on the link-time arm alone (with no valid signed
+manifest either) refuses to launch (`launch_failure:
+"manifest_unverified"`), **including the add-source picker's own trial
+("describe") launch**, so a dropped binary can never reach code execution
+through that path either. A kernel built with no link-time manifest at
+all (a bare `go build`, or a build recipe that skipped the generator)
+trusts nothing through that arm — there is deliberately no fallback to
+directory-derived trust if the manifest is missing; a binary can still
+earn trust through the signed-release-manifest arm regardless. **Verification
+never demotes-and-runs**: a binary that fails both evidence arms has only
+one path to running at all — the existing external-tier consent-and-pin
+flow described below — moving (or symlinking) it into the external
+directory and adding it as a new external-tier source. The two production
+paths a real build takes are `make build`/`make build-portable`/
+`make dev` (which rebuild every trusted plugin binary and regenerate the
+link-time manifest before linking the kernel, every time) and a manually
+invoked bare `go build` (which carries no link-time manifest and
+therefore launches no plugin trusted solely through that arm) — there is
+no supported path in between. See
 [`docs/plugins/signal.md`](plugins/signal.md#local-builds-and-the-build-manifest)
 for a worked example from the one plugin an operator routinely rebuilds
 locally against a release kernel — the exact shape that hits this
@@ -318,15 +321,16 @@ resolves directly inside one of the two configured directories above and
 nowhere else — it must not contain a path separator (either `/` or `\`)
 or an `.`/`..` segment, and it must not be empty. A value carrying any of
 those shapes fails config load and `PUT /api/config` with an error naming
-the offending source, before the config is written to disk. This is what
-keeps the premise "trust is decided by the kernel from where the binary
-lives" true: a caller-supplied path can never point the kernel at a file
-outside `[plugins] dir`/`[plugins] external_dir`, and so can never make a
-binary outside either directory launch as if it were `TierTrusted`.
+the offending source, before the config is written to disk. This confines
+resolution to the two configured search directories, so a caller-supplied
+path can never point the kernel at a file outside them; trust is then
+decided separately, from evidence, once the kernel has resolved which
+bytes it's actually looking at.
 
 **Two instances, two tiers, no conflict.** Two `[sources.<id>]` entries
-naming the same plugin binary always resolve to the same tier (tier is a
-property of the binary's resolved path, not of the instance), but two
+naming the same plugin binary always resolve to the same tier — tier
+belongs to the binary's own evidence, not to the instance, so the same
+bytes evaluate identically for every instance that names them — but two
 DIFFERENT plugin binaries can freely sit in different tiers — a
 deployment mixing this repository's own trusted paperless/SilverBullet/
 Proton/Signal/WhatsApp plugins with a third-party external one is the
