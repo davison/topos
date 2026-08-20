@@ -18,11 +18,13 @@ import (
 )
 
 // TestResolveBinary_TrustedOnlyResolvesTrustedTier proves the simplest
-// resolution case: a name present only in the trusted directory resolves
-// there, tagged TierTrusted, with no warning logged.
+// resolution case: a name present only in the trusted directory, CARRYING
+// EVIDENCE (D-11: a bare directory placement alone earns nothing),
+// resolves there, tagged TierTrusted, with no warning logged.
 func TestResolveBinary_TrustedOnlyResolvesTrustedTier(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 
 	var buf bytes.Buffer
 	logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
@@ -63,14 +65,16 @@ func TestResolveBinary_ExternalOnlyResolvesExternalTier(t *testing.T) {
 }
 
 // TestResolveBinary_CollisionResolvesTrustedAndLogsByName proves D-11's
-// full launch-time contract: a name present in BOTH directories resolves
-// to the TRUSTED path and tier, AND emits a warning whose text names the
+// replacement collision rule: a name present in BOTH directories, where
+// the trusted copy carries evidence (installTrustedManifest), resolves to
+// the TRUSTED path and tier, AND emits a warning whose text names the
 // colliding binary — a shadow must never be silent.
 func TestResolveBinary_CollisionResolvesTrustedAndLogsByName(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-shadowed")
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-shadowed")
+	installTrustedManifest(t, trustedDir)
 
 	var buf bytes.Buffer
 	logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
@@ -97,6 +101,7 @@ func TestResolveBinary_CollisionResolvesTrustedAndLogsByName(t *testing.T) {
 func TestResolveBinary_NoCollisionWhenOnlyTrustedHasIt(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-example")
 
@@ -303,6 +308,7 @@ func TestResolveBinary_SymlinkedBinaryStillResolvesAfterRegularFileCheck(t *test
 	if err := os.Symlink(filepath.Join(realDir, "topos-plugin-symlinked"), linkPath); err != nil {
 		t.Fatalf("symlink fixture: %v", err)
 	}
+	installTrustedManifest(t, trustedDir)
 
 	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, "topos-plugin-symlinked", hclog.NewNullLogger())
 	if err != nil {
@@ -328,16 +334,17 @@ func TestResolveBinaryDetailed_CollisionReportsShadowedTrue(t *testing.T) {
 	writeFixtureFile(t, trustedDir, "topos-plugin-shadowed")
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-shadowed")
+	installTrustedManifest(t, trustedDir)
 
-	path, tier, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-shadowed", hclog.NewNullLogger())
+	path, trust, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-shadowed", hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("resolveBinaryDetailed: %v", err)
 	}
 	if want := filepath.Join(trustedDir, "topos-plugin-shadowed"); path != want {
 		t.Errorf("expected the trusted path %q to win the collision, got %q", want, path)
 	}
-	if tier != TierTrusted {
-		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
+	if trust.Tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, trust.Tier)
 	}
 	if !shadowed {
 		t.Error("expected shadowed=true for a colliding binary name")
@@ -352,22 +359,144 @@ func TestResolveBinaryDetailed_CollisionReportsShadowedTrue(t *testing.T) {
 func TestResolveBinaryDetailed_NoCollisionReportsShadowedFalse(t *testing.T) {
 	trustedDir := t.TempDir()
 	writeFixtureFile(t, trustedDir, "topos-plugin-paperless")
+	installTrustedManifest(t, trustedDir)
 	externalDir := t.TempDir()
 	writeFixtureFile(t, externalDir, "topos-plugin-example")
 
-	_, tier, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-paperless", hclog.NewNullLogger())
+	_, trust, shadowed, err := resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-paperless", hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("resolveBinaryDetailed (trusted-only): %v", err)
 	}
-	if tier != TierTrusted || shadowed {
-		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierTrusted, tier, shadowed)
+	if trust.Tier != TierTrusted || shadowed {
+		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierTrusted, trust.Tier, shadowed)
 	}
 
-	_, tier, shadowed, err = resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-example", hclog.NewNullLogger())
+	_, trust, shadowed, err = resolveBinaryDetailed(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-example", hclog.NewNullLogger())
 	if err != nil {
 		t.Fatalf("resolveBinaryDetailed (external-only): %v", err)
 	}
-	if tier != TierExternal || shadowed {
-		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierExternal, tier, shadowed)
+	if trust.Tier != TierExternal || shadowed {
+		t.Errorf("expected tier %q and shadowed=false, got tier %q shadowed=%v", TierExternal, trust.Tier, shadowed)
+	}
+}
+
+// TestResolveBinary_ExternalWithSignedManifestResolvesTrustedTier proves
+// D-11's location-independence contract directly — success criterion 1:
+// a binary carrying valid signed-release evidence resolves TierTrusted
+// from the EXTERNAL directory exactly like it would from the trusted
+// directory. Trust is a property of provenance, never of location.
+func TestResolveBinary_ExternalWithSignedManifestResolvesTrustedTier(t *testing.T) {
+	externalDir := t.TempDir()
+	writeFixtureFile(t, externalDir, "topos-plugin-signed")
+	keyID, priv := installProvenanceTestKey(t)
+	hash := mustHashBinary(t, filepath.Join(externalDir, "topos-plugin-signed"))
+	writeSignedManifest(t, externalDir, "topos-plugins-v0.1.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-signed", SHA256: hash, Version: "0.1.0", Contract: "topos.v1"}},
+		keyID, priv)
+
+	path, tier, err := ResolveBinary(Dirs{External: externalDir}, "topos-plugin-signed", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("ResolveBinary: %v", err)
+	}
+	if want := filepath.Join(externalDir, "topos-plugin-signed"); path != want {
+		t.Errorf("expected path %q, got %q", want, path)
+	}
+	if tier != TierTrusted {
+		t.Errorf("expected tier %q for a signed binary in the EXTERNAL directory, got %q", TierTrusted, tier)
+	}
+}
+
+// TestResolveBinary_TrustedWithNoEvidenceResolvesExternalTier proves the
+// negative of location-independence: a binary sitting in the TRUSTED
+// directory with no provenance evidence at all resolves TierExternal —
+// the directory itself confers nothing (D-11).
+func TestResolveBinary_TrustedWithNoEvidenceResolvesExternalTier(t *testing.T) {
+	trustedDir := t.TempDir()
+	writeFixtureFile(t, trustedDir, "topos-plugin-unproven")
+
+	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir}, "topos-plugin-unproven", hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("ResolveBinary: %v", err)
+	}
+	if want := filepath.Join(trustedDir, "topos-plugin-unproven"); path != want {
+		t.Errorf("expected path %q, got %q", want, path)
+	}
+	if tier != TierExternal {
+		t.Errorf("expected tier %q for a binary with no evidence in the TRUSTED directory, got %q", TierExternal, tier)
+	}
+}
+
+// TestResolveBinary_LocationSymmetric proves the same binary bytes,
+// carrying identical signed-release evidence, resolve to the SAME tier
+// regardless of which configured directory they sit in — the assertion
+// is location-symmetric BY CONSTRUCTION (a single table over both
+// placements), not by two hand-written mirror tests that could silently
+// diverge.
+func TestResolveBinary_LocationSymmetric(t *testing.T) {
+	for _, placement := range []string{"trusted", "external"} {
+		t.Run(placement, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFixtureFile(t, dir, "topos-plugin-symmetric")
+			keyID, priv := installProvenanceTestKey(t)
+			hash := mustHashBinary(t, filepath.Join(dir, "topos-plugin-symmetric"))
+			writeSignedManifest(t, dir, "topos-plugins-v0.1.0", nativeRelease(),
+				[]ProvenanceEntry{{Name: "topos-plugin-symmetric", SHA256: hash, Version: "0.1.0", Contract: "topos.v1"}},
+				keyID, priv)
+
+			dirs := Dirs{Trusted: dir}
+			if placement == "external" {
+				dirs = Dirs{External: dir}
+			}
+
+			_, tier, err := ResolveBinary(dirs, "topos-plugin-symmetric", hclog.NewNullLogger())
+			if err != nil {
+				t.Fatalf("ResolveBinary (%s): %v", placement, err)
+			}
+			if tier != TierTrusted {
+				t.Errorf("expected tier %q from the %s directory, got %q", TierTrusted, placement, tier)
+			}
+		})
+	}
+}
+
+// TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence proves
+// D-11's replacement collision rule directly, independent of directory
+// search order: when only the EXTERNAL candidate carries provenance
+// evidence (the two candidate files hold DIFFERENT bytes, so the trusted
+// copy cannot incidentally match the signed manifest's digest too), the
+// EXTERNAL copy wins the collision — never the trusted-first ordering the
+// obsolete D-14 rule would have applied regardless of evidence — and the
+// collision is still logged by name.
+func TestResolveBinary_CollisionResolvesToWhicheverCopyCarriesEvidence(t *testing.T) {
+	trustedDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(trustedDir, "topos-plugin-collision"), []byte("trusted-side-bytes"), 0o755); err != nil {
+		t.Fatalf("write trusted fixture: %v", err)
+	}
+	externalDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(externalDir, "topos-plugin-collision"), []byte("external-side-bytes"), 0o755); err != nil {
+		t.Fatalf("write external fixture: %v", err)
+	}
+
+	keyID, priv := installProvenanceTestKey(t)
+	hash := mustHashBinary(t, filepath.Join(externalDir, "topos-plugin-collision"))
+	writeSignedManifest(t, externalDir, "topos-plugins-v0.1.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-collision", SHA256: hash, Version: "0.1.0", Contract: "topos.v1"}},
+		keyID, priv)
+
+	var buf bytes.Buffer
+	logger := hclog.New(&hclog.LoggerOptions{Output: &buf})
+
+	path, tier, err := ResolveBinary(Dirs{Trusted: trustedDir, External: externalDir}, "topos-plugin-collision", logger)
+	if err != nil {
+		t.Fatalf("ResolveBinary: %v", err)
+	}
+	if want := filepath.Join(externalDir, "topos-plugin-collision"); path != want {
+		t.Errorf("expected the EXTERNAL path %q to win the collision (it carries the evidence), got %q", want, path)
+	}
+	if tier != TierTrusted {
+		t.Errorf("expected tier %q, got %q", TierTrusted, tier)
+	}
+	if !strings.Contains(buf.String(), "topos-plugin-collision") {
+		t.Errorf("expected the emitted warning to name the colliding binary, got: %s", buf.String())
 	}
 }

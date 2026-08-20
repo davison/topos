@@ -988,6 +988,10 @@ func TestPluginTypesHandler_ReturnsPluginTypeTiersAlongsidePluginTypes(t *testin
 			t.Fatalf("write trusted fixture %s: %v", name, err)
 		}
 	}
+	// D-11: a bare directory placement earns nothing — install real
+	// link-time evidence for both fixtures so this test's "trusted"
+	// expectations below hold under the provenance-derived tier model.
+	installTrustedManifest(t, trustedDir)
 	externalDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(externalDir, "topos-plugin-example"), []byte("x"), 0o755); err != nil {
 		t.Fatalf("write external fixture: %v", err)

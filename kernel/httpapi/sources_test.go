@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -983,5 +985,154 @@ func TestSourcesHandler_ManifestUnverifiedEntryCarriesNoLaunchAdvisory(t *testin
 	rawBody := rec.Body.String()
 	if strings.Contains(rawBody, "launch_advisory") {
 		t.Errorf("expected omitempty to drop launch_advisory entirely from the raw body, got: %s", rawBody)
+	}
+}
+
+// copyMockBinaryToFreshDirForFallbackPathTest mirrors
+// kernel/pluginhost/pin_test.go's copyMockBinaryToFreshDir: buildMockPluginDir
+// (config_test.go) caches ONE shared binary/directory across this whole
+// package's test run — a private copy is required here because this test
+// mutates the binary's bytes (the re-pin scenario below) and must never
+// corrupt the fixture every other test in this file also depends on.
+func copyMockBinaryToFreshDirForFallbackPathTest(t *testing.T) string {
+	t.Helper()
+	srcDir := buildMockPluginDir(t)
+	data, err := os.ReadFile(filepath.Join(srcDir, "topos-plugin-mock"))
+	if err != nil {
+		t.Fatalf("read shared mock plugin fixture: %v", err)
+	}
+	dstDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dstDir, "topos-plugin-mock"), data, 0o755); err != nil {
+		t.Fatalf("write private mock plugin copy: %v", err)
+	}
+	return dstDir
+}
+
+// writeTamperedCopyForFallbackPathTest reads srcPath's bytes, flips the
+// final byte in MEMORY, and writes the result into a brand-new file at
+// dstDir/topos-plugin-mock — never mutating srcPath itself. This
+// deliberately avoids in-place mutation of a binary that may have just
+// been exec'd (go-plugin's Kill() does not guarantee the kernel has fully
+// released the process image before returning; a same-inode O_RDWR open
+// shortly after can race a lingering ETXTBSY on Linux) by always producing
+// tampered bytes as a NEW file the OS has never mapped as a running
+// process's text segment.
+func writeTamperedCopyForFallbackPathTest(t *testing.T, srcPath string) string {
+	t.Helper()
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", srcPath, err)
+	}
+	tampered := append([]byte{}, data...)
+	tampered[len(tampered)-1] ^= 0xFF
+
+	dstDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dstDir, "topos-plugin-mock"), tampered, 0o755); err != nil {
+		t.Fatalf("write tampered copy: %v", err)
+	}
+	return dstDir
+}
+
+// TestSources_UnsignedExternalBinaryConsentAndPinPathUnchanged is the
+// explicit TRUST-03 regression net this phase owes (16-02-PLAN.md Task 3,
+// D-11): exercises the REAL pluginhost.Discover/launch machinery (never
+// fakeProber) against a genuinely unsigned external-tier binary, end to
+// end through GET /api/sources — proving the unsigned consent-and-pin path
+// is byte-for-byte unchanged by the provenance-derived tier rewrite. Four
+// sub-steps: (1) no pin recorded -> tier "external", launch_failure
+// "pin_mismatch" (never "manifest_unverified"); (2) pinned and matching ->
+// launches; (3) the SAME pin against DIFFERENT bytes (simulating "the
+// binary changed since it was pinned") -> fails again, still
+// "pin_mismatch"; (4) a re-pin write (a fresh pin matching the changed
+// bytes' NEW hash) restores launchability — the fallback path's full
+// consent-and-pin lifecycle, unchanged by this phase.
+func TestSources_UnsignedExternalBinaryConsentAndPinPathUnchanged(t *testing.T) {
+	dir := copyMockBinaryToFreshDirForFallbackPathTest(t)
+	binPath := filepath.Join(dir, "topos-plugin-mock")
+	originalHash, err := pluginhost.HashBinary(binPath)
+	if err != nil {
+		t.Fatalf("HashBinary: %v", err)
+	}
+
+	store := newTestStoreForHTTP(t)
+	sources := map[string]config.Source{"demo": {Plugin: "topos-plugin-mock"}}
+
+	// 1. No pin recorded at all: refuses with pin_mismatch, never
+	// manifest_unverified — the tier is external from the start (D-11: no
+	// provenance evidence anywhere for this binary), so the manifest gate
+	// is never even consulted.
+	h1, err := pluginhost.Discover(context.Background(), pluginhost.Dirs{External: dir}, &config.Config{Sources: sources}, sources, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("Discover (unpinned): %v", err)
+	}
+	router1 := newTestSourcesRouter(store, &config.Config{}, h1, &fakeRefresher{})
+	rec1 := httptest.NewRecorder()
+	router1.ServeHTTP(rec1, httptest.NewRequest(http.MethodGet, "/api/sources", nil))
+	var resp1 sourcesResponse
+	if err := json.Unmarshal(rec1.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("unmarshal (unpinned): %v", err)
+	}
+	if len(resp1.Sources) != 1 {
+		t.Fatalf("expected exactly one source entry, got %+v", resp1.Sources)
+	}
+	if resp1.Sources[0].Tier != "external" {
+		t.Errorf("expected tier %q, got %q", "external", resp1.Sources[0].Tier)
+	}
+	if resp1.Sources[0].LaunchFailure != pluginhost.LaunchFailurePinMismatch {
+		t.Errorf("expected launch_failure %q for an unpinned external binary, got %q", pluginhost.LaunchFailurePinMismatch, resp1.Sources[0].LaunchFailure)
+	}
+	h1.Shutdown()
+
+	// 2. Pinned and matching: launches successfully, zero failures.
+	pinnedRaw := &config.Config{Sources: sources, Plugins: config.PluginsConfig{Pins: map[string]string{"topos-plugin-mock": originalHash}}}
+	h2, err := pluginhost.Discover(context.Background(), pluginhost.Dirs{External: dir}, pinnedRaw, sources, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("Discover (pinned): %v", err)
+	}
+	if len(h2.Plugins()) != 1 {
+		t.Fatalf("expected the pinned instance to launch, got failures: %+v", h2.LaunchFailures())
+	}
+	if len(h2.LaunchFailures()) != 0 {
+		t.Fatalf("expected zero launch failures for a matching pin, got %+v", h2.LaunchFailures())
+	}
+	h2.Shutdown()
+
+	// 3. "The binary changed since it was pinned": a fresh directory with
+	// DIFFERENT bytes under the SAME pin — the same_pin, different_bytes
+	// shape a real post-pin tamper produces, without touching the
+	// already-executed original file (see
+	// writeTamperedCopyForFallbackPathTest's own doc comment for why).
+	tamperedDir := writeTamperedCopyForFallbackPathTest(t, binPath)
+	tamperedPath := filepath.Join(tamperedDir, "topos-plugin-mock")
+	h3, err := pluginhost.Discover(context.Background(), pluginhost.Dirs{External: tamperedDir}, pinnedRaw, sources, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("Discover (tampered): %v", err)
+	}
+	if len(h3.Plugins()) != 0 {
+		t.Fatalf("expected the tampered instance to fail to launch, got %+v", h3.Plugins())
+	}
+	failures := h3.LaunchFailures()
+	if len(failures) != 1 || failures[0].Reason != pluginhost.LaunchFailurePinMismatch {
+		t.Fatalf("expected exactly one pin_mismatch failure after tampering, got %+v", failures)
+	}
+	h3.Shutdown()
+
+	// 4. A re-pin write (a fresh pin matching the changed bytes' NEW hash)
+	// makes the changed binary launchable again.
+	newHash, err := pluginhost.HashBinary(tamperedPath)
+	if err != nil {
+		t.Fatalf("HashBinary (tampered): %v", err)
+	}
+	rePinnedRaw := &config.Config{Sources: sources, Plugins: config.PluginsConfig{Pins: map[string]string{"topos-plugin-mock": newHash}}}
+	h4, err := pluginhost.Discover(context.Background(), pluginhost.Dirs{External: tamperedDir}, rePinnedRaw, sources, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("Discover (re-pinned): %v", err)
+	}
+	defer h4.Shutdown()
+	if len(h4.Plugins()) != 1 {
+		t.Fatalf("expected the re-pinned instance to launch again, got failures: %+v", h4.LaunchFailures())
+	}
+	if len(h4.LaunchFailures()) != 0 {
+		t.Fatalf("expected zero launch failures after re-pinning, got %+v", h4.LaunchFailures())
 	}
 }

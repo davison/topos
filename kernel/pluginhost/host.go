@@ -913,30 +913,40 @@ func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool
 // add a first external source.
 //
 // Trust verification (13-05-PLAN.md Task 3, D-12/D-13; widened by
-// 16-01-PLAN.md Task 1 to the two-arm coexistence rule, D-10): immediately
-// after resolveBinaryDetailed resolves a TRUSTED-tier binary, and BEFORE
-// exec.Command is ever constructed, launch calls EvaluateTrust
-// (provenance.go) — the single authority consulting BOTH the link-time
+// 16-01-PLAN.md Task 1 to the two-arm coexistence rule, D-10; collapsed by
+// 16-02-PLAN.md Task 1, D-11, into resolveBinaryDetailed itself): tier is
+// no longer a directory-derived fact launch re-checks — resolveBinaryDetailed
+// ALREADY evaluated the resolved binary's provenance via EvaluateTrust
+// (provenance.go), the single authority consulting BOTH the link-time
 // build manifest AND every validly-signed release manifest in dirs;
 // neither arm can silently substitute for the other, and EITHER arm
-// succeeding grants trusted-tier eligibility. A binary verified by
-// neither arm, or refused as tampered by either, returns a
-// *manifestUnverifiedError (wrapping ErrManifestUnverified) and creates
-// NO subprocess at all — UNLIKE the pin-mismatch block above, this gate
-// runs for describeOnly (trial) launches TOO: the external-tier pin check
-// skips trial launches because a first pin cannot exist before the trial
-// ever runs, but a trusted binary either verifies or it doesn't — that
-// fact doesn't depend on whether this is a real or a trial launch, and
-// letting the add-source picker's trial launch execute an unverified
-// dropped binary would hand an attacker code execution through the
-// describe path (T-13-06). Verification never demotes-and-runs: an
-// unverifiable trusted binary's only path to running remains the existing
-// explicit external-tier consent and pin flow.
+// succeeding grants trusted-tier eligibility, wherever the binary sits
+// (D-11: directories are pure search paths). launch gates directly on the
+// Trust value the resolver already produced. A binary verified by neither
+// arm, or refused as tampered by either, returns a *manifestUnverifiedError
+// (wrapping ErrManifestUnverified) and creates NO subprocess at all —
+// UNLIKE the pin-mismatch block below, this gate runs for describeOnly
+// (trial) launches TOO: the external-tier pin check skips trial launches
+// because a first pin cannot exist before the trial ever runs, but a
+// trusted binary either verifies or it doesn't — that fact doesn't depend
+// on whether this is a real or a trial launch, and letting the add-source
+// picker's trial launch execute an unverified dropped binary would hand an
+// attacker code execution through the describe path (T-13-06).
+// Verification never demotes-and-runs: an unverifiable binary's only path
+// to running remains the existing explicit external-tier consent and pin
+// flow (TRUST-03) — trust is evaluated exactly once per launch, by
+// resolveBinaryDetailed, and still before exec.Command is constructed.
 func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
-	binPath, tier, shadowed, err := resolveBinaryDetailed(dirs, src.Plugin, logger)
-	if err != nil {
-		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, err)
+	binPath, trust, shadowed, resolveErr := resolveBinaryDetailed(dirs, src.Plugin, logger)
+	if resolveErr != nil && binPath == "" {
+		// binPath is empty ONLY when the binary was not found in either
+		// directory at all (or its name failed validatePluginBinaryName) —
+		// never when resolveBinaryDetailed found bytes but EvaluateTrust
+		// refused them (that case is handled below, once instanceDisplayName
+		// is available, as a *manifestUnverifiedError, not a "not found").
+		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, resolveErr)
 	}
+	tier := trust.Tier
 
 	// The instance display name resolves from the operator's own config
 	// (D-09), falling back to the instance id itself when display_name is
@@ -952,27 +962,29 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 
 	// manifestHash carries the trusted-tier binary's verified on-disk
 	// SHA-256 out of this block into the returned *Plugin — see the
-	// Plugin.manifestHash field's own doc comment. D-10 (16-01-PLAN.md
-	// Task 1): trusted-tier eligibility is now decided by the single
-	// EvaluateTrust authority, which itself consults both evidence
-	// sources — see this function's own doc comment above.
+	// Plugin.manifestHash field's own doc comment. D-11 (16-02-PLAN.md
+	// Task 1): resolveBinaryDetailed already evaluated trust exactly once
+	// above (and already logged every Trust.Diagnostics entry) — launch
+	// gates directly on that result instead of re-evaluating.
+	//
+	// A non-nil resolveErr at this point means resolveBinaryDetailed found
+	// bytes at binPath but EvaluateTrust refused them (a tamper refusal —
+	// binPath being non-empty already ruled out the "not found" case
+	// above). This is treated identically to "trust was expected but the
+	// binary didn't earn it": *manifestUnverifiedError, no subprocess ever
+	// created (D-13).
 	var manifestHash string
+	if resolveErr != nil {
+		return nil, &manifestUnverifiedError{
+			instance:    name,
+			plugin:      src.Plugin,
+			displayName: instanceDisplayName,
+			tier:        tier,
+			currentHash: trust.Hash,
+			cause:       resolveErr,
+		}
+	}
 	if tier == TierTrusted {
-		trust, evalErr := EvaluateTrust(dirs, src.Plugin, binPath)
-		for _, diag := range trust.Diagnostics {
-			logger.Warn("provenance evaluation diagnostic (D-10/T-16-07)",
-				"instance", name, "binary", src.Plugin, "detail", diag)
-		}
-		if evalErr != nil || trust.Tier != TierTrusted {
-			return nil, &manifestUnverifiedError{
-				instance:    name,
-				plugin:      src.Plugin,
-				displayName: instanceDisplayName,
-				tier:        tier,
-				currentHash: trust.Hash,
-				cause:       evalErr,
-			}
-		}
 		manifestHash = trust.Hash
 	}
 
