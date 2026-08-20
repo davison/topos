@@ -296,6 +296,13 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	for (const link of configSpec.trustedBinaryLinks ?? []) {
 		linkPluginBinaryAs(pluginsDirPath, link.name, link.srcPath);
 	}
+	// externalBinaryLinks (16-03-PLAN.md Task 2, gap closure): the EXTERNAL
+	// directory's own sibling of the trustedBinaryLinks loop above — see
+	// config-builder.ts's own doc comment for why this is a separate,
+	// renamed-destination mechanism from externalPluginBinaries.
+	for (const link of configSpec.externalBinaryLinks ?? []) {
+		linkPluginBinaryAs(externalPluginsDirPath, link.name, link.srcPath);
+	}
 
 	const logBuffer = new BoundedLogBuffer();
 	const child = spawn(KERNEL_BIN, ['serve'], {

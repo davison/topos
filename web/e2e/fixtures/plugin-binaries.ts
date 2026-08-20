@@ -91,6 +91,19 @@ export function hashPluginBinary(name: string, srcDir: string = PLUGIN_BIN_DIR):
 }
 
 /**
+ * hashPluginBinaryAtPath is hashPluginBinary's sibling for an already-
+ * resolved absolute path (16-03-PLAN.md Task 2, gap closure) — the
+ * companion `linkPluginBinaryAs`/config-builder.ts's `externalBinaryLinks`
+ * already need: both link a source binary under a CALLER-CHOSEN
+ * destination name, so the source path itself (never a `srcDir` + `name`
+ * join) is what a fixture pinning that renamed destination must hash.
+ */
+export function hashPluginBinaryAtPath(path: string): string {
+	assertExists(path, `plugin binary path "${path}" (for hashing)`);
+	return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+/**
  * linkPluginBinaryAs symlinks ONE arbitrary source binary (an absolute
  * path — not necessarily from PLUGIN_BIN_DIR or EXTERNAL_DEMO_BIN_DIR)
  * into destDir under a caller-chosen destination NAME, which need not
