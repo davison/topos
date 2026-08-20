@@ -17,7 +17,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### First-Party Trust (TRUST)
 
-- [ ] **TRUST-01**: Plugin trust derives from verifiable provenance (signed/attested release artifacts), not from which directory a binary resolves from
+- [x] **TRUST-01**: Plugin trust derives from verifiable provenance (signed/attested release artifacts), not from which directory a binary resolves from
 - [ ] **TRUST-02**: A topos-plugins release binary verifies as first-party trusted on an installed instance, despite living outside the kernel repo and its link-time manifest
 - [ ] **TRUST-03**: An unsigned external binary still installs through the existing consent-and-pin flow, marked untrusted (fallback unchanged)
 - [ ] **TRUST-04**: Trust cannot be escalated via config edit, file drop, or binary shadowing — the "trust tier is directory-location" todo's attack paths are closed by committed tests
@@ -75,7 +75,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REPO-03 | Phase 17 | Pending |
 | REPO-04 | Phase 17 | Pending |
 | REPO-05 | Phase 17 | Pending |
-| TRUST-01 | Phase 16 | Pending |
+| TRUST-01 | Phase 16 | Complete |
 | TRUST-02 | Phase 16 | Pending |
 | TRUST-03 | Phase 16 | Pending |
 | TRUST-04 | Phase 16 | Pending |
