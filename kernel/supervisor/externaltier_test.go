@@ -55,9 +55,21 @@ func buildSecondMockPluginDir(t *testing.T) string {
 // binary that lives ONLY in the external directory (the trusted
 // directory is genuinely empty — no shadow, no ambiguity) is discovered,
 // launched, and reports tier "external" through the identical
-// ProbeSources call GET /api/sources uses in production.
+// ProbeSources call GET /api/sources uses in production. Deliberately
+// built under a RENAMED binary name (buildRenamedMockPluginDir,
+// pinmismatch_test.go), never buildMockPluginDir's shared
+// "topos-plugin-mock" fixture: buildMockPluginDir permanently installs a
+// build-manifest entry for that exact name+hash for the whole package's
+// test run (its own doc comment), and — since `go build` of identical
+// source under an identical toolchain/module root is reproducible — a
+// SECOND "topos-plugin-mock" build anywhere in this package would earn
+// the SAME hash and therefore the SAME trusted-tier verdict under D-11's
+// provenance-derived model (this is D-11's own success criterion working
+// exactly as intended: same bytes, same tier, regardless of directory).
+// Proving GENUINE external-tier resolution here requires a binary whose
+// NAME the global manifest override does not cover at all.
 func TestExternalTier_BinaryPresentOnlyExternallyLaunchesAndReportsTier(t *testing.T) {
-	externalDir := buildMockPluginDir(t)
+	externalDir := buildRenamedMockPluginDir(t, "topos-plugin-externalonly")
 	trustedDir := t.TempDir() // empty — nothing trusted configured at all
 	idx := newTestIndex(t)
 	ctx := context.Background()
@@ -68,17 +80,17 @@ func TestExternalTier_BinaryPresentOnlyExternallyLaunchesAndReportsTier(t *testi
 	// pin-mismatch/no-pin cases are covered by pin_test.go and
 	// pinmismatch_test.go instead, not by widening this pre-existing tier
 	// proof's scope.
-	pinnedHash, err := pluginhost.HashBinary(filepath.Join(externalDir, "topos-plugin-mock"))
+	pinnedHash, err := pluginhost.HashBinary(filepath.Join(externalDir, "topos-plugin-externalonly"))
 	if err != nil {
 		t.Fatalf("hash external mock binary for pin: %v", err)
 	}
 
 	cfgStore := newTestConfigStore(t, fmt.Sprintf(`
 [plugins.pins]
-"topos-plugin-mock" = %q
+"topos-plugin-externalonly" = %q
 
 [sources.demo]
-plugin = "topos-plugin-mock"
+plugin = "topos-plugin-externalonly"
 base_url = "http://mock.test"
 token = "unused"
 
