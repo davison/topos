@@ -25,6 +25,18 @@
 // (kernel/pluginhost/escalation_test.go's own
 // "digest mismatch under a legitimately-named manifest entry" case pins
 // the identical property at the Go level).
+//
+// 16-06-PLAN.md Task 2 (gap closure for 16-VERIFICATION.md gap 1 / CR-01 /
+// WR-01) widens this spec additively: the typed GET /api/sources response
+// shape previously omitted `tier` entirely, which is precisely why the
+// empty-tier regression (EvaluateTrust's tamper-refusal paths never set
+// Trust.Tier) reached a release without this browser layer ever catching
+// it. This spec now asserts the tampered entry's wire `tier` is
+// `'trusted'` — a refusal is a trusted-tier refusal because a manifest
+// positively named this binary — matching docs/api.md's dropped-binary
+// worked example, plus asserts the control entry's tier and the tampered
+// chip's badge-glyph absence, so the field TrustBadge.svelte branches on
+// is finally read by this test.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, waitForFirstSync } from '../fixtures/kernel';
@@ -88,6 +100,17 @@ test.describe('16-03 Task 2: a trusted-directory binary whose bytes no longer ma
 			tamperedChip.locator('span.size-2'),
 			'expected the manifest-unverified chip to render the DESTRUCTIVE tone, matching the pin-mismatch precedent'
 		).toHaveClass(/bg-destructive/);
+		// 16-06-PLAN.md Task 2: the tampered chip's tier is 'trusted' (a
+		// manifest positively named this binary), so TrustBadge.svelte's
+		// `{#if tier === 'external'}` guard must render NO badge glyph here
+		// — same selector convention `11-external-tier-badge.spec.ts`
+		// establishes. Asserted alongside the destructive tone above so
+		// both trust signals — the refusal and the (unchanged) tier — are
+		// proven together.
+		await expect(
+			tamperedChip.locator('svg.lucide-circle-alert'),
+			'expected NO trust badge on the tampered chip — its tier is trusted, not external'
+		).toHaveCount(0);
 		// 14-02-PLAN.md Task 2 (14-UI-SPEC.md G1, option-b): the contract-exact
 		// sentence no longer renders through a native `title` attribute — it is
 		// exposed as the button's accessible DESCRIPTION via a visually-hidden
@@ -112,7 +135,7 @@ test.describe('16-03 Task 2: a trusted-directory binary whose bytes no longer ma
 		const sourcesRes = await fetch(`${kernel.baseURL}/api/sources`);
 		expect(sourcesRes.ok).toBe(true);
 		const sourcesBody = (await sourcesRes.json()) as {
-			sources: Array<{ name: string; reachable: boolean; launch_failure?: string }>;
+			sources: Array<{ name: string; tier: string; reachable: boolean; launch_failure?: string }>;
 		};
 		const tamperedEntry = sourcesBody.sources.find((s) => s.name === 'tampered');
 		expect(tamperedEntry, 'expected a "tampered" entry on GET /api/sources').toBeDefined();
@@ -121,6 +144,22 @@ test.describe('16-03 Task 2: a trusted-directory binary whose bytes no longer ma
 			'expected the manifest-unverified source to be unreachable'
 		).toBe(false);
 		expect(tamperedEntry?.launch_failure).toBe('manifest_unverified');
+		// 16-06-PLAN.md Task 2 (16-VERIFICATION.md gap 1 / CR-01 / WR-01):
+		// the wire field TrustBadge branches on. A refusal is a
+		// trusted-tier refusal — a manifest positively named this binary —
+		// matching docs/api.md's dropped-binary worked example.
+		expect(
+			tamperedEntry?.tier,
+			'expected the manifest-unverified source to report the trusted tier, not the empty zero value'
+		).toBe('trusted');
+
+		// Control check: the healthy "control" instance (topos-plugin-mockstrict,
+		// also a MANIFEST_E2E_BINARIES name) also reports 'trusted' — so the
+		// assertion above cannot pass vacuously against a payload where
+		// every entry happens to carry an empty tier.
+		const controlEntry = sourcesBody.sources.find((s) => s.name === 'control');
+		expect(controlEntry, 'expected a "control" entry on GET /api/sources').toBeDefined();
+		expect(controlEntry?.tier).toBe('trusted');
 
 		// D-13's log-AND-UI requirement: the refusal is also named in the
 		// kernel's own captured output, not only rendered in the browser.
