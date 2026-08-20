@@ -144,6 +144,13 @@ type ProvenanceSignature struct {
 // diagnostic collected while scanning candidate manifests (T-16-07) — a
 // caller holding a logger (launch, in host.go) emits these one by one;
 // EvaluateTrust itself performs no logging and caches nothing.
+//
+// On a tamper refusal (16-06-PLAN.md Task 1, 16-VERIFICATION.md gap 1),
+// Tier is TierTrusted — NEVER the empty zero value — because a refusal
+// only ever occurs when a trust arm positively NAMED this binary with a
+// digest that no longer matches. Tier is a REPORTING field consumed
+// after the gate decision has already been made: it is the returned
+// error, not Tier, that actually refuses the launch.
 type Trust struct {
 	Tier        Tier
 	Hash        string
@@ -600,11 +607,17 @@ func VerifySignedProvenance(dirs Dirs, name, path string) (hash string, evidence
 //   - A link-time arm digest MISMATCH (name present, bytes differ) is a
 //     tamper refusal exactly as before this phase — returned
 //     IMMEDIATELY, wrapped, never falling through to the signed arm or
-//     silently demoting to TierExternal (D-13).
+//     silently demoting to TierExternal (D-13). This refusal carries
+//     Tier=TierTrusted (16-06-PLAN.md Task 1, 16-VERIFICATION.md gap 1):
+//     the link-time manifest positively NAMED this binary, so the
+//     refusal is a trusted-tier refusal on the wire — but it is the
+//     returned error, not the tier, that actually stops the launch.
 //   - Otherwise (the link-time arm simply does not name this binary — no
 //     manifest embedded at all, or a manifest that just doesn't mention
 //     it) ask the signed arm (VerifySignedProvenance). A tamper refusal
-//     from THAT arm also returns immediately, wrapped.
+//     from THAT arm also returns immediately, wrapped, and also carries
+//     Tier=TierTrusted for the identical reason: a signed manifest
+//     positively named this binary.
 //   - Success from the signed arm sets Tier=TierTrusted, Evidence to the
 //     vouching manifest's filename.
 //   - Both arms declining because the binary is simply not named
@@ -637,13 +650,24 @@ func EvaluateTrust(dirs Dirs, name, path string) (Trust, error) {
 		// with what's on disk — a tamper refusal (D-13). The signed arm
 		// never gets a chance to override this: only "this binary is
 		// simply absent from the link-time manifest" falls through to
-		// it below.
-		return Trust{Hash: buildHash}, buildErr
+		// it below. Tier is set to TierTrusted here (16-06-PLAN.md Task
+		// 1, 16-VERIFICATION.md gap 1): a refusal is a TRUSTED-tier
+		// refusal — the link-time manifest positively named this
+		// binary — so the wire tier field a caller (launch, host.go)
+		// surfaces is never the empty zero value. Tier is a REPORTING
+		// field only; the returned buildErr, untouched, is what
+		// actually refuses the launch.
+		return Trust{Tier: TierTrusted, Hash: buildHash}, buildErr
 	}
 
 	provHash, evidence, diagnostics, provErr := VerifySignedProvenance(dirs, name, path)
 	if provErr != nil {
-		return Trust{Hash: provHash, Diagnostics: diagnostics}, provErr
+		// Same reasoning as the link-time branch above: a signed
+		// manifest positively named this binary with a digest that no
+		// longer matches, so this refusal is also TRUSTED-tier on the
+		// wire. Tier is a reporting field only; provErr, untouched, is
+		// what actually refuses the launch.
+		return Trust{Tier: TierTrusted, Hash: provHash, Diagnostics: diagnostics}, provErr
 	}
 	if evidence != "" {
 		return Trust{Tier: TierTrusted, Hash: provHash, Evidence: evidence, Diagnostics: diagnostics}, nil
