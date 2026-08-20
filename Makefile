@@ -40,6 +40,32 @@ MANIFEST_GEN_E2E = go run ./cmd/topos-manifest $(MANIFEST_E2E_BINARIES)
 # drift out of sync between recipes.
 MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
 
+# PROVENANCE_LDFLAGS_VAR is the ONE place the e2e/gdrive-external-rehearsal
+# link-time provenanceKeysExtra -ldflags -X path is written (16-05-PLAN.md
+# Task 2, D-12): every recipe below that injects an extra accepted
+# provenance-verification key passes
+# "-X $(PROVENANCE_LDFLAGS_VAR)=$$PROVENANCE_KEY_SPEC", mirroring
+# MANIFEST_LDFLAGS_VAR's own one-place-only discipline exactly, so the Go
+# symbol path can never drift out of sync between recipes. This is the
+# D-12 link-time seam — the ONLY way a kernel binary learns an extra
+# accepted provenance-verification key beyond embeddedProvenanceKeys
+# (kernel/pluginhost/provenance.go); production build/build-portable/dev
+# recipes never set it. It is exactly what keeps "a dev kernel trusts its
+# own local builds" possible for Phase 17 (D-12) without ever adding a
+# runtime-readable trust input — the same closed discipline
+# MANIFEST_LDFLAGS_VAR's own comment describes for the link-time build
+# manifest.
+PROVENANCE_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.provenanceKeysExtra
+
+# E2E_PROVENANCE_KEY_ID is the fixed key id `make e2e`/
+# `make gdrive-external-rehearsal` generate an ephemeral signing keypair
+# under, written HERE ONLY — the e2e fixture harness
+# (web/e2e/fixtures/plugin-binaries.ts's signProvenanceFixture) reads the
+# matching private key file back out of bin/ under this same id, so this
+# variable and that TypeScript literal must never drift apart
+# independently.
+E2E_PROVENANCE_KEY_ID := e2e-fixture
+
 # DEV_HOST/DEV_PORT are the dev-loop kernel's bind address, used by the
 # `dev` recipe's pre-flight guards and readiness gate below. 7778 is
 # the DEV port; the INSTALLED instance owns 7777 (kernel/config's
@@ -323,6 +349,18 @@ provenance-check:
 # directory (never bin/plugins/), for the browser specs plans 11-05/11-06
 # add that link a real, out-of-repo-shaped plugin binary into a fixture's
 # external plugin directory — see testdata/external-plugin/README.md.
+#
+# 16-05-PLAN.md Task 2 (D-12): also builds bin/topos-provenance and
+# generates an ephemeral e2e-only signing keypair into bin/ (gitignored —
+# bin/ is wholesale-ignored), then injects the new PUBLIC key's spec into
+# the kernel build via a SECOND -X, alongside the existing manifest one,
+# through PROVENANCE_LDFLAGS_VAR. This is the ONLY way this e2e kernel
+# learns to trust binaries signed by that throwaway key — the e2e fixture
+# harness (web/e2e/fixtures/plugin-binaries.ts's signProvenanceFixture)
+# signs against the matching PRIVATE key file this same step writes,
+# proving location-independent, provenance-driven trust (16-signed-
+# provenance-tier.spec.ts) without ever adding a runtime-readable trust
+# input — production build/build-portable/dev recipes never set this.
 e2e:
 	npm --prefix web ci
 	npm --prefix web run build
@@ -331,8 +369,10 @@ e2e:
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
 	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) external-demo
+	CGO_ENABLED=0 go build -o bin/topos-provenance ./cmd/topos-provenance
+	PROVENANCE_KEY_SPEC="$$(./bin/topos-provenance keygen --key-id $(E2E_PROVENANCE_KEY_ID) --out-dir bin)" && \
 	MANIFEST="$$($(MANIFEST_GEN_E2E))" && \
-		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST -X $(PROVENANCE_LDFLAGS_VAR)=$$PROVENANCE_KEY_SPEC" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
@@ -368,8 +408,10 @@ gdrive-external-rehearsal:
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
 	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) external-demo
+	CGO_ENABLED=0 go build -o bin/topos-provenance ./cmd/topos-provenance
+	PROVENANCE_KEY_SPEC="$$(./bin/topos-provenance keygen --key-id $(E2E_PROVENANCE_KEY_ID) --out-dir bin)" && \
 	MANIFEST="$$($(MANIFEST_GEN_E2E))" && \
-		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
+		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST -X $(PROVENANCE_LDFLAGS_VAR)=$$PROVENANCE_KEY_SPEC" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && TOPOS_GDRIVE_BIN=$(TOPOS_GDRIVE_BIN) npx playwright test --project=$(E2E_PROJECT) e2e/specs/14-gdrive-external-rehearsal.spec.ts $(E2E_ARGS)
 

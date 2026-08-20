@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 
-import { KERNEL_BIN, linkPluginBinaries, linkPluginBinaryAs } from './plugin-binaries';
+import { KERNEL_BIN, linkPluginBinaries, linkPluginBinaryAs, signProvenanceFixture } from './plugin-binaries';
 import { buildConfig, writeConfig, type FixtureConfigSpec } from './config-builder';
 
 export { expect };
@@ -302,6 +302,22 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	// renamed-destination mechanism from externalPluginBinaries.
 	for (const link of configSpec.externalBinaryLinks ?? []) {
 		linkPluginBinaryAs(externalPluginsDirPath, link.name, link.srcPath);
+	}
+	// signedProvenanceBinaries (16-05-PLAN.md Task 2): sign EACH named
+	// binary — already linked into the external directory by the loops
+	// above — into its OWN release manifest, through the real
+	// topos-provenance CLI, via the e2e-fixture link-time key seam
+	// (Makefile). One sign() call per entry, never a single batched
+	// manifest, so an entry's removeSignature: true only deletes ITS OWN
+	// .provenance.sig — proving the negative half of location-independent
+	// trust (the exact same binary, in the exact same directory, with its
+	// signature missing, earns nothing) without also revoking a sibling
+	// entry's own, independently-signed trust.
+	for (const entry of configSpec.signedProvenanceBinaries ?? []) {
+		const { signaturePath } = signProvenanceFixture(externalPluginsDirPath, [entry.name]);
+		if (entry.removeSignature) {
+			rmSync(signaturePath, { force: true });
+		}
 	}
 
 	const logBuffer = new BoundedLogBuffer();

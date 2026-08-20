@@ -4,6 +4,7 @@
 // directory copy or glob of bin/plugins (D-07: paperless, silverbullet,
 // proton and signal must never enter this hermetic harness; T-07.1-02).
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +34,34 @@ export const PLUGIN_BIN_DIR = join(REPO_ROOT, 'bin', 'plugins');
  * one has no trusted-dir copy at all.
  */
 export const EXTERNAL_DEMO_BIN_DIR = join(REPO_ROOT, 'bin', 'plugins-external');
+
+/**
+ * Absolute path to the release-side/operator-side signed-provenance CLI
+ * `make e2e` builds (16-05-PLAN.md Task 2) — the SAME binary
+ * cmd/topos-provenance/main.go wraps around the kernel's own producers
+ * and verifier. signProvenanceFixture below executes this binary to
+ * write real .provenance.json/.provenance.sig pairs; this harness never
+ * reimplements the manifest or signature scheme in TypeScript.
+ */
+export const PROVENANCE_BIN = join(REPO_ROOT, 'bin', 'topos-provenance');
+
+/**
+ * Absolute path to the ephemeral e2e-only signing private key file
+ * `make e2e` generates (via `topos-provenance keygen`) into bin/ —
+ * gitignored (bin/ is wholesale-ignored). The matching PUBLIC key is
+ * injected into the e2e kernel build's own -X provenanceKeysExtra
+ * link-time seam (Makefile), so a manifest signProvenanceFixture writes
+ * with this key is exactly what that specific kernel build accepts —
+ * this key grants nothing to any other build, checkout build, or
+ * installed release.
+ */
+export const PROVENANCE_KEY_FILE = join(REPO_ROOT, 'bin', 'e2e-fixture.key');
+
+// PROVENANCE_FIXTURE_KEY_ID must match the Makefile's own
+// E2E_PROVENANCE_KEY_ID literal exactly — the two are written
+// independently (a Make variable and a TypeScript constant cannot share
+// one physical source), so a future edit to either must update both.
+const PROVENANCE_FIXTURE_KEY_ID = 'e2e-fixture';
 
 function assertExists(path: string, label: string): void {
 	if (!existsSync(path)) {
@@ -129,4 +158,102 @@ export function linkPluginBinaryAs(destDir: string, destName: string, srcPath: s
 	// own idempotency guarantee.
 	rmSync(dest, { force: true });
 	symlinkSync(srcPath, dest);
+}
+
+/** Optional overrides signProvenanceFixture below accepts. `repo` and
+ * `version`/`contract` default to fixed values; `tag` defaults to a value
+ * DERIVED from `names` (see signProvenanceFixture below) so two calls
+ * signing different binaries into the SAME destDir never collide on the
+ * manifest's own <repo>-<tag> basename (cmd/topos-provenance's own
+ * naming convention). */
+export interface SignProvenanceFixtureOptions {
+	keyID?: string;
+	repo?: string;
+	tag?: string;
+	version?: string;
+	contract?: string;
+}
+
+/** The manifest and signature file paths signProvenanceFixture just wrote. */
+export interface SignedProvenanceFixture {
+	manifestPath: string;
+	signaturePath: string;
+}
+
+/**
+ * signProvenanceFixture signs every binary named in `names` — already
+ * linked into destDir by an earlier linkPluginBinaries/linkPluginBinaryAs
+ * call — into ONE release manifest, by executing the real PROVENANCE_BIN
+ * `sign` subcommand against PROVENANCE_KEY_FILE (16-05-PLAN.md Task 2,
+ * D-01/D-05/D-07). This is the ONE way this harness produces a signed
+ * manifest: it shells out to the real CLI rather than reimplementing the
+ * manifest or signature format in TypeScript, so the fixture and the
+ * kernel it tests can never drift apart silently. Returns the exact
+ * manifest/signature paths written, so a caller proving the negative
+ * case (a missing signature) can delete signaturePath without needing to
+ * re-derive cmd/topos-provenance's own <repo>-<tag> naming convention.
+ */
+export function signProvenanceFixture(
+	destDir: string,
+	names: string[],
+	opts: SignProvenanceFixtureOptions = {}
+): SignedProvenanceFixture {
+	assertExists(PROVENANCE_BIN, 'topos-provenance CLI (bin/topos-provenance) — run `make e2e` first');
+	assertExists(
+		PROVENANCE_KEY_FILE,
+		'e2e fixture provenance signing key (bin/e2e-fixture.key) — run `make e2e` first'
+	);
+
+	const keyID = opts.keyID ?? PROVENANCE_FIXTURE_KEY_ID;
+	const repo = opts.repo ?? 'topos-e2e/fixture';
+	// Default tag incorporates `names` so two calls signing DIFFERENT
+	// binaries into the SAME destDir never collide on the manifest's own
+	// <repo>-<tag> basename — each call's manifest/signature pair stays
+	// independently addressable (and independently deletable) even when
+	// several signed fixtures share one external plugins directory.
+	const tag = opts.tag ?? `v0.0.0-e2e-fixture-${names.join('-')}`;
+	const version = opts.version ?? '0.0.0-e2e-fixture';
+	const contract = opts.contract ?? 'topos.v1';
+
+	const binaryPaths = names.map((name) => {
+		const path = join(destDir, name);
+		assertExists(path, `plugin binary "${name}" — must already be linked into ${destDir} before signing`);
+		return path;
+	});
+
+	const result = spawnSync(
+		PROVENANCE_BIN,
+		[
+			'sign',
+			'--key-id',
+			keyID,
+			'--key-file',
+			PROVENANCE_KEY_FILE,
+			'--repo',
+			repo,
+			'--tag',
+			tag,
+			'--version',
+			version,
+			'--contract',
+			contract,
+			'--out-dir',
+			destDir,
+			...binaryPaths
+		],
+		{ encoding: 'utf-8' }
+	);
+	if (result.status !== 0) {
+		throw new Error(
+			`signProvenanceFixture: \`topos-provenance sign\` exited ${result.status} for [${names.join(', ')}] into ${destDir}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`
+		);
+	}
+
+	const [manifestPath, signaturePath] = result.stdout.trim().split('\n');
+	if (!manifestPath || !signaturePath) {
+		throw new Error(
+			`signProvenanceFixture: could not parse manifest/signature paths from \`topos-provenance sign\` stdout: ${JSON.stringify(result.stdout)}`
+		);
+	}
+	return { manifestPath, signaturePath };
 }

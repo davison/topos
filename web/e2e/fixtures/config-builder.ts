@@ -115,6 +115,28 @@ export interface FixtureConfigSpec {
 	// against, so it is the fixture's own responsibility, not
 	// buildConfig's, exactly like trustedBinaryLinks above.
 	externalBinaryLinks?: { name: string; srcPath: string }[];
+	// signedProvenanceBinaries (16-05-PLAN.md Task 2, D-01/D-05/D-07 e2e
+	// proof of location-independent trust): each entry names a binary —
+	// already linked into the EXTERNAL plugin directory via
+	// externalBinaryLinks/externalPluginBinaries above — that gets its
+	// OWN signed release manifest (`.provenance.json`/`.provenance.sig`)
+	// written beside it, via the real `topos-provenance` CLI
+	// (plugin-binaries.ts's signProvenanceFixture), through the link-time
+	// `-X ...provenanceKeysExtra` key seam `make e2e` injects (Makefile,
+	// D-12). ONE binary per manifest — never batched into a single
+	// shared manifest — so a fixture proving the signature-revoked case
+	// (`removeSignature: true`) can delete exactly ONE binary's own
+	// evidence file without also revoking a sibling entry's trust,
+	// letting one kernel boot carry both the positive and negative case
+	// side by side (Playwright forbids varying a worker-scoped fixture's
+	// option — configSpec — within one spec file, so both cases must
+	// share one boot). Crucially, an entry's name must NOT also receive a
+	// `[plugins.pins]` entry — see the pin loops below — because its
+	// trust comes from provenance, and a pin would mask which mechanism
+	// actually granted the launch. Empty/undefined by default, so a
+	// fixture naming nothing here is byte-identical to before this field
+	// existed.
+	signedProvenanceBinaries?: { name: string; removeSignature?: boolean }[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is how a spec reaches a mock-plugin fixture env
@@ -197,8 +219,16 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 	// (rather than by a downstream helper) for the same single-writer
 	// reason index.path/plugins.dir already are — this is the ONE place
 	// [plugins] gets assembled.
+	// signedProvenanceNames (16-05-PLAN.md Task 2): names whose trust
+	// comes from a signed provenance manifest, never from a pin — the pin
+	// loops below must skip every name in this set, so a fixture cannot
+	// accidentally mask "which mechanism granted the launch" by writing
+	// both a pin AND a signed manifest for the same name.
+	const signedProvenanceNames = new Set((spec.signedProvenanceBinaries ?? []).map((e) => e.name));
+
 	const pins: Record<string, string> = {};
 	for (const name of spec.externalPluginBinaries ?? []) {
+		if (signedProvenanceNames.has(name)) continue;
 		pins[name] = hashPluginBinary(name, spec.externalPluginBinariesSrcDir);
 	}
 	// externalBinaryLinks (16-03-PLAN.md Task 2, gap closure): each entry's
@@ -207,6 +237,7 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 	// hashPluginBinary's `srcDir + name` join does not apply to an
 	// arbitrary, independently-named source path.
 	for (const link of spec.externalBinaryLinks ?? []) {
+		if (signedProvenanceNames.has(link.name)) continue;
 		pins[link.name] = hashPluginBinaryAtPath(link.srcPath);
 	}
 
