@@ -97,12 +97,33 @@ carrying no provenance files at all — every release this repository has
 published to date — makes this step a documented no-op; the install
 proceeds exactly as it always has.
 
-The installer resolves the verifier itself needs, in order: a
-`topos-provenance` binary published alongside the release in the staged
-payload; one already installed at `$PREFIX/bin/topos-provenance` from a
-prior install; or one already on `PATH`. A release that ships provenance
-evidence but for which no verifier can be resolved is a loud abort, never
-a silent skip — shipped evidence must be checked.
+The installer resolves the verifier itself needs, in order: one already
+installed at `$PREFIX/bin/topos-provenance` from a prior install; one
+already on `PATH`; and only then a `topos-provenance` binary published
+alongside the release in the staged payload itself. A release that ships
+provenance evidence but for which no verifier can be resolved is a loud
+abort, never a silent skip — shipped evidence must be checked.
+
+**Bootstrap-trust caveat.** Provenance verification exists specifically
+to catch an attacker who can tamper with release artifacts *and*
+regenerate `checksums.txt` to match — someone who controls the release
+publishing pipeline but does not hold the ed25519 private signing key.
+Under exactly that threat model, such an attacker could also publish a
+`topos-provenance` binary in the same tampered release that
+unconditionally reports success. The resolution order above is chosen to
+narrow that window as much as it reasonably can: a previously-installed
+or `PATH`-resolved verifier (neither of which comes from the release
+payload under test) is always preferred over the staged payload's own
+copy, and the staged copy is only ever consulted when no other verifier
+exists anywhere on the machine. On a machine with no prior install and
+nothing named `topos-provenance` on `PATH`, though, the staged payload's
+own verifier is the only option — and this is an inherent limitation of
+any "verifier shipped alongside the thing it verifies" design, not fully
+eliminated by ordering alone. If you are installing on such a machine and
+want the strongest guarantee, obtain `topos-provenance` from a separate,
+independently-trusted source (e.g. a prior release, or build it yourself
+from this repository) and place it on `PATH` before running the
+installer.
 
 ## What a failed install leaves behind
 

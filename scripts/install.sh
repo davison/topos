@@ -250,12 +250,31 @@ fi
 #
 # Verifier resolution order, tried in sequence — a payload that ships
 # evidence must have that evidence checked, so failing to resolve ANY
-# verifier is a loud abort here, never a silent skip:
-#   1. a topos-provenance binary present in the STAGED payload itself
-#      (a release may legitimately publish one alongside its plugins);
-#   2. one already installed at $BIN_DIR/topos-provenance (a prior
-#      install's own copy);
-#   3. one already on PATH.
+# verifier is a loud abort here, never a silent skip.
+#
+# 16-REVIEW.md WR-01: provenance verification exists to catch an
+# attacker who can tamper with release artifacts AND regenerate
+# checksums.txt to match (i.e. someone who controls the release
+# publishing pipeline but does not hold the ed25519 private signing
+# key). Under exactly that threat model, such an attacker can ALSO
+# publish a topos-provenance binary in the same tampered release that
+# unconditionally reports success. The staged payload's own copy is
+# therefore the LEAST trustworthy of the three candidates — it ships
+# from the same pipeline as the bytes it would be verifying — so it is
+# now tried LAST, only when no more-trustworthy verifier exists at all:
+#   1. one already installed at $BIN_DIR/topos-provenance (a prior
+#      install's own copy — untouched by whatever produced THIS
+#      release's payload);
+#   2. one already on PATH (operator-controlled, resolved independently
+#      of this release's own staged bytes);
+#   3. a topos-provenance binary present in the STAGED payload itself
+#      (a release may legitimately publish one alongside its plugins,
+#      and on a machine with no prior install and nothing on PATH this
+#      is the only option — see docs/install.md's "Provenance
+#      verification" section for the bootstrap-trust caveat this
+#      still leaves: a fully-compromised release payload supplying its
+#      own verifier is a residual risk this ordering narrows, not
+#      eliminates).
 PROVENANCE_FILES=()
 if [ -d "$STAGE/plugins" ]; then
   for f in "$STAGE"/plugins/*.provenance.json; do
@@ -266,12 +285,12 @@ fi
 
 if [ "${#PROVENANCE_FILES[@]}" -gt 0 ]; then
   PROVENANCE_VERIFIER=""
-  if [ -x "$STAGE/topos-provenance" ]; then
-    PROVENANCE_VERIFIER="$STAGE/topos-provenance"
-  elif [ -x "$BIN_DIR/topos-provenance" ]; then
+  if [ -x "$BIN_DIR/topos-provenance" ]; then
     PROVENANCE_VERIFIER="$BIN_DIR/topos-provenance"
   elif command -v topos-provenance >/dev/null 2>&1; then
     PROVENANCE_VERIFIER="$(command -v topos-provenance)"
+  elif [ -x "$STAGE/topos-provenance" ]; then
+    PROVENANCE_VERIFIER="$STAGE/topos-provenance"
   fi
 
   if [ -z "$PROVENANCE_VERIFIER" ]; then

@@ -437,8 +437,13 @@ echo "==> Case PASS: provenance — no provenance files installs exactly as befo
 # (smoke_build_fixture_release_with_provenance) carries a real
 # .provenance.json/.provenance.sig pair for topos-plugin-mock plus a
 # topos-provenance CLI relinked to trust the throwaway key that signed
-# it — install.sh must resolve that STAGED CLI (tier 1 of its own
-# resolution order) and verify successfully before placing anything.
+# it. Neither a prior install nor anything on PATH provides a
+# topos-provenance in this fixture's fresh $WORK sandbox, so install.sh
+# falls through to the STAGED CLI — now the LAST tier of its resolution
+# order (16-REVIEW.md WR-01: a prior install or PATH entry is preferred
+# whenever one exists, since both are more trustworthy than a verifier
+# shipped by the same release payload it would be checking) — and must
+# still resolve and verify successfully there before placing anything.
 # ---------------------------------------------------------------------
 echo "==> building fixture release with signed provenance ($TAG)"
 PROV_WORK="$WORK/provenance-fixture"
