@@ -31,18 +31,21 @@ type IndexConfig struct {
 
 // PluginsConfig configures where plugin binaries are discovered.
 type PluginsConfig struct {
-	Dir string `toml:"dir" json:"dir"` // default "plugins" (resolved relative to the running executable)
-	// ExternalDir names the second, untrusted plugin directory Phase 11
-	// introduces (D-09, PLUG-06): binaries found here are discovered,
-	// launched and synced exactly like Dir's trusted binaries, but are
-	// tagged pluginhost.TierExternal — never pluginhost.TierTrusted —
-	// because trust is derived purely from WHICH directory a binary
-	// resolved from, never from anything the binary declares about
-	// itself. Omitted (empty) resolves to a per-OS platform data
-	// directory at runtime (cmd/topos.defaultExternalPluginsDir) with no
-	// config required; an absolute value is used verbatim, a relative
-	// value resolves relative to the running executable exactly like Dir
-	// does (cmd/topos.externalPluginsDir). The kernel never creates this
+	Dir string `toml:"dir" json:"dir"` // default "plugins" (resolved relative to the running executable) — a SEARCH PATH only (D-11), see ExternalDir's doc comment
+	// ExternalDir names the second configured plugin SEARCH PATH (D-09,
+	// PLUG-06). Both Dir and ExternalDir are directories the kernel looks
+	// in for plugin binaries by name — NEITHER grants anything on its
+	// own (D-11, 16-CONTEXT.md): tier is decided per binary by
+	// pluginhost.EvaluateTrust from a link-time build-manifest entry or a
+	// validly-signed release manifest, wherever the binary sits. A
+	// binary with no such evidence resolves pluginhost.TierExternal from
+	// EITHER directory; a binary carrying valid evidence resolves
+	// pluginhost.TierTrusted from EITHER directory too. Omitted (empty)
+	// resolves to a per-OS platform data directory at runtime
+	// (cmd/topos.defaultExternalPluginsDir) with no config required; an
+	// absolute value is used verbatim, a relative value resolves
+	// relative to the running executable exactly like Dir does
+	// (cmd/topos.externalPluginsDir). The kernel never creates this
 	// directory — a missing external directory is a legitimate empty
 	// tier, identical to a missing Dir today.
 	ExternalDir string `toml:"external_dir,omitempty" json:"external_dir,omitempty"`
@@ -54,14 +57,16 @@ type PluginsConfig struct {
 	// binary shares a single pin, and a re-accept ("Trust updated
 	// binary") updates it for every instance at once, since one binary on
 	// disk serves all of them. Pins apply to the external tier ONLY
-	// (D-04) — a trusted-dir binary is rebuilt constantly by
-	// `make build`/`make dev`, so pinning it would false-alarm on every
-	// rebuild; a trusted-tier binary launches unpinned regardless of
-	// whether it happens to share a name with an entry here. Behavior
-	// (hash verification, the "binary changed" health state, the re-pin
-	// write) lands in a later Phase 11 plan — this field only declares
-	// the config surface now, so no later plan needs to re-touch this
-	// file.
+	// (D-04) — a binary with no provenance evidence is rebuilt/replaced
+	// with no cryptographic proof behind it, so pinning is how the
+	// operator explicitly vouches for its current bytes; a
+	// provenance-verified (trusted-tier) binary launches unpinned
+	// regardless of which directory it sits in or whether it happens to
+	// share a name with an entry here (D-11 — trust already came from
+	// verified evidence, not from an operator's pin). Behavior (hash
+	// verification, the "binary changed" health state, the re-pin write)
+	// lands in a later Phase 11 plan — this field only declares the
+	// config surface now, so no later plan needs to re-touch this file.
 	Pins map[string]string `toml:"pins,omitempty" json:"pins,omitempty"`
 }
 
