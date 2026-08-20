@@ -5,13 +5,13 @@ each one covers, when to run it, how to write a new browser spec, and the
 standing rule that keeps the browser suite from decaying beside the UI it
 guards.
 
-None of the seven gates below needs credentials or a `.env` file, and
+None of the eight gates below needs credentials or a `.env` file, and
 none needs the network — with one explicit exception: `make
 install-check` carries a single live latest-release case that skips
 loudly, naming itself, when the network is unreachable. That was not
 always true — see "What changed", below.
 
-## The seven gates
+## The eight gates
 
 ### `make test` — every Go module, including the cgo Signal plugin
 
@@ -99,6 +99,17 @@ binding either port. No network, no credentials, no config file
 outside its own temp tree; a real-port safety baseline is re-asserted
 after every case, so it is safe to run while the operator's own
 installed instance is serving.
+
+### `make provenance-check` — the hermetic signed-manifest round trip
+
+Runs `scripts/provenance-smoke.sh` (16-01-PLAN.md Task 3): a full
+keygen → sign → verify → tamper → refuse round trip for the
+ed25519-signed release-manifest trust arm (Phase 16, D-01/D-05/D-08),
+including the link-time `provenanceKeysExtra` key-injection seam
+(D-12) a dev/e2e build uses to trust its own locally signed fixtures.
+Needs no network and no config file; safe to run at any time,
+including while a real kernel is up, since it only ever writes inside
+its own temp directory.
 
 ## The real config and the dev config
 
@@ -615,27 +626,44 @@ specs build on).
   `excluded_count` assertions stay hermetic under a shared worker-scoped
   kernel.
 
-## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` — the two new trust states, real binaries
+## `web/e2e/specs/13-manifest-unverified.spec.ts` / `13-shadowed-advisory.spec.ts` / `16-file-drop-external-tier.spec.ts` — the trust-tier states, real binaries
 
-Phase 13's own trust-tier hardening (13-06-PLAN.md, D-12/D-13/D-14),
-proving both bypass paths the folded todo
+Phase 13's own trust-tier hardening (13-06-PLAN.md, D-12/D-13/D-14) and
+Phase 16's provenance-based rewrite (16-03-PLAN.md, D-11) together
+prove every bypass path the folded todo
 (`2026-08-13-plugin-trust-tier-is-directory-location-not-provenance.md`)
-documented are now closed by real kernel code and a real browser, not
-only by `kernel/pluginhost`'s own unit tests
-(`manifestgate_test.go`). Neither spec builds a new plugin binary —
-both are driven entirely by binaries the existing `make e2e` recipe
-already produces.
+documented is closed by real kernel code and a real browser, not only
+by `kernel/pluginhost`'s own unit tests (`manifestgate_test.go`,
+`escalation_test.go` — see below). None of the three specs builds a
+new plugin binary — each is driven entirely by binaries the existing
+`make e2e` recipe already produces.
 
-- **`13-manifest-unverified.spec.ts`** (D-12/D-13) — links
-  `bin/plugins-external/topos-plugin-external-demo` (the real out-of-repo
-  proof binary `make e2e`'s own `external-demo` dependency builds) into
-  the hermetic kernel's TRUSTED directory under its own name — a name
-  that never enters `MANIFEST_E2E_BINARIES` (Makefile), so the kernel's
-  link-time build manifest has no entry for it. Proves the destructive
+- **`13-manifest-unverified.spec.ts`** (D-05/D-12/D-13, repointed by
+  16-03-PLAN.md Task 2 for D-11) — links a TAMPERED copy of the real
+  `topos-plugin-mock` binary (one byte appended) into the hermetic
+  kernel's TRUSTED directory under the name `topos-plugin-mock` — a
+  name `MANIFEST_E2E_BINARIES` (Makefile) DOES cover, so the kernel's
+  link-time build manifest positively vouches for it with a digest
+  that no longer matches what's on disk: the tampered-provenance case,
+  distinct from a genuinely evidence-free file drop (below), since
+  D-11 made location alone confer nothing. Proves the destructive
   chip, the contract-exact `binary not in the trusted build manifest`
   tooltip, an unreachable source, no re-pin menu action, and — pinning
-  D-13's log-AND-UI requirement — that the refusal is also named in the
-  kernel's own captured log output, not only rendered in the browser.
+  D-13's log-AND-UI requirement — that the refusal is also named in
+  the kernel's own captured log output, not only rendered in the
+  browser.
+- **`16-file-drop-external-tier.spec.ts`** (D-11, TRUST-04's file-drop
+  path) — links the real out-of-repo `topos-plugin-external-demo`
+  binary into the hermetic kernel's TRUSTED directory under its own
+  name — a name `MANIFEST_E2E_BINARIES` never covers, and carrying no
+  signed release manifest either — with NO pin recorded for it. Proves
+  the dropped binary resolves to the SAME untrusted/consent-required
+  state (destructive chip, trust badge, a "Trust updated binary…"
+  remedy, no synced items) as any other never-pinned external-tier
+  source, never a silent trusted launch just because it sits in the
+  trusted directory, while a healthy `topos-plugin-mock` control chip
+  alongside it is unaffected — and that the refusal names the dropped
+  binary in the kernel's own log.
 - **`13-shadowed-advisory.spec.ts`** (D-14) — links
   `bin/plugins/topos-plugin-mock` into BOTH the hermetic trusted and
   external directories under the identical name, with a real pin
@@ -644,6 +672,15 @@ already produces.
   instance launches and syncs normally; the spec proves its chip renders
   the WARNING tone — explicitly asserting it is NOT the destructive tone
   — with the contract-exact shadowing tooltip.
+
+**`kernel/pluginhost/escalation_test.go`** is the Go-level home of
+TRUST-04's own escalation coverage — three named tests (config edit,
+file drop, name shadowing) that drive the real `EvaluateTrust`/
+`resolveBinaryDetailed` gate directly, plus a skipped-by-default
+falsifiability proof demonstrated live (a maintainer-reproducible
+edit-and-revert against `discover_binaries.go`, documented in the
+file's own header). Read it first when the question is "where is the
+proof that trust cannot be escalated."
 
 ## `web/e2e/specs/14-chip-health-narrow-viewport.spec.ts` — chip health reachable at mobile width
 
