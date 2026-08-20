@@ -151,12 +151,49 @@ type Trust struct {
 	Diagnostics []string
 }
 
-// embeddedProvenanceKeys is the compiled-in accepted verification key
-// SET (D-03). Declared EMPTY in this plan — 16-04-PLAN.md adds the real
-// topos-plugins signing key as a slice literal edit here, shipped in a
-// new kernel release. Like buildManifest (manifest.go), this is NEVER
-// read from a file, environment variable, or configuration at run time.
-var embeddedProvenanceKeys = []ProvenanceKey{}
+// embeddedProvenanceKeys is the compiled-in accepted verification key SET
+// (D-03). This is the ONE real key this kernel accepts as of this release
+// (16-04-PLAN.md, D-04):
+//
+//   - key id "topos-plugins-2026a"
+//   - private half held ONLY as the TOPOS_PROVENANCE_SIGNING_KEY GitHub
+//     Actions secret in https://github.com/davison/topos-plugins — never
+//     committed to any repository, never printed by any tool, never
+//     logged by any workflow step
+//   - signs every tagged release (v*.*.*) that repository's own
+//     .github/workflows/release.yml publishes
+//
+// Rotation (D-03): adding a second key here — for a new signing identity,
+// or because this one is believed compromised — is purely additive. Ship
+// a new kernel release with both entries in this slice; releases signed
+// with EITHER key verify during the overlap; once every operator has
+// upgraded past the last release trusting the retired key, its entry can
+// be deleted in a later release. Like buildManifest (manifest.go), this
+// slice is NEVER read from a file, environment variable, or configuration
+// at run time — the only way to change it is a new compiled kernel.
+var embeddedProvenanceKeys = []ProvenanceKey{
+	{
+		ID:        "topos-plugins-2026a",
+		PublicKey: mustDecodeProvenancePublicKey("hHDvrubE9EkNOl81FY2obRUaeeeBgmZcdWNXy93xntQ="),
+	},
+}
+
+// mustDecodeProvenancePublicKey decodes a standard-base64-encoded ed25519
+// public key literal for embeddedProvenanceKeys above. A malformed base64
+// literal is a build-time defect this function panics on immediately —
+// far louder than letting a garbage []byte silently reach
+// AcceptedProvenanceKeys. A WRONG-SIZE (but validly base64-encoded) key
+// is deliberately NOT panicked on here: TestEmbeddedProvenanceKeys_WellFormed
+// asserts the size instead, so a size defect fails the build's own test
+// run with a clear test name and message (T-16-24) rather than a bare
+// panic with no test attribution.
+func mustDecodeProvenancePublicKey(b64 string) ed25519.PublicKey {
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		panic(fmt.Sprintf("pluginhost: embeddedProvenanceKeys: malformed base64 public key literal: %v", err))
+	}
+	return ed25519.PublicKey(raw)
+}
 
 // provenanceKeysExtra is the link-time-only EXTENSION to
 // embeddedProvenanceKeys (D-12), populated ONLY via:

@@ -487,6 +487,52 @@ func anyContains(ss []string, substr string) bool {
 	return false
 }
 
+// TestEmbeddedProvenanceKeys_WellFormed pins embeddedProvenanceKeys
+// (16-04-PLAN.md Task 2, T-16-24): the compiled-in accepted key set this
+// kernel build ships MUST be non-empty (the whole point of this release
+// is that it names a real key), every entry's public key MUST decode to
+// exactly ed25519.PublicKeySize bytes, and every key id MUST be unique —
+// a malformed embedded key is a defect this test catches at build/test
+// time, never something a user discovers only when their launch silently
+// fails to trust a genuinely valid release. This test reads
+// embeddedProvenanceKeys directly (not AcceptedProvenanceKeys) so it is
+// unaffected by provenanceKeysExtra or any test-only OverrideProvenanceKeys
+// installed elsewhere in this package's test run.
+func TestEmbeddedProvenanceKeys_WellFormed(t *testing.T) {
+	if len(embeddedProvenanceKeys) == 0 {
+		t.Fatal("embeddedProvenanceKeys is empty — this kernel build embeds no accepted signing key at all")
+	}
+
+	seenIDs := make(map[string]bool, len(embeddedProvenanceKeys))
+	for _, k := range embeddedProvenanceKeys {
+		if k.ID == "" {
+			t.Errorf("embeddedProvenanceKeys contains an entry with an empty key id")
+		}
+		if seenIDs[k.ID] {
+			t.Errorf("embeddedProvenanceKeys contains a duplicate key id %q", k.ID)
+		}
+		seenIDs[k.ID] = true
+
+		if len(k.PublicKey) != ed25519.PublicKeySize {
+			t.Errorf("embeddedProvenanceKeys entry %q: public key is %d bytes, want %d (ed25519.PublicKeySize)", k.ID, len(k.PublicKey), ed25519.PublicKeySize)
+		}
+	}
+}
+
+// TestEmbeddedProvenanceKeys_NamesToposPlugins2026a pins the specific key
+// this plan embeds (16-04-PLAN.md Task 2, D-04): key id
+// "topos-plugins-2026a" must be present in the compiled-in accepted key
+// set, so a regression that accidentally clears or renames the entry
+// fails the build's own test run by name.
+func TestEmbeddedProvenanceKeys_NamesToposPlugins2026a(t *testing.T) {
+	for _, k := range embeddedProvenanceKeys {
+		if k.ID == "topos-plugins-2026a" {
+			return
+		}
+	}
+	t.Fatalf("embeddedProvenanceKeys does not contain key id %q", "topos-plugins-2026a")
+}
+
 // mutateSignatureValue flips one character inside sigJSON's "signature"
 // base64 value, leaving the surrounding JSON structure and key_id/schema
 // fields intact — used to exercise "signature does not verify" without
