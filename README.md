@@ -175,30 +175,19 @@ separately, with no date attached.
 
 ## Configure
 
-topos needs two things from you: your source connection details in the
-environment, and a config file describing your webspaces.
+topos needs two things from you: a config file describing your sources
+and webspaces, and — for sources that need them — connection details in
+the environment.
 
-1. Set the connection details for whichever sources you're using as
-   environment variables (put these in a `.env` file at the repo root for
+1. Each source's connection details (a URL, a token, a Bridge login…)
+   are set as environment variables and referenced from the config as
+   `${VAR}` — never written literally. Which variables a source needs,
+   its prerequisites, and its gotchas are in that plugin's own README in
+   [`topos-plugins`](https://github.com/davison/topos-plugins) (the
+   plugin table there links each one); sources that read a local store
+   need none at all. Put them in a `.env` file at the repo root for
    local development — it's gitignored — and `source` it, or `export`
-   them in your shell directly):
-
-   ```bash
-   export PAPERLESS_URL="https://paperless.example.lan:8000"
-   export PAPERLESS_TOKEN="<your paperless-ngx API token>"
-   export SILVERBULLET_URL="https://silverbullet.example.lan:3000"
-   export SB_AUTH_TOKEN="<your SilverBullet auth token>"
-   export PROTON_BRIDGE_ADDR="<lan-address:port of your Bridge forwarder>"
-   export PROTON_BRIDGE_USER="<Bridge-generated username>"
-   export PROTON_BRIDGE_PASS="<Bridge-generated password>"
-   export PROTON_WEBMAIL_BASE="https://mail.proton.me/u/0"
-   ```
-
-   Signal and WhatsApp need no environment variables at all — Signal's
-   SQLCipher key is resolved at runtime from your OS keyring, and
-   WhatsApp links as its own device via a one-time QR scan. See
-   [`docs/plugins/`](docs/plugins/) for every source's own prerequisites
-   and gotchas.
+   them in your shell directly.
 
 2. Copy the example config and edit it:
 
@@ -207,17 +196,18 @@ environment, and a config file describing your webspaces.
    cp config.example.toml ~/.config/topos/config.toml
    ```
 
-   `config.example.toml` is a fully-commented reference — every key
-   documents its purpose, default, and validation rule. At minimum,
-   define at least one `[webspaces.<name>]` block with a `keywords` list
-   matching your own paperless-ngx tag names (matching is exact and
-   case-insensitive — see the comments in the example file for the exact
-   rule and a worked counterexample). `keywords` is a webspace-level
+   `config.example.toml` documents every key the kernel reads — purpose,
+   default, validation rule — with the mock source live so the copy
+   syncs as-is; each plugin's own `[sources.<name>]` block is in its
+   README. At minimum, define at least one `[webspaces.<name>]` block
+   with a `keywords` list matching values your sources actually carry
+   (matching is exact and case-insensitive — see the comments in the
+   example file for the exact rule). `keywords` is a webspace-level
    fallback applied across every source instance's own declared match
    fields; a per-instance `[webspaces.<name>.match.<instance>]` block
    (also documented in `config.example.toml`) replaces that fallback for
    one instance when you need typed, per-source matching instead — e.g.
-   distinct `folders` for two configured email instances. If no
+   two instances of one plugin type matched on different values. If no
    `config.toml` exists on first run, topos bootstraps a default one for
    you and prompts you to create your first webspace.
 

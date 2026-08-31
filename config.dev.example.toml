@@ -59,11 +59,12 @@ external_dir = "@CHECKOUT@/bin/plugins-external-dev"
 # it would point this dev run's store at the very files the installed
 # instance is using.
 #
-# Example — a dev WhatsApp source with its own linked-device store.
-# This is a SEPARATE linked device from your installed instance's:
-# linking here does not disturb the installed instance's session, and
-# each store needs its own QR scan.
+# Example — a dev instance of a plugin that keeps its own local store
+# (a linked-device session, a message cache). This is a SEPARATE store
+# from your installed instance's: nothing done here disturbs the
+# installed instance's, and a plugin that pairs or links does so once
+# per store (its README in topos-plugins says how).
 #
-# [sources.whatsapp-dev]
-# plugin = "topos-plugin-whatsapp"
-# path = "@CHECKOUT@/bin/plugin-state/whatsapp"
+# [sources.<plugin>-dev]
+# plugin = "topos-plugin-<plugin>"
+# path = "@CHECKOUT@/bin/plugin-state/<plugin>"

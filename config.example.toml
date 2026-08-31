@@ -25,9 +25,9 @@
 # keyword list compared against every source's categorization uniformly.
 # Instead, each SOURCE INSTANCE (a [sources.<id>] block, below) declares
 # its own typed field vocabulary via its plugin's Describe RPC — a
-# paperless-ngx instance matches on "tags", a SilverBullet instance on
-# "tags" and "pages", a Proton instance on "folders", a Signal instance
-# on "conversations" — and a webspace either supplies typed values for
+# plugin declares its own match fields in its Describe RPC (a tag, a
+# folder, a page name, a conversation — each plugin's README names its
+# vocabulary), and a webspace
 # those fields directly (a [webspaces.<name>.match.<instance>] block,
 # D-02) or falls back to one shared "keywords" list fanned across every
 # field that instance's plugin declares (D-01). See "[webspaces.<name>]",
@@ -176,188 +176,58 @@ interval = "15m"
 # [webspaces.<ws>.match.<name>] block both key on. Renaming this map key
 # creates a brand-new instance from the kernel's point of view — its old
 # items and sync history do not follow the rename. The SAME plugin binary
-# can be launched more than once under different "<name>" keys — see the
-# "home-email"/"work-email" worked example below, after [sources.proton].
-[sources.paperless]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-paperless"
+# can be launched more than once under different "<name>" keys — the
+# proton plugin's README in topos-plugins carries a two-instances worked
+# example.
 
-# display_name: this instance's operator-authored label, shown by the UI
-# and published on every HTTP response that names a source (D-09).
-# Optional: when omitted, the instance's display name resolves to the
-# instance id itself (the "paperless" map key above). Purely cosmetic
-# (D-08) — editing this value never changes which instance an item, sync
-# run, or agent grant belongs to; only renaming the [sources.<id>] map
-# key itself does that.
-# Validation: must be unique across every configured source instance
-# (case-insensitive); two instances resolving to the same display name
-# (whether by explicit display_name or by both leaving it unset with
-# identical map keys, which TOML itself already forbids) fails config
-# load, naming both offending instances.
-display_name = "paperless-ngx"
-
-# base_url: the paperless-ngx instance's base URL. ${PAPERLESS_URL} is
-# expanded from the environment — never hardcode a real URL/host here if
-# you intend to share this file; use the ${VAR} form even for a
-# non-secret value like this one, for consistency with token, below.
-# Validation: must be non-empty after expansion; an empty value (e.g. from
-# an unset PAPERLESS_URL) fails config load, naming the missing variable.
-base_url = "${PAPERLESS_URL}"
-
-# token: the paperless-ngx API token. Secrets NEVER live in this file as
-# literal values (D-04) — only a ${VAR} reference belongs here.
-# Validation: must be non-empty after expansion; same missing-variable
-# error shape as base_url.
-token = "${PAPERLESS_TOKEN}"
-
-# api_version: the paperless-ngx REST API version this plugin negotiates
-# via the Accept header (e.g. "application/json; version=10"). Match your
-# paperless-ngx instance's supported API version range.
-# Validation: none enforced; an incompatible version will surface as an
-# HTTP error from paperless-ngx itself at sync time.
-api_version = "10"
-
-# [sources.paperless.extras] — OPTIONAL per-instance table of
-# provider-specific settings this plugin's own Describe RPC may declare
-# expecting, beyond the built-in base_url/token/api_version fields above
-# (D-12/D-13, Phase 11 PLUG-09). Every value is a string; a ${VAR}
-# reference inside one expands from the environment exactly like
-# base_url/token do. Reaches the plugin subprocess nested inside
-# WEBSPACES_SOURCE_CONFIG as an "extras" object — omitted entirely (no
-# key at all) when this table is absent, so a plugin's own JSON decode
-# sees an unambiguous "no extras configured", never an empty object.
-# paperless doesn't itself declare or read any extras key today; this
-# block is left commented as the worked shape for a plugin that does —
-# see docs/plugin-contract.md's "Configuration" and "Describe" sections
-# for the full contract, including the optional Describe-side field
-# declaration (key/label/required/secret/placeholder) a plugin may use to
-# drive the kernel's own add-source form.
-# Validation: an empty key, or one outside [A-Za-z_][A-Za-z0-9_.-]*, fails
-# config load, naming the offending source instance and key.
-# [sources.paperless.extras]
-# region = "${PAPERLESS_REGION}"
-
-[sources.silverbullet]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-silverbullet"
-
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-display_name = "SilverBullet"
-
-# base_url: the SilverBullet instance's base URL. ${SILVERBULLET_URL} is
-# expanded from the environment, same as paperless's base_url above.
-# Unlike paperless-ngx, SilverBullet has no API-version negotiation, so
-# there is no api_version key for this source.
-# Validation: must be non-empty after expansion; an empty value (e.g. from
-# an unset SILVERBULLET_URL) fails config load, naming the missing
-# variable. A trailing slash is tolerated — the plugin normalizes it away
-# before building requests.
-base_url = "${SILVERBULLET_URL}"
-
-# token: the SilverBullet SB_AUTH_TOKEN. Secrets NEVER live in this file as
-# literal values (D-04) — only a ${VAR} reference belongs here. Sent as a
-# Bearer token on every request regardless of whether this SilverBullet
-# instance currently enforces it — SB_AUTH_TOKEN is still the documented,
-# correct auth mechanism (some instances enforce it, some don't; this
-# plugin behaves correctly either way).
-# Validation: must be non-empty after expansion; same missing-variable
-# error shape as base_url.
-token = "${SB_AUTH_TOKEN}"
-
-# sync_interval: OPTIONAL per-source override of [sync] interval, above —
-# lets one heavy or rate-limited source sync less often without slowing
-# every other configured source down to match.
-# Default: unset, meaning "use the global [sync] interval".
-# Validation: same as [sync] interval — must parse as a positive Go
-# duration; an unparseable or zero/negative value fails config load,
-# naming this source's "sync_interval" key.
-# sync_interval = "30m"
-
-# ca_cert: OPTIONAL filesystem path to a PEM-encoded CA certificate this
-# source's plugin client should trust in addition to the system trust
-# store. Not part of the original plan for this phase — added live during
-# Task 1 execution because a real SilverBullet instance may sit behind a
-# self-signed TLS certificate the system trust store does not contain
-# (confirmed against this deployment's actual instance). Leave unset (or
-# omit the key) for an instance whose certificate already chains to a CA
-# in your system's trust store.
-# Validation: none enforced at config-load time; an unreadable or
-# unparsable file falls back to the system trust store, and TLS
-# verification then fails at sync/health time with a clear "unavailable"
-# error rather than a load-time error.
-# ca_cert = "~/.config/topos/silverbullet-ca.pem"
-
-[sources.proton]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-proton"
-
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-display_name = "Proton Mail"
-
-# base_url: "imaps://host:port" for implicit TLS, or "imap://host:port"
-# for a plaintext connect immediately followed by a mandatory STARTTLS —
-# the scheme you use MUST match what Proton Mail Bridge -> Settings
-# reports as this account's IMAP connection security. ${PROTON_BRIDGE_ADDR}
-# is the LAN address:port of the socat/stunnel forwarder set up on the
-# home server running Bridge (Bridge itself only ever binds
-# 127.0.0.1 — see 03-RESEARCH.md Pitfall 2 — so this forwarder step is
-# not optional).
-# Validation: must be non-empty after expansion, and the scheme must be
-# exactly "imap" or "imaps"; anything else fails plugin startup, naming
-# the invalid scheme.
-base_url = "imaps://${PROTON_BRIDGE_ADDR}"
-
-# username: the Bridge-generated Bridge username for this account (Bridge
-# -> Settings) — NOT your real Proton account email address, and never a
-# literal secret value here (${VAR} only, D-04).
-# Validation: must be non-empty after expansion; same missing-variable
-# error shape as base_url.
-username = "${PROTON_BRIDGE_USER}"
-
-# token: the Bridge-generated Bridge password (Bridge -> Settings) —
-# reused as the IMAP LOGIN password. This is scoped to Bridge alone and
-# cannot be used to sign in to the Proton account itself, even if leaked.
-# Validation: must be non-empty after expansion; same missing-variable
-# error shape as base_url.
-token = "${PROTON_BRIDGE_PASS}"
-
-# ca_cert: filesystem path to Bridge's exported TLS certificate (Bridge ->
-# Settings -> Advanced -> "Export TLS certificates"). Required in
-# practice — Bridge's certificate is self-signed, so the system trust
-# store will not verify it. A leading "~" is expanded to your home
-# directory.
-# Validation: none enforced at config-load time; an unreadable or
-# unparsable file falls back to the system trust store, and TLS
-# verification then fails at sync/health time with a clear "unavailable"
-# error rather than a load-time error.
-ca_cert = "~/.config/topos/proton-bridge-cert.pem"
-
-# webmail_base_url: this account's Proton webmail root, INCLUDING the
-# account index (e.g. "https://mail.proton.me/u/0") — read from the
-# address bar with any Proton view open (not specifically a label view;
-# the value is no longer used to build one). Used only to build a
-# clickable ANCHORED link into that account's All Mail view, narrowed by
-# a search for the message's subject, sender and date — narrower than a
-# subject-only search, so a generic subject ("Invoice") lands the reader
-# in a short filtered list rather than every message that ever shared it,
-# but still a filtered LIST containing the message, never the message
-# itself. Proton addresses custom labels and folders by an internal id
-# rather than by name, so a link built from a label's NAME is not
-# addressable and lands on the inbox — All Mail is the name-addressable
-# system view this plugin targets instead. The plugin never fetches this
-# URL itself.
-# Validation: must be non-empty after expansion; same missing-variable
-# error shape as base_url.
-webmail_base_url = "${PROTON_WEBMAIL_BASE}"
-
-[sources.proton.agent]
-read = false
-handoff = false
+# --- Per-plugin configuration lives with the plugin ---------------------
+# Every functional source plugin — paperless-ngx, SilverBullet, Proton
+# Mail, Signal, WhatsApp, the filesystem folder, Google Drive — is
+# released, installed and documented in
+# https://github.com/davison/topos-plugins: each plugin's README carries
+# the fully-commented [sources.<name>] block for that plugin (moved there
+# from this file, davison/topos#24), its prerequisites, and its gotchas.
+# This file documents the keys the KERNEL itself reads on every source;
+# what a plugin does with them is the plugin's own README.
+#
+# The shape of any source block, every kernel-recognised key:
+#
+# [sources.<name>]
+# plugin = "topos-plugin-<kind>"   # REQUIRED: the binary's filename, resolved inside
+#                                  #   [plugins] dir, then external_dir — a bare name,
+#                                  #   never a path
+# display_name = "My instance"     # optional: what the UI shows instead of <name>
+# base_url = "${SOME_URL}"         # connection details — EITHER base_url + token …
+# token = "${SOME_TOKEN}"          #   (the ${VAR} environment-expansion form, never a
+#                                  #   literal secret: a variable reaches a plugin's
+#                                  #   subprocess only when that source's own block
+#                                  #   references it)
+# path = "~/some/dir"              # … OR path, for a plugin that reads a local
+#                                  #   directory or keeps a local store (a leading "~"
+#                                  #   is expanded by the plugin, not the kernel)
+# api_version = "…"                # optional: an API-version string a REST plugin may need
+# ca_cert = "~/…/ca.pem"           # optional: a PEM CA a plugin may pin for a private-CA host
+# username = "${SOME_USER}"        # optional: a login name for a plugin that authenticates
+#                                  #   with user + token
+# webmail_base_url = "https://…"   # optional: a web-client base a plugin may build deep
+#                                  #   links from
+# recursive = false                # optional: whether a local-path plugin walks subfolders
+# sync_interval = "15m"            # optional: per-source override of [sync] interval
+#
+# [sources.<name>.extras]          # optional: plugin-specific keys passed through verbatim —
+# some_key = "value"               #   the plugin's Describe declares them and the app's
+#                                  #   add-source form renders them (docs/plugin-contract.md)
+#
+# [sources.<name>.agent]           # the per-source agent grant — see below
+# read = false
+# handoff = false
+#
+# Validation (kernel/config.Validate): every source must declare EITHER
+# base_url + token OR path (a plugin that reads neither still needs one
+# pair — any non-empty placeholder works, as the mock block below shows);
+# plugin must be a bare filename; a ${VAR} reference is expanded at load
+# and kept unexpanded in the raw form the plugin's environment allowlist
+# is built from.
 
 # [sources.<name>.agent] — this source's per-plugin agent grant (AGENT-01,
 # D-11): whether an automated caller through /agent/v1 may read this
@@ -375,205 +245,27 @@ handoff = false
 # field of GET /agent/v1/sources) — no route in this version of the API
 # acts on it; agent-initiated actions (AGENT-11) are a v1.x concern.
 #
-# This example deliberately grants silverbullet read access and leaves
-# paperless ungranted, so the two blocks below demonstrate the asymmetry a
-# real deployment will have rather than a uniform setting.
-[sources.paperless.agent]
-read = false
-handoff = false
+# Grant per source in your own config; the mock block below leaves both
+# false (deny), the default every source starts from.
 
-[sources.silverbullet.agent]
-read = true
-handoff = false
-
-# --- Two named instances of one plugin type (D-08/D-10) ---------------
-#
-# The kernel can launch the SAME plugin binary more than once — once per
-# [sources.<id>] entry. Two instances of one plugin type always have
-# distinct display names, distinct item id namespaces, distinct sync
-# history, and independent agent grants; they never merge into one row
-# anywhere in the kernel's index or HTTP API. This example illustrates
-# the shape by splitting a single Proton account (above) into two: a
-# personal inbox and a work inbox, both running topos-plugin-proton.
-# Uncomment both blocks below (and give each its own real connection
-# details/env vars — Bridge supports multiple linked accounts
-# simultaneously) to run them alongside, or instead of, [sources.proton]
-# above.
-#
-# [sources.home-email]
-# plugin = "topos-plugin-proton"
-# display_name = "Home email"
-# base_url = "imaps://${PROTON_HOME_BRIDGE_ADDR}"
-# username = "${PROTON_HOME_BRIDGE_USER}"
-# token = "${PROTON_HOME_BRIDGE_PASS}"
-# ca_cert = "~/.config/topos/proton-bridge-cert.pem"
-# webmail_base_url = "${PROTON_HOME_WEBMAIL_BASE}"
-#
-# [sources.home-email.agent]
-# read = true
-# handoff = false
-#
-# [sources.work-email]
-# plugin = "topos-plugin-proton"
-# display_name = "Work email"
-# base_url = "imaps://${PROTON_WORK_BRIDGE_ADDR}"
-# username = "${PROTON_WORK_BRIDGE_USER}"
-# token = "${PROTON_WORK_BRIDGE_PASS}"
-# ca_cert = "~/.config/topos/proton-bridge-cert.pem"
-# webmail_base_url = "${PROTON_WORK_WEBMAIL_BASE}"
-#
-# [sources.work-email.agent]
-# read = false
-# handoff = false
-#
-# Grants are per instance, never per plugin kind: granting home-email
-# read access above never admits work-email's items through /agent/v1,
-# even though both instances share one source_type ("proton") and one
-# plugin binary. See "[webspaces.<name>]", below, for how each instance
-# gets its own independent match configuration too.
-
-[sources.signal]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-signal"
-
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-display_name = "Signal"
-
-# path: Signal Desktop's own config directory — the source of both
-# config.json (SQLCipher key resolution) and sql/db.sqlite (the message
-# database itself, opened strictly read-only). A leading "~" is expanded
-# by the plugin subprocess itself, not the kernel (kernel/config/types.go's
-# Path doc comment).
-#
-# This source needs NO base_url, NO token, and NO environment variable at
-# all — unlike every other source in this file, the SQLCipher decryption
-# key is resolved entirely at runtime from files inside this directory
-# (Signal Desktop's own config.json), never stored in this project's own
-# config or environment (SRC-02).
-# Validation: kernel/config.Validate accepts a source declaring only
-# path, in place of base_url+token; a source declaring none of the three
-# fails config load naming both accepted shapes.
-# Default Signal Desktop location on Linux: "~/.config/Signal".
-path = "~/.config/Signal"
-
-[sources.signal.agent]
-read = false
-handoff = false
-
-[sources.whatsapp]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-whatsapp"
-
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-display_name = "WhatsApp"
-
-# path: this plugin's OWN data directory — home to TWO plugin-owned
-# databases: whatsmeow's own linked-device session store (whatsmeow.db)
-# and this plugin's own captured-message store (messages.db), neither of
-# which is Signal Desktop's or any other source's own database. This path
-# MUST NOT collide with [sources.signal]'s path or any other configured
-# source's path — each source's own local state must stay isolated. A
-# leading "~" is expanded by the plugin subprocess itself (main.go), not
-# the kernel, mirroring [sources.signal]'s identical convention.
-#
-# Unlike Signal, this source needs NO base_url, NO token, and NO
-# environment variable — the linked-device session keys live only inside
-# whatsmeow's own session store under this path. Linking is a one-time,
-# out-of-band step: run the plugin binary directly with its own -link
-# flag (never through the running kernel):
-#   bin/plugins/topos-plugin-whatsapp -link -path ~/.local/share/topos/whatsapp
-# and scan the rendered ASCII QR code with your phone. Re-run the kernel
-# (or `make dev`) after linking succeeds; the linked session survives a
-# kernel restart with no second QR scan.
-# Validation: kernel/config.Validate accepts a source declaring only
-# path, in place of base_url+token — identical to [sources.signal].
-path = "~/.local/share/topos/whatsapp"
-
-[sources.whatsapp.agent]
-read = false
-handoff = false
-
-[sources.filesystem]
-# plugin: the plugin binary's filename, resolved inside [plugins] dir.
-# Validation: none at load time; a missing file fails at startup, by path.
-plugin = "topos-plugin-filesystem"
-
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-display_name = "Household Docs"
-
-# path: the local (or network-mounted) folder this instance reads
-# documents from. A leading "~" is expanded by the plugin subprocess
-# itself, not the kernel — identical convention to [sources.signal]'s
-# path, above.
-#
-# This source needs NO base_url, NO token, and NO environment variable at
-# all — a filesystem source's only "connection detail" is the path
-# itself.
-# Validation: kernel/config.Validate accepts a source declaring only
-# path, in place of base_url+token — identical to [sources.signal] and
-# [sources.whatsapp].
-path = "~/Documents/household"
-
-# recursive: whether this instance walks every depth beneath path (true)
-# or its own top level only (false). Optional; omitted (or explicitly
-# false) is the conservative default — a possibly-large, unfamiliar tree
-# stays shallow until you opt into depth.
-# Validation: none — false is always a legal value.
-recursive = false
-
-# Match vocabulary: "folders". Every file this instance contributes
-# carries the configured path's own base name as a label, at every depth
-# — name that value in a webspace's folders match block (or keywords) to
-# match "everything from this instance". A nested file (recursive = true)
-# additionally carries one label per containing-directory segment plus
-# the cumulative relative path. CAUTION: these values are compared as
-# exact, case-insensitive strings — never as glob patterns — unlike the
-# include_glob/exclude_glob keys documented immediately below. See
-# the filesystem plugin README's "Folder-vocabulary match values" section
-# (the plugin lives in davison/topos-plugins)
-# for the worked example and the full precedence rule.
-
-# [sources.filesystem.extras] — OPTIONAL glob-based scope overrides this
-# plugin's own Describe RPC declares (see [sources.paperless.extras],
-# above, for the general extras mechanism). Both keys are a single
-# comma-separated string of doublestar glob patterns (arbitrary-depth
-# "**" supported). exclude_glob always wins over include_glob; a declared
-# include_glob REPLACES the default document-extension allowlist for this
-# instance rather than widening it — see the filesystem plugin's README for
-# the full precedence rule and the default allowlist by extension.
-# Validation: an empty key, or one outside [A-Za-z_][A-Za-z0-9_.-]*, fails
-# config load, naming the offending source instance and key — identical
-# to every other extras table. A malformed glob pattern fails that sync
-# with a named error, not config load (the pattern's own validity can
-# only be checked at match time).
-# [sources.filesystem.extras]
-# include_glob = "**/*.pdf,**/*.md"
-# exclude_glob = "**/node_modules/**,**/.git/**"
-
-[sources.filesystem.agent]
-read = false
-handoff = false
-
-# [sources.mock] — the reference "mock" plugin (plugins/mock, PLUG-05):
+[sources.mock]
+# The reference "mock" plugin (plugins/mock, PLUG-05):
 # a working SourcePlugin built entirely from docs/plugin-contract.md, the
 # proto/topos/v1/plugin.proto wire contract, and the sdk module, with
-# no network dependency and a fixed, in-memory item set. Uncomment this
-# block (and the [webspaces.demo] block at the bottom of this file) to
-# see it in action without any real source system to connect to.
+# no network dependency and a fixed, in-memory item set. This
+# block (and the [webspaces.demo] block at the bottom of this file) lets you
+# see it in action without any real source system to connect to. It is
+# LIVE in this example so a copied file loads and syncs as-is; delete
+# the block once your real sources are configured.
 #
 # plugin: the plugin binary's filename, resolved inside [plugins] dir —
-# `make build` produces bin/plugins/topos-plugin-mock alongside the
-# other two plugin binaries.
-# plugin = "topos-plugin-mock"
+# `make build` produces bin/plugins/topos-plugin-mock, the one plugin
+# this repository builds.
+plugin = "topos-plugin-mock"
 #
-# display_name: see [sources.paperless]'s display_name comment, above —
-# identical shape and validation for every source.
-# display_name = "Mock Source"
+# display_name: the kernel-level key every source shares — optional, a
+# human-readable label; identical shape and validation for every source.
+display_name = "Mock Source"
 #
 # base_url / token: the mock plugin's own main.go does NOT require
 # WEBSPACES_SOURCE_CONFIG to be set at all — it has no connection details
@@ -581,18 +273,18 @@ handoff = false
 # kernel/config.Validate requires EITHER base_url+token OR path to be
 # non-empty for every configured source, regardless of whether the
 # plugin itself needs them — a pre-existing kernel-level constraint
-# (relaxed in 04-01-PLAN.md for a genuinely configless local-path source;
-# see the signal source block above, the first source to use the path
-# shape).
+# (relaxed in 04-01-PLAN.md for a genuinely configless local-path source —
+# the path shape a store-reading plugin declares instead).
 # Any non-empty placeholder value works; the mock plugin ignores both.
-# base_url = "unused"
-# token = "unused"
+base_url = "unused"
+token = "unused"
 #
 # [sources.mock.agent] — same shape as every other source's agent grant,
 # above.
-# [sources.mock.agent]
-# read = true
-# handoff = false
+[sources.mock.agent]
+read = false
+handoff = false
+
 
 # [webspaces.<name>] — one block per webspace. "<name>" becomes the
 # webspace's URL slug (e.g. /w/house-move) and its GET
@@ -678,8 +370,9 @@ handoff = false
 # Phase 5. A glob-shaped value (e.g. "*" or "**") is therefore taken
 # literally, matches no source's actual field values, and silently
 # produces an empty result for that instance — never as glob patterns,
-# not for any plugin's match vocabulary, even the filesystem plugin whose
-# own include_glob/exclude_glob extras (above) DO take doublestar globs.
+# not for any plugin's match vocabulary (a plugin's own extras may take
+# globs — the filesystem plugin's include/exclude scope, documented in
+# its README — but match values never do).
 #
 # filter (D-16/D-17/D-18, OPTIONAL, added Phase 7): a webspace's saved
 # PERMANENT filter — a plain list of exact-word terms, AND-ed together and
@@ -698,85 +391,45 @@ handoff = false
 # removing, or reordering terms directly in this file) is fully
 # supported; the UI and a hand-edit always agree on this one persisted
 # shape.
-[webspaces.house-move]
+
+# [webspaces.demo] — pairs with the live [sources.mock] block above:
+# "demo" matches the label every one of the mock's fixed items carries,
+# so a copied file syncs this webspace with the mock items via the
+# keywords fallback (the mock declares a one-field vocabulary, "labels",
+# so a bare keywords list is all it needs — no match block required).
+[webspaces.demo]
 # keywords: the fallback (see above) — every string here is matched,
 # exactly and case-insensitively, against every field each participating,
-# block-less instance's plugin declared. This example's real value
-# differs from the illustrative "house-move"/"House" pair used elsewhere
-# in this project's docs: this deployment's actual paperless-ngx tag for
-# the topic is "house and home" — the webspace's slug/name stays
-# "house-move" for URL/docs consistency, but the keyword list reflects
-# what the source system actually calls it. Add more strings to this
-# list (rather than editing the source) if a second plugin/source names
-# the same topic differently. In this example, "paperless" and "signal"
-# have no explicit match block below, so both resolve their match input
-# from this list.
+# block-less instance's plugin declared. Add more strings to this list
+# (rather than editing the source) if a second plugin/source names the
+# same topic differently.
 # Validation: at least one non-empty, non-whitespace-only keyword is
 # required whenever this list is non-empty; a webspace declaring it with
 # zero keywords, or any empty-string keyword, fails config load.
-keywords = ["house and home"]
+keywords = ["demo"]
 
-# filter (see above): commented out here since this deployment currently
-# has no saved permanent filter on this webspace — uncomment and edit
-# freely, or just click "Save as filter" on a live search in the UI,
-# which writes this same array.
-# filter = ["boiler"]
+# filter (see above): commented out here since this example has no saved
+# permanent filter — uncomment and edit freely, or just click "Save as
+# filter" on a live search in the UI, which writes this same array.
+# filter = ["welcome"]
 
-# [webspaces.house-move.match.silverbullet] — an EXPLICIT block (D-02):
-# replaces the keywords fallback above for the "silverbullet" instance
-# alone. SilverBullet declares a two-field vocabulary, "tags" and
-# "pages" — a page matches if its tags match any "tags" value OR its page
-# name matches any "pages" value (the two fields are independent, unioned
-# results, never combined into one comparison).
-[webspaces.house-move.match.silverbullet]
-tags = ["house"]
-pages = ["House Move Checklist"]
+# [webspaces.demo.match.mock] — an EXPLICIT block (D-02): would replace
+# the keywords fallback above for the "mock" instance alone, typed to
+# that plugin's own declared vocabulary (here, the one field "labels").
+# Every real plugin declares its own vocabulary in its Describe RPC —
+# the field names to use here are in that plugin's README in
+# topos-plugins (a tag, a folder, a conversation, a page name…).
+# [webspaces.demo.match.mock]
+# labels = ["demo"]
 
-# [webspaces.house-move.match.proton] — Proton declares a one-field
-# vocabulary, "folders": the IMAP mailbox/label leaf name(s) whose
-# messages should land in this webspace.
-[webspaces.house-move.match.proton]
-folders = ["House"]
-
-# [webspaces.example-multi-source] — a second, purely illustrative
-# webspace gathering one worked match-block example for every one of
-# this repository's four real (non-mock) plugin types in a single place,
-# alongside the "sources" participation allowlist. Uncomment to try it
-# against your own real tag/folder/conversation names — every value
-# below is a placeholder, not this deployment's actual data.
+# [webspaces.<topic>] — the shape of a real, multi-source webspace: a
+# keywords fallback most instances resolve from, an explicit block for
+# the one instance whose vocabulary needs typed values, and an optional
+# sources allowlist. Every value below is a placeholder.
 #
-# [webspaces.example-multi-source]
-# sources restricts participation to exactly these four instances — any
-# OTHER configured instance (e.g. a second Proton account from the
-# "home-email"/"work-email" example above, if you've uncommented it) is
-# skipped entirely for this one webspace, even though it still
-# participates normally in [webspaces.house-move] above (the allowlist is
-# per-webspace, not global).
-# sources = ["paperless", "silverbullet", "proton", "signal"]
+# [webspaces.house-move]
+# keywords = ["house and home"]
+# sources = ["docs", "notes", "mail"]        # optional participation allowlist
 #
-# Every instance named in sources above has its own explicit block below
-# — with full coverage like this, a keywords fallback line would simply
-# go unused (legal, just redundant), so this example omits keywords
-# entirely to demonstrate that match blocks alone are sufficient.
-#
-# [webspaces.example-multi-source.match.paperless]
-# tags = ["Household", "Admin"]
-#
-# [webspaces.example-multi-source.match.silverbullet]
-# tags = ["household"]
-# pages = ["Household Tasks"]
-#
-# [webspaces.example-multi-source.match.proton]
-# folders = ["Household"]
-#
-# [webspaces.example-multi-source.match.signal]
-# conversations = ["Family Group", "Jane Doe"]
-
-# [webspaces.demo] — pairs with the commented-out [sources.mock] block
-# above: "demo" matches the label every one of plugins/mock's four fixed
-# items carries, so uncommenting both blocks and running `webspaces sync`
-# populates this webspace with all four mock items via the keywords
-# fallback (mock declares a one-field vocabulary, "labels", so a bare
-# keywords list is all it needs — no match block required).
-# [webspaces.demo]
-# keywords = ["demo"]
+# [webspaces.house-move.match.mail]         # <instance> = your [sources.<name>] key
+# folders = ["House"]                        # <field> = a name that plugin declared
