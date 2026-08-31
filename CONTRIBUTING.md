@@ -20,9 +20,12 @@ scripts/            install/uninstall and every hermetic smoke gate (dev-guard, 
 docs/               plugin-contract.md, plugin-development.md, plugin-trust.md, api.md, install.md, testing.md, releasing.md, milestones/
 ```
 
-This is a **Go workspace** (`go.work`) with four modules: the root
-kernel module, `sdk`, and the two fixture plugins (`plugins/mock`,
-`plugins/mockstrict`). Every functional source plugin lives in
+This is a **Go workspace** (`go.work`) with five members: the root
+kernel module, `sdk`, the two fixture plugins (`plugins/mock`,
+`plugins/mockstrict`), and `testdata/external-plugin` — the out-of-repo
+proof plugin, a workspace member only so its sdk import resolves
+locally, never built by `./...` patterns or scanned by the audits (its
+README explains why it lives under `testdata/`). Every functional source plugin lives in
 [`topos-plugins`](https://github.com/davison/topos-plugins) — one Go
 module per plugin under that repository's own workspace, with its own
 CI and signed releases — and crosses the same published contract a
@@ -99,6 +102,8 @@ make docs-check           # scripts/check-doc-links.sh — every relative doc li
 make install-check        # scripts/install-smoke.sh — hermetic guard for `make install`/`uninstall`
 make provenance-check     # scripts/provenance-smoke.sh — keygen → sign → verify → tamper → refuse
 make isolation-check      # scripts/simultaneity-smoke.sh — dev + installed side by side (ISOL-03)
+make dev-config           # generate config.dev.toml from config.dev.example.toml (never clobbers an existing one)
+make proto                # regenerate sdk/gen from proto/topos/v1/plugin.proto (buf, or protoc + plugins)
 ```
 
 `make test-portable` needs no network access, no live credentials, and

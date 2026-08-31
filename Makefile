@@ -11,20 +11,20 @@ E2E_PROJECT ?= chromium
 E2E_PW_INSTALL_FLAGS ?=
 E2E_ARGS ?=
 
-# MANIFEST_PLUGIN_BINARIES / MANIFEST_PLUGIN_BINARIES_PORTABLE /
-# MANIFEST_E2E_BINARIES name, in exactly one place each, the plugin binary
-# PATHS the matching recipe builds — the explicit list
+# MANIFEST_PLUGIN_BINARIES / MANIFEST_E2E_BINARIES name, in exactly one
+# place each, the plugin binary PATHS the matching recipe builds — the
+# explicit list
 # cmd/topos-manifest's own generator hashes into the kernel's link-time
 # trust manifest (D-12). Never a bin/plugins/* glob: a stale binary left
 # in bin/plugins/ from an earlier `make plugins` run must never silently
 # enter a `make build-portable` manifest (RESEARCH Pitfall 6) — the
 # recipe's own explicit binary list is the only authority over what gets
-# hashed — the same discipline the departed per-plugin build targets
-# stated for their own explicit lists before the split.
+# hashed — the discipline the removed plugins-portable target's own
+# comment stated for its six binary names before the split.
 MANIFEST_PLUGIN_BINARIES := bin/plugins/topos-plugin-mock
 MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-mockstrict
 
-# MANIFEST_GEN_PLUGINS / _PORTABLE / _E2E are the ONE-PLACE-ONLY generator
+# MANIFEST_GEN_PLUGINS / MANIFEST_GEN_E2E are the ONE-PLACE-ONLY generator
 # invocation for each binary list above — build, build-portable, dev, and
 # e2e all reference these instead of re-typing "go run
 # ./cmd/topos-manifest ..." at each call site, so the invocation and its
