@@ -54,8 +54,8 @@ Exactly two locations, and nothing else:
 
 | Path | Contents |
 |------|----------|
-| `$PREFIX/bin/topos` | the kernel binary (mode 0755) |
-| `$PREFIX/lib/topos/plugins/` | plugin binaries and their provenance files, placed by you from [topos-plugins releases](https://github.com/davison/topos-plugins/releases) (mode 0755 each) — see below |
+| `$PREFIX/bin/topos` | the kernel binary (mode 0755) — plus `topos-provenance`, the provenance verifier, on releases that ship it (v1.3.0 onward) |
+| `$PREFIX/lib/topos/plugins/` | the plugin fleet and its provenance pair, placed by [`topos-plugins`](https://github.com/davison/topos-plugins)' own `make install` — see below |
 
 The installed kernel finds its plugins in that `lib/topos/plugins`
 directory automatically, with the stock config value
@@ -76,20 +76,26 @@ config or index file.
 ## Plugins on an installed instance
 
 Kernel releases ship the kernel alone; the source plugins live in
-[`topos-plugins`](https://github.com/davison/topos-plugins), whose
-releases publish each `topos-plugin-*` binary alongside a signed
-provenance manifest (`topos-plugins-<tag>.provenance.json` + `.sig`)
-and a `checksums.txt`. Until the sibling repo grows its own
-`make install`-grade flow, the path is download-and-place:
+[`topos-plugins`](https://github.com/davison/topos-plugins), which has
+its own `make install`-grade flow. From a checkout of that repository:
 
 ```sh
-cd "$(mktemp -d)"
-gh release download <tag> -R davison/topos-plugins   # or curl each asset
-sha256sum -c checksums.txt
-install -m 0755 topos-plugin-* /usr/local/lib/topos/plugins/
-install -m 0644 topos-plugins-*.provenance.json topos-plugins-*.provenance.sig \
-  /usr/local/lib/topos/plugins/
+make install                  # latest topos-plugins release
+make install VERSION=0.3.0    # a specific release
+make install PREFIX=$HOME/.local   # must match the kernel's prefix
 ```
+
+It downloads the release, verifies every asset against the release's
+own `checksums.txt` AND every binary against the release's signed
+provenance manifest, then places the binaries with the manifest pair
+in `$PREFIX/lib/topos/plugins/` — nothing is placed until everything
+has verified, and `$PREFIX/bin` is never touched. Re-running with a
+newer version is the update path (it also retires binaries the newer
+release no longer publishes), and its `make uninstall` removes exactly
+what it manages — whichever installer placed it, so fleets from
+pre-split kernel releases come out the same way. See that repository's
+README ("Installing the fleet") for the full story, including the
+verifier resolution order and its bootstrap-trust caveat.
 
 The provenance pair must sit beside the binaries: the installed kernel
 trusts a plugin binary through its **signed release manifest** (the
@@ -118,14 +124,16 @@ release that also publishes a signed provenance manifest
 second, independent check: still inside the same verify stage, still
 before anything is placed, the installer runs the same
 `topos-provenance verify` the kernel's own launch gate calls. A release
-carrying no provenance files at all — every release this repository has
-published to date — makes this step a documented no-op; the install
-proceeds exactly as it always has.
+publishing no signed manifest — every kernel release to date; shipping
+the `topos-provenance` verifier binary is tooling, not evidence — makes
+this step a documented no-op; the install proceeds exactly as it always
+has.
 
 The installer resolves the verifier itself needs, in order: one already
-installed at `$PREFIX/bin/topos-provenance` from a prior install; one
-already on `PATH`; and only then a `topos-provenance` binary published
-alongside the release in the staged payload itself. A release that ships
+installed at `$PREFIX/bin/topos-provenance` from a prior install
+(kernel releases ship it from v1.3.0); one already on `PATH`; and only
+then a `topos-provenance` binary published alongside the release in
+the staged payload itself. A release that ships
 provenance evidence but for which no verifier can be resolved is a loud
 abort, never a silent skip — shipped evidence must be checked.
 
@@ -200,8 +208,7 @@ anywhere. Build it locally from a
 package and the SQLite version floor):
 
 ```sh
-cd topos-plugins/plugins/signal
-CGO_ENABLED=1 go build -tags libsqlcipher -o topos-plugin-signal .
+cd topos-plugins && make build-signal   # -> bin/topos-plugin-signal
 ```
 
 Place the binary in the installed instance's **external** plugin
@@ -261,9 +268,10 @@ backing up anyway.
    one-time `make install-signal` opt-in described in the Signal
    section above.
 
-**Backing out.** `make uninstall` removes exactly what `make install`
-placed and leaves everything you own — config, index, marks, plugin
-stores — in place. A checkout build still runs afterwards, against the
+**Backing out.** `make uninstall` removes the kernel's own artifacts
+(`$PREFIX/bin/topos`, `$PREFIX/bin/topos-provenance`) and leaves
+everything else — config, index, marks, plugin stores, and the plugin
+fleet, which topos-plugins' own `make uninstall` removes — in place. A checkout build still runs afterwards, against the
 same config and data, exactly as before.
 
 **Running a dev instance alongside.** The checkout's `make dev` loop
@@ -284,11 +292,10 @@ section rather than being retold here.
   ([`docs/plugin-trust.md`](plugin-trust.md)) — the specific cause is
   named in the source's own `last_error` text, never a separate field:
   - **A locally built Signal binary** sitting in the trusted plugins
-    directory, where the released kernel's link-time build manifest
-    cannot vouch for it. See
+    directory, where no signed release manifest can vouch for it. See
     [Signal on an installed instance](#signal-on-an-installed-instance)
-    — `make install-signal` places it in the external directory and the
-    one-time consent flow takes it from there.
+    — place it in the external directory and the one-time consent flow
+    takes it from there.
   - **A missing signature file, an unknown signing key id, or a digest
     mismatch** against a signed release manifest — run
     `topos-provenance verify --dir <plugins dir>` against the binary
