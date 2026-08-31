@@ -391,10 +391,14 @@ the window between completing the go-plugin handshake and being able to
 actually serve a sync.
 
 - Set `WEBSPACES_MOCK_READY_AFTER_MS=<milliseconds>` on the **kernel**
-  process — `kernel/pluginhost/host.go`'s `launch()` builds every plugin
-  subprocess's environment from `os.Environ()`, so the kernel's own
-  environment (including this variable, set via `t.Setenv` in a Go test
-  before booting a supervisor) is inherited whole by the subprocess.
+  process AND reference `${WEBSPACES_MOCK_READY_AFTER_MS}` somewhere in
+  that instance's own source config (an `extras` value is the
+  convention) — `kernel/pluginhost/host.go`'s `allowedEnv` builds every
+  plugin subprocess's environment from a strict allowlist (D-14), never
+  `os.Environ()` wholesale, and the `${VAR}` reference is what admits
+  the variable for exactly that instance
+  (`kernel/supervisor/readiness_test.go`'s own extras block is the
+  worked example).
 - Off by default (absent, empty, or `"0"`): the mock behaves
   byte-identically to a build with no readiness window at all. This means
   it is invisible to `make e2e` (which never sets the variable) and to
@@ -410,6 +414,24 @@ actually serve a sync.
   scheduler's bounded first-refresh retry (`kernel/syncer/scheduler.go`)
   survives it.
 
+### `WEBSPACES_MOCK_CONTRACT_VERSION` — the mock's contract-declaration fixture
+
+`topos-plugin-mock` carries a third opt-in fixture
+(`plugins/mock/contractfixture.go`, M1-R6/DIST-03, davison/topos#17):
+any non-empty value is declared VERBATIM as the plugin's
+`Describe.contract_version`, so the kernel's contract-generation launch
+gate can be driven end to end — a real plugin, declaring a real
+unsupported generation, refused for real with both generations named.
+
+- Same delivery as the two fixtures above: set it on the kernel process
+  and reference `${WEBSPACES_MOCK_CONTRACT_VERSION}` in the instance's
+  own source config.
+- Off by default (absent or empty): the mock declares
+  `sdk.ContractVersion`, byte-identical to a build with no fixture.
+- Exercised by `kernel/pluginhost/incompat_test.go` (the Go gate, both
+  Discover and Reconcile) and `web/e2e/specs/17-contract-incompatible.spec.ts`
+  (the chip surface).
+
 ### `WEBSPACES_MOCK_LAUNCH_DELAY_MS` — the mock's launch-delay fixture
 
 `topos-plugin-mock` also carries a second, sibling opt-in fixture
@@ -422,9 +444,9 @@ serve-mode login wait can present, and the shape any plugin can present,
 since go-plugin's own client `StartTimeout` default is a full minute.
 
 - Set `WEBSPACES_MOCK_LAUNCH_DELAY_MS=<milliseconds>` on the **kernel**
-  process — the subprocess inherits it the same way it inherits
-  `WEBSPACES_MOCK_READY_AFTER_MS`, through `pluginhost.launch`'s
-  `os.Environ()` construction.
+  process, with the same per-instance `${VAR}` config reference
+  `WEBSPACES_MOCK_READY_AFTER_MS` above needs — the allowlist admits it
+  the same way.
 - Off by default (absent, empty, or `"0"`): `make e2e` and every real
   installation are unaffected.
 - A malformed value fails the subprocess's startup loudly, matching every
