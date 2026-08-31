@@ -542,6 +542,10 @@ HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
   ./scripts/install.sh "$TAG" >/dev/null
 
 printf 'operator notes — not ours to delete' > "$CYCLE_PREFIX/lib/topos/plugins/my-notes.txt"
+# Seed the shipped verifier by hand — the base fixture release predates
+# it, and removing it is half of the narrowed contract under test.
+printf 'verifier bytes' > "$CYCLE_PREFIX/bin/topos-provenance"
+chmod 0755 "$CYCLE_PREFIX/bin/topos-provenance"
 CYCLE_MOCK_DIGEST="$(sha256sum "$CYCLE_PREFIX/lib/topos/plugins/topos-plugin-mock" | cut -d' ' -f1)"
 
 HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
@@ -555,6 +559,9 @@ if ! cmp -s "$WORK/seed-before" "$WORK/seed-after"; then
 fi
 if [ -e "$CYCLE_PREFIX/bin/topos" ]; then
   fail "uninstall left the kernel binary at $CYCLE_PREFIX/bin/topos"
+fi
+if [ -e "$CYCLE_PREFIX/bin/topos-provenance" ]; then
+  fail "uninstall left the shipped verifier at $CYCLE_PREFIX/bin/topos-provenance — removing it is half of the narrowed removal set"
 fi
 if [ ! -f "$CYCLE_PREFIX/lib/topos/plugins/topos-plugin-mock" ]; then
   fail "uninstall removed the plugin fleet — after the split it belongs to topos-plugins' own make uninstall"

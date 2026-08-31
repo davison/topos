@@ -60,27 +60,28 @@ From a checkout, one command installs a verified release:
 - `make install PREFIX=$HOME/.local ...` — installs somewhere your user
   can write (the default `PREFIX` is `/usr/local`, which usually needs
   `sudo make install`)
-- `make uninstall` — removes exactly what `make install` placed; your
-  config, index, and plugin stores are never touched
+- `make uninstall` — removes the kernel's own artifacts (`topos` and
+  `topos-provenance` under `$PREFIX/bin`); the plugin fleet is
+  [`topos-plugins`](https://github.com/davison/topos-plugins)' own
+  `make uninstall` to remove, and your config, index, and plugin
+  stores are never touched
 
 Every downloaded file is SHA-256-verified against the release's own
 `checksums.txt` before anything is placed. See
 [`docs/install.md`](docs/install.md) for the full treatment.
 
-Prefer to place files yourself? Download the binaries from the
-[latest release](https://github.com/davison/topos/releases/latest):
-`topos` (the kernel), `topos-plugin-paperless`,
-`topos-plugin-silverbullet`, `topos-plugin-proton`,
-`topos-plugin-whatsapp`, `topos-plugin-filesystem`, and
-`checksums.txt`. Verify what you downloaded before running any of it:
+Prefer to place files yourself? Download the assets from the
+[latest release](https://github.com/davison/topos/releases/latest) —
+`topos` (the kernel), `topos-provenance` (the provenance verifier, on
+releases that ship it), and `checksums.txt` — and verify what you
+downloaded before running any of it:
 
 ```bash
 sha256sum -c checksums.txt
 ```
 
-Place `topos` somewhere on your `PATH` (or run it from wherever you put
-it) and the five plugin binaries in a `plugins/` directory next to it —
-this is the default `[plugins] dir` `config.example.toml` documents.
+Place both binaries somewhere on your `PATH` (or run `topos` from
+wherever you put it).
 
 **Plugin binaries come from
 [`topos-plugins`](https://github.com/davison/topos-plugins)** — the
