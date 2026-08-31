@@ -231,6 +231,12 @@ go mod tidy
 CGO_ENABLED=0 go build -o topos-plugin-hello .
 ```
 
+If `go mod tidy` or `go build` fails with `read-only file system` under
+`~/.cache/go-build`, Go's build cache is not writable where you are (a
+sandbox, a read-only home): point `GOCACHE` at any writable directory —
+`GOCACHE="$PWD/.gocache" go build …` — and add `.gocache/` to your
+`.gitignore`.
+
 If `go build` stops with `error obtaining VCS status … Use
 -buildvcs=false to disable VCS stamping`, your plugin directory sits
 inside another repository's tree without being one itself (a scratch
@@ -349,16 +355,15 @@ step 6 reaches with a URL instead of a copy.
 
 ## 5. Test it
 
-Test against the contract's behaviour list, not your implementation —
-`plugins/mock/plugin_test.go` is the worked example (contract: "Build
-your first plugin", step 8): `Describe`'s identity fields, `Match`'s
-exact-case-insensitive rule and its zero-items-on-no-match behaviour,
-every `Item` carrying a non-`UNSPECIFIED` fidelity and a non-empty
-`deep_link` (the kernel skips and logs any item that fails either, at
-sync time), `Fetch` mapping an unknown id to `codes.NotFound`, and
-`Health`'s honest reachability. If your plugin reads a real system,
-`plugins/mockstrict` shows the discipline of failing loudly on a missing
-required key rather than starting up and returning nothing.
+Test against the contract's behaviour list, not your implementation.
+The list is the contract's "RPC semantics" section (one subsection per
+RPC) plus the `Item` table's required-field rules; the worked example
+that asserts them is `plugins/mock/plugin_test.go`, and the contract's
+"Build your first plugin" step 8 walks through what it covers. Adapt
+the same assertions to your own plugin's real behaviour. If your plugin
+reads a real system with required connection keys, `plugins/mockstrict`
+shows the fail-loudly-at-startup discipline the contract's
+"Configuration" section requires.
 
 ## 6. Ship it
 
@@ -427,33 +432,25 @@ model wants them to make.
 ## 9. Before you call it done
 
 The questions the last clean-room build against this contract could not
-answer are all answered in the contract now — check yours against them:
+answer are all answered in the contract now — before you ship, read the
+section behind each:
 
-- **Private state** (tokens, caches, cursors) — contract: "Plugin-private
-  state". Your own directory under the platform data dir, mode 0600
-  files, never the kernel's index.
-- **Provider-specific config keys** — declare them in `Describe`'s
-  `extras` so the app's add-source form renders labelled inputs;
-  contract: "Configuration", the extras subsection.
-- **Secrets from the environment** — a source's `${VAR}` references are
-  the *only* environment your process receives beyond a small desktop
-  allowlist; contract: "The launch environment".
-- **Read-only** — no write to the system you read, ever; contract: "A
-  plugin is read-only by construction".
-- **Logging** — stderr, named errors, never a secret value; contract:
-  "Logging".
-- **Health** — report what you can actually reach; the chip's colour is
-  your operator's first signal; contract: "Health".
-- **Timestamps and deep links** — real event time in seconds; an
-  absolute URL that opens the exact object; contract: "The `Item`
-  message".
+| Your question | Contract section |
+|---|---|
+| Where do tokens, caches and cursors live between launches? | "Plugin-private state" |
+| How do my provider-specific config keys get a labelled form input? | "Configuration: `WEBSPACES_SOURCE_CONFIG`" (the extras subsection) |
+| Which environment variables does my process actually receive? | "The launch environment" |
+| What may my plugin never do to the system it reads? | "A plugin is read-only by construction" |
+| What may I write to stderr, and what never? | "Logging" |
+| What should `Health` report, and when? | "RPC semantics: Health" |
+| Which `Item` fields are required, and what do they mean? | "The `Item` message" |
 
 ## How the contract evolves
 
-Additive changes (new optional fields) arrive without a handshake
-change; a breaking wire change bumps `sdk.Handshake.ProtocolVersion`, and
-a plugin built against the old one fails the handshake by name
-(`handshake_incompatible`). The contract generation `sdk.ContractVersion`
-is the finer signal in between. Track this repository's `sdk` module and
-[`docs/plugin-contract.md`](plugin-contract.md)'s changelog notes;
-rebuild when either moves.
+Two version signals govern compatibility, both defined in the contract's
+"Handshake and the plugin-map key" and "Describe" sections:
+`sdk.Handshake.ProtocolVersion` for breaking wire changes and
+`sdk.ContractVersion` for the contract generation. A plugin on the wrong
+side of either is refused by name — the `handshake_incompatible` and
+`contract_incompatible` launch failures in [`docs/api.md`](api.md) — so
+track this repository's `sdk` module and rebuild when it moves.
