@@ -214,7 +214,9 @@ func pluginsDir(cfg *config.Config) (string, error) {
 //     sibling formed from exeDir's parent plus "lib", "topos", and the
 //     configured relative value is used if it exists as a directory.
 //     This second probe exists because `make install` writes the kernel
-//     to <prefix>/bin and its plugins to <prefix>/lib/topos/plugins
+//     to <prefix>/bin while the plugin fleet lands in
+//     <prefix>/lib/topos/plugins — placed by topos-plugins' own make
+//     install today, and by older kernel tags that shipped plugins
 //     (INST-01) — so an installed $PREFIX/bin/topos with the stock
 //     relative `[plugins] dir = "plugins"` value would otherwise look
 //     for $PREFIX/bin/plugins, a directory the installer never creates

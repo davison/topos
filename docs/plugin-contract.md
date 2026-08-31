@@ -287,8 +287,10 @@ one path to running at all — the existing external-tier consent-and-pin
 flow described below — moving (or symlinking) it into the external
 directory and adding it as a new external-tier source. The two production
 paths a real build takes are `make build`/`make build-portable`/
-`make dev` (which rebuild every trusted plugin binary and regenerate the
-link-time manifest before linking the kernel, every time) and a manually
+`make dev` (which build this repository's own mock plugin — `make dev`
+also adopting the already-built sibling fleet from `DEV_PLUGINS_DIR` —
+and regenerate the link-time manifest over exactly those binaries
+before linking the kernel, every time) and a manually
 invoked bare `go build` (which carries no link-time manifest and
 therefore launches no plugin trusted solely through that arm) — there is
 no supported path in between. See the Signal section of
@@ -354,8 +356,8 @@ SHA-256 immediately before `exec`, and refuses to launch — never
 executing the binary at all — if the two hashes disagree.
 
 **Trusted-tier binaries are never pinned.** This repository's own
-`make build`/`make dev` rebuilds every trusted binary constantly during
-normal development; pinning one would false-alarm on every rebuild for no
+`make build`/`make dev` rebuilds the mock and re-adopts the sibling fleet
+constantly during normal development; pinning one would false-alarm on every rebuild for no
 security benefit (a trusted-directory binary already IS the operator's
 own build). Pinning applies to the external tier exclusively.
 
