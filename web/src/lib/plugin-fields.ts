@@ -170,10 +170,12 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			// `cfg.Path == ""` fatal guard — the same shape as Signal's own
 			// path field (WEBSPACES_SOURCE_CONFIG's decoded path is fatal
 			// when empty). defaultValue is seeded (not just a placeholder)
-			// for the same reason Signal's is: config.example.toml's
-			// [sources.whatsapp] path default
-			// (~/.local/share/topos/whatsapp) is genuinely correct on a
-			// standard install, and 08-UI-SPEC.md's Amendment section
+			// for the same reason Signal's is: the whatsapp plugin's
+			// documented path default (~/.local/share/topos/whatsapp —
+			// its [sources.whatsapp] reference block lives in that
+			// plugin's README in topos-plugins since the config move,
+			// davison/topos#24) is genuinely correct on a standard
+			// install, and 08-UI-SPEC.md's Amendment section
 			// names this exact value as the Add-Source Step 1 field's
 			// default (superseding this document's own earlier
 			// ~/.config/topos/whatsapp placeholder).
