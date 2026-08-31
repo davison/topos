@@ -447,10 +447,10 @@ section behind each:
 
 ## How the contract evolves
 
-Two version signals govern compatibility, both defined in the contract's
-"Handshake and the plugin-map key" and "Describe" sections:
-`sdk.Handshake.ProtocolVersion` for breaking wire changes and
-`sdk.ContractVersion` for the contract generation. A plugin on the wrong
-side of either is refused by name — the `handshake_incompatible` and
-`contract_incompatible` launch failures in [`docs/api.md`](api.md) — so
-track this repository's `sdk` module and rebuild when it moves.
+The compatibility rules — what `sdk.Handshake.ProtocolVersion` and
+`sdk.ContractVersion` each govern, and what the kernel does when a
+plugin is on the wrong side of one — are the contract's "Handshake and
+the plugin-map key" and "Describe" sections, with the resulting
+launch-failure vocabulary in [`docs/api.md`](api.md). The action for
+you is one line: track this repository's `sdk` module against the
+kernel you target, and rebuild when it moves.
