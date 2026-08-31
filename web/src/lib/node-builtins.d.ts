@@ -4,7 +4,7 @@
 // runtime dependency of the SvelteKit app, only of the vitest test
 // runner's own Node process, which needs no type information to execute)
 // and this plan's threat model explicitly records that no dependency is
-// added to close this gap — see plugins/proton's mirror-image go.mod/
+// added to close this gap — see the proton plugin's mirror-image go.mod/
 // go.sum guard. These narrow declarations satisfy `svelte-check` for the
 // exact functions the test imports, nothing more.
 declare module 'node:fs' {

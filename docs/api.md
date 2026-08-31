@@ -1178,8 +1178,8 @@ filesystem) is even attempted.
 The in-app WhatsApp QR-pairing surface (`D-01`, `08-03-PLAN.md`): starts,
 polls, and cancels a **link session** — a raw subprocess running the
 WhatsApp plugin binary in its machine-readable link mode
-(`topos-plugin-whatsapp -link-json -path <dir>`, `plugins/whatsapp/
-link.go`'s `runLinkJSON`), spawned entirely **outside the `go-plugin` gRPC
+(`topos-plugin-whatsapp -link-json -path <dir>` — the whatsapp
+plugin's `runLinkJSON`, in topos-plugins), spawned entirely **outside the `go-plugin` gRPC
 handshake**. This is deliberately **not** a `SourcePlugin` RPC —
 `docs/plugin-contract.md`'s locked four-RPC allowlist (`Describe`, `Match`,
 `Fetch`, `Health`, "no fifth RPC may ever be added") is unaffected by this

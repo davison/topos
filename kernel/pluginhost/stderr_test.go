@@ -18,7 +18,7 @@ import (
 // t.TempDir(), under a name matching DiscoverBinaries' own
 // topos-plugin-<name> convention, that writes message to stderr (nothing
 // to stdout) and exits non-zero — exactly the shape of a real plugin's
-// fatal helper (see plugins/signal/main.go's fatal: one line to stderr,
+// fatal helper (see the signal plugin's main.go's fatal: one line to stderr,
 // then os.Exit(1)) firing BEFORE goplugin.Serve ever starts the
 // handshake.
 //

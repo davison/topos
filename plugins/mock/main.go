@@ -19,8 +19,8 @@ import (
 )
 
 func main() {
-	// Unlike every real plugin's main.go (plugins/paperless/main.go,
-	// plugins/silverbullet/main.go), this plugin does NOT fail startup
+	// Unlike every real plugin's main.go (the paperless plugin's main.go,
+	// the silverbullet plugin's main.go), this plugin does NOT fail startup
 	// when WEBSPACES_SOURCE_CONFIG is unset — the mock has no base_url,
 	// no token, and no filesystem path to require. It reads the variable
 	// if present (so a curious operator setting [sources.mock] with an

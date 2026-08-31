@@ -534,7 +534,8 @@ recursive = false
 # the cumulative relative path. CAUTION: these values are compared as
 # exact, case-insensitive strings — never as glob patterns — unlike the
 # include_glob/exclude_glob keys documented immediately below. See
-# docs/plugins/filesystem.md's "Folder-vocabulary match values" section
+# the filesystem plugin README's "Folder-vocabulary match values" section
+# (the plugin lives in davison/topos-plugins)
 # for the worked example and the full precedence rule.
 
 # [sources.filesystem.extras] — OPTIONAL glob-based scope overrides this
@@ -543,7 +544,7 @@ recursive = false
 # comma-separated string of doublestar glob patterns (arbitrary-depth
 # "**" supported). exclude_glob always wins over include_glob; a declared
 # include_glob REPLACES the default document-extension allowlist for this
-# instance rather than widening it — see docs/plugins/filesystem.md for
+# instance rather than widening it — see the filesystem plugin's README for
 # the full precedence rule and the default allowlist by extension.
 # Validation: an empty key, or one outside [A-Za-z_][A-Za-z0-9_.-]*, fails
 # config load, naming the offending source instance and key — identical

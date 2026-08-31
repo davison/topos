@@ -422,7 +422,7 @@ func TestWhatsAppLinkStart_CapEnforcedBeforeSpawn(t *testing.T) {
 }
 
 // TestWhatsAppLink_ProgressStatesAreNonTerminal is the kernel-side half
-// of a three-way agreement with plugins/whatsapp/link.go (Task 1, which
+// of a three-way agreement with the whatsapp plugin's link.go (Task 1, which
 // emits the pairing_accepted/already_linked wire kinds this test drives
 // as raw JSON strings) and docs/api.md (which now documents both as
 // non-terminal). Table-driven over both progress kinds: observing either

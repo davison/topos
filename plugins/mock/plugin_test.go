@@ -174,7 +174,7 @@ func TestMatch_AtLeastOneItemHasGroupAndOneDoesNot(t *testing.T) {
 // TestFetch_FullVariantForKnownIDReturnsTextAndNoRendition proves the
 // full-variant Fetch reports extracted text, no rendition, and
 // available=true — mirroring every other plugin's own convention for "no
-// rendition, but usable text" (plugins/proton, plugins/silverbullet):
+// rendition, but usable text" (the proton plugin, the silverbullet plugin):
 // Available answers "did Fetch return something to show", not "is a byte
 // rendition specifically present". kernel/httpapi/item.go's
 // Content.Available and web/src/lib/format.ts's detailPaneState both key

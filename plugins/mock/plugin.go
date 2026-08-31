@@ -197,8 +197,8 @@ type SourcePlugin struct {
 }
 
 // NewSourcePlugin builds a SourcePlugin. Unlike every real plugin's
-// constructor (plugins/paperless.NewSourcePlugin,
-// plugins/silverbullet.NewSourcePlugin), this one takes no arguments —
+// constructor (the paperless plugin.NewSourcePlugin,
+// the silverbullet plugin.NewSourcePlugin), this one takes no arguments —
 // the mock has no connection details to configure.
 func NewSourcePlugin() *SourcePlugin {
 	return &SourcePlugin{}
@@ -255,7 +255,7 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 func (p *SourcePlugin) Match(_ context.Context, req *toposv1.MatchRequest) (*toposv1.MatchResponse, error) {
 	// Readiness guard (fixture-only, see readiness.go): sits above keyword
 	// resolution because it mirrors the shape a REAL not-yet-ready plugin
-	// answers with (see plugins/whatsapp/plugin.go's own Match health
+	// answers with (see the whatsapp plugin's plugin.go's own Match health
 	// guard) — which is the whole point of this fixture: giving G-08-4's
 	// failure class its first automated, real-subprocess gate. Fetch is
 	// deliberately left unguarded (no equivalent check there) since Fetch
@@ -298,8 +298,8 @@ func labelsMatchAnyKeyword(labels, keywords []string) bool {
 // (see noRenditionReason) — not an error. But the FULL variant DOES
 // return usable content (its extracted text), so it reports
 // Available: true there, mirroring every other plugin's own convention
-// for "no rendition, but text present" (plugins/proton's
-// plain-text-preferred path, plugins/silverbullet's fetchFull): Available
+// for "no rendition, but text present" (the proton plugin's
+// plain-text-preferred path, the silverbullet plugin's fetchFull): Available
 // answers "did Fetch return something to show", not "is a rendition
 // specifically present" — kernel/httpapi/item.go's Content.Available and
 // web/src/lib/format.ts's detailPaneState both key their branch choice

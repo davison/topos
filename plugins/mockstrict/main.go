@@ -7,7 +7,7 @@
 // restore, proceed) can be exercised in Chromium without cgo, SQLCipher,
 // or a real Signal Desktop database anywhere in the loop.
 //
-// It is deliberately shaped like plugins/signal/main.go: a single
+// It is deliberately shaped like the signal plugin's main.go: a single
 // mandatory `path` field, decoded from WEBSPACES_SOURCE_CONFIG, that
 // fatally exits this process before goplugin.Serve is ever reached when
 // it is empty — the exact server-side guard the SPA's required-fields
@@ -34,7 +34,7 @@ import (
 
 // sourceConfig is decoded from the WEBSPACES_SOURCE_CONFIG environment
 // variable the kernel's pluginhost sets before launching this subprocess
-// — mirrors plugins/signal/main.go's sourceConfig shape exactly (the
+// — mirrors the signal plugin's main.go's sourceConfig shape exactly (the
 // only single-required-field connection shape kernel/config.Validate
 // accepts: base_url+token OR path).
 type sourceConfig struct {

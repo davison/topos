@@ -84,10 +84,12 @@ const SYNC_INTERVAL_FIELD: ConnectionField = {
 // `required: true` below is copied from that plugin's own pre-
 // `goplugin.Serve` fatal guard — the four files that are the one true
 // source of what each plugin cannot start without:
-//   plugins/paperless/main.go    (base_url, token fatal; api_version defaults)
-//   plugins/silverbullet/main.go (base_url, token fatal; ca_cert has no guard)
-//   plugins/proton/main.go       (base_url, username, token, webmail_base_url fatal; ca_cert has no guard)
-//   plugins/signal/main.go       (path fatal — the field this gap was filed against)
+// (each plugin lives in davison/topos-plugins now; the guards mirrored
+// here were read from their main.go files at the split):
+//   paperless    (base_url, token fatal; api_version defaults)
+//   silverbullet (base_url, token fatal; ca_cert has no guard)
+//   proton       (base_url, username, token, webmail_base_url fatal; ca_cert has no guard)
+//   signal       (path fatal — the field this gap was filed against)
 // A new plugin type needs its own row derived the same way, by reading
 // its main.go guards — never by copying a sibling row's shape.
 const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
@@ -124,7 +126,7 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			placeholder: 'used as the IMAP password'
 		},
 		{
-			// required: true mirrors plugins/proton/main.go's
+			// required: true mirrors the proton plugin's main.go's
 			// `cfg.WebmailBaseURL == ""` fatal guard (line ~56) — the
 			// SAME optional-in-UI/mandatory-in-plugin mismatch G-07-5
 			// found in Signal's path, confirmed by controlled experiment
@@ -144,7 +146,7 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 	'topos-plugin-signal': [
 		DISPLAY_NAME_FIELD,
 		{
-			// required: true mirrors plugins/signal/main.go's
+			// required: true mirrors the signal plugin's main.go's
 			// `cfg.Path == ""` fatal guard (line ~47) — the exact defect
 			// G-07-5 diagnosed. defaultValue is seeded (not just a
 			// placeholder) because ~/.config/Signal is genuinely correct
@@ -164,7 +166,7 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 	'topos-plugin-whatsapp': [
 		DISPLAY_NAME_FIELD,
 		{
-			// required: true mirrors plugins/whatsapp/main.go's
+			// required: true mirrors the whatsapp plugin's main.go's
 			// `cfg.Path == ""` fatal guard — the same shape as Signal's own
 			// path field (WEBSPACES_SOURCE_CONFIG's decoded path is fatal
 			// when empty). defaultValue is seeded (not just a placeholder)
@@ -217,12 +219,12 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 	],
 	// topos-plugin-filesystem (12-04-PLAN.md Task 2, 12-UI-SPEC.md F1): the
 	// local/network filesystem source's row, derived — per the DERIVATION
-	// RULE above — from plugins/filesystem/main.go's own pre-Serve fatal
+	// RULE above — from the filesystem plugin's main.go's own pre-Serve fatal
 	// guard, not copied from Signal's or WhatsApp's local-path rows.
 	'topos-plugin-filesystem': [
 		DISPLAY_NAME_FIELD,
 		{
-			// required: true mirrors plugins/filesystem/main.go's
+			// required: true mirrors the filesystem plugin's main.go's
 			// `cfg.Path == ""` fatal guard. Deliberately NO defaultValue:
 			// unlike Signal's/WhatsApp's fixed install locations, an
 			// arbitrary local-or-network document folder has no
@@ -239,7 +241,7 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
 			placeholder: 'e.g. /home/you/Documents or /mnt/nas/shared-docs'
 		},
 		{
-			// required: false — plugins/filesystem/main.go has no guard on
+			// required: false — the filesystem plugin's main.go has no guard on
 			// `recursive` at all; an empty/unset value simply means
 			// "don't recurse," never a startup failure. kind: 'checkbox'
 			// is what selects ConnectionForm.svelte's checkbox render
@@ -375,7 +377,7 @@ const PLUGIN_TYPE_LABELS: Record<string, string> = {
 	'topos-plugin-proton': 'Proton',
 	'topos-plugin-signal': 'Signal',
 	'topos-plugin-whatsapp': 'WhatsApp',
-	// Matches plugins/filesystem/plugin.go's own Describe displayName
+	// Matches the filesystem plugin's plugin.go's own Describe displayName
 	// verbatim ("Filesystem folder") — 12-04-PLAN.md Task 2.
 	'topos-plugin-filesystem': 'Filesystem folder'
 };
@@ -387,7 +389,7 @@ const PLUGIN_TYPE_LABELS: Record<string, string> = {
 // re-typing the literal string per call site.
 export const WHATSAPP_PLUGIN_BINARY = 'topos-plugin-whatsapp';
 
-// WHATSAPP_SOURCE_TYPE mirrors plugins/whatsapp/plugin.go's sourceType
+// WHATSAPP_SOURCE_TYPE mirrors the whatsapp plugin's plugin.go's sourceType
 // constant ("whatsapp") — the Describe-reported plugin KIND
 // SourceStatus.source_type carries (docs/api.md's GET /api/sources).
 // SourceChip.svelte's "Re-link…" menu entry (D-03) is gated on this value,

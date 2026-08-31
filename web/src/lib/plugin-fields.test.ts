@@ -7,9 +7,9 @@
 // coverage that closed 07-UAT.md G-07-5: the required flags in
 // CONNECTION_FIELDS below are NOT chosen by inspection of this table —
 // they are derived from each plugin's own pre-`goplugin.Serve` fatal
-// guard, read directly from plugins/paperless/main.go,
-// plugins/silverbullet/main.go, plugins/proton/main.go and
-// plugins/signal/main.go. A future plugin type's required set must be
+// guard, read from each plugin's main.go (the plugins live in
+// davison/topos-plugins now; the guards were mirrored at the split).
+// A future plugin type's required set must be
 // re-derived the same way, not copied from a sibling row.
 
 import { describe, it, expect } from 'vitest';
@@ -122,15 +122,15 @@ describe('table truth: required flags match each plugin binary\'s own pre-Serve 
 			.map((f) => f.key);
 	}
 
-	it('paperless requires exactly base_url and token (plugins/paperless/main.go fatals on both, defaults api_version instead of fatalling)', () => {
+	it('paperless requires exactly base_url and token (its main.go fatals on both, defaults api_version instead of fatalling)', () => {
 		expect(requiredKeys('topos-plugin-paperless')).toEqual(['base_url', 'token']);
 	});
 
-	it('silverbullet requires exactly base_url and token (plugins/silverbullet/main.go fatals on both; ca_cert has no guard)', () => {
+	it('silverbullet requires exactly base_url and token (its main.go fatals on both; ca_cert has no guard)', () => {
 		expect(requiredKeys('topos-plugin-silverbullet')).toEqual(['base_url', 'token']);
 	});
 
-	it('proton requires exactly base_url, username, token and webmail_base_url (plugins/proton/main.go fatals on all four; ca_cert has no guard)', () => {
+	it('proton requires exactly base_url, username, token and webmail_base_url (its main.go fatals on all four; ca_cert has no guard)', () => {
 		expect(requiredKeys('topos-plugin-proton')).toEqual([
 			'base_url',
 			'username',
@@ -139,14 +139,14 @@ describe('table truth: required flags match each plugin binary\'s own pre-Serve 
 		]);
 	});
 
-	it('signal requires exactly path (plugins/signal/main.go fatals on cfg.Path == "")', () => {
+	it('signal requires exactly path (its main.go fatals on cfg.Path == "")', () => {
 		expect(requiredKeys('topos-plugin-signal')).toEqual(['path']);
 	});
 
-	// 08-04-PLAN.md Task 1: mirrors plugins/whatsapp/main.go's
+	// 08-04-PLAN.md Task 1: mirrors the whatsapp plugin's main.go's
 	// `cfg.Path == ""` fatal guard, read directly from that file (see
 	// plugin-fields.ts's own DERIVATION RULE comment on the whatsapp row).
-	it('whatsapp requires exactly path (plugins/whatsapp/main.go fatals on cfg.Path == "")', () => {
+	it('whatsapp requires exactly path (its main.go fatals on cfg.Path == "")', () => {
 		expect(requiredKeys('topos-plugin-whatsapp')).toEqual(['path']);
 	});
 });
@@ -331,7 +331,7 @@ describe('pluginTypeLabel', () => {
 
 	// 12-04-PLAN.md Task 2: the picker's "New …" row and Step 1 modal title
 	// must read as a folder source, not a title-cased binary name — matches
-	// plugins/filesystem/plugin.go's own Describe displayName ("Filesystem
+	// the filesystem plugin's plugin.go's own Describe displayName ("Filesystem
 	// folder") verbatim.
 	it('resolves topos-plugin-filesystem to "Filesystem folder"', () => {
 		expect(pluginTypeLabel('topos-plugin-filesystem')).toBe('Filesystem folder');
@@ -341,7 +341,7 @@ describe('pluginTypeLabel', () => {
 // 12-04-PLAN.md Task 2 (RED, written before the topos-plugin-filesystem row
 // is added to CONNECTION_FIELDS): the filesystem connection row's shape,
 // per 12-UI-SPEC.md F1 and the DERIVATION RULE (required flags read from
-// plugins/filesystem/main.go's own fatal guard, never copied from a sibling
+// the filesystem plugin's main.go's own fatal guard, never copied from a sibling
 // row — that plugin fatals on an empty path alone; recursive has no guard).
 describe('topos-plugin-filesystem connection row (12-04-PLAN.md Task 2)', () => {
 	it('lists Display Name, path, recursive, sync_interval, in that order', () => {
@@ -375,7 +375,7 @@ describe('topos-plugin-filesystem connection row (12-04-PLAN.md Task 2)', () => 
 		);
 	});
 
-	it('table truth: filesystem requires exactly path (plugins/filesystem/main.go fatals on cfg.Path == ""; recursive has no guard)', () => {
+	it('table truth: filesystem requires exactly path (its main.go fatals on cfg.Path == ""; recursive has no guard)', () => {
 		const requiredKeys = connectionFieldsFor('topos-plugin-filesystem')
 			.filter((f) => f.required)
 			.map((f) => f.key);

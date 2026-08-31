@@ -15,7 +15,7 @@
 // README.md.
 //
 // Its pre-Serve fatal-guard shape (a single required "path" key) mirrors
-// plugins/mockstrict/main.go and plugins/signal/main.go exactly: a
+// plugins/mockstrict/main.go and the signal plugin's main.go exactly: a
 // plugin MUST fail startup loudly, by name, non-zero, when a required
 // config key is empty — never start up silently and fail later,
 // mid-Match, with a confusing downstream error

@@ -1,6 +1,6 @@
 // rendition_test.go relocates every assertion that used to live in
-// plugins/proton/render_test.go, plugins/silverbullet/render_test.go and
-// plugins/signal/render_test.go against their now-removed RenderSanitized*/
+// the proton plugin's render_test.go, the silverbullet plugin's render_test.go and
+// the signal plugin's render_test.go against their now-removed RenderSanitized*/
 // WrapDocument helpers (D-11) — this is a MOVE, not a rewrite: the sanitize/
 // wrap/theme pipeline those three files implemented independently now lives
 // in rendition.go, and this file is where its own test coverage lives.
@@ -361,7 +361,7 @@ func TestMarkdownShape_StyleAttributeNeverAllowed(t *testing.T) {
 // --- chat content shape ---
 
 // TestChatShape_NoAccentColourOnBubbleSenderOrTimestamp is the relocated
-// regression test for plugins/signal/render_test.go's
+// regression test for the signal plugin's render_test.go's
 // TestRenderTranscript_NoAccentColourOnBubbleSenderOrTimestamp: the accent
 // hex may appear ONLY on the shared base's link rule (a { color: #60a5fa
 // }) — never associated with a bubble background, sender-name rule or
@@ -442,7 +442,7 @@ func TestChatShape_ForgedClassOutsideAllowlistIsStripped(t *testing.T) {
 
 // TestChatShape_MessageMarkupCannotForgeStructure proves the class policy
 // alone (with the plugin's own html.EscapeString discipline, tested in
-// plugins/signal/render_test.go) prevents a message body's raw markup from
+// the signal plugin's render_test.go) prevents a message body's raw markup from
 // ever being interpreted as transcript structure by the kernel's own
 // sanitizer, even if it somehow reached this pipeline unescaped: a raw
 // <div class="bubble own"> injected as if it were message content is still
@@ -462,7 +462,7 @@ func TestChatShape_MessageMarkupCannotForgeStructure(t *testing.T) {
 	}
 	// The sanitizer does not (and is not expected to) collapse nested
 	// bubbles on its own — that guarantee comes from the plugin escaping
-	// message text before assembly (plugins/signal/render_test.go). This
+	// message text before assembly (the signal plugin's render_test.go). This
 	// test exists to document that boundary: the kernel's class policy is
 	// necessary but not sufficient, and pins that both "own" and "other"
 	// remain valid, allowed tokens (i.e. this policy cannot distinguish

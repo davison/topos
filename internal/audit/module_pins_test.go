@@ -27,12 +27,12 @@ type modulePin struct {
 // This table exists at all because this repo is a go.work workspace of
 // six modules (see go.work's `use` block), and Go's MVS resolves the
 // *maximum* requirement across every listed module for any workspace
-// build. That masking is exactly how plugins/proton's go.mod declared
+// build. That masking is exactly how the proton plugin's go.mod declared
 // golang.org/x/net v0.26.0 — affected by CVE-2024-45338 / GO-2024-3333, a
 // CPU/memory-exhaustion DoS from non-linear HTML-tokenization cost in
 // golang.org/x/net/html, the tokenizer behind
 // github.com/microcosm-cc/bluemonday and reachable from
-// plugins/proton/body.go's RenderSanitizedEmail over an arbitrary inbound
+// the proton plugin's body.go's RenderSanitizedEmail over an arbitrary inbound
 // email's HTML body — while every workspace build actually compiled
 // v0.56.0, unnoticed across three verification rounds (03-07-PLAN.md).
 // The declared manifest is nonetheless the artefact a security scanner,
@@ -53,7 +53,7 @@ var minimumModuleVersions = map[string]modulePin{
 //
 // Both require shapes a real go.mod can use are handled: a parenthesised
 // `require ( ... )` block (tab-indented entries) and a standalone
-// single-line `require <path> <version> // indirect` (plugins/proton's
+// single-line `require <path> <version> // indirect` (the proton plugin's
 // own golang.org/x/text requirement uses exactly this shape — a scanner
 // that only handled the block form would silently miss it).
 func scanGoModForBelowFloorPins(path string) ([]string, error) {
@@ -216,7 +216,7 @@ func TestPinScanner_FixtureReportsTheBelowFloorDeclaration(t *testing.T) {
 // floor in minimumModuleVersions.
 //
 // This is the standing, mechanical form of 03-VERIFICATION.md's one-time
-// instruction to "check plugins/silverbullet for the same stale pin": that
+// instruction to "check the silverbullet plugin for the same stale pin": that
 // instruction was a manual check which expired the moment it was
 // performed, whereas this covers all six go.work modules on every
 // root-module `go test` run, permanently.
