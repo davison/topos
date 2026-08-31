@@ -261,14 +261,16 @@ anywhere. Build it locally from a
 package and the SQLite version floor):
 
 ```sh
-cd topos-plugins && make build-signal   # -> bin/topos-plugin-signal
+cd topos-plugins && make install-signal   # builds, then places into the external directory
 ```
 
-Place the binary in the installed instance's **external** plugin
-directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or your
-config's `[plugins] external_dir`), then add the Signal source once
-through the app's untrusted-add consent flow — it runs pinned and
-badged. A locally built binary carries no signed provenance and is not
+`make install-signal` builds through `make build-signal` and places
+the binary atomically into the installed instance's **external** plugin
+directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or the
+directory your config's `[plugins] external_dir` names via
+`TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); `make uninstall-signal` removes
+exactly that one file. Then add the Signal source once through the
+app's untrusted-add consent flow — it runs pinned and badged. A locally built binary carries no signed provenance and is not
 in any release manifest, so a trusted-directory placement would be
 refused at launch; the external tier's consent-and-pin flow is the
 supported path, exactly as it was when the plugin lived in this

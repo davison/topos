@@ -1247,7 +1247,10 @@ go mod init github.com/davison/topos/plugins/yourplugin
 
 (Substitute your own module path if you're building outside this
 repository entirely — nothing about the contract requires your plugin to
-live in this repo.)
+live in this repo. For that out-of-tree path end to end — your own
+module, a kernel to run under, shipping, and installing with
+`topos plugin pull` — follow [`docs/plugin-development.md`](plugin-development.md);
+this walkthrough is the in-tree variant.)
 
 **2. Add your module to the Go workspace, if building inside this repo.**
 
