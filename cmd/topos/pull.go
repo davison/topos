@@ -72,13 +72,17 @@ var pullHTTPClient = &http.Client{CheckRedirect: pullCheckRedirect}
 
 // pullCheckRedirect implements the policy above: at most ten hops
 // (net/http's own conventional cap, made explicit), and never a hop
-// from an https origin to a non-https URL.
+// whose IMMEDIATELY PRECEDING request was https while the next is not —
+// via[len(via)-1], not via[0] (PR #20 review round 2: the origin-only
+// check let http -> https -> http through, and "anywhere in the chain"
+// must mean every hop). An http origin may upgrade to https and stay
+// there; once any hop is https, no later hop may fall back.
 func pullCheckRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
-	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
-		return fmt.Errorf("refusing redirect from https to %s (%s) — a downgrade would strip transport integrity from the artifact", req.URL.Scheme, req.URL)
+	if prev := via[len(via)-1]; prev.URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from https (%s) to %s (%s) — a downgrade would strip transport integrity from the artifact", prev.URL, req.URL.Scheme, req.URL)
 	}
 	return nil
 }

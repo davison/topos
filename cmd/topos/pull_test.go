@@ -445,6 +445,18 @@ func TestPullCheckRedirect_Policy(t *testing.T) {
 	if err := pullCheckRedirect(mk("http://mirror.example/x"), []*http.Request{mk("http://host.example/a")}); err != nil {
 		t.Fatalf("expected an http-origin redirect allowed, got %v", err)
 	}
+	// The round-2 chain: http origin -> https hop -> http again. The
+	// LAST hop was https, so the fallback is refused even though the
+	// ORIGIN was http — the predicate reads the immediately preceding
+	// request, never via[0].
+	err = pullCheckRedirect(mk("http://cdn.example/x"), []*http.Request{mk("http://host.example/a"), mk("https://secure.example/b")})
+	if err == nil || !strings.Contains(err.Error(), "downgrade") {
+		t.Fatalf("expected the http->https->http chain refused at the downgrade hop, got %v", err)
+	}
+	// And the inverse chain stays legal: http -> http -> https.
+	if err := pullCheckRedirect(mk("https://secure.example/x"), []*http.Request{mk("http://host.example/a"), mk("http://mirror.example/b")}); err != nil {
+		t.Fatalf("expected an upgrade at any hop allowed, got %v", err)
+	}
 	// the hop cap.
 	via := make([]*http.Request, 10)
 	for i := range via {
