@@ -514,10 +514,12 @@ assert_prefix_untouched "$TAMPER_PREFIX"
 echo "==> Case PASS: provenance — binary altered after signing aborts, naming it"
 
 # ---------------------------------------------------------------------
-# Case: uninstall data-safety cycle — the real INST-05 gate. A seeded
-# home/XDG tree (config, index, a plugin store) must be byte-identical
-# across a full install+uninstall cycle, and the prefix must be clean
-# afterwards.
+# Case: uninstall data-safety cycle. A seeded home/XDG tree (config,
+# index, a plugin store) must be byte-identical across a full
+# install+uninstall cycle; the kernel binary goes; the plugin fleet, a
+# hand-placed foreign file, and their directory all SURVIVE — after the
+# split, $PREFIX/lib/topos/plugins belongs to topos-plugins' own
+# make uninstall (davison/topos#15), and this uninstall says so.
 # ---------------------------------------------------------------------
 echo "==> Case: uninstall data-safety cycle"
 SEED_HOME="$WORK/seed-home"
@@ -539,6 +541,9 @@ HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
   PREFIX="$CYCLE_PREFIX" TOPOS_RELEASE_BASE_URL="file://$WORK/release" \
   ./scripts/install.sh "$TAG" >/dev/null
 
+printf 'operator notes — not ours to delete' > "$CYCLE_PREFIX/lib/topos/plugins/my-notes.txt"
+CYCLE_MOCK_DIGEST="$(sha256sum "$CYCLE_PREFIX/lib/topos/plugins/topos-plugin-mock" | cut -d' ' -f1)"
+
 HOME="$SEED_HOME" XDG_CONFIG_HOME="$SEED_CONFIG" XDG_DATA_HOME="$SEED_DATA" \
   PREFIX="$CYCLE_PREFIX" ./scripts/uninstall.sh >"$WORK/uninstall-cycle.out"
 
@@ -551,8 +556,18 @@ fi
 if [ -e "$CYCLE_PREFIX/bin/topos" ]; then
   fail "uninstall left the kernel binary at $CYCLE_PREFIX/bin/topos"
 fi
-if [ -e "$CYCLE_PREFIX/lib/topos/plugins" ]; then
-  fail "uninstall left the plugins directory at $CYCLE_PREFIX/lib/topos/plugins"
+if [ ! -f "$CYCLE_PREFIX/lib/topos/plugins/topos-plugin-mock" ]; then
+  fail "uninstall removed the plugin fleet — after the split it belongs to topos-plugins' own make uninstall"
+fi
+if [ "$(sha256sum "$CYCLE_PREFIX/lib/topos/plugins/topos-plugin-mock" | cut -d' ' -f1)" != "$CYCLE_MOCK_DIGEST" ]; then
+  fail "the plugin binary's digest changed across the kernel uninstall"
+fi
+if [ ! -f "$CYCLE_PREFIX/lib/topos/plugins/my-notes.txt" ]; then
+  fail "uninstall removed the operator's hand-placed file — the removal set must be closed"
+fi
+if ! grep -q "left in place: $CYCLE_PREFIX/lib/topos/plugins" "$WORK/uninstall-cycle.out"; then
+  fail "uninstall did not report handing the fleet to topos-plugins' own uninstall
+$(cat "$WORK/uninstall-cycle.out")"
 fi
 echo "==> Case PASS: uninstall data-safety cycle"
 
@@ -578,38 +593,6 @@ if ! cmp -s "$WORK/uninstall-manifest-1" "$WORK/uninstall-manifest-2"; then
 fi
 echo "==> Case PASS: idempotent uninstall"
 
-# ---------------------------------------------------------------------
-# Case: foreign file in the plugins directory — a hand-placed file
-# survives, its directory survives, and the uninstall says so.
-# ---------------------------------------------------------------------
-echo "==> Case: uninstall leaves a foreign file"
-FOREIGN_PREFIX="$WORK/prefix-foreign"
-PREFIX="$FOREIGN_PREFIX" TOPOS_RELEASE_BASE_URL="file://$WORK/release" \
-  ./scripts/install.sh "$TAG" >/dev/null
-printf 'operator notes — not ours to delete' > "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt"
-FOREIGN_DIGEST_BEFORE="$(sha256sum "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" | cut -d' ' -f1)"
-
-FOREIGN_RC=0
-FOREIGN_OUT="$(PREFIX="$FOREIGN_PREFIX" ./scripts/uninstall.sh 2>&1)" || FOREIGN_RC=$?
-if [ "$FOREIGN_RC" -ne 0 ]; then
-  fail "uninstall with a foreign file exited $FOREIGN_RC, expected 0
-$FOREIGN_OUT"
-fi
-if [ ! -f "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" ]; then
-  fail "uninstall removed the operator's hand-placed file — the removal set must be closed"
-fi
-FOREIGN_DIGEST_AFTER="$(sha256sum "$FOREIGN_PREFIX/lib/topos/plugins/my-notes.txt" | cut -d' ' -f1)"
-if [ "$FOREIGN_DIGEST_BEFORE" != "$FOREIGN_DIGEST_AFTER" ]; then
-  fail "the hand-placed file's digest changed across uninstall"
-fi
-if [ ! -d "$FOREIGN_PREFIX/lib/topos/plugins" ]; then
-  fail "uninstall removed a non-empty plugins directory — directory cleanup must be non-recursive rmdir only"
-fi
-if ! printf '%s' "$FOREIGN_OUT" | grep -q "left in place (not empty)"; then
-  fail "uninstall did not report the surviving directory and its contents
-$FOREIGN_OUT"
-fi
-echo "==> Case PASS: uninstall leaves a foreign file"
 
 # ---------------------------------------------------------------------
 # Case: uninstall under a live kernel — removal is by unlink, so the
