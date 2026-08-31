@@ -1344,5 +1344,6 @@ and the honestly-stated limits of that approximation).
   that in the source's own documentation, and design your plugin's
   reported health/error states around what you can actually distinguish
   (collapsing indistinguishable causes into one named state is a
-  legitimate, honest choice — see `the whatsapp plugin's health.go` for the
-  in-repo precedent).
+  legitimate, honest choice — see the whatsapp plugin's `health.go`, in
+  [topos-plugins](https://github.com/davison/topos-plugins), for the
+  precedent).

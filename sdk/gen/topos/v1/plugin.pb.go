@@ -237,7 +237,8 @@ type DescribeResponse struct {
 	// match_vocabulary is the field-name vocabulary this plugin's Match RPC
 	// reads from MatchRequest.match_fields, declared by the plugin itself —
 	// the kernel holds no built-in table of known plugin types (D-05). The
-	// four in-repo examples are "folders" (proton), "tags" (paperless,
+	// four first-party examples — their plugins live in the topos-plugins
+	// repository — are "folders" (proton), "tags" (paperless,
 	// silverbullet), "conversations" (signal), "pages" (silverbullet) —
 	// illustrations only, explicitly not a closed set. A future plugin type
 	// (e.g. Phase 8's WhatsApp) declares its own vocabulary here with no

@@ -121,7 +121,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	// MountAgentRoutes below registers zero non-GET routes on /agent/v1.
 	// WhatsAppLinkStartHandler deliberately resolves against dirs.Trusted
 	// ONLY, never dirs.External (11-CONTEXT.md, this plan's own
-	// prohibition): the QR link flow is an in-repo-plugin-only path and
+	// prohibition): the QR link flow is a trusted-tier-only path and
 	// must not gain an external-tier launch surface.
 	linkStore := newLinkSessionStore()
 	r.Post("/api/config/whatsapp-link", WhatsAppLinkStartHandler(dirs.Trusted, suspender, newExecLinkSpawner(logger), linkStore, logger))
