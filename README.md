@@ -68,7 +68,11 @@ From a checkout, one command installs a verified release:
 
 Every downloaded file is SHA-256-verified against the release's own
 `checksums.txt` before anything is placed. See
-[`docs/install.md`](docs/install.md) for the full treatment.
+[`docs/install.md`](docs/install.md) for the full treatment. A single
+plugin installs straight from a URL with
+`topos plugin pull <url>` — into the trust tier its provenance earns,
+never a tier a flag chose (`docs/install.md`, "Installing a single
+plugin from a URL").
 
 Prefer to place files yourself? Download the assets from the
 [latest release](https://github.com/davison/topos/releases/latest) —
