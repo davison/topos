@@ -79,6 +79,10 @@ declare module 'node:fs' {
 	// binary write, which must never round-trip through a text encoding).
 	export function writeFileSync(path: string, data: string, encoding?: string): void;
 	export function writeFileSync(path: string, data: Buffer): void;
+	// The tampered-binary write in 13-manifest-unverified.spec.ts passes
+	// Buffer data WITH a { mode } options object; without this overload the
+	// call falls into the string overload above and fails TS2345 (#9).
+	export function writeFileSync(path: string, data: Buffer, options: { mode?: number }): void;
 	// chmodSync (11-06-PLAN.md Task 3): restores the executable bit the
 	// tampered-binary write above does not itself preserve (writeFileSync
 	// creates a fresh file at the default umask-governed mode, not the
@@ -156,6 +160,23 @@ declare module 'node:child_process' {
 		env?: Record<string, string | undefined>;
 	}
 	export function spawn(command: string, args: string[], options?: SpawnOptions): ChildProcess;
+	// Phase 16's fixture signing (plugin-binaries.ts signProvenanceFixture)
+	// shells out to topos-provenance synchronously with { encoding: 'utf-8' }
+	// and reads status/stdout/stderr — the only spawnSync shape this tree
+	// uses (#9).
+	export interface SpawnSyncOptions {
+		encoding?: string;
+	}
+	export interface SpawnSyncReturns {
+		status: number | null;
+		stdout: string;
+		stderr: string;
+	}
+	export function spawnSync(
+		command: string,
+		args: string[],
+		options?: SpawnSyncOptions
+	): SpawnSyncReturns;
 }
 
 // --- Browser-context Window augmentation ---------------------------------
