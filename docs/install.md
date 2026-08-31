@@ -2,9 +2,13 @@
 
 `make install` places a published topos release onto this machine from
 the project's GitHub Releases — no Go toolchain, no Node, no build step.
-It downloads the release's kernel and plugin binaries, verifies every
-file against the release's own `checksums.txt`, and installs them under
-a single prefix.
+It downloads the release's assets — the kernel and, from v1.3.0, the
+provenance verifier (older tags that shipped plugin binaries still
+install them byte-for-byte) — verifies every file against the release's
+own `checksums.txt`, and installs them under a single prefix. The plugin
+fleet itself is installed beside it by
+[`topos-plugins`](https://github.com/davison/topos-plugins)' own
+`make install` (see "Plugins on an installed instance", below).
 
 ## Prerequisites
 

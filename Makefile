@@ -181,10 +181,12 @@ external-demo:
 	mkdir -p bin/plugins-external
 	CGO_ENABLED=0 go build -o bin/plugins-external/topos-plugin-external-demo ./testdata/external-plugin
 
-# test-portable builds and tests every workspace module (the root kernel
-# module, sdk, mock, mockstrict) — each module explicitly, since Go
-# workspaces scope "./..." to the module containing the working
-# directory. The name survives the plugin split (CI and muscle memory
+# test-portable builds and tests the four buildable workspace modules
+# (the root kernel module, sdk, mock, mockstrict) — each module
+# explicitly, since Go workspaces scope "./..." to the module containing
+# the working directory. The fifth workspace member,
+# testdata/external-plugin, is built only by external-demo (below) and
+# exercised by the e2e harness. The name survives the plugin split (CI and muscle memory
 # call it); with the cgo signal plugin gone to davison/topos-plugins,
 # `test` below is the same thing.
 test-portable:
@@ -299,9 +301,13 @@ e2e:
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
 
-# PREFIX is the install root `make install` places a published release
-# into: the kernel at $(PREFIX)/bin/topos, plugin binaries at
-# $(PREFIX)/lib/topos/plugins/ (INST-01). /usr/local matches the FHS
+# PREFIX is the install root `make install` places a published kernel
+# release into: the kernel at $(PREFIX)/bin/topos and, from v1.3.0, the
+# provenance verifier at $(PREFIX)/bin/topos-provenance (INST-01); the
+# plugin fleet at $(PREFIX)/lib/topos/plugins/ is placed by
+# davison/topos-plugins' own make install into the same prefix (older
+# kernel tags that shipped plugins still install them byte-for-byte —
+# install.sh keeps that allowlist). /usr/local matches the FHS
 # convention for locally-installed software; override per-invocation
 # (`make install VERSION=1.1.0 PREFIX=$$HOME/.local`) for a no-sudo
 # user-local install. scripts/install.sh reads this via its environment.
@@ -349,9 +355,10 @@ uninstall:
 # (scripts/install-smoke.sh): builds a fixture release on local disk,
 # installs from it via install.sh's TOPOS_RELEASE_BASE_URL file:// test
 # seam — no network, no credentials — and asserts the installed kernel
-# at $PREFIX/bin/topos launches the installed plugin from
-# $PREFIX/lib/topos/plugins with the stock relative [plugins] dir
-# (INST-03). Like dev-check, it only ever binds ephemeral ports it
+# at $PREFIX/bin/topos launches a plugin from $PREFIX/lib/topos/plugins
+# with the stock relative [plugins] dir (INST-03) — the fixture release
+# ships one, the pre-split release shape older kernel tags still have,
+# which is also why install.sh keeps accepting plugins/* assets. Like dev-check, it only ever binds ephemeral ports it
 # selects itself, so it is safe to run while a real kernel is up.
 install-check:
 	./scripts/install-smoke.sh
