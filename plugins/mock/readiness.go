@@ -82,7 +82,7 @@ func readinessWindowFromEnv(now time.Time, getenv func(string) string) (*readine
 // readyAfterEnvVar above, which delays Match/Health readiness AFTER the
 // go-plugin handshake has already completed. This one delays the
 // handshake itself: it models a plugin that is slow to come up at all
-// (the shape plugins/whatsapp's serve-mode login wait presented, and the
+// (the shape the whatsapp plugin's serve-mode login wait presented, and the
 // shape any plugin can present, since go-plugin's own client
 // StartTimeout default is a full minute). It exists so
 // kernel/supervisor's cross-source isolation gate

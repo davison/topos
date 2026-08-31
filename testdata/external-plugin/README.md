@@ -72,7 +72,7 @@ before launching it:
 ```
 
 - `path` is the one **required** kernel-known key (mirroring
-  `plugins/mockstrict/main.go`'s and `plugins/signal/main.go`'s identical
+  `plugins/mockstrict/main.go`'s and `the signal plugin's main.go`'s identical
   shape): the process fails startup loudly, by name, non-zero, when it is
   empty or `WEBSPACES_SOURCE_CONFIG` is unset entirely — never silently,
   never mid-`Match`. The path itself is never opened; any non-empty string

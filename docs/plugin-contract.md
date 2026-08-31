@@ -20,8 +20,8 @@ this document with no access to any real-source plugin implementation.
 **Other implementations (aside, not required reading):** the seven
 real-source plugins live in
 [`topos-plugins`](https://github.com/davison/topos-plugins) —
-`plugins/paperless` (a REST API source), `plugins/silverbullet` (an
-HTTP-with-frontmatter source), and `plugins/signal` (a **local-path**
+`the paperless plugin` (a REST API source), `the silverbullet plugin` (an
+HTTP-with-frontmatter source), and `the signal plugin` (a **local-path**
 source: no network endpoint at all, reads a local Signal Desktop database
 file directly) are instructive shapes once you're past "Build your first
 plugin", but none is needed to understand or apply anything in this
@@ -446,7 +446,8 @@ environment variable at startup.
 **The `path` key — a local-path source, no network endpoint at all.** A
 source that reads a local file or directory rather than a remote API
 declares `path` instead of `base_url`/`token`: the local filesystem
-location that source reads from. `plugins/signal` is this repository's
+location that source reads from. The signal plugin (in
+[`topos-plugins`](https://github.com/davison/topos-plugins)) is the
 reference implementation of the shape — its config is just
 
 ```json
@@ -461,7 +462,8 @@ declaring none of `base_url`, `token`, or `path` still fails config load
 — every source must declare at least one recognized connection-detail
 shape. `~` in a `path` value is expanded by the plugin itself, not by the
 kernel (`kernel/pluginhost` passes the configured string through
-unexpanded); see `plugins/signal/README.md` for the fully worked example.
+unexpanded); see the signal plugin's README in topos-plugins for the
+fully worked example.
 
 A plugin **must fail startup loudly** when a required key is empty (for
 example, because the operator's config referenced an unset `${VAR}` that
@@ -683,7 +685,7 @@ empty `match_vocabulary` can never participate in matching: the kernel
 also fails startup if a webspace relies on the keywords fallback (see
 Match, below) for an instance whose plugin declared zero fields, since
 there is nothing for that fallback to fan into. The four vocabularies
-declared by this repository's in-repo plugins — `["folders"]` (proton),
+declared by the first-party plugins (in topos-plugins) — `["folders"]` (proton),
 `["tags"]` (paperless), `["tags", "pages"]` (silverbullet),
 `["conversations"]` (signal) — are illustrations of the shape, not a
 closed set: a future plugin type declares whatever field names make sense
@@ -930,7 +932,7 @@ text into a chat bubble, for example), escape it (`html.EscapeString` or
 equivalent) so it can't forge the surrounding structural markup your
 plugin itself emits — the kernel's sanitizer is the actual security
 boundary, but escaping your own interpolation is still your
-responsibility, the same "structural-integrity guarantee" `plugins/signal`
+responsibility, the same "structural-integrity guarantee" `the signal plugin`
 implements for its transcript fragments.
 
 `Fetch` is a **single unary RPC**, not a stream: the full rendition's
@@ -994,7 +996,7 @@ message HealthResponse { bool reachable = 1; int64 last_sync_unix = 2; string la
 
 **`last_sync_unix`** is the Unix-seconds timestamp of this instance's own
 last successful sync completion — the natural reading, and what every
-in-repo plugin reports. `0` means "never successfully synced." This is
+first-party plugin reports. `0` means "never successfully synced." This is
 informational only: nothing in the kernel currently branches on it, but a
 plugin should still report a real value when it has one (a
 straightforward `stat` on whatever local state file already records a
@@ -1105,13 +1107,13 @@ above) and checks nothing beyond `strings.HasPrefix(deep_link, "file://")`
 "Open in …" behavior automatically, with zero kernel code change, simply
 by emitting an honest `file://` URI. There is no opt-in flag, no
 `Describe`-declared capability, and no contract version bump associated
-with this convention: it is available to any plugin, in-repo or
-out-of-repo, today.
+with this convention: it is available to any plugin, first-party or
+third-party, today.
 
 Building the URI is entirely the plugin's own responsibility — join your
 configured root with the item's own `source_id` (a forward-slash relative
 path, per the `Item` table above) and encode it as `file://` plus the
-resulting absolute path. `plugins/filesystem` (`item.go`'s
+resulting absolute path. `the filesystem plugin` (`item.go`'s
 `fileDeepLink`) is the reference implementation: `"file://" +
 filepath.ToSlash(filepath.Join(root, sourceID))`. The kernel's own
 re-resolution on the open route re-validates the joined path stays inside
@@ -1122,7 +1124,7 @@ closed when resolution is impossible — so a file indexed legitimately and
 later swapped on disk for a symlink pointing outside the root is refused
 rather than followed. This is the same defense-in-depth join-resolve-and-
 validate discipline your own plugin must apply when resolving `source_id`
-back to a real path for `Fetch` — `plugins/filesystem`'s `resolvePath`
+back to a real path for `Fetch` — `the filesystem plugin`'s `resolvePath`
 (`item.go`) is the reference implementation for that side too. **The
 resolved path is also the path the kernel actually hands to the desktop
 handler**, not the lexical join it validated it against — read and exec
@@ -1196,10 +1198,10 @@ required whenever `mime_type` is `"text/html"`. `CONTENT_SHAPE_UNSPECIFIED`
 is the zero value and — like `LinkFidelity_LINK_FIDELITY_UNSPECIFIED`
 above — is never a valid declaration for `text/html` content: the kernel
 refuses to serve it, returning `unsupported_content_shape` rather than
-guessing. Currently three plugins in this repository declare a
-`content_shape`: `plugins/proton` (`CONTENT_SHAPE_EMAIL_HTML`),
-`plugins/silverbullet` (`CONTENT_SHAPE_MARKDOWN_HTML`), and
-`plugins/signal` (`CONTENT_SHAPE_CHAT_TRANSCRIPT`) — `plugins/paperless`
+guessing. Three first-party plugins (in topos-plugins) declare a
+`content_shape`: proton (`CONTENT_SHAPE_EMAIL_HTML`),
+silverbullet (`CONTENT_SHAPE_MARKDOWN_HTML`), and
+signal (`CONTENT_SHAPE_CHAT_TRANSCRIPT`) — paperless
 and `plugins/mock` never serve a `text/html` rendition at all (paperless
 serves PDF/image; mock has no rendition to offer), so the zero value is
 correct, unused, for both.
@@ -1342,5 +1344,5 @@ and the honestly-stated limits of that approximation).
   that in the source's own documentation, and design your plugin's
   reported health/error states around what you can actually distinguish
   (collapsing indistinguishable causes into one named state is a
-  legitimate, honest choice — see `plugins/whatsapp/health.go` for the
+  legitimate, honest choice — see `the whatsapp plugin's health.go` for the
   in-repo precedent).

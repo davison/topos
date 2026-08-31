@@ -414,7 +414,7 @@ actually serve a sync.
 a delay applied BEFORE the go-plugin handshake, distinct from
 `WEBSPACES_MOCK_READY_AFTER_MS` above, which delays `Match`/`Health`
 readiness AFTER the handshake has already completed. It models a plugin
-that is slow to come up at all — the shape `plugins/whatsapp`'s
+that is slow to come up at all — the shape the whatsapp plugin's
 serve-mode login wait can present, and the shape any plugin can present,
 since go-plugin's own client `StartTimeout` default is a full minute.
 
