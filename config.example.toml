@@ -24,12 +24,11 @@
 # things. What changed in Phase 5: matching is no longer one shared
 # keyword list compared against every source's categorization uniformly.
 # Instead, each SOURCE INSTANCE (a [sources.<id>] block, below) declares
-# its own typed field vocabulary via its plugin's Describe RPC — a
-# plugin declares its own match fields in its Describe RPC (a tag, a
-# folder, a page name, a conversation — each plugin's README names its
-# vocabulary), and a webspace
-# those fields directly (a [webspaces.<name>.match.<instance>] block,
-# D-02) or falls back to one shared "keywords" list fanned across every
+# its own typed field vocabulary via its plugin's Describe RPC — a tag,
+# a folder, a page name, a conversation; each plugin's README in
+# topos-plugins names its fields — and a webspace either supplies typed
+# values for those fields directly (a [webspaces.<name>.match.<instance>]
+# block, D-02) or falls back to one shared "keywords" list fanned across every
 # field that instance's plugin declares (D-01). See "[webspaces.<name>]",
 # near the bottom of this file, for the full worked shape and every
 # load-time failure this can produce.
