@@ -287,8 +287,13 @@ export interface SourceStatus {
 	// EXCLUSIVELY from which configured directory the launched binary
 	// resolved from (kernel/pluginhost.ResolveBinary), never from anything
 	// the plugin itself declares. TrustBadge and SourceChip's tooltip
-	// render off this field alone (T-11-01).
-	tier: 'trusted' | 'external';
+	// render off this field alone (T-11-01). The empty string appears on
+	// exactly one entry shape (M1-R6, davison/topos#17): a launch_failed
+	// record for a binary found in NEITHER directory — there are no bytes
+	// to derive a tier from. TrustBadge's external-only guard treats it
+	// like trusted (no badge), which is the correct silence for an
+	// unknown.
+	tier: '' | 'trusted' | 'external';
 	// pinned_hash/current_hash/launch_failure are declared here now (the
 	// complete Phase 11 wire surface, so no later plan re-edits this file)
 	// but not yet published by the kernel — that lands with pin
@@ -308,7 +313,26 @@ export interface SourceStatus {
 	// text" discipline. There is deliberately no remedial action for this
 	// value beyond the existing external-tier consent-and-pin flow — unlike
 	// 'pin_mismatch', it never drives the chip menu's re-pin action.
-	launch_failure?: '' | 'pin_mismatch' | 'manifest_unverified';
+	//
+	// Widened again by M1-R6/DIST-03 (davison/topos#17) with the three
+	// incompatibility/launch classes, same discipline throughout — branch
+	// on the field, display last_error's text, never parse it:
+	// 'handshake_incompatible' (the go-plugin protocol-version refusal —
+	// a plugin built against a different contract era; last_error names
+	// both versions), 'contract_incompatible' (the plugin handshook but
+	// declared a contract generation the kernel does not support — or
+	// none at all; last_error names both generations), and
+	// 'launch_failed' (the generic never-became-a-plugin class: binary
+	// missing from both directories, a pre-handshake fatal, a Describe
+	// error). None of the three drives any menu action; the remedy is in
+	// the message (update the fleet or the kernel; restore the binary).
+	launch_failure?:
+		| ''
+		| 'pin_mismatch'
+		| 'manifest_unverified'
+		| 'handshake_incompatible'
+		| 'contract_incompatible'
+		| 'launch_failed';
 	// launch_advisory (13-06-PLAN.md, D-14) is a CLOSED-VOCABULARY field,
 	// distinct from launch_failure: it is populated ONLY on an instance
 	// that DID launch (never alongside a populated launch_failure on the

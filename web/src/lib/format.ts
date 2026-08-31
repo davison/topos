@@ -159,6 +159,14 @@ export function healthTone(source: SourceStatus): HealthTone {
 	// build-manifest verification never launched, and never sees a chance
 	// to sync.
 	if (source.launch_failure === 'manifest_unverified') return 'destructive';
+	// M1-R6/DIST-03 (davison/topos#17): the three incompatibility/launch
+	// classes join the SAME position for the identical reason yet again —
+	// an instance refused or failed at launch never got a chance to sync
+	// and must not fall into the neutral 'unknown' branch below. Same
+	// chain, never a parallel gate.
+	if (source.launch_failure === 'handshake_incompatible') return 'destructive';
+	if (source.launch_failure === 'contract_incompatible') return 'destructive';
+	if (source.launch_failure === 'launch_failed') return 'destructive';
 	if (source.last_status === '') return 'unknown';
 	if (!source.reachable) return 'destructive';
 	if (source.last_status === 'error') return 'warning';

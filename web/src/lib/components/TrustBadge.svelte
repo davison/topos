@@ -34,7 +34,11 @@
 		scale,
 		children
 	}: {
-		tier: 'trusted' | 'external';
+		// '' is the unknown-tier case (M1-R6, davison/topos#17): a
+		// launch_failed record for a binary found in neither directory has
+		// no bytes to derive a tier from. The external-only guard below
+		// renders no badge for it — the correct silence for an unknown.
+		tier: '' | 'trusted' | 'external';
 		scale: 'chip' | 'picker';
 		children: Snippet;
 	} = $props();

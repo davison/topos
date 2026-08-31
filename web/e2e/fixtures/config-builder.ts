@@ -139,12 +139,16 @@ export interface FixtureConfigSpec {
 	signedProvenanceBinaries?: { name: string; removeSignature?: boolean }[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
-	// replacing it. This is how a spec reaches a mock-plugin fixture env
-	// var (e.g. WEBSPACES_MOCK_RENDITION, docs/testing.md) — the kernel
-	// subprocess-spawns each plugin via append(os.Environ(), ...), so a
-	// value set here on the kernel process reaches the plugin subprocess
-	// whole. Empty/undefined by default, so a spec naming nothing extra
-	// here is byte-identical to before this field existed.
+	// replacing it. This is HALF of how a spec reaches a mock-plugin
+	// fixture env var (e.g. WEBSPACES_MOCK_RENDITION, docs/testing.md):
+	// the kernel builds each plugin subprocess's environment from a
+	// strict allowlist (kernel/pluginhost's allowedEnv, D-14 — never
+	// os.Environ() wholesale), so the value set here reaches the plugin
+	// only when that instance's own source config ALSO references
+	// ${THE_VAR} (config.EnvRefNames' per-instance allowlist) — see the
+	// rendition spec's extras block for the pattern. Empty/undefined by
+	// default, so a spec naming nothing extra here is byte-identical to
+	// before this field existed.
 	env?: Record<string, string>;
 }
 
