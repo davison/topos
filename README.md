@@ -31,19 +31,25 @@ the browser._
 
 ## Status
 
-topos has completed 11 of its v1 phases. Six sources ship today —
-paperless-ngx, SilverBullet, Proton Mail (via Bridge, never marking mail
-read), Signal Desktop (read strictly read-only from its local database),
-WhatsApp (as a linked device, with its own persistent message store), and
-a local/network filesystem folder (docs in a directory, optionally its
-subfolders) — interleaved in one chronological stream per webspace. You get source
-filtering, per-source health with manual refresh, full-text search
-across a webspace, a live detail pane, webspace creation and source
-configuration entirely from the browser (no hand-editing TOML required
-to get started), a default-deny agent permission model, and a responsive
-layout that adapts down to mobile widths. This final phase (10) is
-finishing the docs and release engineering that make the project easy to
-pick up from the outside.
+topos is past its v1 milestones and shipped v1.3.0, the plugin repo
+split. Seven sources ship today — paperless-ngx, SilverBullet, Proton
+Mail (via Bridge, never marking mail read), Signal Desktop (read
+strictly read-only from its local database), WhatsApp (as a linked
+device, with its own persistent message store), Google Drive, and a
+local/network filesystem folder — interleaved in one chronological
+stream per webspace. They live in their own repository,
+[`topos-plugins`](https://github.com/davison/topos-plugins), and cross
+the same published contract a third-party plugin does: signed releases
+the kernel verifies, one-command install and update independent of the
+kernel, a mismatch refused by name rather than silently, and a
+[developer guide](docs/plugin-development.md) from an empty module to
+`topos plugin pull`. You get source filtering, per-source health with
+manual refresh, full-text search across a webspace, a live detail pane,
+webspace creation and source configuration entirely from the browser
+(no hand-editing TOML required to get started), a default-deny agent
+permission model, and a responsive layout that adapts down to mobile
+widths. The record of each milestone lives under
+[`docs/milestones/`](docs/milestones/).
 
 ## Install
 
@@ -113,10 +119,13 @@ make build
 ```
 
 Produces the SPA (embedded into the kernel binary), `bin/topos`, and the
-plugin binaries under `bin/plugins/` — including the cgo-enabled Signal
-plugin, since a from-source build already has (or will need) a C
-toolchain. Use `make build-portable` instead if you want the same output
-minus Signal, with no cgo requirement at all.
+mock reference plugin under `bin/plugins/`; `make build-portable` is the
+same set plus `bin/topos-provenance`, the entry point the release
+workflows use. Nothing here needs cgo. The functional plugins are built
+in a [`topos-plugins`](https://github.com/davison/topos-plugins)
+checkout (`make build`, and `make build-signal` for the one cgo
+plugin), and `make dev` adopts that checkout's `bin/` through
+`DEV_PLUGINS_DIR` — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### As an app (PWA)
 

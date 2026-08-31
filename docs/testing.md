@@ -359,8 +359,7 @@ untrusted, launched under a content-hash pin, and synced end to end.
 
 - **Built only by its own target**, `make external-demo`, into its own
   output directory, `bin/plugins-external/topos-plugin-external-demo` —
-  never `bin/plugins/`, and never by `make build`, `make plugins`, or
-  `make plugins-portable`. `make e2e` depends on this target so the
+  never `bin/plugins/`, and never by `make build` or `make plugins`. `make e2e` depends on this target so the
   browser harness (plans 11-05/11-06) can link the built binary into a
   fixture's external plugin directory alongside the mock-shaped plugins'
   trusted-directory symlinks.
