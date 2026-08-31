@@ -19,13 +19,18 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/davison/topos/sdk"
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
+// contractVersion is the generation this plugin truthfully declares —
+// the sdk's own constant, never a retyped literal (M1-R6). The
+// fixture-only override (contractfixture.go) substitutes it per launch.
+const contractVersion = sdk.ContractVersion
+
 const (
-	sourceType      = "mock"
-	displayName     = "Mock Source"
-	contractVersion = "topos.v2"
+	sourceType  = "mock"
+	displayName = "Mock Source"
 
 	// sourceSystem stands in for a real base URL / connection string — the
 	// mock has no real instance, but Provenance's "source_system" key is
@@ -194,6 +199,12 @@ type SourcePlugin struct {
 	// Task 3's fixture, making DetailPane.svelte's media branch reachable
 	// by this repo's hermetic browser harness).
 	renditionFixture bool
+	// declaredContract is the contract generation Describe declares —
+	// sdk.ContractVersion in every normal launch; see contractfixture.go
+	// for the fixture-only override that makes the kernel's
+	// contract-generation refusal (M1-R6/DIST-03) reachable by the
+	// hermetic harness.
+	declaredContract string
 }
 
 // NewSourcePlugin builds a SourcePlugin. Unlike every real plugin's
@@ -201,7 +212,7 @@ type SourcePlugin struct {
 // the silverbullet plugin.NewSourcePlugin), this one takes no arguments —
 // the mock has no connection details to configure.
 func NewSourcePlugin() *SourcePlugin {
-	return &SourcePlugin{}
+	return &SourcePlugin{declaredContract: contractVersion}
 }
 
 // withReadinessWindow sets the fixture-only readiness window (see
@@ -217,6 +228,15 @@ func (p *SourcePlugin) withReadinessWindow(w *readinessWindow) *SourcePlugin {
 // of the plugin contract — no real plugin needs an equivalent setter.
 func (p *SourcePlugin) withRenditionFixture(enabled bool) *SourcePlugin {
 	p.renditionFixture = enabled
+	return p
+}
+
+// withContractVersion sets the contract generation Describe declares
+// (see contractfixture.go) and returns p for chaining from main.go. Not
+// part of the plugin contract — no real plugin needs an equivalent
+// setter: a real plugin declares sdk.ContractVersion and nothing else.
+func (p *SourcePlugin) withContractVersion(v string) *SourcePlugin {
+	p.declaredContract = v
 	return p
 }
 
@@ -236,7 +256,7 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 	return &toposv1.DescribeResponse{
 		SourceType:      sourceType,
 		DisplayName:     displayName,
-		ContractVersion: contractVersion,
+		ContractVersion: p.declaredContract,
 		MatchVocabulary: matchVocabulary,
 		Icon:            iconSVG,
 		IconMime:        iconMIME,

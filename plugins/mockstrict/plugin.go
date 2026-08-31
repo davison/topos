@@ -28,13 +28,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/davison/topos/sdk"
 	toposv1 "github.com/davison/topos/sdk/gen/topos/v1"
 )
 
 const (
-	sourceType      = "mockstrict"
-	displayName     = "Mockstrict Test Source"
-	contractVersion = "topos.v2"
+	sourceType  = "mockstrict"
+	displayName = "Mockstrict Test Source"
+	// contractVersion is the sdk's own generation, never a retyped
+	// literal (M1-R6) — mirrors plugins/mock.
+	contractVersion = sdk.ContractVersion
 
 	// sourceSystem stands in for a real base URL / connection string —
 	// this plugin has no real instance, but Provenance's "source_system"

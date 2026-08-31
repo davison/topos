@@ -63,11 +63,17 @@ func main() {
 	// value to reject.
 	renditionFixture := renditionFixtureEnabled(os.Getenv)
 
+	// Fixture-only contract-generation override (contractfixture.go,
+	// M1-R6/DIST-03) — off by default (the sdk's own generation), so a
+	// real installation's mock is unaffected. Any non-empty value is
+	// declared verbatim; the kernel's launch gate is what judges it.
+	declaredContract := contractVersionFromEnv(os.Getenv)
+
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
 		Plugins: map[string]goplugin.Plugin{
 			"source": &sdk.SourcePluginGRPCPlugin{
-				Impl: NewSourcePlugin().withReadinessWindow(ready).withRenditionFixture(renditionFixture),
+				Impl: NewSourcePlugin().withReadinessWindow(ready).withRenditionFixture(renditionFixture).withContractVersion(declaredContract),
 			},
 		},
 		// sdk.GRPCServer (not goplugin.DefaultGRPCServer) raises the gRPC

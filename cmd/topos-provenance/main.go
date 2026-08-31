@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"github.com/davison/topos/kernel/pluginhost"
+	"github.com/davison/topos/sdk"
 )
 
 func main() {
@@ -128,7 +129,7 @@ func runSign(args []string) error {
 	repo := fs.String("repo", "", "release repo, e.g. davison/topos-plugins (required)")
 	tag := fs.String("tag", "", "release tag (required)")
 	version := fs.String("version", "", "plugin version recorded in every entry (required)")
-	contract := fs.String("contract", "topos.v1", "gRPC contract generation recorded in every entry")
+	contract := fs.String("contract", sdk.ContractVersion, "gRPC contract generation recorded in every entry (default: the generation this kernel build speaks; recorded metadata — the launch gate reads the plugin's own Describe declaration, docs/plugin-trust.md)")
 	goos := fs.String("os", runtime.GOOS, "release platform OS")
 	arch := fs.String("arch", runtime.GOARCH, "release platform arch")
 	outDir := fs.String("out-dir", "", "directory to write the manifest and signature into (required)")

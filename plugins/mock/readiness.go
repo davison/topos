@@ -21,11 +21,13 @@ import (
 // launch-readiness window. The "WEBSPACES_" prefix matches the two env
 // vars the kernel already sets on every plugin subprocess
 // (WEBSPACES_SOURCE_CONFIG, WEBSPACES_DESCRIBE_ONLY — see
-// kernel/pluginhost/host.go launch()), which is also what makes an env var
-// set on the KERNEL process reach this subprocess: pluginhost.launch
-// builds the subprocess's environment as append(os.Environ(), ...), so the
-// kernel's own environment (including this variable, when a test sets it
-// via t.Setenv before booting a supervisor) is inherited whole.
+// kernel/pluginhost/host.go launch()). A value set on the KERNEL process
+// reaches this subprocess only via the reference-driven path
+// (kernel/pluginhost's allowedEnv, D-14 — the environment is a strict
+// allowlist, never os.Environ() wholesale): the instance's own source
+// config must reference ${WEBSPACES_MOCK_READY_AFTER_MS}, which puts the
+// name in config.EnvRefNames' per-instance allowlist — see
+// kernel/supervisor/readiness_test.go's own extras block.
 const readyAfterEnvVar = "WEBSPACES_MOCK_READY_AFTER_MS"
 
 // notReadyMessage is a fixed, distinctive string naming the fixture and
