@@ -85,12 +85,12 @@ this is the default `[plugins] dir` `config.example.toml` documents.
 **Plugin binaries come from
 [`topos-plugins`](https://github.com/davison/topos-plugins)** — the
 source plugins live there now, and its signed releases carry the fleet;
-kernel releases here ship the kernel alone. See
-[`docs/install.md`](docs/install.md#plugins-on-an-installed-instance)
-for the download-and-place path (and for Signal, the fleet's one cgo
-build, which is never published prebuilt — build it from a
-topos-plugins checkout against your own system's SQLCipher). Older
-kernel releases still carry whatever their tag published.
+kernel releases here ship the kernel alone. Install and update the
+fleet with that repository's own `make install` (see
+[`docs/install.md`](docs/install.md#plugins-on-an-installed-instance);
+for Signal, the fleet's one cgo build, its `make build-signal` and the
+external-tier consent flow). Older kernel releases still carry
+whatever their tag published.
 
 ### From source
 

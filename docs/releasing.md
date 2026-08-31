@@ -60,14 +60,16 @@ Sequence:
    Actions tab).
 4. Verify the published assets on the resulting GitHub Release.
 
-The release contains the kernel binary (`topos`) and a `checksums.txt` —
+The release contains the kernel binary (`topos`), the provenance
+verifier (`topos-provenance`) and a `checksums.txt` —
 `sha256sum` output over every other published asset. A downloader
 verifies their copy with `sha256sum -c checksums.txt` after downloading
 everything into the same directory.
 
 Plugin binaries are no longer published here: the source plugins live in
 [`topos-plugins`](https://github.com/davison/topos-plugins), whose own
-tag-triggered releases build, checksum, and ed25519-sign the fleet. See
+tag-triggered releases build, checksum, and ed25519-sign the fleet,
+installed by that repository's own `make install`. See
 [`docs/install.md`](install.md) for how an installed instance gets them.
 Older kernel releases still carry whatever their tag published —
 `make install <tag>` installs exactly that and reports what it installed;
