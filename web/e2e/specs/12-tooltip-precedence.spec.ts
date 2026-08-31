@@ -11,12 +11,11 @@
 // presents a GET /api/sources body it is handed — the identical strategy
 // g-08-3-degraded-source-not-outage.spec.ts documents and uses for the
 // kernel-side sync-status/outage distinction, applied here to the
-// SourceChip tooltip's own gate. 12-zero-match-diagnostic.spec.ts is the
-// real-kernel counterpart: it drives an actual topos-plugin-filesystem
-// subprocess end to end to prove the advisory's OWN path (a healthy,
-// reachable source whose match block matched nothing), and deliberately
-// stays out of the unreachable-while-advisory combination this spec
-// exists for.
+// SourceChip tooltip's own gate. Its former real-kernel counterpart
+// (12-zero-match-diagnostic.spec.ts, driving a real filesystem
+// subprocess) moved out with its subject — the functional plugins live
+// in davison/topos-plugins now — leaving this spec to cover the
+// unreachable-while-advisory combination it always existed for.
 //
 // Out of scope by design: a real unmounted NFS/SMB share going away under
 // a live probe while a stale successful run and a leftover notice are

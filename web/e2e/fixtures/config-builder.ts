@@ -99,8 +99,8 @@ export interface FixtureConfigSpec {
 	// `destDir/name` — the SAME name both sides — which is exactly wrong
 	// once trust became provenance-driven (Phase 16, D-11): a binary NAME
 	// covered by the kernel's own link-time build manifest (e.g.
-	// `topos-plugin-mockstrict`, `topos-plugin-filesystem` —
-	// `MANIFEST_E2E_BINARIES`, Makefile) now resolves TierTrusted from
+	// `topos-plugin-mockstrict` — `MANIFEST_E2E_BINARIES`,
+	// Makefile) now resolves TierTrusted from
 	// ANY directory it is found in, including the external one, since
 	// tier is a pure function of provenance rather than of location
 	// (success criterion 1: "trust is no longer a property of
