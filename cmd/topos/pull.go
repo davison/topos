@@ -6,9 +6,11 @@ package main
 //
 // The flow is stage -> discover -> verify -> place, and nothing is
 // written to either plugin directory until verification has fully
-// decided the tier — an abort at any earlier point leaves both
-// directories byte-identical to their pre-attempt state (PULL-02, GSD
-// phase-18 criterion 2, pinned by pull_test.go).
+// decided the tier — every verification failure aborts BEFORE placement
+// and leaves both directories byte-identical to their pre-attempt state
+// (PULL-02, GSD phase-18 criterion 2, pinned by pull_test.go with
+// directory-aware digest snapshots). Placement itself carries the
+// install scripts' precise two-pass guarantee, stated at pullPlace.
 //
 // Evidence discovery has exactly one convention (Decision on #19): the
 // release's own checksums.txt beside the binary is its asset manifest —
@@ -26,10 +28,16 @@ package main
 //     TRUSTED: the binary and its vouching manifest pair are placed in
 //     the config's trusted plugins directory, so the launch gate can
 //     reach the same verdict;
-//   - no evidence at all (checksums.txt cleanly absent) -> EXTERNAL:
-//     the bare binary is placed in the external directory and the
-//     consent-and-pin steps are printed — the unchanged untrusted-add
-//     flow, exactly as a hand-copied binary would take;
+//   - no provenance evidence -> EXTERNAL: the bare binary is placed in
+//     the external directory and the consent-and-pin steps are printed
+//     — the unchanged untrusted-add flow, exactly as a hand-copied
+//     binary would take. This is the state whether checksums.txt is
+//     cleanly absent OR present-and-clean but naming no provenance pair
+//     (the legitimate unsigned third-party release shape — an author
+//     without a key in the kernel's set publishes integrity, not
+//     authenticity; amended Decision on #19). A present checksums.txt
+//     still MUST name the binary with matching bytes, or the pull
+//     aborts;
 //   - evidence that exists but does not verify — a checksums line
 //     contradicting the downloaded bytes or omitting the binary, a bad
 //     signature, an unknown key id, a digest or platform mismatch, or
@@ -52,6 +60,28 @@ import (
 	"github.com/davison/topos/kernel/config"
 	"github.com/davison/topos/kernel/pluginhost"
 )
+
+// pullHTTPClient is every download's client. Redirects are followed
+// (GitHub release assets redirect cross-origin to
+// objects.githubusercontent.com — that is normal and allowed), but an
+// https->http downgrade anywhere in the chain is refused by name: the
+// operator named a scheme, and a downgrade would strip transport
+// integrity from artifacts this command is about to trust-evaluate.
+// Policy pinned by TestPullCheckRedirect.
+var pullHTTPClient = &http.Client{CheckRedirect: pullCheckRedirect}
+
+// pullCheckRedirect implements the policy above: at most ten hops
+// (net/http's own conventional cap, made explicit), and never a hop
+// from an https origin to a non-https URL.
+func pullCheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from https to %s (%s) — a downgrade would strip transport integrity from the artifact", req.URL.Scheme, req.URL)
+	}
+	return nil
+}
 
 // pullBinaryNamePattern is the same name shape the fleet installer's
 // allowlist and the pluginhost directory scan accept: the
@@ -92,6 +122,13 @@ func pullPlugin(rawURL string, cfg *config.Config, out io.Writer) error {
 	if !pullBinaryNamePattern.MatchString(name) {
 		return fmt.Errorf("plugin pull: url basename %q is not a plugin binary name (topos-plugin-<name>, lowercase letters, digits and hyphens)", name)
 	}
+	// Sibling-asset discovery works on the URL's PATH: the binary
+	// itself is fetched with whatever query the operator's URL carried
+	// (a signed CDN token, say), while checksums.txt and the provenance
+	// pair are addressed as plain path siblings with no query — a
+	// per-asset token cannot be assumed to authorize its siblings, and a
+	// host that needs one per asset is outside this command's one
+	// discovery convention. Pinned by TestPull_QueryBearingURL.
 	baseURL := *u
 	baseURL.Path = path.Dir(u.Path)
 	baseURL.RawQuery = ""
@@ -153,6 +190,12 @@ func pullPlugin(rawURL string, cfg *config.Config, out io.Writer) error {
 				provNames = append(provNames, rel)
 			}
 		}
+		// provNames may legitimately be empty here: a clean checksums.txt
+		// that names the binary but no provenance pair is the unsigned
+		// third-party release shape — integrity without authenticity —
+		// and falls through to the external tier below (amended Decision
+		// on #19). Absence of provenance is never an abort; only
+		// CONTRADICTING evidence is.
 		if recorded == "" {
 			// The release's own asset manifest disowns this binary —
 			// the tampered-or-misconfigured state verification exists
@@ -226,7 +269,7 @@ func pullPlugin(rawURL string, cfg *config.Config, out io.Writer) error {
 // pullDownload fetches url into dest (mode applied) — 2xx or error,
 // never a saved error page.
 func pullDownload(url, dest string, mode os.FileMode) error {
-	resp, err := http.Get(url)
+	resp, err := pullHTTPClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -248,7 +291,7 @@ func pullDownload(url, dest string, mode os.FileMode) error {
 // pullFetchOptional fetches url, distinguishing clean absence (404/410
 // -> present=false, no error) from every other failure.
 func pullFetchOptional(url string) (body []byte, present bool, err error) {
-	resp, err := http.Get(url)
+	resp, err := pullHTTPClient.Get(url)
 	if err != nil {
 		return nil, false, err
 	}
@@ -281,12 +324,35 @@ type pullPlacement struct {
 // wholly old or wholly new bytes at every instant. Returns the
 // destination paths written.
 func pullPlace(stage, destDir string, files []pullPlacement) ([]string, error) {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return nil, fmt.Errorf("cannot create %s (a system prefix may need sudo): %w", destDir, err)
-	}
+	// Pre-check destinations BEFORE creating anything: a refusal here
+	// must leave the filesystem untouched, including the destination
+	// directory itself (PR #20 review finding 1 — MkdirAll-first could
+	// leave a freshly created directory behind a refusal).
 	for _, f := range files {
 		if info, err := os.Lstat(filepath.Join(destDir, f.name)); err == nil && !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("destination %s exists and is not a regular file — refusing to place over it; nothing was placed", filepath.Join(destDir, f.name))
+		}
+	}
+	// Remember the topmost ancestor MkdirAll is about to create, so a
+	// failure later in this function can unwind exactly what it
+	// created — non-recursive rmdirs from destDir upward, each stopping
+	// naturally on a non-empty directory (the install scripts' own
+	// directory discipline).
+	createdRoot := firstMissingAncestor(destDir)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return nil, fmt.Errorf("cannot create %s (a system prefix may need sudo): %w", destDir, err)
+	}
+	unwindDirs := func() {
+		if createdRoot == "" {
+			return
+		}
+		for p := destDir; ; p = filepath.Dir(p) {
+			if os.Remove(p) != nil {
+				return
+			}
+			if p == createdRoot {
+				return
+			}
 		}
 	}
 	tmps := make([]string, 0, len(files))
@@ -294,6 +360,7 @@ func pullPlace(stage, destDir string, files []pullPlacement) ([]string, error) {
 		for _, t := range tmps {
 			os.Remove(t)
 		}
+		unwindDirs()
 	}
 	for i, f := range files {
 		tmp, err := os.CreateTemp(destDir, ".topos-plugin-pull.*")
@@ -319,16 +386,46 @@ func pullPlace(stage, destDir string, files []pullPlacement) ([]string, error) {
 		}
 		_ = i
 	}
+	// The rename pass: one atomic per-file replacement after another,
+	// over pre-checked destinations in a directory that now exists — the
+	// same residual window scripts/install.sh documents. A failure here
+	// (exotic: an I/O error, a race on the directory) is reported for
+	// exactly what it is — earlier files already replaced, later ones
+	// not — never as "nothing was placed"; a re-pull repairs. Every
+	// VERIFICATION failure aborted long before this point.
 	placed := make([]string, 0, len(files))
 	for i, f := range files {
 		dest := filepath.Join(destDir, f.name)
 		if err := os.Rename(tmps[i], dest); err != nil {
-			cleanup()
-			return placed, fmt.Errorf("rename into %s: %w", dest, err)
+			for _, t := range tmps[i:] {
+				os.Remove(t)
+			}
+			return placed, fmt.Errorf("rename into %s failed after %d of %d files were already replaced — re-run the pull to finish; earlier verification aborts always leave everything unchanged: %w", dest, len(placed), len(files), err)
 		}
 		placed = append(placed, dest)
 	}
 	return placed, nil
+}
+
+// firstMissingAncestor walks upward from dir and returns the topmost
+// path component that does not yet exist — "" when dir already exists.
+// Any stat error other than not-exist stops the walk conservatively
+// (treat as existing: better to leave a directory than to remove one we
+// cannot account for).
+func firstMissingAncestor(dir string) string {
+	missing := ""
+	for p := dir; ; {
+		if _, err := os.Lstat(p); err == nil || !os.IsNotExist(err) {
+			break
+		}
+		missing = p
+		parent := filepath.Dir(p)
+		if parent == p {
+			break
+		}
+		p = parent
+	}
+	return missing
 }
 
 // pullFormatDiagnostics renders VerifySignedProvenance's candidate-level

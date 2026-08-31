@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -120,25 +121,42 @@ func (e *pullTestEnv) writeChecksums(names ...string) {
 }
 
 // tierDigests is the byte-identical proof's instrument: a sorted
-// path->sha256 manifest over BOTH tier directories (absent directories
-// digest as empty).
+// manifest over BOTH tier directories recording every regular file's
+// SHA-256 AND every directory's existence (PR #20 review finding 1: an
+// absent directory and a freshly created empty one must never snapshot
+// identically), with an absent root recorded as ABSENT and every other
+// traversal error fatal — a proof that cannot read what it is proving
+// is no proof.
 func (e *pullTestEnv) tierDigests() string {
 	e.t.Helper()
 	var b strings.Builder
 	for _, dir := range []string{e.cfg.Plugins.Dir, e.cfg.Plugins.ExternalDir} {
+		if _, err := os.Lstat(dir); os.IsNotExist(err) {
+			b.WriteString("ABSENT " + dir + "\n---\n")
+			continue
+		} else if err != nil {
+			e.t.Fatal(err)
+		}
 		var lines []string
-		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
+		walkErr := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				lines = append(lines, "DIR "+p)
 				return nil
 			}
 			raw, err := os.ReadFile(p)
 			if err != nil {
-				e.t.Fatal(err)
+				return err
 			}
 			sum := sha256.Sum256(raw)
 			lines = append(lines, p+" "+hex.EncodeToString(sum[:]))
 			return nil
 		})
+		if walkErr != nil {
+			e.t.Fatal(walkErr)
+		}
 		sort.Strings(lines)
 		b.WriteString(strings.Join(lines, "\n") + "\n---\n")
 	}
@@ -312,5 +330,127 @@ func TestPull_RepullReplacesInPlace(t *testing.T) {
 	// scan already handles (D-08); the launch gate still verifies.
 	if _, evidence, _, err := pluginhost.VerifySignedProvenance(pluginhost.Dirs{Trusted: e.cfg.Plugins.Dir}, "topos-plugin-demo", filepath.Join(e.cfg.Plugins.Dir, "topos-plugin-demo")); err != nil || evidence == "" {
 		t.Fatalf("expected the updated directory to verify, got evidence=%q err=%v", evidence, err)
+	}
+}
+
+func TestPull_ChecksumsWithoutProvenanceEarnsExternal(t *testing.T) {
+	// The unsigned third-party release shape (amended Decision on #19):
+	// a clean checksums.txt naming the binary with matching bytes but
+	// naming no provenance pair publishes integrity without
+	// authenticity — the external tier, never an abort.
+	e := newPullTestEnv(t)
+	e.writeBinary("topos-plugin-demo", "unsigned but checksummed")
+	e.writeChecksums("topos-plugin-demo")
+	var out strings.Builder
+	if err := pullPlugin(e.url("topos-plugin-demo"), e.cfg, &out); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if !strings.Contains(out.String(), "EXTERNAL") {
+		t.Errorf("expected the external tier, got:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(e.cfg.Plugins.ExternalDir, "topos-plugin-demo")); err != nil {
+		t.Fatalf("expected the binary placed in the external directory: %v", err)
+	}
+	if _, err := os.Stat(e.cfg.Plugins.Dir); !os.IsNotExist(err) {
+		t.Errorf("expected the trusted directory never created, got err=%v", err)
+	}
+}
+
+func TestPull_ForeignPlatformPairBesideMatchingPairStillTrusted(t *testing.T) {
+	// A release publishing per-platform manifests: the pair for THIS
+	// platform vouches, the foreign one contributes nothing — any valid
+	// match wins, exactly the kernel's own scan rule (D-08).
+	e := newPullTestEnv(t)
+	e.writeBinary("topos-plugin-demo", "multi-platform release bytes")
+	e.sign("example-linux", runtime.GOOS, runtime.GOARCH, "topos-plugin-demo")
+	e.sign("example-darwin", "darwin", "arm64", "topos-plugin-demo")
+	e.writeChecksums("topos-plugin-demo",
+		"example-linux"+pluginhost.ProvenanceManifestSuffix, "example-linux"+pluginhost.ProvenanceSignatureSuffix,
+		"example-darwin"+pluginhost.ProvenanceManifestSuffix, "example-darwin"+pluginhost.ProvenanceSignatureSuffix)
+	var out strings.Builder
+	if err := pullPlugin(e.url("topos-plugin-demo"), e.cfg, &out); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if !strings.Contains(out.String(), "TRUSTED") || !strings.Contains(out.String(), "example-linux") {
+		t.Errorf("expected the matching pair's evidence to earn trusted, got:\n%s", out.String())
+	}
+}
+
+func TestPull_QueryBearingURLKeepsQueryForBinaryOnly(t *testing.T) {
+	// The binary downloads with the operator's query intact; sibling
+	// discovery addresses plain path siblings with no query.
+	e := newPullTestEnv(t)
+	e.writeBinary("topos-plugin-demo", "queried bytes")
+	e.writeChecksums("topos-plugin-demo")
+	var sawBinaryQuery, sawChecksumsQuery bool
+	inner := e.server.Config.Handler
+	e.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "topos-plugin-demo") && r.URL.RawQuery == "token=abc" {
+			sawBinaryQuery = true
+		}
+		if strings.HasSuffix(r.URL.Path, "checksums.txt") && r.URL.RawQuery != "" {
+			sawChecksumsQuery = true
+		}
+		inner.ServeHTTP(w, r)
+	})
+	if err := pullPlugin(e.url("topos-plugin-demo")+"?token=abc", e.cfg, io_Discard()); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if !sawBinaryQuery {
+		t.Error("expected the binary request to carry the operator's query")
+	}
+	if sawChecksumsQuery {
+		t.Error("expected sibling discovery to drop the query")
+	}
+}
+
+func TestPullPlace_FailureUnwindsCreatedDirectories(t *testing.T) {
+	// A post-mkdir failure (here: a staged source that does not exist)
+	// must remove every directory this attempt itself created — the
+	// non-recursive unwind, from the destination up to the topmost
+	// created ancestor — while a pre-existing ancestor survives.
+	root := t.TempDir()
+	dest := filepath.Join(root, "a", "b", "c")
+	stage := t.TempDir()
+	_, err := pullPlace(stage, dest, []pullPlacement{{name: "topos-plugin-ghost", mode: 0o755}})
+	if err == nil {
+		t.Fatal("expected the placement to fail for a missing staged source")
+	}
+	if _, statErr := os.Lstat(filepath.Join(root, "a")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected the created directory chain removed, got err=%v", statErr)
+	}
+	if _, statErr := os.Lstat(root); statErr != nil {
+		t.Fatalf("expected the pre-existing root untouched: %v", statErr)
+	}
+}
+
+func TestPullCheckRedirect_Policy(t *testing.T) {
+	mk := func(rawurl string) *http.Request {
+		u, err := url.Parse(rawurl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &http.Request{URL: u}
+	}
+	// https -> http downgrade: refused, naming the downgrade.
+	err := pullCheckRedirect(mk("http://evil.example/x"), []*http.Request{mk("https://github.com/a")})
+	if err == nil || !strings.Contains(err.Error(), "downgrade") {
+		t.Fatalf("expected the https->http downgrade refused by name, got %v", err)
+	}
+	// https -> https cross-origin: allowed (the GitHub assets shape).
+	if err := pullCheckRedirect(mk("https://objects.githubusercontent.com/x"), []*http.Request{mk("https://github.com/a")}); err != nil {
+		t.Fatalf("expected the cross-origin https redirect allowed, got %v", err)
+	}
+	// http origin -> http: allowed (the operator chose http).
+	if err := pullCheckRedirect(mk("http://mirror.example/x"), []*http.Request{mk("http://host.example/a")}); err != nil {
+		t.Fatalf("expected an http-origin redirect allowed, got %v", err)
+	}
+	// the hop cap.
+	via := make([]*http.Request, 10)
+	for i := range via {
+		via[i] = mk("https://github.com/a")
+	}
+	if err := pullCheckRedirect(mk("https://github.com/b"), via); err == nil {
+		t.Fatal("expected the ten-redirect cap enforced")
 	}
 }
