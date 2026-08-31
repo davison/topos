@@ -24,7 +24,7 @@ export const PLUGIN_BIN_DIR = join(REPO_ROOT, 'bin', 'plugins');
  * Absolute path to the directory `make external-demo` builds the
  * genuinely out-of-repo proof binary (topos-plugin-external-demo,
  * ROADMAP success criterion 5) into — never `bin/plugins/`, never built
- * by `make build`/`make plugins`/`make plugins-portable`. `make e2e`
+ * by `make build`/`make plugins`. `make e2e`
  * depends on this target (11-04-PLAN.md), so this directory is populated
  * by the time any spec runs. A spec proving a real out-of-repo binary
  * passes this as FixtureConfigSpec.externalPluginBinariesSrcDir rather

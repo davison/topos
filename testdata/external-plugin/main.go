@@ -8,7 +8,7 @@
 //
 // This binary is built ONLY by its own `make external-demo` target, into
 // its own `bin/plugins-external/` output directory — never by `make
-// build`, `make plugins`, or `make plugins-portable` — and it lives under
+// build` or `make plugins` — and it lives under
 // testdata/, a directory this repository's own AST audits
 // (internal/audit) deliberately skip everywhere they walk. It must NEVER
 // be copied into a real installation's trusted plugin directory — see

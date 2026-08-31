@@ -36,12 +36,12 @@ Two independent reasons, both load-bearing:
    third party's out-of-repo module is never scanned by this repo's
    egress/module-pin/icon audits either — living under `testdata/` keeps
    this proof binary's audit exposure identical to the real thing it
-   stands in for, rather than accidentally joining the in-repo plugin
+   stands in for, rather than accidentally joining this repository's own mock-plugin
    set's own audited surface.
 
 This module is a **stand-in for a third party's own separate build** — it
 must never live under `plugins/`, must never be built by `make build`,
-`make plugins`, or `make plugins-portable`, and must never be copied into
+or `make plugins`, and must never be copied into
 a real installation's trusted `[plugins] dir`. It exists purely to prove
 the external-plugin mechanism end to end; it is never shipped.
 
