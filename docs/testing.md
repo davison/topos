@@ -76,10 +76,13 @@ provenance-free release installs unchanged, a validly-signed release
 verifies and installs, and a binary altered after signing aborts naming
 it with the target prefix byte-identical before/after — the uninstall
 data-safety cycle (a seeded home/XDG tree byte-identical across
-install+uninstall), foreign-file survival, uninstall under a live
-kernel, the toolchain tripwire (the base install completes with
-failing compiler shims first on `PATH`), Signal removal, and the
-latest-release URL validator.
+install+uninstall; the kernel binaries — `topos` and a seeded
+`topos-provenance` — go, while the plugin fleet, a hand-placed foreign
+file, and their directory survive byte-identical for topos-plugins'
+own `make uninstall`, with the hand-off reported), uninstall under a
+live kernel, the toolchain tripwire (the base install completes with
+failing compiler shims first on `PATH`), and the latest-release URL
+validator.
 Hermetic and offline except one live latest-release resolution case,
 which skips loudly by name when the network is unreachable. Safe beside
 a running kernel — every port is ephemeral and self-selected.

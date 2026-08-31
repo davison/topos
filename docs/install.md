@@ -264,9 +264,8 @@ backing up anyway.
 5. **Verify nothing was lost.** The webspace list is unchanged; an
    item you had marked is still marked; each source's chip shows the
    same health state it had before. WhatsApp is still linked (the
-   session store never moved), and Signal — if you use it — needs the
-   one-time `make install-signal` opt-in described in the Signal
-   section above.
+   session store never moved), and Signal — if you use it — follows
+   the external-tier flow described in the Signal section above.
 
 **Backing out.** `make uninstall` removes the kernel's own artifacts
 (`$PREFIX/bin/topos`, `$PREFIX/bin/topos-provenance`) and leaves
