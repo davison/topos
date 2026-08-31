@@ -31,6 +31,38 @@ var Handshake = plugin.HandshakeConfig{
 	MagicCookieValue: "topos-source-plugin-v1",
 }
 
+// ContractVersion is the contract GENERATION this sdk (and the kernel
+// built beside it) speaks — the value a plugin built from this module
+// returns in DescribeResponse.contract_version ("topos.v2" since Phase
+// 5's typed match-field break; see proto/topos/v1/plugin.proto). One
+// authority for the kernel's launch gate, both reference mocks, and
+// third-party authors alike (M1-R6/DIST-03, davison/topos#17) — never
+// retype the literal.
+const ContractVersion = "topos.v2"
+
+// SupportedContractVersions is the closed set of contract generations
+// the kernel accepts at launch — exactly the current generation today.
+// A future kernel that can still serve an older generation's
+// MatchRequest shape widens this set additively; the launch gate
+// (kernel/pluginhost's contract check) reads it through
+// ContractSupported and refuses, loudly and by name, any plugin whose
+// Describe declares a generation outside it.
+var SupportedContractVersions = []string{ContractVersion}
+
+// ContractSupported reports whether declared names a contract generation
+// in SupportedContractVersions. The empty string is NEVER supported — a
+// plugin that declares no generation at all predates (or ignores) the
+// field, and silence is not compatibility (M1-R6): the kernel refuses it
+// by name rather than guessing.
+func ContractSupported(declared string) bool {
+	for _, v := range SupportedContractVersions {
+		if declared == v {
+			return true
+		}
+	}
+	return false
+}
+
 // PluginMap is the map of plugin name to implementation passed to both
 // plugin.Serve (plugin side) and plugin.ClientConfig (host side). Every
 // source plugin registers under the "source" key.

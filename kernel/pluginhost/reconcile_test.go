@@ -113,9 +113,13 @@ func TestReconcile_RemovedInstanceIsKilledAndDropped(t *testing.T) {
 }
 
 // TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact proves
-// T-07-11: a launch failure for one added instance names that instance in
-// its error and leaves every already-running instance's subprocess still
-// launched and unrestarted — a partial apply must never look successful.
+// T-07-11's surviving core under M1-R6/DIST-03 (davison/topos#17): a
+// launch failure for one added instance is recorded BY NAME as a
+// per-instance launch failure — Reconcile returns nil, the apply
+// commits — and the already-running instance's subprocess is left
+// launched and unrestarted, the SAME *Plugin pointer. Before #17 this
+// case returned a hard error rejecting the whole apply; the intact-set
+// guarantee is unchanged, the whole-save failure is gone.
 func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 	dir := buildMockPluginDir(t)
 	installTrustedManifest(t, dir)
@@ -129,19 +133,23 @@ func TestReconcile_LaunchFailureLeavesPreviouslyRunningSetIntact(t *testing.T) {
 
 	before := h.Plugins()[0]
 
-	err = h.Reconcile(context.Background(), nil, map[string]config.Source{
+	if err := h.Reconcile(context.Background(), nil, map[string]config.Source{
 		"demo":  {Plugin: "topos-plugin-mock"},
 		"bogus": {Plugin: "topos-plugin-does-not-exist"},
-	}, hclog.NewNullLogger())
-	if err == nil {
-		t.Fatal("expected an error for the missing plugin binary")
+	}, hclog.NewNullLogger()); err != nil {
+		t.Fatalf("Reconcile must commit around a missing binary (M1-R6), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "bogus") {
-		t.Errorf("expected the error to name the offending instance %q, got: %v", "bogus", err)
+
+	failures := h.LaunchFailures()
+	if len(failures) != 1 || failures[0].Instance != "bogus" || failures[0].Reason != LaunchFailureLaunchFailed {
+		t.Fatalf("expected one launch_failed record naming %q, got %+v", "bogus", failures)
+	}
+	if !strings.Contains(failures[0].Message, "topos-plugin-does-not-exist") {
+		t.Errorf("expected the record to name the missing binary, got: %s", failures[0].Message)
 	}
 
 	if len(h.Plugins()) != 1 || h.Plugins()[0] != before {
-		t.Fatalf("expected the previously running instance to survive a failed reconcile completely untouched, got %+v", h.Plugins())
+		t.Fatalf("expected the previously running instance to survive completely untouched, got %+v", h.Plugins())
 	}
 }
 

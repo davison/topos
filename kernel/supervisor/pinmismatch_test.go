@@ -242,13 +242,14 @@ keywords = ["demo"]
 	}
 }
 
-// TestPinMismatch_MissingBinaryStillHardFailsBoot proves RESEARCH A3's
-// scoping decision at the supervisor boundary: a source naming a binary
-// that exists in NEITHER configured directory (a genuinely different
-// failure class from a pin mismatch) still fails NewSupervisor outright —
-// this phase narrows the soft-failure treatment to pin mismatches only and
-// must not silently widen it to every launch-failure class.
-func TestPinMismatch_MissingBinaryStillHardFailsBoot(t *testing.T) {
+// TestMissingBinaryBootsWithNamedLaunchFailure inverts RESEARCH A3's
+// original scoping at the supervisor boundary, per M1-R6/DIST-03
+// (davison/topos#17): a source naming a binary that exists in NEITHER
+// configured directory no longer fails NewSupervisor outright — the
+// kernel boots, and the instance is a named launch_failed record on
+// LaunchFailures(), exactly the silent-source-absence/dead-boot pair
+// that requirement forbids.
+func TestMissingBinaryBootsWithNamedLaunchFailure(t *testing.T) {
 	trustedDir := buildMockPluginDir(t)
 	idx := newTestIndex(t)
 	ctx := context.Background()
@@ -260,8 +261,14 @@ base_url = "http://mock.test"
 token = "unused"
 `)
 
-	_, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: trustedDir}, hclog.NewNullLogger())
-	if err == nil {
-		t.Fatal("expected NewSupervisor to fail outright for a genuinely missing plugin binary")
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: trustedDir}, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor must boot around a missing plugin binary (M1-R6), got: %v", err)
+	}
+	defer sup.Shutdown()
+
+	failures := sup.LaunchFailures()
+	if len(failures) != 1 || failures[0].Instance != "demo" || failures[0].Reason != pluginhost.LaunchFailureLaunchFailed {
+		t.Fatalf("expected one launch_failed record naming %q, got %+v", "demo", failures)
 	}
 }
