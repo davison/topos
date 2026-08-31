@@ -230,6 +230,10 @@ detects a non-loopback bind, but does not refuse to start.
 
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — repository layout, the dev
   loop, and the testing gates, for anyone working on topos itself.
+- **[`docs/plugin-development.md`](docs/plugin-development.md)** — the
+  guide for writing a plugin out of tree: your own module, a kernel to
+  run it under, shipping a release, and installing it with
+  `topos plugin pull`.
 - **[`docs/plugin-contract.md`](docs/plugin-contract.md)** — the published
   contract for writing a new source plugin: the interface you implement,
   how the kernel discovers and launches your binary, how config reaches
@@ -238,9 +242,9 @@ detects a non-loopback bind, but does not refuse to start.
   contract: every route, the stable-id scheme, the ordering guarantee,
   provenance keys, and the full error-code list. This is the same JSON
   the web UI consumes — there is no separate agent API.
-- **[`docs/plugins/`](docs/plugins/)** — per-plugin operator docs: install
-  requirements, configuration, and gotchas for each of the six source
-  plugins.
+- **[`docs/plugins/`](docs/plugins/)** — where the per-plugin operator
+  docs went: each plugin's own README in
+  [`topos-plugins`](https://github.com/davison/topos-plugins).
 - **[`SECURITY.md`](SECURITY.md)** — how to report a vulnerability.
 - **[`docs/releasing.md`](docs/releasing.md)** — how a release is cut,
   what the nightly build does, and GitHub milestone sync.
