@@ -46,13 +46,13 @@ jobs:
       # shipping it as a release asset would contradict that policy.
       - name: Hash and publish release assets
         run: |
-          ASSETS="topos"
+          ASSETS="topos topos-provenance"
           (cd bin && sha256sum $ASSETS > checksums.txt)
           PUBLISH=""
           for a in $ASSETS; do PUBLISH="$PUBLISH bin/$a"; done
           gh release create "$GITHUB_REF_NAME" $PUBLISH bin/checksums.txt \
             --title "$GITHUB_REF_NAME" \
-            --notes "Plugin binaries are no longer published here — the source plugins live in https://github.com/davison/topos-plugins, whose own signed releases carry them (see docs/install.md for the interim download-and-place path)." \
+            --notes "Plugin binaries are not published here — the source plugins live in https://github.com/davison/topos-plugins; install and update the fleet with its own \`make install\` (see docs/install.md). This release also ships \`topos-provenance\`, the provenance verifier, installed to \$PREFIX/bin beside the kernel." \
             --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

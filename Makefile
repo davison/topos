@@ -138,6 +138,7 @@ build-portable:
 	npm --prefix web ci
 	npm --prefix web run build
 	$(MAKE) plugins
+	CGO_ENABLED=0 go build -o bin/topos-provenance ./cmd/topos-provenance
 	MANIFEST="$$($(MANIFEST_GEN_PLUGINS))" && \
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
@@ -329,10 +330,12 @@ PREFIX ?= /usr/local
 install:
 	PREFIX="$(PREFIX)" ./scripts/install.sh $(VERSION)
 
-# uninstall removes the PREFIX ARTIFACTS ONLY (INST-05): the kernel at
-# $(PREFIX)/bin/topos and the topos-plugin-* binaries directly inside
-# $(PREFIX)/lib/topos/plugins, then removes those directories with a
-# non-recursive rmdir only when they are left empty. The operator's
+# uninstall removes the KERNEL'S OWN prefix artifacts only:
+# $(PREFIX)/bin/topos and $(PREFIX)/bin/topos-provenance. The plugin
+# fleet under $(PREFIX)/lib/topos/plugins is deliberately left alone —
+# it is topos-plugins' own make uninstall that removes it, whichever
+# installer placed it (M1-R5's independence, davison/topos#15); only
+# empty directories are tidied, by non-recursive rmdir. The operator's
 # config file, kernel index, and plugin stores are NEVER touched —
 # scripts/uninstall.sh names no path outside the prefix and offers no
 # data-removal flag at all; that absence is the guarantee. Idempotent:

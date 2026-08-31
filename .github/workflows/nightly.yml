@@ -74,7 +74,7 @@ jobs:
       # deliberately absent — see release.yml's identical comment.
       - name: Force-move nightly tag and publish
         run: |
-          ASSETS="topos"
+          ASSETS="topos topos-provenance"
           (cd bin && sha256sum $ASSETS > checksums.txt)
           PUBLISH=""
           for a in $ASSETS; do PUBLISH="$PUBLISH bin/$a"; done
