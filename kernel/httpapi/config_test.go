@@ -909,7 +909,7 @@ func TestRoutesGuard_NoLocalConfigSnapshot(t *testing.T) {
 // than refusing it as unverified. Each test installs and restores its own
 // override; since this package's tests never run with t.Parallel(), this
 // per-test scoping is sound regardless of how many distinct fixture
-// directories (buildMockPluginDir's vs buildPaperlessPluginDir's) different
+// directories different
 // tests use.
 func installTrustedManifest(t *testing.T, dir string) {
 	t.Helper()
@@ -1055,86 +1055,8 @@ func TestDescribePluginHandler_UnknownBinaryReturns404WithoutExecuting(t *testin
 	assertErrorEnvelope(t, rec, http.StatusNotFound, "plugin_binary_not_found")
 }
 
-// buildPaperlessPluginDir builds the repo's real paperless plugin binary
-// fresh, once per test binary run, into a shared temp directory — the
-// acceptance criterion "against the repo's own built plugins" (07-02-
-// PLAN.md Task 3) requires a genuine, non-Signal, non-mock plugin type,
-// and paperless is the simplest of the three remaining real types (no
-// username/webmail fields silverbullet/proton also need beyond
-// base_url/token).
-var (
-	paperlessPluginDirOnce sync.Once
-	paperlessPluginDir     string
-	paperlessPluginDirErr  error
-)
-
-func buildPaperlessPluginDir(t *testing.T) string {
-	t.Helper()
-	paperlessPluginDirOnce.Do(func() {
-		out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/davison/topos").Output()
-		if err != nil {
-			paperlessPluginDirErr = fmt.Errorf("resolve module root: %w", err)
-			return
-		}
-		root := strings.TrimSpace(string(out))
-
-		dir, err := os.MkdirTemp("", "topos-httpapi-describe-test-*")
-		if err != nil {
-			paperlessPluginDirErr = err
-			return
-		}
-
-		bin := filepath.Join(dir, "topos-plugin-paperless")
-		cmd := exec.Command("go", "build", "-o", bin, "./plugins/paperless")
-		cmd.Dir = root
-		if buildOut, err := cmd.CombinedOutput(); err != nil {
-			paperlessPluginDirErr = fmt.Errorf("build paperless plugin: %w\n%s", err, buildOut)
-			return
-		}
-
-		paperlessPluginDir = dir
-	})
-	if paperlessPluginDirErr != nil {
-		t.Fatalf("build paperless plugin fixture: %v", paperlessPluginDirErr)
-	}
-	return paperlessPluginDir
-}
-
-// TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary is
-// the acceptance criterion's own "against the repo's own built plugins"
-// proof: paperless's Describe-declared match_vocabulary (["tags"]) comes
-// back from present-but-unverified connection fields — DescribePluginType
-// never opens a live connection to base_url before Describe answers
-// (plugins/paperless/main.go only checks field presence) — and, since
-// this handler has no config.Store dependency at all, there is
-// structurally no [sources.*] block it could ever write.
-func TestDescribePluginHandler_RealPaperlessBinary_ReturnsMatchVocabulary(t *testing.T) {
-	dir := buildPaperlessPluginDir(t)
-	installTrustedManifest(t, dir)
-	router := newPluginTypesTestRouter(dir)
-
-	body := `{"plugin":"topos-plugin-paperless","source":{"base_url":"http://paperless.example.test","token":"unverified"}}`
-	req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(body))
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var resp describePluginResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.SourceType != "paperless" {
-		t.Errorf("expected source_type %q, got %q", "paperless", resp.SourceType)
-	}
-	if len(resp.MatchVocabulary) != 1 || resp.MatchVocabulary[0] != "tags" {
-		t.Errorf("expected match_vocabulary [\"tags\"], got %v", resp.MatchVocabulary)
-	}
-}
-
-// buildMockPluginDir mirrors buildPaperlessPluginDir above, built fresh
-// once per test binary run into a shared temp directory.
+// buildMockPluginDir builds the mock reference plugin once per test
+// binary run (sync.Once), mirroring reconcile_test.go's shape.
 var (
 	mockPluginDirOnce sync.Once
 	mockPluginDir     string

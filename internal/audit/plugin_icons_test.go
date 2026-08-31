@@ -205,9 +205,11 @@ func TestPluginIcons_EveryInRepoPluginDeclaresOne(t *testing.T) {
 		offenses = append(offenses, pluginIconOffenses(pluginDir)...)
 	}
 
-	if discovered < 7 {
+	if discovered < 2 {
 		t.Fatalf(
-			"expected to discover at least 7 plugin modules under %s (found %d) — "+
+			// The floor dropped from 7 to 2 when the functional plugins
+			// moved to davison/topos-plugins (mock and mockstrict remain).
+			"expected to discover at least 2 plugin modules under %s (found %d) — "+
 				"a wrong pluginsDir would make this test vacuously pass",
 			pluginsDir, discovered,
 		)
