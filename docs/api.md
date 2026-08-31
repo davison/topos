@@ -728,9 +728,11 @@ ever renders; none of them is decided client-side.
 - **`current_hash`** is the on-disk SHA-256 of a pin-mismatched instance's
   binary — the value an operator would be re-pinning to. Empty except on
   a `launch_failure` entry.
-- **`launch_failure`** is a **CLOSED-VOCABULARY** field, empty,
-  `"pin_mismatch"`, or (as of `13-05-PLAN.md`, `D-12`/`D-13`)
-  `"manifest_unverified"`, naming why this instance never launched at all
+- **`launch_failure`** is a **CLOSED-VOCABULARY** field: empty,
+  `"pin_mismatch"`, `"manifest_unverified"` (as of `13-05-PLAN.md`,
+  `D-12`/`D-13`), or — as of M1-R6/DIST-03 (davison/topos#17) —
+  `"handshake_incompatible"`, `"contract_incompatible"`, or
+  `"launch_failed"`, naming why this instance never launched at all
   — as opposed to `reachable: false`, which means the instance DID
   launch but is currently unreachable. **A client MUST branch on
   `launch_failure`, never on parsing `last_error`'s free text** — the
@@ -748,6 +750,30 @@ ever renders; none of them is decided client-side.
   re-pin/trust remedial action for this reason — the only path to running
   a binary neither arm vouches for is the existing external-tier
   consent-and-pin flow.
+
+  The three M1-R6 values carry the identical discipline — branch on the
+  field, display `last_error`, never parse it — and none drives a menu
+  action; the remedy is in the message:
+  - `"handshake_incompatible"` — the subprocess started but spoke a
+    different go-plugin protocol version than the kernel
+    (`sdk.Handshake.ProtocolVersion`); `last_error` carries go-plugin's
+    own text naming both versions. A plugin binary built against a
+    different contract era.
+  - `"contract_incompatible"` — the handshake succeeded but `Describe`
+    declared a contract generation outside the kernel's supported set
+    (or none at all — silence is never compatibility); `last_error`
+    names the declared and supported generations. Update the plugin
+    fleet or the kernel so the generations agree.
+  - `"launch_failed"` — the generic never-became-a-plugin class: the
+    binary is missing from both plugin directories, exited before the
+    handshake, or failed `Describe`. On the missing-binary shape the
+    entry's `tier` is the empty string — there were no bytes to derive
+    a tier from; every other entry keeps `"trusted"`/`"external"`.
+
+  Before davison/topos#17 these classes aborted the whole boot or
+  config apply; every launch-failure class is now a per-instance
+  record, so one stale binary never hides — or takes down — a healthy
+  source.
 - **`launch_advisory`** (`13-05-PLAN.md`, `D-14`) is a **CLOSED-VOCABULARY**
   field, empty or `"shadowed"` today, populated ONLY on an entry that DID
   launch (a probe-derived entry — never alongside a populated

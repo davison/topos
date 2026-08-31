@@ -304,6 +304,20 @@ section rather than being retold here.
   In every case there is no re-pin/trust remedial action for this
   reason — the only path to running a binary neither arm vouches for is
   the existing external-tier consent-and-pin flow.
+- **A source reports `handshake_incompatible` or
+  `contract_incompatible`.** The kernel and the plugin fleet were
+  updated independently (which is the design — see "Plugins on an
+  installed instance") and their generations no longer agree: the
+  source's `last_error` names both sides (go-plugin protocol versions,
+  or declared-vs-supported contract generations). Update whichever side
+  is behind — `make install` here for the kernel, `make install` in the
+  topos-plugins checkout for the fleet — and restart. Every other
+  source keeps running while the mismatch is displayed; a mismatch
+  never takes the kernel down.
+- **A source reports `launch_failed` naming a missing binary.** The
+  fleet no longer ships a binary your config still names (or it was
+  removed by hand). Remove or repoint the source, or reinstall the
+  fleet.
 
 ## Verifying the install machinery itself
 

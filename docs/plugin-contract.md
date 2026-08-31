@@ -133,7 +133,12 @@ The kernel and every plugin share one handshake, `sdk.Handshake`:
 for an additive contract change — that's what `DescribeResponse`'s
 `contract_version` field is for; see Describe, below). A plugin that
 serves a different magic cookie or protocol version fails the handshake
-outright, before any RPC is attempted.
+outright, before any RPC is attempted — and since M1-R6/DIST-03
+(davison/topos#17) that refusal surfaces as a named, per-instance
+launch failure (`launch_failure: "handshake_incompatible"` on
+`GET /api/sources`, with go-plugin's own both-versions-named text in
+`last_error`) while every other configured source boots on; it never
+costs the kernel its boot or an apply its save.
 
 `ProtocolVersion` moved from `1` to `2` in this contract generation
 because `MatchRequest`'s shape changed from a flat `keywords` list to a
@@ -659,10 +664,18 @@ additive change, a plugin built against the pre-Phase-9 contract simply
 never sets these two fields — it keeps working completely unchanged, with
 no handshake break and no `sdk.Handshake.ProtocolVersion` bump.
 
-`contract_version` is the additive-compatibility signal: a plugin built
-against an older but still-compatible revision of this contract can report
-that revision here without triggering a handshake-level `ProtocolVersion`
-bump. `contract_version` names the contract *generation* (`"topos.v2"`
+`contract_version` is the additive-compatibility signal — and since
+M1-R6/DIST-03 (davison/topos#17) the kernel ENFORCES it at launch:
+immediately after `Describe`, a declared generation outside the
+kernel's supported set (`sdk.SupportedContractVersions` — exactly
+`sdk.ContractVersion`, `"topos.v2"`, today), **or an empty
+declaration**, kills the subprocess and records a named
+`"contract_incompatible"` launch failure whose message names both
+generations. Declare `sdk.ContractVersion` (never a retyped literal)
+and your plugin is always in step with the sdk you built against. A
+plugin built against an older but still-compatible revision of this
+contract can report that revision here without triggering a
+handshake-level `ProtocolVersion` bump. `contract_version` names the contract *generation* (`"topos.v2"`
 as of this phase's typed-match-field break), versioned independently of
 the proto package path, which stays `topos.v1` — a plugin built against
 the pre-Phase-5 contract also reports `"topos.v1"` as its proto package,
