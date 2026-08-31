@@ -39,7 +39,7 @@ jobs:
 
       # Hashes and publishes in one step so the shipped asset list is
       # written exactly once and cannot drift between the two.
-      # topos-plugin-mock is built by plugins-portable but deliberately
+      # topos-plugin-mock is built by the plugins target but deliberately
       # absent here: it is the PLUG-05 contract-reference fixture, not an
       # operator-facing source (kernel/pluginhost.ExcludedPluginBinaries
       # already keeps it out of the operator's "+" picker catalog), so

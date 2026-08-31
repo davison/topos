@@ -17,15 +17,15 @@ If those four are all you have, you should be able to write a working
 plugin — `plugins/mock` is the proof: it was built and validated against
 this document with no access to any real-source plugin implementation.
 
-**Other implementations (aside, not required reading):** three fuller,
-real-source examples also ship in this repository —
+**Other implementations (aside, not required reading):** the seven
+real-source plugins live in
+[`topos-plugins`](https://github.com/davison/topos-plugins) —
 `plugins/paperless` (a REST API source), `plugins/silverbullet` (an
 HTTP-with-frontmatter source), and `plugins/signal` (a **local-path**
 source: no network endpoint at all, reads a local Signal Desktop database
-file directly) — useful once you're past "Build your first plugin" and
-want to see how a plugin structures a real HTTP client or a local-file
-source, but none of the three is needed to understand or apply anything
-in this document.
+file directly) are instructive shapes once you're past "Build your first
+plugin", but none is needed to understand or apply anything in this
+document.
 
 ## A plugin is read-only by construction
 
@@ -286,10 +286,10 @@ paths a real build takes are `make build`/`make build-portable`/
 link-time manifest before linking the kernel, every time) and a manually
 invoked bare `go build` (which carries no link-time manifest and
 therefore launches no plugin trusted solely through that arm) — there is
-no supported path in between. See
-[`docs/plugins/signal.md`](plugins/signal.md#local-builds-and-the-build-manifest)
-for a worked example from the one plugin an operator routinely rebuilds
-locally against a release kernel — the exact shape that hits this
+no supported path in between. See the Signal section of
+[`docs/install.md`](install.md#signal-on-an-installed-instance)
+for the worked example — the one plugin an operator routinely rebuilds
+locally against a release kernel, the exact shape that hits this
 refusal in practice, and the consent-and-pin path out of it.
 
 **A link-time manifest match is an integrity control, not publisher

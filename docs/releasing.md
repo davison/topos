@@ -60,19 +60,18 @@ Sequence:
    Actions tab).
 4. Verify the published assets on the resulting GitHub Release.
 
-The release contains the kernel binary (`topos`), the operator-facing
-portable plugin binaries (`topos-plugin-paperless`,
-`topos-plugin-silverbullet`, `topos-plugin-proton`,
-`topos-plugin-whatsapp`, `topos-plugin-filesystem`), and a
-`checksums.txt` — `sha256sum` output over every other published asset. A
-downloader verifies their copy with `sha256sum -c checksums.txt` after
-downloading everything into the same directory.
+The release contains the kernel binary (`topos`) and a `checksums.txt` —
+`sha256sum` output over every other published asset. A downloader
+verifies their copy with `sha256sum -c checksums.txt` after downloading
+everything into the same directory.
 
-Releases published before the filesystem plugin joined the asset list
-(v1.1.0 and earlier) do not carry it — and `make install <tag>` against
-such a release installs exactly what that tag published and reports what
-it installed. A missing plugin in an older release is not an error; an
-install consumes published artifacts, it does not build them.
+Plugin binaries are no longer published here: the source plugins live in
+[`topos-plugins`](https://github.com/davison/topos-plugins), whose own
+tag-triggered releases build, checksum, and ed25519-sign the fleet. See
+[`docs/install.md`](install.md) for how an installed instance gets them.
+Older kernel releases still carry whatever their tag published —
+`make install <tag>` installs exactly that and reports what it installed;
+an install consumes published artifacts, it does not build them.
 
 The fixture plugin binary (`topos-plugin-mock`) is deliberately not
 published: it is a contract-reference and test-harness fixture, not an
@@ -104,34 +103,20 @@ nightly by diffing from the `nightly` tag (`git log nightly..main`, or
 ## The Signal plugin binary
 
 **Decision (2026-08-12, Plan 10-01 Task 2 checkpoint):** the Signal
-plugin binary is excluded from every published artifact — neither
-`release.yml` nor `nightly.yml` builds or ships
-`topos-plugin-signal`. This is a recorded decision, not a description of
-current behavior a later maintainer might casually reverse.
-
-**Why:** the Signal plugin is this repository's only cgo build — it
-dynamically links the system's SQLCipher library (`plugins/signal`'s
-`libsqlcipher` build tag). A binary built against the CI runner's own
-distro (`ubuntu-latest`) carries no guarantee of running against a
-different distro's SQLCipher, so publishing it would be a
-"maybe works, maybe doesn't" download with no reliable way to signal
-which. Every other published binary in this repository is a static,
-`CGO_ENABLED=0` build that runs anywhere — the Signal binary is the one
-build that structurally cannot make that same promise.
-
-**What a Signal user does instead:** build it locally, against your own
-system's SQLCipher, with `make signal`. See
-[`docs/plugins/signal.md`](plugins/signal.md) for the install
-prerequisites (the system `sqlcipher`/`libsqlcipher-dev` package) and the
-plugin's own SQLite-version floor check. Both `release.yml` and
-`nightly.yml` name `make signal` in their release notes as the supported
-path for Signal support.
+plugin binary is excluded from every published artifact, because it is a
+cgo build dynamically linking the system's SQLCipher library — a binary
+built on the CI runner's distro carries no promise of running on
+another. That decision travelled with the plugin to
+[`topos-plugins`](https://github.com/davison/topos-plugins), whose
+releases carry the same exclusion and whose `plugins/signal/README.md`
+documents the local build (`CGO_ENABLED=1 go build -tags libsqlcipher`)
+and the per-distro `sqlcipher` package names.
 
 ## See also
 
 - **[`CONTRIBUTING.md`](../CONTRIBUTING.md)** — the local dev loop and the
   test gates a change must pass before it's mergeable.
-- **[`docs/plugins/`](plugins/)** — per-plugin operator docs: install
-  requirements, configuration, and gotchas for each of the five source
-  plugins.
+- **[`topos-plugins`](https://github.com/davison/topos-plugins)** — the
+  source plugins themselves, their per-plugin READMEs, and their own
+  signed releases.
 - **[`SECURITY.md`](../SECURITY.md)** — how to report a vulnerability.

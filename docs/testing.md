@@ -15,23 +15,18 @@ always true — see "What changed", below.
 
 ### `make test` — every Go module, including the cgo Signal plugin
 
-Builds and tests all seven Go workspace modules (the root kernel module,
-`sdk`, `paperless`, `silverbullet`, `proton`, `mock`, `mockstrict`) plus
-the Signal plugin module, which is `CGO_ENABLED=1` against the system
-SQLCipher library. This is the full local gate a desktop developer runs —
-it requires a C toolchain and the system `sqlcipher` package (see the
-Makefile's `signal` target for the install commands), but no network
-access, live credentials, or config file.
+Builds and tests every Go workspace module (the root kernel module,
+`sdk`, `mock`, `mockstrict`) — credential-free, `CGO_ENABLED=0`, no
+network access, no config file. Since the functional plugins (including
+the cgo Signal build) moved to
+[`topos-plugins`](https://github.com/davison/topos-plugins), `test` is
+an alias for `test-portable` below.
 
-### `make test-portable` — every Go module except Signal
+### `make test-portable` — the same gate, under CI's name
 
-Everything `make test` runs, minus the Signal module — the credential-free,
-**cgo-free** half. This is what CI runs: a GitHub Actions runner has no
-reason to install the system SQLCipher library for a plugin the browser
-harness never launches. `test-portable` and `test` share one module list
-(defined once, in `test-portable`) so the two definitions cannot drift
-apart — the same discipline the Makefile's `plugins`/`signal` split
-already established for the build side.
+The identical module list — the name survives the plugin split because
+CI (D-13) and muscle memory both call it. The module list is defined
+once, in `test-portable`, so the two names cannot drift apart.
 
 ### `make dev-check` — the hermetic guard for `make dev`
 
@@ -235,9 +230,11 @@ isolation properties exists to prevent a specific failure:
   A spec that needs specific state writes it into the fixture's
   `FixtureConfigSpec`, not into a sequence of UI clicks.
 - **A closed-set temp plugins directory, symlinked from `bin/plugins`**
-  (never a directory copy or glob of the real `bin/plugins`) — so the
-  paperless/silverbullet/proton/signal plugins can never enter this
-  harness, structurally, not just by convention. The harness genuinely
+  (never a directory copy or glob of the real `bin/plugins`) — so no
+  real source plugin (the fleet lives in
+  [`topos-plugins`](https://github.com/davison/topos-plugins), and
+  `make dev` may have adopted its binaries into `bin/plugins`) can
+  enter this harness, structurally, not just by convention. The harness genuinely
   cannot reach a real source, a real credential, or the operator's real
   `~/.config/topos/config.toml` / `~/.local/share/topos/index.db`.
 - **An explicit environment allowlist on every kernel spawn** (`PATH`,
@@ -472,110 +469,23 @@ never be proven end to end in a real browser.
   geometry (bounded 3:4 aspect ratio) and that extracted text flows
   beside the float, both against a real browser.
 
-## `web/e2e/specs/14-gdrive-external-rehearsal.spec.ts` — the Google Drive plugin, genuinely out-of-repo
+## The filesystem and gdrive spec families — moved out at the split
 
-`topos-plugin-gdrive` (Phase 14, SRC-05/SRC-06) goes one step further than
-`topos-plugin-external-demo` above: it is not built by this repository at
-all, in any form, at any commit. It is developed, planned, and built
-entirely inside a separate `davison/topos-plugin-gdrive` clean-room GSD
-project (D-08) — `.planning/phases/14-google-drive-source-built-out-of-repo/
-14-PLUGIN-PRD.md` is the sole hand-off document into that project, and
-`14-03-SUMMARY.md` records the hand-off's built-binary evidence — and its
-built binary is copied onto a developer's machine by hand, outside every
-`make` target this repository defines.
-
-- **Gated by `TOPOS_GDRIVE_BIN`, never built here.** The spec reads this
-  environment variable for the real binary's absolute path and skips the
-  whole file loudly — naming the variable in its own skip message — when
-  it is unset or does not point at an existing file. Set it to the sibling
-  checkout's built binary and run `make gdrive-external-rehearsal`
-  (`TOPOS_GDRIVE_BIN` doubles as a make variable there, defaulting to that
-  checkout's own conventional location; override either the exported shell
-  variable or the make variable to point at a different checkout).
-- **Proves exactly what a browser can prove without a Google account.**
-  Configured with `pluginBinaries: []` and the Drive binary named ONLY
-  under `externalPluginBinaries` — the identical load-bearing fixture
-  choice `12-external-rehearsal.spec.ts`'s own header documents, repeated
-  here rather than reinvented, since a binary present in both directories
-  resolves as trusted (Phase 11 D-11) and would make this spec prove
-  nothing — the plugin is discovered with tier `external`, its chip
-  carries the untrusted badge and the accessible-description disclosure,
-  and its `Describe` RPC answers (credential-free, since the host
-  trial-launches `Describe` before an operator has finished typing) with
-  all three declared extras — both credential fields marked secret, the
-  folder field not — and the `folders` match vocabulary. Configured with
-  its two credential extras referencing `GDRIVE_CLIENT_ID`/
-  `GDRIVE_CLIENT_SECRET` (two environment variables the fixture kernel's
-  own explicit environment allowlist deliberately never sets), the source
-  reports itself unreachable with the exact "Not authorized …" sentence
-  from `14-UI-SPEC.md`'s health-state table — never a healthy but empty
-  stream. Every one of these assertions is proven by generic host code,
-  with nothing in this repository's own source naming this plugin.
-- **Never built, linked, or manifested by `make e2e`, `make build`, or any
-  other target in this repository.** `make gdrive-external-rehearsal` is
-  the only entry point, and it never writes the Drive binary into
-  `bin/plugins/` or any manifest.
-
-**What it deliberately cannot prove** — the three criteria that need a
-real Google account are covered instead by a recorded live run; see "What
-stays manual, and why", below.
-
-## `web/e2e/specs/12-*.spec.ts` — the filesystem source, real end to end
-
-Unlike every other real-source plugin (paperless/silverbullet/proton/
-signal/whatsapp), `topos-plugin-filesystem` is a real, full-featured
-source plugin that IS built into this harness's `bin/plugins/` (`make
-e2e`'s own build step) and driven directly by four specs, rather than
-being structurally excluded like the section below describes for
-WhatsApp. It needs no live network credential or account — a filesystem
-source's only "connection detail" is a local temp directory each spec
-creates and tears down itself — so admitting it costs this harness
-nothing while proving the phase's own end-to-end claims against a real
-binary rather than a mock.
-
-- **`12-filesystem-tracer.spec.ts`** — the thin end-to-end slice: one PDF
-  in a configured folder becomes exactly one stream item, served through
-  the kernel's `file://`-rewrite open route, with an `Open in …` control
-  that renders as a real `<button>` (not an anchor).
-- **`12-filesystem-recursion.spec.ts`** — the `recursive` toggle proven
-  against two instances over the same corpus: the recursive instance
-  contributes a nested file, the non-recursive one never does; deleting
-  the nested file and re-syncing removes it from the stream — no
-  filesystem-watcher dependency anywhere in this design.
-- **`12-filesystem-add-source.spec.ts`** — the filesystem connection
-  form driven entirely from the UI: picking the plugin type, filling in a
-  local path, toggling "Include subfolders," and saving produces a source
-  that syncs its documents into the matching webspace.
-- **`12-external-rehearsal.spec.ts`** — criterion 5's rehearsal: the
-  same `topos-plugin-filesystem` binary, resolved from the external
-  (untrusted) plugins directory instead of the trusted one, is
-  discovered, pin-verified, launched and synced identically to the
-  trusted-tier specs above, with the untrusted badge on its own chip and
-  no other chip's.
-
-**What the browser cannot drive, and how it's covered instead:**
-
-- **Whether `xdg-open` genuinely hands a file to the desktop's own
-  handler** is a live, machine-dependent fact a hermetic browser harness
-  cannot assert on — the harness has no guarantee of a desktop session,
-  let alone a specific file-association setup. The route contract itself
-  (the resolved path, the `invalid_path`/`item_not_found`/`open_failed`
-  error shapes) is proven deterministically by
-  `kernel/httpapi/fsopen_test.go` against a stubbed `Opener` seam instead;
-  the e2e specs above only assert that the `Open in …` control renders
-  correctly and issues the right request, never that a real desktop
-  handler actually opened.
-- **The NFS/SMB freshness claim** (`docs/plugins/filesystem.md`'s "the
-  sync interval is the real freshness bound") is proven by design, not by
-  a live network-mount test: the polling walk (`plugins/filesystem/
-  walk.go`) calls no filesystem change-notification API at all, so its
-  behavior is mount-type-agnostic by construction — a real local
-  directory and a real network mount are indistinguishable to
-  `filepath.WalkDir`. The specs above exercise this design against a
-  local temp directory; there is no hermetic way to provision a live
-  NFS/SMB mount in CI, so the underlying protocol claim (no local change
-  events for another client's writes) is accepted as documented fact
-  rather than independently re-verified here.
+Phases 12–14 drove two real source plugins through this harness: the
+filesystem plugin (six specs proving its semantics end to end, plus the
+external-tier rehearsal that reused its binary) and the clean-room
+Google Drive plugin (one spec behind the `TOPOS_GDRIVE_BIN` seam, with
+its own `make gdrive-external-rehearsal` target). At the plugin split
+([davison/topos#13](https://github.com/davison/topos/issues/13)) their
+subjects moved to
+[`topos-plugins`](https://github.com/davison/topos-plugins) — the specs
+and the rehearsal target went with them, and browser-level coverage for
+the moved fleet is tracked there
+([topos-plugins#6](https://github.com/davison/topos-plugins/issues/6)).
+The dropped specs' last in-repo versions live at tag `v1.2.0` under
+`web/e2e/specs/`. The mock-backed specs those families sat beside
+(tooltip precedence, the 13-* curation set) remain, and the trust-tier
+specs below never depended on a functional plugin.
 
 ## `web/e2e/specs/13-multi-select-bulk-exclude.spec.ts` / `13-excluded-view.spec.ts` / `13-undo-across-webspace-switch.spec.ts` — per-item curation, real end to end
 
@@ -851,8 +761,17 @@ the first real (non-mock-shaped) source plugin this suite builds and
 drives, both from the trusted directory (`12-filesystem-tracer.spec.ts`,
 `12-filesystem-recursion.spec.ts`, `12-filesystem-add-source.spec.ts`)
 and, for criterion 5's rehearsal, from the external one
-(`12-external-rehearsal.spec.ts`). See "`web/e2e/specs/12-*.spec.ts` —
-the filesystem source, real end to end", above.
+(`12-external-rehearsal.spec.ts`). (Those specs left with their plugin at the 2026-08-31 split — see the
+entry below.)
+
+**2026-08-31**: the plugin split
+([davison/topos#13](https://github.com/davison/topos/issues/13)) moves
+every functional plugin to
+[`topos-plugins`](https://github.com/davison/topos-plugins): the
+filesystem/gdrive spec families and `make gdrive-external-rehearsal`
+leave with their subjects, `make test` becomes `test-portable`'s alias,
+and the harness builds only the mock-shaped fixtures — which it never
+launched a real source through anyway.
 
 **2026-08-19**: Phase 15 (the installed instance) adds the last three
 gates: `make docs-check` (previously an undocumented target) joins the
