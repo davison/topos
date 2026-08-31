@@ -525,10 +525,10 @@ echo "==> Case: uninstall data-safety cycle"
 SEED_HOME="$WORK/seed-home"
 SEED_CONFIG="$WORK/seed-xdg-config"
 SEED_DATA="$WORK/seed-xdg-data"
-mkdir -p "$SEED_HOME" "$SEED_CONFIG/topos" "$SEED_DATA/topos/whatsapp-store"
+mkdir -p "$SEED_HOME" "$SEED_CONFIG/topos" "$SEED_DATA/topos/plugin-store"
 echo '[server]' > "$SEED_CONFIG/topos/config.toml"
 printf 'operator index bytes' > "$SEED_DATA/topos/index.db"
-printf 'linked-device session' > "$SEED_DATA/topos/whatsapp-store/session.db"
+printf 'a plugin-owned store' > "$SEED_DATA/topos/plugin-store/session.db"
 
 seed_manifest() {
   { manifest_of_prefix "$SEED_HOME"; manifest_of_prefix "$SEED_CONFIG"; manifest_of_prefix "$SEED_DATA"; }

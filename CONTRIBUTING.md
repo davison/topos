@@ -94,7 +94,7 @@ change it.
 ## Testing
 
 ```bash
-make test-portable       # go build + go test across every workspace module (CGO_ENABLED=0) — what CI runs
+make test-portable       # go build + go test across the four buildable modules (root, sdk, mock, mockstrict; CGO_ENABLED=0) — what CI runs
 make test                # alias of test-portable, kept for muscle memory
 make e2e                 # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check            # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
@@ -106,9 +106,12 @@ make dev-config           # generate config.dev.toml from config.dev.example.tom
 make proto                # regenerate sdk/gen from proto/topos/v1/plugin.proto (buf, or protoc + plugins)
 ```
 
-`make test-portable` needs no network access, no live credentials, and
-no C toolchain — every committed test runs against fixtures and a temp
-SQLite file. `make e2e` builds the shipped SPA and kernel, then
+`make test-portable` covers the four buildable modules — the root
+kernel module, `sdk`, `plugins/mock`, `plugins/mockstrict`; the fifth
+workspace member, `testdata/external-plugin`, is built only by
+`make external-demo` and exercised by the e2e harness — and needs no
+network access, no live credentials, and no C toolchain: every committed
+test runs against fixtures and a temp SQLite file. `make e2e` builds the shipped SPA and kernel, then
 drives a real Chromium against a hermetic kernel instance seeded from
 mock-shaped plugin fixtures — also no network access, no live source
 credentials, and no `.env` file. `make dev-check` proves `make dev`'s own

@@ -13,7 +13,7 @@ always true — see "What changed", below.
 
 ## The eight gates
 
-### `make test` — every Go module, including the cgo Signal plugin
+### `make test` — the workspace's four Go modules (an alias of `test-portable`)
 
 Builds and tests every Go workspace module (the root kernel module,
 `sdk`, `mock`, `mockstrict`) — credential-free, `CGO_ENABLED=0`, no
