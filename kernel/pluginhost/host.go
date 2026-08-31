@@ -66,6 +66,44 @@ const LaunchFailurePinMismatch = "pin_mismatch"
 // flow.
 const LaunchFailureManifestUnverified = "manifest_unverified"
 
+// ErrContractIncompatible is wrapped inside the *launchError a
+// contract-generation refusal returns (M1-R6/DIST-03, davison/topos#17):
+// the plugin completed the go-plugin handshake and answered Describe, but
+// the contract generation it declared (DescribeResponse.contract_version)
+// is outside sdk.SupportedContractVersions — including the empty string,
+// which names NO generation and is never treated as compatible. The
+// subprocess is killed before any further RPC; the refusal names both
+// generations.
+var ErrContractIncompatible = errors.New("pluginhost: plugin declares a contract generation this kernel does not support")
+
+// LaunchFailureHandshakeIncompatible names a binary that failed the
+// go-plugin handshake for a VERSION reason — the subprocess started but
+// spoke a different protocol version than sdk.Handshake's (a plugin
+// built against a different contract era; the wrapped go-plugin error
+// text names both versions). Distinct from LaunchFailureLaunchFailed so
+// a client can say "incompatible" rather than merely "broken"
+// (M1-R6/DIST-03).
+const LaunchFailureHandshakeIncompatible = "handshake_incompatible"
+
+// LaunchFailureContractIncompatible names a binary that handshook
+// cleanly but whose Describe declared a contract generation outside
+// sdk.SupportedContractVersions (or none at all). The message names the
+// declared and supported generations; the remedy is updating the plugin
+// fleet or the kernel so the generations agree — never running the
+// mismatch anyway.
+const LaunchFailureContractIncompatible = "contract_incompatible"
+
+// LaunchFailureLaunchFailed is the generic never-became-a-plugin class
+// (M1-R6/DIST-03): the binary is missing from both directories, exited
+// before the handshake, emitted something other than a go-plugin
+// handshake line, failed Dispense/Describe, or did not implement the
+// source interface. Before davison/topos#17 every one of these aborted
+// the WHOLE Discover/Reconcile call — a dead boot or a rejected apply
+// with nothing on the source list naming the culprit; now each is a
+// per-instance record like every other launch-failure class, and the
+// message carries the specific cause.
+const LaunchFailureLaunchFailed = "launch_failed"
+
 // LaunchAdvisoryShadowed is SourceHealth.LaunchAdvisory's one populated
 // value (D-14): a LAUNCHED, verified trusted-tier instance whose binary
 // name also exists as a regular file in the configured external
@@ -76,13 +114,15 @@ const LaunchFailureManifestUnverified = "manifest_unverified"
 // provenance ambiguity, never a launch refusal.
 const LaunchAdvisoryShadowed = "shadowed"
 
-// LaunchFailure is one instance's SOFT, per-instance launch failure —
-// currently only ever a pin mismatch (11-RESEARCH.md Pitfall 1, D-03):
-// unlike every other launch-failure class (missing/broken binary), which
-// still hard-fails the whole Discover/Reconcile call exactly as before this
-// phase, a pin mismatch is recorded here instead, so the instance is simply
-// absent from Host.Plugins() rather than taking down every other
-// configured source's boot or apply.
+// LaunchFailure is one instance's SOFT, per-instance launch failure.
+// Since M1-R6/DIST-03 (davison/topos#17) EVERY launch-failure class is
+// recorded here — the two trust refusals (pin_mismatch,
+// manifest_unverified), the handshake-version refusal
+// (handshake_incompatible), the contract-generation refusal
+// (contract_incompatible), and the generic never-became-a-plugin class
+// (launch_failed) — so the instance is simply absent from
+// Host.Plugins() rather than taking down every other configured
+// source's boot or apply.
 type LaunchFailure struct {
 	Instance    string
 	Plugin      string
@@ -212,6 +252,68 @@ func (e *manifestUnverifiedError) toLaunchFailure() LaunchFailure {
 		CurrentHash: e.currentHash,
 		Message:     e.Error(),
 	}
+}
+
+// launchError is the per-instance record shape for every launch-failure
+// class beyond the two trust refusals (which keep their own richer types
+// above): the generic never-became-a-plugin cases, the handshake version
+// refusal, and the contract-generation refusal (M1-R6/DIST-03,
+// davison/topos#17). Constructed INSIDE launch(), where instance,
+// binary, display name and tier are all at hand, so Discover/Reconcile
+// record it with one errors.As branch and never re-derive facts from
+// error text. tier may be the empty Tier for a binary that was never
+// found on disk at all — the one class with no bytes to derive a tier
+// from; the wire simply carries "" there.
+type launchError struct {
+	instance, plugin, displayName string
+	tier                          Tier
+	reason                        string
+	message                       string
+	cause                         error
+}
+
+func (e *launchError) Error() string { return e.message }
+
+// Unwrap exposes the underlying cause (ErrContractIncompatible for the
+// contract class; the wrapped connect/describe error otherwise) so
+// errors.Is keeps working through the recorded shape.
+func (e *launchError) Unwrap() error { return e.cause }
+
+// toLaunchFailure converts e into the exported LaunchFailure shape —
+// mirroring pinMismatchError's and manifestUnverifiedError's own
+// methods. CurrentHash/PinnedHash stay empty: none of these classes is
+// about bytes-vs-evidence, and the hash facts either never existed
+// (missing binary) or add nothing to the named cause.
+func (e *launchError) toLaunchFailure() LaunchFailure {
+	return LaunchFailure{
+		Instance:    e.instance,
+		Plugin:      e.plugin,
+		DisplayName: e.displayName,
+		Tier:        e.tier,
+		Reason:      e.reason,
+		Message:     e.message,
+	}
+}
+
+// connectFailureReason classifies a go-plugin client.Client() error into
+// the closed LaunchFailure vocabulary: the two protocol-version refusal
+// texts go-plugin produces (client.go's "incompatible API version with
+// plugin" and "incompatible core API version with plugin" — it exports
+// no typed error for either) are LaunchFailureHandshakeIncompatible;
+// everything else (a pre-handshake fatal, an unrecognized handshake
+// line from a non-plugin binary, a timeout) is the generic
+// LaunchFailureLaunchFailed. String matching a dependency's error text
+// is fragile by nature, so kernel/pluginhost's handshake fixture test
+// launches a REAL plugin served at ProtocolVersion 1 and asserts the
+// classification — if go-plugin ever rewords, that test fails by name
+// rather than this silently degrading to the generic class.
+func connectFailureReason(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "incompatible API version with plugin") ||
+		strings.Contains(msg, "incompatible core API version with plugin") {
+		return LaunchFailureHandshakeIncompatible
+	}
+	return LaunchFailureLaunchFailed
 }
 
 // hashAndLookupPin computes path's current SHA-256 (via HashBinary) and
@@ -488,15 +590,19 @@ func (h *Host) snapshot() []*Plugin {
 // pure ordering, not a correctness requirement, since every source is
 // launched independently either way.
 //
-// A pin-mismatched external-tier source (ErrPinMismatch, T-11-07) is a
-// SOFT, per-instance failure (11-RESEARCH.md Pitfall 1, D-03): it is
-// recorded in the returned Host's LaunchFailures(), logged by name, and
-// Discover CONTINUES to the next source — it does not add the failed
-// instance to Host.Plugins(), but every OTHER configured source still
-// boots normally. Every other launch-failure class (missing/broken binary,
-// handshake failure) is untouched: it still kills every plugin already
-// launched by this call and returns a hard error, exactly as before this
-// phase (RESEARCH A3, decided at Task 1).
+// EVERY launch-failure class is a SOFT, per-instance failure
+// (M1-R6/DIST-03, davison/topos#17, widening 11-RESEARCH.md Pitfall 1's
+// pin-mismatch precedent to the whole family): a pin mismatch, a trust
+// refusal, a missing binary, a handshake-version refusal, a
+// contract-generation refusal, or a plugin that never became a plugin
+// at all is recorded in the returned Host's LaunchFailures(), logged by
+// name, and Discover CONTINUES to the next source — the failed instance
+// is absent from Host.Plugins() while every OTHER configured source
+// still boots normally. One stale binary must never cost the operator a
+// dead kernel. The hard-abort path (kill what this call launched,
+// return the named error) remains for exactly two things: a
+// cancellation of ctx itself, and machinery errors that are not
+// per-instance launch outcomes (config marshalling, hashing I/O).
 func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[string]config.Source, logger hclog.Logger) (*Host, error) {
 	h := &Host{dirs: dirs, raw: raw, launchFailures: make(map[string]LaunchFailure)}
 
@@ -523,6 +629,19 @@ func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[st
 				h.launchFailures[name] = muErr.toLaunchFailure()
 				logger.Error("plugin launch refused: trusted binary not verified by the build manifest (D-12/D-13)",
 					"instance", name, "plugin", src.Plugin, "current_hash", muErr.currentHash)
+				continue
+			}
+			var lErr *launchError
+			if errors.As(err, &lErr) && ctx.Err() == nil {
+				// M1-R6/DIST-03: every never-became-a-plugin class is a
+				// per-instance record — the boot proceeds and the failure
+				// is on the source list by name. The ctx.Err() guard keeps
+				// a shutdown/cancellation mid-boot an abort, not a page of
+				// bogus per-source "failures" that are really one
+				// cancellation.
+				h.launchFailures[name] = lErr.toLaunchFailure()
+				logger.Error("plugin launch failed: recorded as a named per-instance launch failure (M1-R6/DIST-03)",
+					"instance", name, "plugin", src.Plugin, "reason", lErr.reason, "error", lErr.message)
 				continue
 			}
 			h.Shutdown()
@@ -568,15 +687,19 @@ func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[st
 // Discover's doc comment for why this is needed (pins, and Task 2's env
 // allowlist) and why a nil raw degrades gracefully rather than panicking.
 //
-// A pin-mismatched external-tier instance (T-11-07, D-03) is a SOFT,
-// per-instance failure exactly like Discover's: it is recorded, logged by
-// name, and this call does NOT abort — every other new/changed instance
-// still launches, every unchanged instance is left running untouched, and
-// Reconcile still returns nil. Every other launch-failure class (missing
-// binary, handshake failure) keeps T-07-11's existing hard-fail behavior
-// verbatim: it kills only what THIS call itself launched and returns an
-// error naming the offending instance, leaving the previously running set
-// fully intact (RESEARCH A3, decided at Task 1).
+// EVERY launch-failure class is a SOFT, per-instance failure exactly
+// like Discover's (M1-R6/DIST-03, davison/topos#17): a pin mismatch, a
+// trust refusal, a missing binary, a handshake-version refusal, a
+// contract-generation refusal, or a generic never-became-a-plugin
+// error is recorded, logged by name, and this call does NOT abort —
+// every other new/changed instance still launches, every unchanged
+// instance is left running untouched, and Reconcile still returns nil,
+// so an apply whose only casualties are per-instance launch failures
+// COMMITS with those failures surfaced on the source list. T-07-11's
+// hard-fail (kill only what THIS call launched, return the named
+// error, previously running set fully intact) remains for a ctx
+// cancellation and for machinery errors that are not per-instance
+// launch outcomes.
 //
 // Host.launchFailures is rebuilt WHOLESALE from this call's own toLaunch
 // loop (never merged with the previous round) — an instance no longer in
@@ -631,6 +754,19 @@ func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[st
 					"instance", name, "plugin", sources[name].Plugin, "current_hash", muErr.currentHash)
 				continue
 			}
+			var lErr *launchError
+			if errors.As(err, &lErr) && ctx.Err() == nil {
+				// M1-R6/DIST-03: mirror of Discover's own branch — an
+				// apply whose only casualties are per-instance launch
+				// failures commits with those failures on the source
+				// list, instead of a whole-save 500 with no named
+				// culprit. The ctx.Err() guard keeps a cancellation an
+				// abort, exactly as in Discover.
+				newFailures[name] = lErr.toLaunchFailure()
+				logger.Error("plugin launch failed: recorded as a named per-instance launch failure (M1-R6/DIST-03)",
+					"instance", name, "plugin", sources[name].Plugin, "reason", lErr.reason, "error", lErr.message)
+				continue
+			}
 			for _, lp := range launched {
 				lp.Kill()
 			}
@@ -669,8 +805,8 @@ func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[st
 }
 
 // LaunchFailures returns a defensive copy of every instance CURRENTLY
-// refused at launch by a soft failure class (today: pin mismatch only),
-// sorted by Instance for deterministic output.
+// refused or failed at launch (every class — see LaunchFailure's doc
+// comment), sorted by Instance for deterministic output.
 func (h *Host) LaunchFailures() []LaunchFailure {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -944,7 +1080,23 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		// never when resolveBinaryDetailed found bytes but EvaluateTrust
 		// refused them (that case is handled below, once instanceDisplayName
 		// is available, as a *manifestUnverifiedError, not a "not found").
-		return nil, fmt.Errorf("plugin binary %s not found: %w", src.Plugin, resolveErr)
+		// A *launchError, not a bare error (M1-R6/DIST-03): a fleet
+		// updated independently of the kernel can legitimately stop
+		// shipping a binary the config still names, and that must show as
+		// a named per-source failure, never a dead boot. Tier is the
+		// empty Tier — there are no bytes to derive one from.
+		displayName := src.DisplayName
+		if displayName == "" {
+			displayName = name
+		}
+		return nil, &launchError{
+			instance:    name,
+			plugin:      src.Plugin,
+			displayName: displayName,
+			reason:      LaunchFailureLaunchFailed,
+			message:     fmt.Sprintf("pluginhost: instance %q plugin binary %q not found in the trusted or external plugin directory: %v", name, src.Plugin, resolveErr),
+			cause:       resolveErr,
+		}
 	}
 	tier := trust.Tier
 
@@ -1122,28 +1274,86 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		// fatal at all), the error text is left byte-identical to before
 		// this capture existed — no empty parenthetical, no dangling
 		// separator.
+		connectErr := fmt.Errorf("connect to plugin subprocess: %w", err)
 		if last := tail.lastLine(); last != "" {
-			return nil, fmt.Errorf("connect to plugin subprocess: %w (plugin stderr: %s)", err, last)
+			connectErr = fmt.Errorf("connect to plugin subprocess: %w (plugin stderr: %s)", err, last)
 		}
-		return nil, fmt.Errorf("connect to plugin subprocess: %w", err)
+		// M1-R6/DIST-03: a handshake refusal (go-plugin's own error text
+		// names both protocol versions) or any other pre-RPC failure is a
+		// per-instance *launchError — connectFailureReason picks the
+		// closed-vocabulary class; the message carries go-plugin's text
+		// whole, so a version refusal names its versions on the wire.
+		return nil, &launchError{
+			instance:    name,
+			plugin:      src.Plugin,
+			displayName: instanceDisplayName,
+			tier:        tier,
+			reason:      connectFailureReason(err),
+			message:     fmt.Sprintf("pluginhost: instance %q binary %q: %v", name, src.Plugin, connectErr),
+			cause:       connectErr,
+		}
+	}
+
+	// newLaunchFailed wraps a post-handshake failure (dispense, a wrong
+	// interface, a Describe error) into the generic per-instance class —
+	// same shape as the connect branch above (M1-R6/DIST-03).
+	newLaunchFailed := func(cause error) *launchError {
+		return &launchError{
+			instance:    name,
+			plugin:      src.Plugin,
+			displayName: instanceDisplayName,
+			tier:        tier,
+			reason:      LaunchFailureLaunchFailed,
+			message:     fmt.Sprintf("pluginhost: instance %q binary %q: %v", name, src.Plugin, cause),
+			cause:       cause,
+		}
 	}
 
 	dispensed, err := rpcClient.Dispense("source")
 	if err != nil {
 		client.Kill()
-		return nil, fmt.Errorf("dispense source plugin: %w", err)
+		return nil, newLaunchFailed(fmt.Errorf("dispense source plugin: %w", err))
 	}
 
 	impl, ok := dispensed.(sdk.SourcePlugin)
 	if !ok {
 		client.Kill()
-		return nil, fmt.Errorf("plugin %s does not implement sdk.SourcePlugin", name)
+		return nil, newLaunchFailed(fmt.Errorf("plugin %s does not implement sdk.SourcePlugin", name))
 	}
 
 	desc, err := impl.Describe(ctx, &toposv1.DescribeRequest{})
 	if err != nil {
 		client.Kill()
-		return nil, fmt.Errorf("describe plugin %s: %w", name, err)
+		return nil, newLaunchFailed(fmt.Errorf("describe plugin %s: %w", name, err))
+	}
+
+	// The contract-generation gate (M1-R6/DIST-03, davison/topos#17):
+	// Describe's contract_version is the additive-compatibility signal
+	// the contract has carried since Phase 5, consumed HERE for the
+	// first time. A declared generation outside
+	// sdk.SupportedContractVersions — or no declaration at all, which
+	// names nothing and is never assumed compatible — kills the
+	// subprocess before any further RPC and refuses by name, naming both
+	// sides. This runs for describe-only trial launches too: an
+	// incompatible plugin is refused at add time with the same named
+	// message, not discovered later.
+	if declared := desc.GetContractVersion(); !sdk.ContractSupported(declared) {
+		client.Kill()
+		declaredText := fmt.Sprintf("%q", declared)
+		if declared == "" {
+			declaredText = "none (the plugin declared no contract generation)"
+		}
+		return nil, &launchError{
+			instance:    name,
+			plugin:      src.Plugin,
+			displayName: instanceDisplayName,
+			tier:        tier,
+			reason:      LaunchFailureContractIncompatible,
+			message: fmt.Sprintf(
+				"pluginhost: instance %q binary %q declares contract generation %s; this kernel supports %s — update the plugin fleet or the kernel so the generations agree",
+				name, src.Plugin, declaredText, strings.Join(sdk.SupportedContractVersions, ", ")),
+			cause: ErrContractIncompatible,
+		}
 	}
 
 	iconBytes, iconMIME, _ := captureIcon(desc)

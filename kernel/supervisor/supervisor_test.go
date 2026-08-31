@@ -325,8 +325,13 @@ func TestApply_MidFlightSyncLeavesNoStrandedRunningRow(t *testing.T) {
 
 	select {
 	case err := <-applyErr:
-		if err == nil {
-			t.Fatal("expected Apply to fail (Reconcile's launch of a nonexistent plugin binary) — a nil error would mean this test's own setup is not exercising Reconcile at all")
+		// M1-R6/DIST-03 (davison/topos#17): the nonexistent binary is now
+		// a per-instance launch_failed record, so Apply COMMITS — the nil
+		// error is the new expected outcome. What this test actually pins
+		// (the mid-flight run finalised, never a stranded "running" row)
+		// is asserted below and is unchanged by that semantic shift.
+		if err != nil {
+			t.Fatalf("Apply must commit around a missing plugin binary (M1-R6), got: %v", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Apply did not return in time — it must not block forever waiting on a source whose context it already cancelled")
