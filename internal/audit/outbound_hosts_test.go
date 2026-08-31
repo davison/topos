@@ -27,11 +27,21 @@ const repoRoot = "../.."
 // sanctionedEgressFiles is the set of files in the repo allowed to
 // construct outbound HTTP requests. Widening this set is a deliberate
 // change: update it here, plus this comment, as part of that change.
-// Empty since the plugin split (davison/topos#13): the source plugins —
-// whose REST/HTTP clients this list existed for — live in
-// davison/topos-plugins now, and nothing left in this repository is
-// sanctioned to dial out.
-var sanctionedEgressFiles = map[string]bool{}
+// Emptied at the plugin split (davison/topos#13) when the source
+// plugins' REST clients left; one entry since (M1-R8, davison/topos#19):
+//
+//   - cmd/topos/pull.go — `topos plugin pull`'s download of release
+//     artifacts (a plugin binary, checksums.txt, a provenance pair)
+//     from a URL the OPERATOR typed on the command line. This egress is
+//     operator-initiated, download-only, and carries nothing outbound
+//     beyond the request itself — never indexed item data, config file
+//     contents, or telemetry (the PROJECT.md constraint this test
+//     enforces is about transmitting the user's data, and this file
+//     transmits none; it is also a plain CLI path that never runs
+//     inside the serving kernel's request handling).
+var sanctionedEgressFiles = map[string]bool{
+	"cmd/topos/pull.go": true,
+}
 
 // sanctionedDeepLinkLiteralFiles is a narrower, DIFFERENT-IN-KIND
 // allowlist from sanctionedEgressFiles above: files permitted to contain
