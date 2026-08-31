@@ -55,7 +55,7 @@ Exactly two locations, and nothing else:
 | Path | Contents |
 |------|----------|
 | `$PREFIX/bin/topos` | the kernel binary (mode 0755) |
-| `$PREFIX/lib/topos/plugins/` | every plugin binary the release publishes (mode 0755 each) |
+| `$PREFIX/lib/topos/plugins/` | plugin binaries and their provenance files, placed by you from [topos-plugins releases](https://github.com/davison/topos-plugins/releases) (mode 0755 each) — see below |
 
 The installed kernel finds its plugins in that `lib/topos/plugins`
 directory automatically, with the stock config value
@@ -72,6 +72,31 @@ The installed instance reads its config and writes its state (the
 index database) in the same home/XDG locations a checkout-built kernel
 uses — `make install` itself never reads, writes, or migrates any
 config or index file.
+
+## Plugins on an installed instance
+
+Kernel releases ship the kernel alone; the source plugins live in
+[`topos-plugins`](https://github.com/davison/topos-plugins), whose
+releases publish each `topos-plugin-*` binary alongside a signed
+provenance manifest (`topos-plugins-<tag>.provenance.json` + `.sig`)
+and a `checksums.txt`. Until the sibling repo grows its own
+`make install`-grade flow, the path is download-and-place:
+
+```sh
+cd "$(mktemp -d)"
+gh release download <tag> -R davison/topos-plugins   # or curl each asset
+sha256sum -c checksums.txt
+install -m 0755 topos-plugin-* /usr/local/lib/topos/plugins/
+install -m 0644 topos-plugins-*.provenance.json topos-plugins-*.provenance.sig \
+  /usr/local/lib/topos/plugins/
+```
+
+The provenance pair must sit beside the binaries: the installed kernel
+trusts a plugin binary through its **signed release manifest** (the
+phase-16 provenance arm — the kernel's own link-time manifest no longer
+lists any functional plugin), verified against the `topos-plugins`
+public key embedded in the kernel. `topos-provenance verify --dir` over
+the directory shows exactly what the kernel will conclude.
 
 ## Checksum verification
 
@@ -167,55 +192,27 @@ kernel to pick up the new release.
 
 ## Signal on an installed instance
 
-The Signal plugin binary is deliberately **never** a published release
-artifact: it is this project's only cgo build, dynamically linking the
-system SQLCipher library, so a binary built on one distro carries no
-promise of running on another. An installed instance gets Signal
-support through an explicit opt-in instead:
+The Signal plugin is the fleet's one cgo build — it dynamically links
+the system SQLCipher library, so no prebuilt binary is published
+anywhere. Build it locally from a
+[`topos-plugins`](https://github.com/davison/topos-plugins) checkout
+(see its `plugins/signal/README.md` for the per-distro `sqlcipher`
+package and the SQLite version floor):
 
 ```sh
-make install-signal
+cd topos-plugins/plugins/signal
+CGO_ENABLED=1 go build -tags libsqlcipher -o topos-plugin-signal .
 ```
 
-This is the **only** install-surface command that needs a toolchain —
-a Go toolchain, a C compiler, and the system `sqlcipher` package (see
-[`docs/plugins/signal.md`](plugins/signal.md) for the per-distro
-package names and the SQLite version floor). The base `make install`
-stays download-and-copy only, and the hermetic gate proves it by
-running the install with failing compiler shims first on `PATH`.
-
-`make install-signal` builds the plugin through the repository's
-single `signal` build definition and places the binary in the
-installed instance's **external** plugin directory — by default
-`$XDG_DATA_HOME/topos/plugins-external` (or
-`~/.local/share/topos/plugins-external`), matching the kernel's own
-default. If your config's `[plugins] external_dir` names a different
-directory, point the installer at it:
-
-```sh
-make install-signal TOPOS_EXTERNAL_PLUGINS_DIR=/path/to/external-dir
-```
-
-**Why the external directory, and why there is a one-time consent
-step.** The installed kernel verifies every binary in its *trusted*
-plugins directory against the build manifest linked into the kernel at
-release time. A binary you built locally cannot be in that manifest —
-it did not exist when the released kernel was linked — so a
-trusted-directory placement would be refused at launch. That refusal
-is the trust model working as designed, not a limitation to route
-around. The supported path is the external tier: after
-`make install-signal`, you add the Signal source once through the
-app's untrusted-add consent flow, and it runs pinned and badged
-untrusted from then on. Re-running `make install-signal` produces new
-bytes, which the kernel surfaces as a pin mismatch — re-accept the
-changed binary through the chip's re-pin flow.
-
-`make uninstall` never touches this binary (it lives outside
-`$PREFIX`); remove it with:
-
-```sh
-make uninstall-signal
-```
+Place the binary in the installed instance's **external** plugin
+directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or your
+config's `[plugins] external_dir`), then add the Signal source once
+through the app's untrusted-add consent flow — it runs pinned and
+badged. A locally built binary carries no signed provenance and is not
+in any release manifest, so a trusted-directory placement would be
+refused at launch; the external tier's consent-and-pin flow is the
+supported path, exactly as it was when the plugin lived in this
+repository.
 
 ## Migrating from a checkout build to an installed instance
 

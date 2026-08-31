@@ -82,19 +82,15 @@ Place `topos` somewhere on your `PATH` (or run it from wherever you put
 it) and the five plugin binaries in a `plugins/` directory next to it —
 this is the default `[plugins] dir` `config.example.toml` documents.
 
-**The Signal plugin binary is not published** — it's this repository's
-only binary that links against cgo (the system SQLCipher library), so a
-build from one CI runner's distro carries no guarantee of running on
-yours. If you use Signal, build the plugin yourself with `make signal`
-against your own system's SQLCipher; see
-[`docs/plugins/signal.md`](docs/plugins/signal.md) for the prerequisites.
-
-**The filesystem plugin binary is published** as of the release after
-v1.1.0 — it needs no cgo and ships alongside the other four
-operator-facing plugins; see
-[`docs/plugins/filesystem.md`](docs/plugins/filesystem.md). Releases up
-to and including v1.1.0 predate it — installing one of those gets
-exactly what that tag published.
+**Plugin binaries come from
+[`topos-plugins`](https://github.com/davison/topos-plugins)** — the
+source plugins live there now, and its signed releases carry the fleet;
+kernel releases here ship the kernel alone. See
+[`docs/install.md`](docs/install.md#plugins-on-an-installed-instance)
+for the download-and-place path (and for Signal, the fleet's one cgo
+build, which is never published prebuilt — build it from a
+topos-plugins checkout against your own system's SQLCipher). Older
+kernel releases still carry whatever their tag published.
 
 ### From source
 

@@ -142,13 +142,14 @@ type Source struct {
 	// and kernel/pluginhost.launch adds it to WEBSPACES_SOURCE_CONFIG
 	// under the "path" key so the plugin subprocess can locate its
 	// source directory. Unlike CACert, a leading "~" here is expanded by
-	// the plugin subprocess itself (plugins/signal/main.go), not by the
+	// the plugin subprocess itself (the signal plugin, in topos-plugins), not by the
 	// kernel — the kernel never needs to open this path itself, only
 	// pass it through.
 	Path string `toml:"path,omitempty" json:"path,omitempty"`
 	// Recursive enables subfolder recursion for a filesystem source
 	// instance (SRC-04, 12-03-PLAN.md Task 1) — meaningful only for a
-	// local-path source that walks a tree (today, plugins/filesystem).
+	// local-path source that walks a tree (today, the filesystem plugin
+	// in topos-plugins).
 	// The zero value (false, "this folder's own top level only") is the
 	// conservative default for a possibly-huge, unfamiliar tree; true
 	// walks every depth. omitempty exists so a canonical rewrite never
