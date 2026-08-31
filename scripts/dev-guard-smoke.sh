@@ -26,9 +26,9 @@
 # 127.0.0.1:7777 to be free.
 #
 # This script triggers the `plugins` Makefile prerequisite (case 1, and
-# the regression path generally), so it needs the system sqlcipher
-# library the `signal` target requires — the same prerequisite
-# `make build`/`make dev` already carry.
+# the regression path generally) — mock-only and CGO-free since the
+# functional plugins moved to davison/topos-plugins, so it needs no
+# system package at all.
 #
 # The error-path cases (1, 2) are asserted via the recorded exit status
 # of `make dev`, captured by a background runner script. The happy path
