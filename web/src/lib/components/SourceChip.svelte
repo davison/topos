@@ -149,6 +149,16 @@
 	// menu item, dialog, or interstitial — the tooltip below is the entire
 	// new surface.
 	let isManifestUnverified = $derived(source.launch_failure === 'manifest_unverified');
+	// The three M1-R6/DIST-03 classes (davison/topos#17) mirror
+	// isManifestUnverified's shape exactly — keyed on the kernel-published
+	// closed-vocabulary field alone (T-11-32), never a last_error string
+	// match; none gates any menu item, dialog or interstitial — the
+	// tooltip below is the entire surface, and it DISPLAYS last_error's
+	// text (the kernel's own named message, versions included) without
+	// ever branching on it.
+	let isHandshakeIncompatible = $derived(source.launch_failure === 'handshake_incompatible');
+	let isContractIncompatible = $derived(source.launch_failure === 'contract_incompatible');
+	let isLaunchFailed = $derived(source.launch_failure === 'launch_failed');
 	let isShadowed = $derived(source.launch_advisory === 'shadowed');
 
 	// advisory (12-10-PLAN.md, G-12-1/G-12-3): the trimmed kernel-published
@@ -275,6 +285,17 @@
 			if (isPinMismatch) return `${source.display_name} — binary changed since it was trusted`;
 			if (isManifestUnverified)
 				return `${source.display_name} — binary not in the trusted build manifest`;
+			// M1-R6/DIST-03: the three launch classes sit in the same
+			// problem group. Each shows the kernel's own last_error text —
+			// that message is where both versions/generations are named
+			// (docs/api.md: the field is for branching, the text is for
+			// humans), so the tooltip carries it verbatim after a short
+			// class label.
+			if (isHandshakeIncompatible)
+				return `${source.display_name} — incompatible plugin handshake: ${source.last_error}`;
+			if (isContractIncompatible)
+				return `${source.display_name} — incompatible plugin contract: ${source.last_error}`;
+			if (isLaunchFailed) return `${source.display_name} — failed to launch: ${source.last_error}`;
 			const relative = formatRelativeTime(source.last_sync_unix);
 			if (advisory !== '' && advisoryOnly) {
 				return `${source.display_name} — synced ${relative} — ${advisory}`;

@@ -149,6 +149,30 @@ describe('native-tooltip suppression (14-02-PLAN.md, option-b): no title on popo
 });
 
 describe('tooltipText structure: the two new 13-06-PLAN.md branches (D-12/D-13/D-14)', () => {
+	it('handshake-incompatible branch shows the kernel message after its label (M1-R6)', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — incompatible plugin handshake: ${source.last_error}`;'
+			)
+		).toBe(true);
+	});
+
+	it('contract-incompatible branch shows the kernel message after its label (M1-R6)', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — incompatible plugin contract: ${source.last_error}`;'
+			)
+		).toBe(true);
+	});
+
+	it('launch-failed branch shows the kernel message after its label (M1-R6)', () => {
+		expect(
+			strippedChip.includes(
+				'return `${source.display_name} — failed to launch: ${source.last_error}`;'
+			)
+		).toBe(true);
+	});
+
 	it('manifest-unverified branch reads the contract-exact sentence', () => {
 		expect(
 			strippedChip.includes(
