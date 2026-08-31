@@ -17,6 +17,11 @@ progress:
   percent: 33
 ---
 
+> **Migrated to CodeCrew, 2026-08-31.** Everything under `.planning/` is the frozen
+> GSD-era archive. The live record is now GitHub issues + `ROADMAP.md` +
+> `docs/milestones/` — see [the genesis record](../docs/milestones/0-genesis-the-gsd-era.md).
+> This file no longer tracks state.
+
 # Project State
 
 ## Project Reference
