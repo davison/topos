@@ -685,8 +685,8 @@ func (h *Host) LaunchFailures() []LaunchFailure {
 // stderrTailCap bounds stderrTail's retained byte count. Chosen in the low
 // kilobytes: comfortably larger than a single fatal line or the last few
 // frames of a panic stack trace (the shapes this capture exists to
-// surface — see plugins/signal/main.go's fatal helper for the worked
-// example), while staying irrelevant to kernel memory even if every
+// surface — see the signal plugin's fatal helper, in
+// davison/topos-plugins, for the worked example), while staying irrelevant to kernel memory even if every
 // launched plugin instance held its own tail for its whole lifetime.
 const stderrTailCap = 4096
 
@@ -801,7 +801,7 @@ type sourceConfigEnvelope struct {
 // ${VAR} references that instance's own config happens to declare:
 //
 //   - PATH, HOME — needed by any subprocess at all, and by "~" expansion
-//     (plugins/signal resolves its own Path field's leading "~" itself,
+//     (the signal plugin resolves its own Path field's leading "~" itself,
 //     not the kernel — see kernel/config/types.go's Source.Path comment).
 //   - LANG, LC_ALL, LC_CTYPE, TZ, TMPDIR — the locale/timezone/scratch-
 //     space group, so a plugin's date and text handling stays identical to
@@ -809,7 +809,7 @@ type sourceConfigEnvelope struct {
 //     default inside the subprocess.
 //   - XDG_RUNTIME_DIR, DBUS_SESSION_BUS_ADDRESS — desktop-session plumbing
 //     the Signal plugin's Secret Service key retrieval requires
-//     (plugins/signal/secretservice.go's D-Bus call to unwrap Signal
+//     (its secretservice.go D-Bus call, in topos-plugins, to unwrap Signal
 //     Desktop's SQLCipher key). These are SESSION ADDRESSES, not secret
 //     values — withholding them would not meaningfully contain a plugin
 //     that can already read the session bus socket path directly off the
@@ -878,7 +878,7 @@ func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool
 // WEBSPACES_SOURCE_CONFIG one — set only by DescribePluginType's trial
 // launch, never by Discover/Reconcile's real boot-time/hot-apply launches.
 // A launched plugin binary that recognises this variable (currently only
-// plugins/whatsapp/main.go) may use it to skip acquiring any exclusive,
+// the whatsapp plugin, in topos-plugins) may use it to skip acquiring any exclusive,
 // process-lifetime resource (e.g. WhatsApp's storelock.go flock) it would
 // otherwise hold for as long as this trial-launched subprocess is alive,
 // since Describe's answer never depends on that resource. A plugin binary

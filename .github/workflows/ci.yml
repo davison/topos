@@ -1,5 +1,5 @@
 # The repository's first CI workflow (D-13). Runs the full portable gate —
-# Go tests across every non-Signal workspace module, svelte-check, vitest,
+# Go tests across every workspace module, svelte-check, vitest,
 # the e2e spec tree's own typecheck, and the hermetic Playwright suite —
 # on every push and pull request to main. No repository secret and no
 # live-source credential variable is referenced anywhere in this file
@@ -64,10 +64,9 @@ jobs:
       - run: npm --prefix web run test
       - run: npm --prefix web run check:e2e
 
-      # The Go half. Deliberately NOT `make test`: that target also runs
-      # the Signal plugin module's own suite, CGO_ENABLED=1 against the
-      # system SQLCipher library — a dependency this runner has no reason
-      # to install for a plugin the hermetic harness never launches.
+      # The Go half. test-portable is the stable CI entry point; since
+      # the functional plugins (including the cgo signal build) moved to
+      # davison/topos-plugins, `make test` is its alias.
       - run: make test-portable
 
       # E2E_PW_INSTALL_FLAGS is set to Playwright's system-dependency

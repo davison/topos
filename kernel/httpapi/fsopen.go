@@ -56,8 +56,8 @@ type fsopenResponse struct {
 	Opened        bool `json:"opened"`
 }
 
-// resolveRoot mirrors plugins/filesystem/item.go's resolveRoot (that
-// package is a separate Go module and cannot be imported here, so the
+// resolveRoot mirrors the filesystem plugin's resolveRoot (the plugin
+// lives in davison/topos-plugins as its own module, so the
 // helper is a hand-kept twin): resolves root's real, symlink-free path with
 // filepath.EvalSymlinks, falling back to the lexically cleaned root when
 // resolution fails (a root that does not exist yet, or is unreadable) — the

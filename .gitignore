@@ -21,7 +21,6 @@ kernel/webui/build/*
 /topos
 /plugins/mock/mock
 /plugins/mockstrict/mockstrict
-/paperless
 /topos-manifest
 /topos-provenance
 

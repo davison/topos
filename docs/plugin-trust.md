@@ -31,9 +31,15 @@ it:
   a `.provenance.json`/`.provenance.sig` pair, described below, carried
   alongside the plugin binaries themselves.
 
-**Phase 17 retires the link-time arm.** Once the plugins move out of this
-repository, signed provenance becomes the only trusted path; this
-document's "two evidence sources" section will shrink to one.
+**The split narrowed the link-time arm.** With the plugins moved out to
+[`topos-plugins`](https://github.com/davison/topos-plugins)
+(davison/topos#13), signed provenance is the only trusted path for
+released, installed plugins. The link-time arm remains for what this
+repository still builds itself — the mock reference plugin — and for
+`make dev`'s adopted sibling binaries, whose hashes the dev recipe feeds
+into the manifest at build time (`DEV_PLUGINS_DIR`): still a build-time
+input, never a runtime-readable one. Both evidence sources stay; the
+manifest arm's remit is simply the kernel's own builds.
 
 ## The on-disk format
 

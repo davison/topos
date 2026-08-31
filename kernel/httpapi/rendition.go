@@ -1,8 +1,8 @@
 // rendition.go is the kernel-owned content-serving boundary D-11
 // consolidates into: plugins used to each carry their own near-identical
 // sanitize policy, theme stylesheet, and document-wrapping helper
-// (plugins/proton/body.go, plugins/silverbullet/render.go,
-// plugins/signal/render.go before this move) — a theme change meant
+// (the proton, silverbullet and signal plugins' own render helpers,
+// before this move — those plugins live in davison/topos-plugins now) — a theme change meant
 // editing three plugins, and once plugins are third-party, sanitization
 // sat outside the trust boundary entirely.
 //
@@ -39,7 +39,8 @@ var errUnrecognisedContentShape = fmt.Errorf("httpapi: unrecognised or unspecifi
 
 // renditionStyledElements is the named set of block and inline elements the
 // email content-shape policy permits to carry a sanitized style attribute —
-// carried forward verbatim from plugins/proton/body.go's styledElements.
+// carried forward verbatim from the proton plugin's styledElements
+// (body.go, at the D-11 move; the plugin lives in topos-plugins).
 // bluemonday's own published HTML-email example allows the style attribute
 // Globally(), and its own comment says that is "not safe" — this policy
 // deliberately does not copy that; scoping the attribute to a named element
@@ -48,8 +49,9 @@ var errUnrecognisedContentShape = fmt.Errorf("httpapi: unrecognised or unspecifi
 var renditionStyledElements = []string{"p", "span", "div", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "li", "a"}
 
 // chatTranscriptClassTokens is the fixed, closed set of class tokens the
-// chat content-shape policy allows on a div element — every token
-// plugins/signal/render.go's renderTranscript/renderBubble ever emit, and
+// chat content-shape policy allows on a div element — every token the
+// signal plugin's renderTranscript/renderBubble ever emitted at the
+// D-11 move (the plugin lives in topos-plugins), and
 // nothing else (T-05-17). bluemonday's Matching regexp is evaluated against
 // a class attribute's ENTIRE value (not per space-separated token), so this
 // pattern accepts any sequence of one or more of these tokens separated by
@@ -75,8 +77,8 @@ var renditionPolicies = map[toposv1.ContentShape]*bluemonday.Policy{
 	toposv1.ContentShape_CONTENT_SHAPE_CHAT_TRANSCRIPT: newChatRenditionPolicy(),
 }
 
-// newEmailRenditionPolicy widens bluemonday.UGCPolicy() exactly as
-// plugins/proton/body.go's newEmailSanitizePolicy did: the style attribute
+// newEmailRenditionPolicy widens bluemonday.UGCPolicy() exactly as the
+// proton plugin's newEmailSanitizePolicy did at the D-11 move: the style attribute
 // is allowed only on renditionStyledElements, and only a presentational
 // CSS-property allowlist is permitted through it. Everything positional or
 // behavioural (position, z-index, transform, animation, transition,
@@ -200,7 +202,7 @@ const renditionEmailImageDelta = `img { display: none !important; }`
 const renditionMarkdownImageDelta = `img { max-width: 100%; }`
 
 // renditionEmailReadabilityDelta is the email profile's readability layer
-// (carried forward verbatim from plugins/proton/body.go, 03-09-PLAN.md Task
+// (carried forward verbatim from the proton plugin's body.go, 03-09-PLAN.md Task
 // 3 gap G-03-2): the theme wins over the email by construction, not by
 // luck. bluemonday's style sanitizer re-emits every surviving declaration
 // as "property: value" only — douceur parses the CSS important marker into
@@ -235,8 +237,8 @@ body mark, body mark * { background-color: #fbbf24 !important; color: #020617 !i
 
 // renditionChatDelta is the chat content-shape's own delta — no headings/
 // lists/blockquote/table rules apply (transcripts don't produce that
-// markup) — carried forward verbatim from plugins/signal/render.go's
-// signalThemeStyle. The accent hex #60a5fa appears ONLY on
+// markup) — carried forward verbatim from the signal plugin's
+// signalThemeStyle at the D-11 move. The accent hex #60a5fa appears ONLY on
 // renditionBaseStyle's `a` (link) rule above — never here, on a bubble
 // background, sender-name rule or timestamp rule (protects the 10% accent
 // budget from per-participant color differentiation, 05-UI-SPEC.md Color;

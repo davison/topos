@@ -19,21 +19,19 @@ import (
 // directory (internal/audit). Go always runs a test binary with its own
 // package directory as the working directory, so this relative path is
 // stable regardless of how "go test" is invoked. A filesystem walk (not
-// package loading) is used deliberately: it crosses all three go.work
-// modules (root, sdk, plugins/paperless) in a single pass, which
+// package loading) is used deliberately: it crosses every go.work
+// module in a single pass, which
 // `go test ./...` from any one module cannot.
 const repoRoot = "../.."
 
 // sanctionedEgressFiles is the set of files in the repo allowed to
-// construct outbound HTTP requests — one per source plugin's REST/HTTP
-// client. Widening this set is a deliberate change: update it here, plus
-// this comment, as part of that change. Widened in 02-01-PLAN.md Task 1 to
-// add the SilverBullet plugin's client alongside paperless's (previously a
-// single sanctionedEgressFile constant, when only one plugin existed).
-var sanctionedEgressFiles = map[string]bool{
-	"plugins/paperless/client.go":    true,
-	"plugins/silverbullet/client.go": true,
-}
+// construct outbound HTTP requests. Widening this set is a deliberate
+// change: update it here, plus this comment, as part of that change.
+// Empty since the plugin split (davison/topos#13): the source plugins —
+// whose REST/HTTP clients this list existed for — live in
+// davison/topos-plugins now, and nothing left in this repository is
+// sanctioned to dial out.
+var sanctionedEgressFiles = map[string]bool{}
 
 // sanctionedDeepLinkLiteralFiles is a narrower, DIFFERENT-IN-KIND
 // allowlist from sanctionedEgressFiles above: files permitted to contain
@@ -50,24 +48,10 @@ var sanctionedEgressFiles = map[string]bool{
 // these files unconditionally (that check is gated on sanctionedEgressFiles
 // alone, checked separately from this list).
 //
-// plugins/whatsapp/deeplink.go (08-01-PLAN.md Task 3's real-device spike,
-// 2026-08-10): WhatsApp's only documented, reliable click-to-chat web API
-// is "https://wa.me/<phone>" (1:1), with "https://web.whatsapp.com/" as
-// the honest best-effort group fallback (WhatsApp has no per-group web
-// URL) — a non-functional bare "whatsapp://" scheme (this file's PRIOR
-// literal) does nothing at all on a desktop with no WhatsApp Linux
-// client installed, confirmed live against the real spike machine. This
-// project's own privacy constraint ("no personal content leaves the
-// user's machines") is about data this plugin's OWN background process
-// transmits without the user's direct action — an Item's own deep_link
-// field is inert until the user themselves clicks "Open in WhatsApp",
-// the identical shape plugins/signal/deeplink.go's own
-// "sgnl://signal.me/#p/<e164>" scheme URI already uses (that one simply
-// isn't an http(s)/ws(s) scheme, so it never tripped this scanner in the
-// first place).
-var sanctionedDeepLinkLiteralFiles = map[string]bool{
-	"plugins/whatsapp/deeplink.go": true,
-}
+// Empty since the plugin split (davison/topos#13): the one entry it ever
+// held (the whatsapp plugin's deep-link metadata, 08-01-PLAN.md Task 3)
+// moved to davison/topos-plugins with its plugin.
+var sanctionedDeepLinkLiteralFiles = map[string]bool{}
 
 // skipDirs are directories (relative to repoRoot, slash-separated) whose
 // entire subtree is skipped: vendored/generated/build output that is
