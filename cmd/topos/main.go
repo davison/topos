@@ -43,6 +43,18 @@ func main() {
 		if err := runSync(path); err != nil {
 			fatal(err)
 		}
+	case "plugin":
+		// The plugin subcommand family — its one member today is pull
+		// (M1-R8, davison/topos#19): one command from a URL to the
+		// trust tier the binary's provenance earns. See pull.go.
+		if len(os.Args) < 3 || os.Args[2] != "pull" {
+			usage()
+			os.Exit(2)
+		}
+		url, configFlag := parsePullArgs(os.Args[3:])
+		if err := runPluginPull(url, resolveConfigPath(configFlag)); err != nil {
+			fatal(err)
+		}
 	default:
 		usage()
 		os.Exit(2)
@@ -51,7 +63,42 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: topos <serve|sync> [--config <path>]")
+	fmt.Fprintln(os.Stderr, "       topos plugin pull <url> [--config <path>]")
 	fmt.Fprintln(os.Stderr, "  TOPOS_CONFIG can also set the config path (lower precedence than --config)")
+}
+
+// parsePullArgs parses `plugin pull`'s argv tail: exactly one
+// positional URL plus the optional --config flag, in either order (a
+// FlagSet stops at the first non-flag argument, so the URL-first form
+// re-parses the remainder). Anything else prints usage and exits 2,
+// the same contract every other subcommand applies.
+func parsePullArgs(args []string) (url, configFlag string) {
+	fs := flag.NewFlagSet("plugin pull", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	cfg := fs.String("config", "", "path to the config file (overrides TOPOS_CONFIG and the XDG default)")
+	if err := fs.Parse(args); err != nil {
+		usage()
+		os.Exit(2)
+	}
+	rest := fs.Args()
+	if len(rest) >= 1 {
+		url = rest[0]
+		// Flags placed AFTER the positional URL (flag.Parse stops at
+		// the first non-flag): parse the remainder through the same set.
+		if err := fs.Parse(rest[1:]); err != nil {
+			usage()
+			os.Exit(2)
+		}
+		if len(fs.Args()) != 0 {
+			usage()
+			os.Exit(2)
+		}
+	}
+	if url == "" {
+		usage()
+		os.Exit(2)
+	}
+	return url, *cfg
 }
 
 // parseConfigFlag parses the given subcommand's own argv tail (os.Args[2:])
