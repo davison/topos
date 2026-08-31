@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
-# Removes what `make install` placed under $PREFIX (INST-05) — and ONLY
-# that. The removal set is closed and explicit, mirroring
-# scripts/install.sh's placement set exactly:
+# Removes the KERNEL'S OWN artifacts from $PREFIX — and ONLY those. The
+# removal set is closed and explicit:
 #
 #   - the kernel binary at $PREFIX/bin/topos
-#   - each FILE directly inside $PREFIX/lib/topos/plugins whose name
-#     starts with "topos-plugin-"
+#   - the provenance verifier at $PREFIX/bin/topos-provenance (shipped
+#     by kernel releases from v1.3.0; reported as already absent under
+#     an older install)
+#
+# The plugin fleet and its provenance pairs under
+# $PREFIX/lib/topos/plugins are deliberately NOT touched (M1-R5,
+# davison/topos#15): that directory is owned by topos-plugins' own
+# `make install`/`make uninstall`, whichever installer placed its
+# contents — including fleets placed by pre-split kernel releases
+# (v1.1.0/v1.2.0), which that repository's uninstall removes all the
+# same. This script prints an informational note when it leaves a
+# non-empty fleet behind, and otherwise names nothing under lib/topos
+# except the empty-directory tidy-up below.
 #
 # After removal, the lib/topos/plugins and lib/topos directories are
-# removed with a NON-RECURSIVE rmdir only — a non-empty directory
-# survives, and this script reports what remains and why rather than
-# forcing it. No recursive removal appears anywhere in this script, and
-# it never descends into subdirectories (T-15-08/T-15-09).
+# removed with a NON-RECURSIVE rmdir only when they are left empty — a
+# non-empty directory survives untouched. No recursive removal appears
+# anywhere in this script, and it never descends into subdirectories.
 #
 # The operator's configuration, kernel index, and plugin stores live in
 # home-relative locations this script never names: it takes no flag and
@@ -28,52 +37,31 @@
 set -euo pipefail
 
 PREFIX="${PREFIX:-/usr/local}"
-KERNEL_PATH="$PREFIX/bin/topos"
 PLUGINS_DIR="$PREFIX/lib/topos/plugins"
 TOPOS_LIB_DIR="$PREFIX/lib/topos"
 
 REMOVED=0
 
-# The kernel binary.
-if [ -f "$KERNEL_PATH" ]; then
-  rm -f "$KERNEL_PATH"
-  echo "uninstall: removed $KERNEL_PATH"
-  REMOVED=$((REMOVED + 1))
-else
-  echo "uninstall: already absent: $KERNEL_PATH"
-fi
-
-# Installed plugin binaries: files DIRECTLY inside the plugins
-# directory matching the installed binary name prefix — never a
-# subdirectory, never a foreign file an operator placed there.
-if [ -d "$PLUGINS_DIR" ]; then
-  for f in "$PLUGINS_DIR"/topos-plugin-*; do
-    [ -e "$f" ] || continue
-    if [ ! -f "$f" ]; then
-      echo "uninstall: left in place (not a regular file): $f"
-      continue
-    fi
+for f in "$PREFIX/bin/topos" "$PREFIX/bin/topos-provenance"; do
+  if [ -f "$f" ]; then
     rm -f "$f"
     echo "uninstall: removed $f"
     REMOVED=$((REMOVED + 1))
-  done
-else
-  echo "uninstall: already absent: $PLUGINS_DIR"
+  else
+    echo "uninstall: already absent: $f"
+  fi
+done
+
+if [ -d "$PLUGINS_DIR" ] && [ -n "$(ls -A "$PLUGINS_DIR")" ]; then
+  echo "uninstall: left in place: $PLUGINS_DIR — the plugin fleet is topos-plugins' own make uninstall to remove"
 fi
 
-# Directory cleanup: non-recursive rmdir ONLY, innermost first. A
-# directory that still holds anything survives, with its contents
-# reported by name.
+# Empty-directory tidy-up: non-recursive rmdir ONLY, innermost first —
+# removes what the install's writability probe created when nothing
+# lives there; anything occupied survives (reported above).
 for dir in "$PLUGINS_DIR" "$TOPOS_LIB_DIR"; do
-  if [ -d "$dir" ]; then
-    if rmdir "$dir" 2>/dev/null; then
-      echo "uninstall: removed empty directory $dir"
-    else
-      echo "uninstall: left in place (not empty): $dir"
-      ls -A "$dir" | while IFS= read -r entry; do
-        echo "uninstall:   remaining: $dir/$entry"
-      done
-    fi
+  if [ -d "$dir" ] && rmdir "$dir" 2>/dev/null; then
+    echo "uninstall: removed empty directory $dir"
   fi
 done
 
