@@ -260,9 +260,12 @@ func TestNoModuleDeclaresAKnownVulnerablePin(t *testing.T) {
 		t.Fatalf("walk %s: %v", repoRoot, err)
 	}
 
-	if scanned < 6 {
+	if scanned < 4 {
 		t.Fatalf(
-			"expected to discover at least 6 go.mod files across the workspace (repoRoot=%q), got %d — "+
+			// The floor dropped from 6 to 4 when the functional plugins
+			// moved to davison/topos-plugins (root, sdk, mock, mockstrict
+			// remain; testdata is skipped by skipDirs).
+			"expected to discover at least 4 go.mod files across the workspace (repoRoot=%q), got %d — "+
 				"a wrong repoRoot or an over-broad skipDirs entry would make this test vacuously pass",
 			repoRoot, scanned,
 		)
