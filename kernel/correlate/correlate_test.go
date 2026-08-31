@@ -16,8 +16,9 @@ import (
 // fakeSource is a test double satisfying correlate.Source without launching
 // a real plugin subprocess. Its matchFunc receives the "keywords" field of
 // the resolved match_fields map (fakeSource declares a single-field
-// vocabulary, "keywords", mirroring every current in-repo plugin's
-// single-field vocabulary and letting existing tests keep passing a flat
+// vocabulary, "keywords", mirroring the single-field vocabularies the
+// first-party plugins — now in topos-plugins — declare, and letting
+// existing tests keep passing a flat
 // []string without change).
 type fakeSource struct {
 	name       string
