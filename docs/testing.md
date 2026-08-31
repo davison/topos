@@ -66,7 +66,8 @@ Runs `scripts/install-smoke.sh`: builds a fixture release on local
 disk, installs from it through the real `scripts/install.sh` (via its
 `TOPOS_RELEASE_BASE_URL` `file://` test seam — the seam changes WHICH
 release is fetched, never which checks run), and asserts the installed
-kernel launches the installed plugin from `$PREFIX/lib/topos/plugins`
+kernel launches a plugin placed in `$PREFIX/lib/topos/plugins` (the fixture
+release ships one, the pre-split release shape older kernel tags still have)
 with the stock relative `[plugins] dir` (INST-01/INST-03). Its cases
 also pin every refusal and repair behaviour: corrupted asset,
 traversal-shaped manifest, unwritable prefix, idempotent re-run, live
