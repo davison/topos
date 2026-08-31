@@ -1,5 +1,6 @@
 # Publishes a tagged GitHub Release carrying the kernel binary and the
-# operator-facing portable plugin binaries plus a sha256 checksums file.
+# provenance verifier (topos-provenance) plus a sha256 checksums file —
+# never plugin binaries: the fleet is released from davison/topos-plugins.
 # Triggered by pushing a tag matching v*.*.* — this is the repo's
 # publishing path (success criterion 6); ci.yml never publishes anything.
 #
