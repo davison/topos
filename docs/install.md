@@ -129,18 +129,29 @@ calls — and only then places atomically:
   directory (the config's `[plugins] dir`, installed-layout probe
   included) — the kernel's launch gate then reaches the same verdict
   the pull just did.
-- **No evidence at all** (`checksums.txt` cleanly absent) lands the
-  bare binary in the external directory with the consent-and-pin
-  steps printed — the unchanged untrusted-add flow, exactly as a
-  hand-copied binary would take.
+- **No provenance evidence** lands the bare binary in the external
+  directory with the consent-and-pin steps printed — the unchanged
+  untrusted-add flow, exactly as a hand-copied binary would take. This
+  is the state whether `checksums.txt` is cleanly absent or present
+  and clean but naming no provenance pair — the legitimate shape of an
+  unsigned third-party release, which publishes integrity without
+  authenticity. A present `checksums.txt` must still name the binary
+  with matching bytes, or the pull aborts.
 - **Evidence that exists but does not verify** — a `checksums.txt`
   line contradicting the downloaded bytes or omitting the binary, a
   bad signature, an unknown key, a digest or platform mismatch, or
   published provenance that never vouches for this binary — **aborts
-  naming the cause, and nothing is placed**: both plugin directories
-  are byte-identical to their pre-attempt state (proven by committed
-  tests in `cmd/topos/pull_test.go`), never a silent demotion to the
-  external tier.
+  naming the cause before anything is placed**: both plugin
+  directories are byte-identical to their pre-attempt state, the
+  directories themselves included (proven by committed tests in
+  `cmd/topos/pull_test.go`), never a silent demotion to the external
+  tier. Placement, once verification has passed, carries the same
+  two-pass guarantee the install scripts document: staged copies
+  first, then one pass of atomic per-file renames over pre-checked
+  destinations — a failure mid-renames is reported for exactly what it
+  is and a re-pull repairs it. Redirects are followed (GitHub assets
+  redirect cross-origin), but an https→http downgrade anywhere in the
+  chain is refused.
 
 **No flag can override the earned tier** — there is no `--trusted`, no
 `--external`, no provenance-URL escape hatch. Restart the kernel (or
