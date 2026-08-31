@@ -91,7 +91,7 @@ func copyExecutableFile(t *testing.T, src, dst string) {
 }
 
 // TestExternalProof_OutOfRepoBinaryEndToEnd is the criterion-5 gate: a
-// binary built OUTSIDE the in-repo plugin set — its own module, its own
+// binary built OUTSIDE this repository's own (mock) plugin set — its own module, its own
 // build target, its own output directory — is discovered from the
 // external tier, launched under a content-hash pin, and syncs its corpus
 // into the index; the corpus itself reports back exactly what config
