@@ -1,4 +1,4 @@
-.PHONY: build test test-portable proto dev dev-config plugins plugins-portable signal test-signal dev-check e2e build-portable docs-check external-demo gdrive-external-rehearsal install install-check uninstall install-signal uninstall-signal isolation-check provenance-check
+.PHONY: build test test-portable proto dev dev-config plugins dev-check e2e build-portable docs-check external-demo install install-check uninstall isolation-check provenance-check
 
 # E2E_PROJECT selects which Playwright project `make e2e` installs/runs —
 # "chromium" (the default, and the only engine CI gates on, D-14) or
@@ -21,9 +21,8 @@ E2E_ARGS ?=
 # recipe's own explicit binary list is the only authority over what gets
 # hashed, mirroring the discipline plugins-portable's own comment already
 # states for its six binary names.
-MANIFEST_PLUGIN_BINARIES := bin/plugins/topos-plugin-paperless bin/plugins/topos-plugin-silverbullet bin/plugins/topos-plugin-proton bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-whatsapp bin/plugins/topos-plugin-filesystem bin/plugins/topos-plugin-signal
-MANIFEST_PLUGIN_BINARIES_PORTABLE := bin/plugins/topos-plugin-paperless bin/plugins/topos-plugin-silverbullet bin/plugins/topos-plugin-proton bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-whatsapp bin/plugins/topos-plugin-filesystem
-MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-mockstrict bin/plugins/topos-plugin-filesystem
+MANIFEST_PLUGIN_BINARIES := bin/plugins/topos-plugin-mock
+MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-mockstrict
 
 # MANIFEST_GEN_PLUGINS / _PORTABLE / _E2E are the ONE-PLACE-ONLY generator
 # invocation for each binary list above — build, build-portable, dev, and
@@ -31,7 +30,6 @@ MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-
 # ./cmd/topos-manifest ..." at each call site, so the invocation and its
 # binary list can never drift apart independently.
 MANIFEST_GEN_PLUGINS = go run ./cmd/topos-manifest $(MANIFEST_PLUGIN_BINARIES)
-MANIFEST_GEN_PLUGINS_PORTABLE = go run ./cmd/topos-manifest $(MANIFEST_PLUGIN_BINARIES_PORTABLE)
 MANIFEST_GEN_E2E = go run ./cmd/topos-manifest $(MANIFEST_E2E_BINARIES)
 
 # MANIFEST_LDFLAGS_VAR is the ONE place the -ldflags -X path is written —
@@ -40,7 +38,7 @@ MANIFEST_GEN_E2E = go run ./cmd/topos-manifest $(MANIFEST_E2E_BINARIES)
 # drift out of sync between recipes.
 MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
 
-# PROVENANCE_LDFLAGS_VAR is the ONE place the e2e/gdrive-external-rehearsal
+# PROVENANCE_LDFLAGS_VAR is the ONE place the e2e recipe's
 # link-time provenanceKeysExtra -ldflags -X path is written (16-05-PLAN.md
 # Task 2, D-12): every recipe below that injects an extra accepted
 # provenance-verification key passes
@@ -58,7 +56,7 @@ MANIFEST_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.buildManifest
 PROVENANCE_LDFLAGS_VAR := github.com/davison/topos/kernel/pluginhost.provenanceKeysExtra
 
 # E2E_PROVENANCE_KEY_ID is the fixed key id `make e2e`/
-# `make gdrive-external-rehearsal` generate an ephemeral signing keypair
+# generates an ephemeral signing keypair
 # under, written HERE ONLY — the e2e fixture harness
 # (web/e2e/fixtures/plugin-binaries.ts's signProvenanceFixture) reads the
 # matching private key file back out of bin/ under this same id, so this
@@ -125,29 +123,11 @@ DEV_KERNEL_CMD ?= go run -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$TOPOS_DEV_MANIFE
 # MagicDNS name works too. Raw-IP access (100.x.y.z:5173) needs no allowlist.
 DEV_UI_CMD ?= npm --prefix web run dev -- --open --host
 
-# plugins-portable is the cgo-free sibling of "plugins" — it builds
-# exactly the six CGO_ENABLED=0 plugin binaries "plugins" builds
-# (paperless, silverbullet, proton, mock, whatsapp, filesystem) and,
-# unlike "plugins", does NOT chain to the cgo "signal" target. It exists
-# for the same reason "test-portable" exists: a runner (or a developer's
-# machine) without the system sqlcipher package installed can still
-# produce a complete, real, operator-facing plugin set. The six names
-# are written HERE ONLY — build-portable below reaches them by
-# delegating to this target, never by naming them itself, so the two
-# variants cannot drift apart.
-plugins-portable:
-	mkdir -p bin/plugins
-	go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
-	go build -o bin/plugins/topos-plugin-silverbullet ./plugins/silverbullet
-	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
-	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
-	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
-	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
-
-# build-portable is the cgo-free sibling of "build" — it runs the same
-# SPA-build step "build" runs, then delegates to plugins-portable
-# (above) instead of plugins, so the resulting artifact set never
-# requires a C toolchain or the system sqlcipher package, THEN links the
+# build-portable is the CI-facing sibling of "build" — since the
+# functional plugins moved to davison/topos-plugins, both targets build
+# the same mock-only set and this one remains as the stable entry point
+# CI's release/nightly workflows call. It runs the SPA build, delegates
+# to plugins (below), THEN links the
 # kernel — plugins now build BEFORE the kernel (reversed from this
 # target's pre-manifest order), because bin/topos's own build embeds a
 # link-time manifest (D-12) of the plugin binaries plugins-portable just
@@ -157,26 +137,18 @@ plugins-portable:
 build-portable:
 	npm --prefix web ci
 	npm --prefix web run build
-	$(MAKE) plugins-portable
-	MANIFEST="$$($(MANIFEST_GEN_PLUGINS_PORTABLE))" && \
+	$(MAKE) plugins
+	MANIFEST="$$($(MANIFEST_GEN_PLUGINS))" && \
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
 # build produces the SvelteKit SPA (embedded via kernel/webui/embed.go),
-# the plugin binaries — topos-plugin-paperless,
-# topos-plugin-silverbullet, topos-plugin-proton,
-# topos-plugin-mock (the reference plugin PLUG-05 validates
-# docs/plugin-contract.md against), topos-plugin-whatsapp, topos-plugin-
-# filesystem, and topos-plugin-signal (built by the "signal" target
-# below — the first cgo-enabled plugin in this repo) — and finally the
-# kernel binary itself, in that order. The kernel embed directive needs
-# kernel/webui/build populated before `go build` runs to embed anything
-# beyond the committed .gitkeep placeholder. The plugin set itself is
-# built by the "plugins" target below so `dev` and `build` share one
-# definition and can never drift apart. Plugins now build BEFORE the
-# kernel (reversed from this target's pre-manifest order): bin/topos's
-# own build embeds a link-time manifest (D-12) of the plugin binaries
-# `plugins` just built — hashing binaries that don't exist yet is not
-# possible, so the plugin build must complete first.
+# the mock plugin binary (the reference plugin PLUG-05 validates
+# docs/plugin-contract.md against — the functional plugins live in
+# davison/topos-plugins now), and finally the kernel binary itself, in
+# that order. The kernel embed directive needs kernel/webui/build
+# populated before `go build` runs; plugins build BEFORE the kernel
+# because bin/topos embeds a link-time manifest (D-12) of the binaries
+# `plugins` just built.
 build:
 	npm --prefix web ci
 	npm --prefix web run build
@@ -184,42 +156,14 @@ build:
 	MANIFEST="$$($(MANIFEST_GEN_PLUGINS))" && \
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
-# plugins builds the full plugin set — the five CGO_ENABLED=0 binaries
-# (now including topos-plugin-whatsapp, pure Go — SRC-03) plus the cgo
-# signal plugin via its own isolated target — and nothing else (no npm,
-# no kernel build), so it is usable from the dev loop without touching
-# kernel/webui/build. It exists so `make dev` can guarantee fresh plugin
-# binaries before the kernel starts without paying for a full `build`.
-# It deliberately includes the cgo signal plugin: a machine without
-# system sqlcipher fails here rather than starting a kernel with an
-# incomplete plugin set. `build` delegates to this target so the plugin
-# set is defined once. topos-plugin-whatsapp is built BEFORE the signal
-# target, not after — it is CGO-free and must not sit behind the one
-# cgo-gated build in this target.
+# plugins builds the kernel repo's own plugin set — just the mock
+# reference plugin now (the six functional plugins live in
+# davison/topos-plugins; mockstrict is the e2e target's own fixture and
+# is built there). No npm, no kernel build, so `make dev` can guarantee
+# a fresh binary without paying for a full `build`.
 plugins:
 	mkdir -p bin/plugins
-	go build -o bin/plugins/topos-plugin-paperless ./plugins/paperless
-	go build -o bin/plugins/topos-plugin-silverbullet ./plugins/silverbullet
-	go build -o bin/plugins/topos-plugin-proton ./plugins/proton
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
-	go build -o bin/plugins/topos-plugin-whatsapp ./plugins/whatsapp
-	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
-	$(MAKE) signal
-
-# signal builds the Signal plugin binary (SRC-02). Unlike every other
-# plugin in this repo, this build is CGO_ENABLED=1 with the libsqlcipher
-# build tag — the Task 1-authorised dynamic-link driver strategy
-# (04-01-PLAN.md; see plugins/signal/go.mod's replace directive for the
-# exact pinned fork/commit) that dynamically links the system's own
-# SQLCipher library. This REQUIRES the system sqlcipher library/headers
-# present at build time — install before running this target:
-#   Arch:          sudo pacman -S sqlcipher
-#   Debian/Ubuntu: sudo apt-get install libsqlcipher-dev
-# The kernel's own build (above) stays CGO_ENABLED=0 — this is the only
-# cgo-enabled build in the repo, isolated to this one target so a build
-# of everything else never needs a C toolchain or this system package.
-signal:
-	CGO_ENABLED=1 go build -tags libsqlcipher -o bin/plugins/topos-plugin-signal ./plugins/signal
 
 # external-demo builds Phase 11's out-of-repo proof plugin
 # (testdata/external-plugin, ROADMAP success criterion 5) — a genuinely
@@ -231,46 +175,27 @@ signal:
 # installation's [plugins] dir can point at — so it gets its own output
 # directory, bin/plugins-external/, that no real "[plugins] dir" or
 # "external_dir" config value in this repository's own examples ever
-# names. CGO_ENABLED=0 like every other plugin in this repo except signal.
+# names. CGO_ENABLED=0 like every plugin left in this repo.
 external-demo:
 	mkdir -p bin/plugins-external
 	CGO_ENABLED=0 go build -o bin/plugins-external/topos-plugin-external-demo ./testdata/external-plugin
 
-# test-portable runs every workspace module test EXCEPT the cgo Signal
-# plugin (sdk, paperless, silverbullet, proton, mock, mockstrict, whatsapp,
-# plus the root kernel module) — the credential-free, cgo-free half of
-# `test`, and what CI runs (D-13): a runner without system sqlcipher can
-# run everything else. This is the ONLY place that module list is written;
-# `test` below delegates to this target rather than duplicating it, so the
-# two definitions cannot drift apart (the same discipline the "plugins"
-# target's own comment documents for its cgo split). `make test` on a
-# desktop is unchanged — it still runs test-portable followed by
-# test-signal.
+# test-portable builds and tests every workspace module (the root kernel
+# module, sdk, mock, mockstrict) — each module explicitly, since Go
+# workspaces scope "./..." to the module containing the working
+# directory. The name survives the plugin split (CI and muscle memory
+# call it); with the cgo signal plugin gone to davison/topos-plugins,
+# `test` below is the same thing.
 test-portable:
 	CGO_ENABLED=0 go build ./... && go test ./...
 	cd sdk && CGO_ENABLED=0 go build ./... && go test ./...
-	cd plugins/paperless && CGO_ENABLED=0 go build ./... && go test ./...
-	cd plugins/silverbullet && CGO_ENABLED=0 go build ./... && go test ./...
-	cd plugins/proton && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mock && CGO_ENABLED=0 go build ./... && go test ./...
 	cd plugins/mockstrict && CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go test ./...
-	cd plugins/whatsapp && CGO_ENABLED=0 go build ./... && go test ./...
-	cd plugins/filesystem && CGO_ENABLED=0 go build ./... && go test ./...
 
-# test runs the full test suite across all seven workspace modules (sdk,
-# paperless, silverbullet, proton, mock, mockstrict, signal) plus the root
-# kernel module: test-portable (above) followed by test-signal (below).
-# Go workspaces scope "./..." to the module containing the working
-# directory, so each module is tested explicitly rather than relying on a
-# single "./..." from the repo root covering all of them.
+# test is test-portable's alias since the cgo signal plugin moved to
+# davison/topos-plugins — kept so `make test` keeps working everywhere
+# it is written down.
 test: test-portable
-	$(MAKE) test-signal
-
-# test-signal runs the Signal plugin module's own tests under the same
-# cgo/libsqlcipher build tag as the signal target above — see that
-# target's comment for the sqlcipher system-package prerequisite.
-test-signal:
-	cd plugins/signal && CGO_ENABLED=1 go build -tags libsqlcipher ./... && CGO_ENABLED=1 go test -tags libsqlcipher ./...
 
 # proto regenerates the sdk/gen Go stubs from proto/topos/v1/plugin.proto.
 # Prefers buf; falls back to protoc + protoc-gen-go + protoc-gen-go-grpc
@@ -314,19 +239,17 @@ dev-check:
 provenance-check:
 	./scripts/provenance-smoke.sh
 
-# e2e builds a fresh SPA, builds ONLY the mock, mockstrict, and filesystem
-# plugins (deliberately NOT the "plugins" target's full real-plugin set —
-# this target does not depend on "plugins" at all, because that target
-# chains to the cgo "signal" target, which needs the system sqlcipher
-# library, and this harness is cgo-free by design, D-07), links those
-# three binaries into the kernel's own manifest, embeds the freshly built
+# e2e builds a fresh SPA, builds the mock and mockstrict fixture
+# plugins (the functional plugins live in davison/topos-plugins and the
+# hermetic harness never launches one, D-07), links those
+# two binaries into the kernel's own manifest, embeds the freshly built
 # SPA into that freshly built kernel binary, ensures the requested
 # Playwright browser is installed, then runs the suite against the built
 # artifact. The SPA build MUST precede the Go build: bin/topos go:embeds
 # kernel/webui/build at compile time (see the "build" target's own
 # comment above), so building the kernel first would embed whatever
 # stale SPA happens to be on disk and the whole suite would then test
-# yesterday's UI while reporting green. The three plugin binaries and the
+# yesterday's UI while reporting green. The two plugin binaries and the
 # manifest step now ALSO precede the kernel build (reversed from this
 # target's pre-manifest order) for the identical D-12 reason "build" and
 # "build-portable" reorder above: bin/topos's own build embeds a
@@ -367,7 +290,6 @@ e2e:
 	mkdir -p bin/plugins
 	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
 	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
-	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
 	$(MAKE) external-demo
 	CGO_ENABLED=0 go build -o bin/topos-provenance ./cmd/topos-provenance
 	PROVENANCE_KEY_SPEC="$$(./bin/topos-provenance keygen --key-id $(E2E_PROVENANCE_KEY_ID) --out-dir bin)" && \
@@ -375,45 +297,6 @@ e2e:
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST -X $(PROVENANCE_LDFLAGS_VAR)=$$PROVENANCE_KEY_SPEC" -o bin/topos ./cmd/topos
 	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
 	cd web && npx playwright test --project=$(E2E_PROJECT) $(E2E_ARGS)
-
-# TOPOS_GDRIVE_BIN is the absolute path to the real, built
-# topos-plugin-gdrive binary this target's one spec
-# (web/e2e/specs/14-gdrive-external-rehearsal.spec.ts) drives on the
-# untrusted external path. This binary is never built by this repository,
-# at any commit (D-08's clean-room boundary) — it comes from the separate,
-# out-of-repo `topos-plugin-gdrive` checkout (14-03-SUMMARY.md). Defaults
-# to that checkout's own conventional location on this operator's machine;
-# override on the command line for a different checkout
-# (`make gdrive-external-rehearsal TOPOS_GDRIVE_BIN=/path/to/binary`).
-TOPOS_GDRIVE_BIN ?= $(HOME)/projects/davison/topos-plugin-gdrive/topos-plugin-gdrive
-
-# gdrive-external-rehearsal builds the identical fixture artifact set "e2e"
-# builds (SPA, mock/mockstrict/filesystem, external-demo, the kernel binary
-# under the e2e manifest), then runs ONLY
-# web/e2e/specs/14-gdrive-external-rehearsal.spec.ts, with TOPOS_GDRIVE_BIN
-# exported into the Playwright process's own environment so the spec can
-# resolve the real, out-of-repo Drive binary. Deliberately NOT a
-# prerequisite of "e2e" and deliberately never adds the Drive binary to
-# bin/plugins/, MANIFEST_E2E_BINARIES, or any other manifest recipe above —
-# this binary is never built by this repository and never enters a trusted
-# directory (14-04-PLAN.md Task 1's own acceptance criterion). Run with
-# TOPOS_GDRIVE_BIN unset (or pointed at a nonexistent path) and this spec's
-# own top-level test.skip guard skips loudly, naming the variable, rather
-# than silently passing — see the spec's own file header.
-gdrive-external-rehearsal:
-	npm --prefix web ci
-	npm --prefix web run build
-	mkdir -p bin/plugins
-	go build -o bin/plugins/topos-plugin-mock ./plugins/mock
-	go build -o bin/plugins/topos-plugin-mockstrict ./plugins/mockstrict
-	go build -o bin/plugins/topos-plugin-filesystem ./plugins/filesystem
-	$(MAKE) external-demo
-	CGO_ENABLED=0 go build -o bin/topos-provenance ./cmd/topos-provenance
-	PROVENANCE_KEY_SPEC="$$(./bin/topos-provenance keygen --key-id $(E2E_PROVENANCE_KEY_ID) --out-dir bin)" && \
-	MANIFEST="$$($(MANIFEST_GEN_E2E))" && \
-		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST -X $(PROVENANCE_LDFLAGS_VAR)=$$PROVENANCE_KEY_SPEC" -o bin/topos ./cmd/topos
-	cd web && npx playwright install $(E2E_PW_INSTALL_FLAGS) $(E2E_PROJECT)
-	cd web && TOPOS_GDRIVE_BIN=$(TOPOS_GDRIVE_BIN) npx playwright test --project=$(E2E_PROJECT) e2e/specs/14-gdrive-external-rehearsal.spec.ts $(E2E_ARGS)
 
 # PREFIX is the install root `make install` places a published release
 # into: the kernel at $(PREFIX)/bin/topos, plugin binaries at
@@ -470,31 +353,6 @@ uninstall:
 install-check:
 	./scripts/install-smoke.sh
 
-# install-signal is the explicit opt-in INST-04 describes: it builds the
-# cgo Signal plugin LOCALLY (via the `signal` prerequisite — the one
-# place the cgo/libsqlcipher build definition lives, requiring a Go
-# toolchain, a C compiler, and the system sqlcipher package) and places
-# the binary in the installed instance's EXTERNAL plugin directory. It
-# is the only compiled path in the whole install surface — the base
-# `make install` stays download-and-copy only (proven by the
-# install-check toolchain-tripwire case). The destination is the
-# external directory, never $(PREFIX)/lib/topos/plugins: a locally
-# built binary is absent from the released kernel's link-time build
-# manifest, so a trusted-directory placement would be refused at launch
-# (manifest_unverified). The external tier's consent-and-pin flow is
-# the supported path — see docs/plugins/signal.md and docs/install.md.
-install-signal: signal
-	./scripts/install-signal.sh
-
-# uninstall-signal removes the locally built Signal binary from the
-# external plugin directory — exactly one file, never the directory or
-# anything else in it. Deliberately separate from `uninstall`: the
-# Signal binary lives OUTSIDE $(PREFIX), in a directory `uninstall` is
-# forbidden to touch (its removal set is closed over what `install`
-# writes into the prefix).
-uninstall-signal:
-	./scripts/install-signal.sh --uninstall
-
 # isolation-check runs the committed ISOL-03 gate
 # (scripts/simultaneity-smoke.sh): an installed-shaped instance and a
 # checkout-shaped dev instance run side by side, each answering only
@@ -530,6 +388,19 @@ dev-config:
 		echo "  'make dev DEV_CONFIG=<path>' to point the dev loop at a different" >&2; \
 		echo "  config entirely (e.g. your production config)." >&2; \
 	fi
+
+# DEV_PLUGINS_DIR is where `make dev` looks for a locally built sibling
+# plugin fleet (davison/topos-plugins' bin/, by convention beside this
+# checkout). Binaries named topos-plugin-* found there are copied into
+# bin/plugins/ and hashed into the dev kernel's link-time manifest at
+# build time — the same trusted-tier mechanism a release build uses,
+# fed by the developer's explicit dir. This is a deliberate exception
+# to the explicit-list discipline the manifest variables document
+# (RESEARCH Pitfall 6): pointing the variable at a directory IS the
+# explicit act, and only `dev` — never build/build-portable/e2e —
+# reads it. Absent or empty, dev runs with the mock plugin only and
+# says so.
+DEV_PLUGINS_DIR ?= ../topos-plugins/bin
 
 # dev runs the kernel and the SvelteKit dev server together. The kernel
 # binary is never embedded here — Vite's dev server proxies /api to
@@ -568,6 +439,14 @@ DEV_ISOLATION_BYPASS ?=
 
 dev: plugins dev-config
 	go run ./cmd/topos-devguard --config "$(DEV_CONFIG)" --expected-port $(DEV_PORT) $(if $(DEV_ISOLATION_BYPASS),--warn-only)
+	@if ls $(DEV_PLUGINS_DIR)/topos-plugin-* >/dev/null 2>&1; then \
+		cp -f $(DEV_PLUGINS_DIR)/topos-plugin-* bin/plugins/; \
+		echo "make dev: adopted the sibling fleet from $(DEV_PLUGINS_DIR) into the dev manifest:" >&2; \
+		ls $(DEV_PLUGINS_DIR) | sed 's/^/  /' >&2; \
+	else \
+		echo "make dev: no sibling plugins at $(DEV_PLUGINS_DIR) — dev runs with the mock plugin only" >&2; \
+		echo "  (build the fleet in a topos-plugins checkout, or set DEV_PLUGINS_DIR=<dir>)" >&2; \
+	fi
 	@if ! command -v ss >/dev/null 2>&1; then \
 		echo "make dev: 'ss' (iproute2) is required by the dev port guard — install iproute2" >&2; \
 		exit 1; \
@@ -579,7 +458,7 @@ dev: plugins dev-config
 		echo "make dev: stop that process, or re-run with DEV_PORT=<a different port>" >&2; \
 		exit 1; \
 	fi; \
-	export TOPOS_DEV_MANIFEST="$$($(MANIFEST_GEN_PLUGINS))"; \
+	export TOPOS_DEV_MANIFEST="$$(go run ./cmd/topos-manifest $(MANIFEST_PLUGIN_BINARIES) $$(ls $(DEV_PLUGINS_DIR)/topos-plugin-* 2>/dev/null | xargs -rn1 basename | sed 's|^|bin/plugins/|' | tr '\n' ' '))"; \
 	trap 'kill 0' INT TERM; \
 	$(DEV_KERNEL_CMD) & \
 	KPID=$$!; \
