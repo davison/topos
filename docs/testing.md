@@ -15,8 +15,10 @@ always true — see "What changed", below.
 
 ### `make test` — the workspace's four Go modules (an alias of `test-portable`)
 
-Builds and tests every Go workspace module (the root kernel module,
-`sdk`, `mock`, `mockstrict`) — credential-free, `CGO_ENABLED=0`, no
+Builds and tests the four buildable workspace modules (the root kernel
+module, `sdk`, `mock`, `mockstrict` — the fifth member,
+`testdata/external-plugin`, is built by `make external-demo` and
+exercised by the e2e harness) — credential-free, `CGO_ENABLED=0`, no
 network access, no config file. Since the functional plugins (including
 the cgo Signal build) moved to
 [`topos-plugins`](https://github.com/davison/topos-plugins), `test` is
