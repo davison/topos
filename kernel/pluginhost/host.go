@@ -664,13 +664,14 @@ func Discover(ctx context.Context, dirs Dirs, raw *config.Config, sources map[st
 // blips an unrelated source's reachability.
 //
 // Every new/changed launch is attempted before anything currently running
-// is torn down: a launch failure kills only what THIS call itself
-// launched, leaves the previously running set fully intact, and returns
-// an error naming the offending instance — a partial apply must never
-// look successful (T-07-11). Instance names are iterated in sorted order
-// so which instance is reported first on a multi-failure config is
-// deterministic run to run, matching this package's existing discipline
-// (matchconfig.go).
+// is torn down, and the previously running set is left fully intact by a
+// failure either way — per instance for the recorded launch-failure
+// classes (the paragraph below), or wholesale for the ctx-cancellation/
+// machinery abort, which kills only what THIS call itself launched and
+// returns an error naming the offending instance (T-07-11's surviving
+// core). Instance names are iterated in sorted order so multi-failure
+// output is deterministic run to run, matching this package's existing
+// discipline (matchconfig.go).
 //
 // Locking (08-13-PLAN.md Task 1(C), G-08-5): this call takes h.mu.RLock()
 // only to build existing from a snapshot of the CURRENT plugin set, then
