@@ -6,10 +6,14 @@
 # plugin from $PREFIX/lib/topos/plugins with the STOCK relative
 # `[plugins] dir = "plugins"` config value, no config edit.
 #
-# The fixture release is a directory tree shaped like the real GitHub
-# release surface — download/<tag>/ holding the kernel, the plugin
-# binary under its published flat basename, and a checksums.txt over the
-# "topos" + "plugins/<name>" relative layout release.yml publishes —
+# The fixture release is a directory tree shaped like the GitHub release
+# surface — download/<tag>/ holding the kernel, a plugin binary under its
+# published flat basename, and a checksums.txt over the "topos" +
+# "plugins/<name>" relative layout — the PRE-SPLIT release shape older
+# kernel tags still have (current release.yml publishes only topos,
+# topos-provenance and checksums.txt; install.sh keeps accepting the
+# plugins/* allowlist so those older tags install unchanged, and this
+# fixture is what proves it) —
 # served to scripts/install.sh via its TOPOS_RELEASE_BASE_URL test seam
 # as a file:// URL. That seam changes WHICH release is fetched, never
 # which checks run: every checksum, allowlist, and placement rule runs
