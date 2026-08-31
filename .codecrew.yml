@@ -7,8 +7,11 @@ hub: self
 # route the role to any member of a GitHub team. The coordinator is the
 # seat that dispatches the other four (SPEC §7); unrouted, it is you.
 roles:
-  implementer: { identity: ~ }
-  reviewer: { identity: ~ }
+  implementer: { identity: ~, harness: claude-code, model: claude-fable-5 }
+  # reviewer: the operator's auth, but the review itself is a headless Codex
+  # session loaded with `gh codecrew roles show reviewer` — de-correlated
+  # judgment without an App (solo mode; merges use --operator-confirm).
+  reviewer: { identity: ~, harness: codex }
   qa: { identity: ~ }
   doc-synthesizer: { identity: ~ }
   coordinator: { identity: ~ }
