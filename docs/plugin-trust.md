@@ -109,9 +109,10 @@ it or trusting this document's word for it:
 topos-provenance verify --dir <path to the plugin binaries + manifest>
 ```
 
-This is the exact verifier `scripts/install.sh`'s own install-time step
-and the kernel's own launch gate both call — never a second,
-re-implemented check. It prints one line per binary naming either the
+This is the exact verifier `scripts/install.sh`'s own install-time
+step, `topos plugin pull`'s tier decision (docs/install.md, "Installing
+a single plugin from a URL"), and the kernel's own launch gate all call
+— never a second, re-implemented check. It prints one line per binary naming either the
 manifest that vouched for it or the specific failure cause, and exits
 non-zero if any named binary failed to verify (or if the directory holds
 no plugin binaries at all — a verify pass over nothing is never a

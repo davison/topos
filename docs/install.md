@@ -95,7 +95,10 @@ release no longer publishes), and its `make uninstall` removes exactly
 what it manages — whichever installer placed it, so fleets from
 pre-split kernel releases come out the same way. See that repository's
 README ("Installing the fleet") for the full story, including the
-verifier resolution order and its bootstrap-trust caveat.
+verifier resolution order and its bootstrap-trust caveat. For a single
+plugin — a third-party one especially — `topos plugin pull <url>`
+installs one binary into the tier its provenance earns (see
+[Installing a single plugin from a URL](#installing-a-single-plugin-from-a-url)).
 
 The provenance pair must sit beside the binaries: the installed kernel
 trusts a plugin binary through its **signed release manifest** (the
@@ -103,6 +106,45 @@ phase-16 provenance arm — the kernel's own link-time manifest no longer
 lists any functional plugin), verified against the `topos-plugins`
 public key embedded in the kernel. `topos-provenance verify --dir` over
 the directory shows exactly what the kernel will conclude.
+
+## Installing a single plugin from a URL
+
+```sh
+topos plugin pull <url> [--config <path>]
+```
+
+takes one plugin binary from a URL to the trust tier its provenance
+earns (M1-R8) — the per-plugin alternative to the fleet's
+`make install`, and the install step a third-party plugin's release
+instructions can name. The URL points at the binary asset itself; the
+command downloads it into a staging area, reads the release's own
+`checksums.txt` beside it (the one discovery convention — it records
+the binary's SHA-256, verified in passing, and names the
+`*.provenance.json`/`.sig` pair), verifies any signed manifest with
+the kernel's embedded key set — the exact verifier the launch gate
+calls — and only then places atomically:
+
+- **A validly-signed manifest naming the binary's exact digest** lands
+  the binary and its vouching manifest pair in the trusted plugins
+  directory (the config's `[plugins] dir`, installed-layout probe
+  included) — the kernel's launch gate then reaches the same verdict
+  the pull just did.
+- **No evidence at all** (`checksums.txt` cleanly absent) lands the
+  bare binary in the external directory with the consent-and-pin
+  steps printed — the unchanged untrusted-add flow, exactly as a
+  hand-copied binary would take.
+- **Evidence that exists but does not verify** — a `checksums.txt`
+  line contradicting the downloaded bytes or omitting the binary, a
+  bad signature, an unknown key, a digest or platform mismatch, or
+  published provenance that never vouches for this binary — **aborts
+  naming the cause, and nothing is placed**: both plugin directories
+  are byte-identical to their pre-attempt state (proven by committed
+  tests in `cmd/topos/pull_test.go`), never a silent demotion to the
+  external tier.
+
+**No flag can override the earned tier** — there is no `--trusted`, no
+`--external`, no provenance-URL escape hatch. Restart the kernel (or
+apply config) after a pull and add the source from the picker.
 
 ## Checksum verification
 
