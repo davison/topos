@@ -150,7 +150,8 @@ const linkSubprocessWaitDelay = time.Second
 
 // newExecLinkSpawner returns the production linkSpawner: runs the
 // discovered plugin binary in machine-readable link mode
-// (plugins/whatsapp/link.go's runLinkJSON, Task 2 of this plan) as a raw
+// (the whatsapp plugin's runLinkJSON — the plugin lives in
+// davison/topos-plugins) as a raw
 // subprocess, entirely outside the go-plugin gRPC handshake — this is
 // deliberately exec.CommandContext against the resolved DISCOVERED path,
 // never a path built from request-supplied input (T-08-06; the caller
@@ -280,7 +281,7 @@ const maxConcurrentLinkSessions = 4
 // linkSessionDeadline bounds how long a session may go unpolled before the
 // reaper terminates it (T-08-10) — generous enough to cover the full
 // pairing flow (whatsmeow's own QR-code validity window rotates roughly
-// every 20-60s, and postPairLoginTimeout in plugins/whatsapp/link.go
+// every 20-60s, and the whatsapp plugin's postPairLoginTimeout
 // allows up to 60s for the post-pair handshake) plus normal polling
 // jitter, without leaving an abandoned session's subprocess (and,
 // transitively, its suspended instance) alive indefinitely.
@@ -290,7 +291,8 @@ const linkSessionDeadline = 5 * time.Minute
 // sessions past their deadline.
 const linkSessionReapInterval = 15 * time.Second
 
-// linkWireEvent mirrors plugins/whatsapp/link.go's linkEvent JSON shape —
+// linkWireEvent mirrors the whatsapp plugin's linkEvent JSON shape
+// (link.go, in davison/topos-plugins) —
 // the kernel's own decoding target for each newline-delimited event line a
 // link subprocess emits. Kept as an unexported, package-local copy rather
 // than a shared type: the wire contract is JSON tags, not a compiled Go
@@ -337,7 +339,7 @@ func (s *linkSession) setEvent(ev linkWireEvent, terminal bool) {
 }
 
 // isTerminalKind reports whether kind is one of the three terminal
-// linkEvent kinds plugins/whatsapp/link.go ever emits.
+// linkEvent kinds the whatsapp plugin's link mode ever emits.
 func isTerminalKind(kind string) bool {
 	switch kind {
 	case "paired", "error", "timeout":
@@ -570,8 +572,7 @@ func newLinkSessionID() (string, error) {
 // --- error-code mapping ---
 
 // linkErrorCodeStoreInUse and linkErrorCodeFailed mirror the two error
-// event codes plugins/whatsapp/link.go's runLinkJSON ever emits
-// (link.go's linkErrorCodeStoreInUse/linkErrorCodeFailed) — kept as a
+// event codes the whatsapp plugin's runLinkJSON ever emits — kept as a
 // package-local copy for the identical reason linkWireEvent is: the wire
 // contract is a JSON string value, not a compiled dependency.
 const (

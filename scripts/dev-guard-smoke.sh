@@ -149,7 +149,7 @@ chmod +x "$WORK/ui.sh"
 #     with a fake), config.Load fails immediately — before any plugin
 #     subprocess launches, before any real sync starts, before any bind
 #     attempt — so a RED run against the real recipe can never touch a
-#     real Signal/Proton/SilverBullet source or strand a sync_runs row
+#     real source or strand a sync_runs row
 #     in the user's real index database.
 cat > "$WORK/run.sh" <<RUN
 #!/bin/sh
