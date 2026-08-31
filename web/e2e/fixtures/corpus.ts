@@ -1,4 +1,6 @@
-// Temp corpus directories for the filesystem-source specs.
+// Temp corpus directories for specs that need real on-disk scratch trees
+// (today: the tamper fixtures; originally the filesystem-source specs,
+// which moved out with their plugin).
 //
 // D-03 requires a spec's on-disk corpus to exist BEFORE its kernel boots,
 // which is why every filesystem spec seeds one at module scope rather than

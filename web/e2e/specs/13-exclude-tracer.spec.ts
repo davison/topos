@@ -2,7 +2,7 @@
 // end on the thinnest possible path — one item's Exclude click, through
 // the detail pane, the kernel's marks write path, and the shared
 // index.Store filter, and back out again as the item disappearing from
-// the stream. Follows 12-filesystem-tracer.spec.ts's shape: a hermetic
+// the stream. The shape: a hermetic
 // kernel fixture, the default topos-plugin-mock reference plugin (no
 // pluginBinaries override needed — every mock item carries a "demo"
 // label, so the webspace's plain keywords fallback matches all of them),
