@@ -10,6 +10,10 @@ in [`docs/plugin-contract.md`](plugin-contract.md), and this guide links
 there rather than restating it. When the two disagree, the contract
 wins and this guide has a bug — please report it.
 
+(Links in this guide are relative to the topos repository; if you were
+handed this file on its own, every linked document is under `docs/` of
+the checkout step 1 makes — `topos/docs/plugin-contract.md` and so on.)
+
 The four published inputs a plugin is built from:
 
 1. [`docs/plugin-contract.md`](plugin-contract.md) — the contract.
@@ -227,6 +231,13 @@ go mod tidy
 CGO_ENABLED=0 go build -o topos-plugin-hello .
 ```
 
+If `go build` stops with `error obtaining VCS status … Use
+-buildvcs=false to disable VCS stamping`, your plugin directory sits
+inside another repository's tree without being one itself (a scratch
+directory under some checkout, say): add `-buildvcs=false` — the kernel
+never reads VCS stamps — or `git init` the plugin directory, which is
+what you will do for a real project anyway.
+
 `CGO_ENABLED=0` gives a static binary that runs on any Linux of the
 same architecture — the shape every first-party plugin ships. A plugin
 that genuinely needs cgo (the Signal plugin links the system SQLCipher)
@@ -276,6 +287,9 @@ interval = "1h"
 plugin = "topos-plugin-hello"
 base_url = "unused"                   # the kernel requires base_url+token OR path on every
 token = "unused"                      # source, even for a plugin that reads neither
+
+# [sources.hello.extras]               # your own keys, passed through verbatim as the
+# greeting = "good evening"            # envelope's "extras" map (contract: "Configuration")
 
 [webspaces.demo]
 keywords = ["hello"]                  # must match a label your Match returns
@@ -387,9 +401,13 @@ The kernel downloads the binary into a staging area, reads the
 **external** directory with the consent-and-pin steps printed
 ([`docs/install.md`](install.md), "Installing a single plugin from a
 URL"). Restart the kernel and add the source from the picker (4c) — or,
-headless, record the pin in config as in 4a. Updating is re-pulling:
-new bytes, a new hash, the chip's re-pin ("Trust updated binary")
-action once.
+headless, record the pin in config as in 4a. To know *which* copy is
+running: the pull's own report names the path it wrote; `sync`'s log
+line `plugin process exited: plugin=<path>` names the binary each
+launch actually executed; and `sha256sum` of that path equals the
+release's `checksums.txt` line — three independent answers that must
+agree. Updating is re-pulling: new bytes, a new hash, the chip's
+re-pin ("Trust updated binary") action once.
 
 ## 8. The trust story, truthfully
 
