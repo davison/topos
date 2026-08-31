@@ -19,8 +19,8 @@ E2E_ARGS ?=
 # in bin/plugins/ from an earlier `make plugins` run must never silently
 # enter a `make build-portable` manifest (RESEARCH Pitfall 6) — the
 # recipe's own explicit binary list is the only authority over what gets
-# hashed, mirroring the discipline plugins-portable's own comment already
-# states for its six binary names.
+# hashed — the same discipline the departed per-plugin build targets
+# stated for their own explicit lists before the split.
 MANIFEST_PLUGIN_BINARIES := bin/plugins/topos-plugin-mock
 MANIFEST_E2E_BINARIES := bin/plugins/topos-plugin-mock bin/plugins/topos-plugin-mockstrict
 
@@ -130,7 +130,7 @@ DEV_UI_CMD ?= npm --prefix web run dev -- --open --host
 # to plugins (below), THEN links the
 # kernel — plugins now build BEFORE the kernel (reversed from this
 # target's pre-manifest order), because bin/topos's own build embeds a
-# link-time manifest (D-12) of the plugin binaries plugins-portable just
+# link-time manifest (D-12) of the plugin binary "plugins" just
 # built; hashing binaries that don't exist yet is not possible, so the
 # kernel build can no longer come first. This is the entry point CI's
 # release/nightly workflows use.
@@ -171,8 +171,8 @@ plugins:
 # separate Go module (module path example.com/acme/topos-plugin-external-demo,
 # outside github.com/davison/topos) written entirely from the published
 # contract, standing in for a third party's own separate build. This
-# binary is deliberately NOT part of "plugins", "plugins-portable" or
-# "build" — it must never land in bin/plugins/, the directory a real
+# binary is deliberately NOT part of "plugins" or "build" — it must
+# never land in bin/plugins/, the directory a real
 # installation's [plugins] dir can point at — so it gets its own output
 # directory, bin/plugins-external/, that no real "[plugins] dir" or
 # "external_dir" config value in this repository's own examples ever

@@ -8,26 +8,27 @@ install and run it, see [`README.md`](README.md) instead.
 ## Repository layout
 
 ```
-cmd/topos/          kernel binary entrypoint (serve, sync)
+cmd/                topos (serve, sync, plugin pull), topos-manifest, topos-provenance, topos-devguard
 kernel/             config, index (SQLite), correlate (sync-time matching), syncer, httpapi, pluginhost, webui (embed)
-internal/audit/     repo-wide dependency-floor audit test
+internal/audit/     repo-wide egress, module-pin and icon audits
 proto/topos/v1/     the published plugin contract (source of truth)
-sdk/                the plugin-author-facing Go module (handshake, interfaces, generated stubs)
-plugins/            source plugins: paperless, silverbullet, proton, signal (cgo), whatsapp, mock and mockstrict (fixtures)
-web/                the SvelteKit SPA
-scripts/            guard scripts (dev-guard, signal-readonly-smoke, built-stylesheet assertions, milestone sync)
-docs/               published contracts: plugin-contract.md, api.md, testing.md, releasing.md, plugins/
+sdk/                the plugin-author-facing Go module (handshake, interfaces, generated stubs, sdk.ContractVersion)
+plugins/            the two reference/fixture plugins only: mock and mockstrict
+testdata/           the out-of-repo proof plugin (external-plugin) and other never-shipped fixtures
+web/                the SvelteKit SPA and the Playwright e2e harness
+scripts/            install/uninstall and every hermetic smoke gate (dev-guard, install, provenance, simultaneity, doc links, milestone sync)
+docs/               plugin-contract.md, plugin-development.md, plugin-trust.md, api.md, install.md, testing.md, releasing.md, milestones/
 ```
 
-This is a **Go workspace** (`go.work`) with nine modules: the root kernel
-module, `sdk`, and one module per plugin (paperless, silverbullet, proton,
-signal, whatsapp, mock, mockstrict). That's deliberate, not incidental —
-the Signal plugin needs `cgo` (it dynamically links the system
-SQLCipher), and keeping every plugin in its own module means that
-requirement stays scoped to the one plugin that needs it. Building the
-kernel (or any other plugin) never requires a C toolchain. Don't collapse
-these into one module later without re-checking that isolation still
-holds.
+This is a **Go workspace** (`go.work`) with four modules: the root
+kernel module, `sdk`, and the two fixture plugins (`plugins/mock`,
+`plugins/mockstrict`). Every functional source plugin lives in
+[`topos-plugins`](https://github.com/davison/topos-plugins) — one Go
+module per plugin under that repository's own workspace, with its own
+CI and signed releases — and crosses the same published contract a
+third-party plugin does. Nothing in this repository builds with cgo:
+the one cgo plugin (Signal, linking the system SQLCipher) is built in
+the sibling repository, and a C toolchain is never a prerequisite here.
 
 ## Development loop
 
@@ -42,16 +43,21 @@ by side — and edits to either side hot-reload independently. The kernel binary
 this way never embeds a built SPA — only `make build`'s production build
 does that.
 
-`make dev` rebuilds every plugin binary (including the cgo-enabled
-signal plugin, via `make plugins`) before starting the kernel, so a
-plugin source edit always takes effect — this is why `make dev` needs
-system sqlcipher, the same prerequisite `make signal`/`make build`
-already have. This guarantee holds only for your config's default,
-relative `[plugins] dir` — if your `config.toml` overrides it to an
-**absolute** path (e.g. one pointing at a different checkout), that
-rebuild never touches the binaries the kernel actually loads, and a
-plugin-side code change (including a plugin's declared icon) can go
-silently stale. See `config.example.toml`'s `[plugins] dir` comment.
+`make dev` rebuilds the mock plugin (`make plugins`) and adopts the
+functional fleet from a sibling checkout: every `topos-plugin-*` binary
+in `DEV_PLUGINS_DIR` (default `../topos-plugins/bin`, which that
+repository's `make build`/`make build-signal` fill) is copied beside the
+mock and hashed into the dev kernel's link-time manifest at build time,
+so the fleet runs at the trusted tier in the dev instance with no
+consent-pin churn. Absent or empty, dev runs with the mock only and says
+so. A plugin source edit takes effect by rebuilding it in the sibling
+checkout and re-running `make dev`. This guarantee holds only for your
+config's default, relative `[plugins] dir` — if your `config.toml`
+overrides it to an **absolute** path (e.g. one pointing at a different
+checkout), that adoption never touches the binaries the kernel actually
+loads, and a plugin-side change (including a plugin's declared icon)
+can go silently stale. See `config.example.toml`'s `[plugins] dir`
+comment.
 
 Before starting anything, `make dev` runs the isolation pre-flight
 (`cmd/topos-devguard`): a dev config whose config file, index, plugin
@@ -85,19 +91,19 @@ change it.
 ## Testing
 
 ```bash
-make test               # go build + go test across all workspace modules, including cgo Signal
-make test-portable       # same, minus the cgo Signal plugin — what CI runs
+make test-portable       # go build + go test across every workspace module (CGO_ENABLED=0) — what CI runs
+make test                # alias of test-portable, kept for muscle memory
 make e2e                 # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check            # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
 make docs-check           # scripts/check-doc-links.sh — every relative doc link resolves
 make install-check        # scripts/install-smoke.sh — hermetic guard for `make install`/`uninstall`
+make provenance-check     # scripts/provenance-smoke.sh — keygen → sign → verify → tamper → refuse
 make isolation-check      # scripts/simultaneity-smoke.sh — dev + installed side by side (ISOL-03)
 ```
 
-`make test`/`make test-portable` need no network access or live
-credentials — every committed test runs against fixtures and a temp
-SQLite file; the `-portable` variant additionally needs no C toolchain
-or system sqlcipher. `make e2e` builds the shipped SPA and kernel, then
+`make test-portable` needs no network access, no live credentials, and
+no C toolchain — every committed test runs against fixtures and a temp
+SQLite file. `make e2e` builds the shipped SPA and kernel, then
 drives a real Chromium against a hermetic kernel instance seeded from
 mock-shaped plugin fixtures — also no network access, no live source
 credentials, and no `.env` file. `make dev-check` proves `make dev`'s own
@@ -113,19 +119,24 @@ check** — a manual check that has to be remembered is not a gate.
 ## Building and releasing
 
 ```bash
-make build              # SPA + kernel + all plugin binaries, including cgo Signal
-make build-portable      # same, minus Signal — the cgo-free entry point CI's release/nightly workflows use
-make plugins             # rebuild only the plugin binaries
-make plugins-portable    # rebuild only the cgo-free plugin binaries
-make signal               # build only the Signal plugin (needs system sqlcipher)
+make build              # SPA + the mock plugin + the kernel (embedding both)
+make build-portable      # the same set plus bin/topos-provenance — the entry point CI's release/nightly workflows use
+make plugins             # rebuild only the mock plugin binary
+make external-demo       # the out-of-repo proof plugin, into its own bin/plugins-external/
+make install             # place a published kernel release under PREFIX (docs/install.md)
+make uninstall           # remove exactly the kernel artifacts it placed
 ```
 
-See [`docs/releasing.md`](docs/releasing.md) for how a release is
-actually cut, what the nightly build does, and why the Signal plugin
-binary is never among the published artifacts.
+Kernel releases ship the kernel and the provenance verifier; the plugin
+fleet is released, installed and updated from
+[`topos-plugins`](https://github.com/davison/topos-plugins). See
+[`docs/releasing.md`](docs/releasing.md) for how a release is actually
+cut and what the nightly build does.
 
 ## Where to look next
 
+- **[`docs/plugin-development.md`](docs/plugin-development.md)** — writing
+  a plugin out of tree, from an empty module to `topos plugin pull`.
 - **[`docs/plugin-contract.md`](docs/plugin-contract.md)** — the
   published contract for writing a new source plugin: the interface you
   implement, how the kernel discovers and launches your binary, how
@@ -134,8 +145,8 @@ binary is never among the published artifacts.
   contract: every route, the stable-id scheme, the ordering guarantee,
   provenance keys, and the full error-code list.
 - **[`docs/testing.md`](docs/testing.md)** — the full testing map.
-- **[`docs/plugins/`](docs/plugins/)** — per-plugin operator docs for
-  each shipped source.
+- **[`docs/plugins/`](docs/plugins/)** — where the per-plugin operator
+  docs went: each plugin's own README in `topos-plugins`.
 - **[`docs/releasing.md`](docs/releasing.md)** — cutting a release,
   nightly builds, and GitHub milestone sync.
 - **[`.planning/`](.planning/)** — this project's phase-by-phase
