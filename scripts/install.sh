@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Installs a published topos release into $PREFIX (INST-01): the kernel
-# at $PREFIX/bin/topos and every published plugin binary at
-# $PREFIX/lib/topos/plugins/, each SHA-256-verified against that
-# release's own checksums.txt BEFORE anything is written to $PREFIX.
+# at $PREFIX/bin/topos (and, from v1.3.0, the provenance verifier at
+# $PREFIX/bin/topos-provenance) — plus, for older tags that published
+# them, plugin binaries at $PREFIX/lib/topos/plugins/ — each
+# SHA-256-verified against that release's own checksums.txt BEFORE
+# anything is written to $PREFIX. Current releases ship no plugin
+# binaries: the fleet is installed by davison/topos-plugins' own make
+# install into the same prefix.
 #
 # Usage: install.sh [version]       (with or without a leading "v")
 #
@@ -208,9 +212,10 @@ fi
 
 # Download each asset under its published flat basename into the staging
 # directory at its full checksums.txt-relative path — release assets are
-# uploaded as flat basenames while checksums.txt records the
-# "plugins/<name>" relative layout, so the staging tree must reproduce
-# that layout for `sha256sum -c` to run unmodified.
+# uploaded as flat basenames while a plugin-bearing (older) tag's
+# checksums.txt records the "plugins/<name>" relative layout, so the
+# staging tree must reproduce that layout for `sha256sum -c` to run
+# unmodified.
 mkdir -p "$STAGE/plugins"
 for rel in "${ASSETS[@]}"; do
   base="${rel##*/}"

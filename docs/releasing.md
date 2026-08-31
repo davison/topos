@@ -2,8 +2,8 @@
 
 The one page to read when cutting a release or crossing a milestone
 boundary: how GitHub milestones stay in step with `.planning/`, how a
-release is actually cut, what the nightly build does, and why the Signal
-plugin binary is not among the published artifacts.
+release is actually cut, what the nightly build does, and why no plugin
+binary is among the published artifacts.
 
 ## Milestones
 

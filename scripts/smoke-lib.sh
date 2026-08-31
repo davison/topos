@@ -24,8 +24,10 @@ s.close()
 # refused at launch — kernel/pluginhost.VerifyTrustedBinary), and
 # assembles a release-shaped tree at <workdir>/release/download/<tag>/:
 # flat basenames exactly like published release assets, plus a
-# checksums.txt over the "topos" + "plugins/<name>" relative layout
-# release.yml records. The built kernel is also left at <workdir>/topos
+# checksums.txt over the "topos" + "plugins/<name>" relative layout —
+# the PRE-SPLIT release shape older kernel tags still have (current
+# release.yml publishes only topos, topos-provenance and checksums.txt;
+# this fixture is what keeps install.sh's plugins/* allowlist proven). The built kernel is also left at <workdir>/topos
 # for callers that boot it directly. Must be called from the repo root.
 # The -ldflags -X symbol path must match the Makefile's
 # MANIFEST_LDFLAGS_VAR.
