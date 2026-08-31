@@ -19,14 +19,8 @@ kernel/webui/build/*
 # given) — always build via `make build` (which passes explicit -o paths)
 # or scripts/e2e-smoke.sh instead.
 /topos
-/plugins/paperless/paperless
-/plugins/silverbullet/silverbullet
 /plugins/mock/mock
-/plugins/proton/proton
-/plugins/signal/signal
 /plugins/mockstrict/mockstrict
-/plugins/whatsapp/whatsapp
-/plugins/filesystem/filesystem
 /paperless
 /topos-manifest
 /topos-provenance

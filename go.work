@@ -2,14 +2,8 @@ go 1.25.0
 
 use (
 	.
-	./plugins/filesystem
 	./plugins/mock
 	./plugins/mockstrict
-	./plugins/paperless
-	./plugins/proton
-	./plugins/signal
-	./plugins/silverbullet
-	./plugins/whatsapp
 	./sdk
 	// testdata/external-plugin is a fixture module (Phase 11, ROADMAP
 	// success criterion 5), not a real plugin — it is a workspace member
