@@ -867,7 +867,8 @@ ever renders; none of them is decided client-side.
     binary is missing from both plugin directories, exited before the
     handshake, or failed `Describe`. On the missing-binary shape the
     entry's `tier` is the empty string — there were no bytes to derive
-    a tier from; every other entry keeps `"trusted"`/`"external"`.
+    a tier from; every other entry keeps `"trusted"`, `"operator_trusted"`
+    or `"external"`.
 
   Before davison/topos#17 these classes aborted the whole boot or
   config apply; every launch-failure class is now a per-instance
@@ -1152,7 +1153,8 @@ builds against, deliberately excluded from the picker so a real
 deployment can never accidentally enable a fixed set of fake demo items.
 
 **`plugin_type_tiers` (Phase 11, `PLUG-06`/`PLUG-07`) is an ADDITIVE
-sibling field** — a tier lookup table (`"trusted"`/`"external"`) spanning
+sibling field** — a tier lookup table (`"trusted"`, `"operator_trusted"`
+or `"external"`) spanning
 EVERY binary discovered in EITHER directory, keyed by binary name. Unlike
 `plugin_types`, this table deliberately **includes** `topos-plugin-mock`
 and every other excluded fixture name: `plugin_types` is a picker's
@@ -1224,10 +1226,12 @@ plugin-invocation surface for request-supplied input.
 `PLUG-08`/`PLUG-09`) — the same kernel-derived-facts discipline
 `GET /api/sources` follows, learned here BEFORE anything is saved:**
 
-- **`tier`** is `"trusted"` or `"external"` — this trial-launched binary's
-  provenance (`docs/plugin-contract.md`'s "Trust tiers"), the same fact
-  `GET /api/sources` publishes per instance, available here before the
-  source is ever added.
+- **`tier`** is `"trusted"`, `"operator_trusted"` or `"external"` — this
+  trial-launched binary's provenance (`docs/plugin-contract.md`'s "Trust
+  tiers"), the same fact `GET /api/sources` publishes per instance,
+  available here before the source is ever added. (The offer an
+  external binary may carry reaches this response with
+  [#57](https://github.com/davison/topos/issues/57).)
 - **`binary_hash`** is the SHA-256 the kernel itself computed from the
   resolved binary this trial launch actually ran — non-empty only for
   `tier: "external"` (nothing is pinned for the trusted tier). This is
@@ -1242,6 +1246,8 @@ plugin-invocation surface for request-supplied input.
 - **`extras`** mirrors the plugin's own `Describe`-declared extras field
   declarations (`docs/plugin-contract.md`'s `ExtrasField`), in
   declaration order — `[]`, never `null`, when the plugin declares none:
+  For `"trusted"` and `"operator_trusted"` alike, nothing is pinned:
+  the evidence is the signature.
 
   ```json
   { "key": "region", "label": "Region", "required": true, "secret": false, "placeholder": "eu-west" }
