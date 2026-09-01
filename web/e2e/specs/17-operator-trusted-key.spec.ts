@@ -28,6 +28,10 @@ const REUSED = 'topos-plugin-external-demo-reused';
 // interstitial's two consents can be driven for real.
 const FRESH_PIN = 'topos-plugin-external-demo-pinonly';
 const FRESH_KEY = 'topos-plugin-external-demo-trustkey';
+// And one whose signature NAMES the accepted fixture key id with the scratch
+// key's bytes — a reused id — unconfigured, so the interstitial's warning
+// can be driven from the picker too.
+const FRESH_REUSED = 'topos-plugin-external-demo-reusedpick';
 const SCRATCH_KEY_ID = 'acme-e2e';
 
 const configSpec: FixtureConfigSpec = {
@@ -54,15 +58,17 @@ const configSpec: FixtureConfigSpec = {
 		{ name: OFFERED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
 		{ name: REUSED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
 		{ name: FRESH_PIN, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
-		{ name: FRESH_KEY, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` }
+		{ name: FRESH_KEY, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
+		{ name: FRESH_REUSED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` }
 	],
 	signedProvenanceBinaries: [
 		{ name: OFFERED, scratchKeyID: SCRATCH_KEY_ID },
 		{ name: REUSED, scratchKeyID: SCRATCH_KEY_ID, reusedID: true },
 		{ name: FRESH_PIN, scratchKeyID: SCRATCH_KEY_ID },
-		{ name: FRESH_KEY, scratchKeyID: SCRATCH_KEY_ID }
+		{ name: FRESH_KEY, scratchKeyID: SCRATCH_KEY_ID },
+		{ name: FRESH_REUSED, scratchKeyID: SCRATCH_KEY_ID, reusedID: true }
 	],
-	unpinnedExternalBinaries: [OFFERED, REUSED, FRESH_PIN, FRESH_KEY]
+	unpinnedExternalBinaries: [OFFERED, REUSED, FRESH_PIN, FRESH_KEY, FRESH_REUSED]
 };
 test.use({ configSpec });
 
@@ -195,7 +201,9 @@ test.describe('M2-R4: a developer key the operator trusts', () => {
 	// default and writes a pin, never a key; choosing the key writes the
 	// [[plugins.trusted_keys]] entry, never a pin — and the source lands
 	// operator-trusted.
-	async function addOffered(page: import('@playwright/test').Page, binary: string, displayName: string, choice: 'pin' | 'key') {
+	// openInterstitial drives the picker to the untrusted-confirm step for an
+	// unconfigured binary and returns the dialog and its offer block.
+	async function openInterstitial(page: import('@playwright/test').Page, binary: string, displayName: string) {
 		await page.getByRole('button', { name: 'Add source' }).click();
 		// The picker names a plugin type by pluginTypeLabel — the binary name
 		// without its prefix, title-cased per dash segment — not by the
@@ -223,10 +231,15 @@ test.describe('M2-R4: a developer key the operator trusts', () => {
 		if (await dialog.locator('#extra-workspace_id').count()) await dialog.locator('#extra-workspace_id').fill('e2e');
 		await dialog.getByRole('button', { name: 'Next' }).click();
 		await expect(dialog.getByRole('heading', { name: 'Add an untrusted source' })).toBeVisible();
-		const offer = dialog.locator(`fieldset[data-offered-key="${SCRATCH_KEY_ID}"]`);
+		const offer = dialog.locator('fieldset[data-offered-key]');
 		await expect(offer, 'the interstitial shows the offer the trial launch reported').toBeVisible();
-		await expect(offer.getByText(`Key id: ${SCRATCH_KEY_ID}`)).toBeVisible();
 		await expect(offer.getByText(/Fingerprint \(SHA-256\): [0-9a-f]{64}/)).toBeVisible();
+		return { dialog, offer };
+	}
+
+	async function addOffered(page: import('@playwright/test').Page, binary: string, displayName: string, choice: 'pin' | 'key') {
+		const { dialog, offer } = await openInterstitial(page, binary, displayName);
+		await expect(offer.getByText(`Key id: ${SCRATCH_KEY_ID}`)).toBeVisible();
 		await expect(offer.getByText(/reused id/)).toHaveCount(0);
 		await expect(offer.locator('input[value="pin"]'), 'pin this binary only is the default').toBeChecked();
 		if (choice === 'key') await offer.locator('input[value="key"]').check();
@@ -264,6 +277,19 @@ test.describe('M2-R4: a developer key the operator trusts', () => {
 		const row = (await sources(kernel.baseURL)).get('trust-key-demo');
 		expect(row?.trusted_key).toBe(SCRATCH_KEY_ID);
 		expect(row?.pinned_hash ?? '').toBe('');
+	});
+
+	test('add-source interstitial, a reused key id: the warning is shown before any consent', async ({ page, kernel }) => {
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+		const { dialog, offer } = await openInterstitial(page, FRESH_REUSED, 'Reused Pick Demo');
+		await expect(offer.getByText(/reused id/), 'the interstitial warns about a reused id').toBeVisible();
+		await expect(offer.locator('input[value="pin"]'), 'pin-only stays the default').toBeChecked();
+		await dialog.getByRole('button', { name: 'Cancel' }).click();
+		const cfg = (await (await fetch(`${kernel.baseURL}/api/config`)).json()) as {
+			config: { plugins: { pins?: Record<string, string>; trusted_keys?: { id: string }[] }; sources: Record<string, unknown> };
+		};
+		expect(cfg.config.plugins.pins?.[FRESH_REUSED]).toBeUndefined();
+		expect('reused-pick-demo' in cfg.config.sources).toBe(false);
 	});
 });
 
