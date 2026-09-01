@@ -45,8 +45,9 @@ own sources cross the same one a third-party author crosses
   stranger from an empty module to that command, validated clean-room
   ([#21](https://github.com/davison/topos/issues/21)).
 
-Thirteen tasks, thirteen PRs, all rebase-merged through `task finish`
-after a model review under the reviewer contract in a headless Codex
+Twenty tasks, twenty PRs before this record — the thirteen of the
+delivery set above and the seven M1-R2 remedies the outcome table
+lists — all rebase-merged through `task finish` after a model review under the reviewer contract in a headless Codex
 session — the solo-tier convention this milestone established and kept
 (every PR's review thread records it; e.g.
 [PR #14](https://github.com/davison/topos/pull/14),
@@ -262,8 +263,11 @@ first task's PR and followed thereafter.
   Signal schema tooling ([#5](https://github.com/davison/topos/issues/5)).
 - On topos-plugins: gdrive's env-sensitive tests
   ([tp#5](https://github.com/davison/topos-plugins/issues/5)), browser
-  coverage for the moved plugins ([tp#6](https://github.com/davison/topos-plugins/issues/6)),
-  the per-plugin operator pages ([tp#7](https://github.com/davison/topos-plugins/issues/7)).
+  coverage for the moved plugins ([tp#6](https://github.com/davison/topos-plugins/issues/6)).
+  The per-plugin operator pages ([tp#7](https://github.com/davison/topos-plugins/issues/7))
+  were captured here too, then delivered inside the milestone as
+  [tp#14](https://github.com/davison/topos-plugins/issues/14) under the
+  first gate's Option A.
 - The archived `topos-plugin-gdrive` repository stays archived, not
   deleted: it holds the clean-room scaffolding the fold-in left behind,
   the milestone's one real case study of a third-party build.
