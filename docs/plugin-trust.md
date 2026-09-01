@@ -107,7 +107,7 @@ it only widens what can run without that extra click.
 (M2-R4 of [#40](https://github.com/davison/topos/issues/40)), from the
 operator's captures [#1](https://github.com/davison/topos/issues/1) and
 [#38](https://github.com/davison/topos/issues/38). **Shipped in
-v1.4.0**: the kernel half ([#56](https://github.com/davison/topos/issues/56)
+v1.3.1**: the kernel half ([#56](https://github.com/davison/topos/issues/56)
 — the config table, the tier, the signature-carried key, the offer on
 `GET /api/sources` and in `topos plugin pull`) and the app
 ([#57](https://github.com/davison/topos/issues/57) — the badge, the
