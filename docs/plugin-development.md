@@ -429,6 +429,25 @@ external tier do its job; the consent interstitial shows your operator
 the hash they are accepting, which is exactly the informed decision the
 model wants them to make.
 
+### 8a. Sign with your own key — decided, not yet shipped
+
+The kernel is gaining a second trust word, the operator's
+([#49](https://github.com/davison/topos/issues/49); the design is in
+[`plugin-trust.md`](plugin-trust.md), "Operator-trusted keys"). When it
+ships, you sign your releases with your own ed25519 key using the same
+tooling the fleet uses — `topos-provenance keygen`, `sign`, `verify`,
+unchanged — and publish your **key id** and **public key** with the
+release. An operator who installs your plugin is offered that key once:
+*trust this key for future releases*, after which every release you sign
+runs at *trusted by you* on their instance without a per-binary pin; or
+*pin this binary only*, today's path. Rotate by shipping a new key id;
+they are offered it the same way.
+
+Until that lands, **do not ship a signed manifest**: today a manifest
+signed by a key the kernel does not know is refused outright, and your
+plugin will not run at all. Ship unsigned — the consent-and-pin path in
+§8 — and tell your operators the signed path arrives with v1.4.0.
+
 ## 9. Before you call it done
 
 The questions the last clean-room build against this contract could not
