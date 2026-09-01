@@ -45,6 +45,17 @@ package main
 //     is a FAILED verification: loud abort, nothing placed, never a
 //     demotion to the external tier (Decision on #19; the same
 //     never-demote-and-run rule the launch gate applies).
+//
+// Since M2-R4 (davison/topos#49, #56) the "published provenance that
+// vouches for nothing" outcome splits in two: a manifest signed by a key
+// this kernel does not trust whose signature CARRIES its public key and
+// verifies against it, and names the downloaded bytes, is an OFFER — the
+// binary and its provenance files are placed into the external tier and
+// the key, its fingerprint and the [[plugins.trusted_keys]] entry that
+// trusts it are printed (a reused key id is warned about); every other
+// no-evidence case with provenance present — an unknown key with no
+// carried key, a wrong platform, a manifest that omits the binary —
+// still aborts unplaced, and tamper still refuses.
 
 import (
 	"encoding/base64"
