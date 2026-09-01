@@ -261,19 +261,18 @@ The Signal plugin is the fleet's one cgo build — it dynamically links
 the system SQLCipher library, so no prebuilt binary is published
 anywhere. Build it locally from a
 [`topos-plugins`](https://github.com/davison/topos-plugins) checkout
-(see its `plugins/signal/README.md` for the per-distro `sqlcipher`
+(see topos-plugins' `plugins/signal/README.md` for the per-distro `sqlcipher`
 package and the SQLite version floor):
 
 ```sh
 cd topos-plugins && make install-signal   # builds, then places into the external directory
 ```
 
-From the topos-plugins checkout, `make install-signal` builds through
+topos-plugins' `make install-signal` builds through its
 `make build-signal` and places the binary atomically into the installed instance's **external** plugin
 directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or the
 directory your config's `[plugins] external_dir` names via
-`TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); `make uninstall-signal` removes
-exactly that one file. Then add the Signal source once through the
+`TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); topos-plugins' `make uninstall-signal` removes exactly that one file. Then add the Signal source once through the
 app's untrusted-add consent flow — it runs pinned and badged. A locally built binary carries no signed provenance and is not
 in any release manifest, so a trusted-directory placement would be
 refused at launch; the external tier's consent-and-pin flow is the

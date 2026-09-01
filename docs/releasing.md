@@ -110,7 +110,7 @@ cgo build dynamically linking the system's SQLCipher library — a binary
 built on the CI runner's distro carries no promise of running on
 another. That decision travelled with the plugin to
 [`topos-plugins`](https://github.com/davison/topos-plugins), whose
-releases carry the same exclusion and whose `plugins/signal/README.md`
+releases carry the same exclusion and whose `plugins/signal/README.md` in topos-plugins
 documents the local build (`CGO_ENABLED=1 go build -tags libsqlcipher`)
 and the per-distro `sqlcipher` package names.
 

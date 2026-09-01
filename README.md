@@ -123,8 +123,8 @@ mock reference plugin under `bin/plugins/`; `make build-portable` is the
 same set plus `bin/topos-provenance`, the entry point the release
 workflows use. Nothing here needs cgo. The functional plugins are built
 in a [`topos-plugins`](https://github.com/davison/topos-plugins)
-checkout (`make build`, and `make build-signal` for the one cgo
-plugin), and `make dev` adopts that checkout's `bin/` through
+checkout (topos-plugins' `make build` and `make build-signal`, the
+latter for the one cgo plugin), and `make dev` adopts that checkout's `bin/` through
 `DEV_PLUGINS_DIR` — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### As an app (PWA)
