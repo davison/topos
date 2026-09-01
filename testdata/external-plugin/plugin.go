@@ -8,7 +8,7 @@
 // This module exists ONLY to prove the external-plugin mechanism end to
 // end (kernel/supervisor/externalproof_test.go's
 // TestExternalProof_OutOfRepoBinaryEndToEnd): it is never shipped, never
-// built by `make build`/`make plugins`/`make plugins-portable`, and must
+// built by `make build`/`make plugins`, and must
 // never be copied into a real installation's trusted plugin directory —
 // see README.md.
 //
