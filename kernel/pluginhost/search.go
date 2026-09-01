@@ -64,31 +64,36 @@ type SourceSearchOutcome struct {
 func (h *Host) SearchSources(ctx context.Context, ws config.Webspace, query string, required []string) []SourceSearchOutcome {
 	plugins := h.snapshot()
 	sort.Slice(plugins, func(i, j int) bool { return plugins[i].name < plugins[j].name })
-	var (
-		mu  sync.Mutex
-		out []SourceSearchOutcome
-		wg  sync.WaitGroup
-	)
+	// Every outcome is written to its OWN preallocated slot — one per
+	// participating instance, decided before any goroutine starts — so
+	// the synchronous "unsupported" outcomes and the concurrent RPC
+	// outcomes never touch shared state (PR #60 review round 1).
+	type slot struct {
+		p      *Plugin
+		fields map[string][]string
+	}
+	var slots []slot
 	for _, p := range plugins {
 		fields, participates, _ := correlate.MatchFieldsFor(ws, p)
 		if !participates || len(fields) == 0 {
 			continue
 		}
-		if !p.searchesContent {
-			out = append(out, SourceSearchOutcome{Instance: p.name, DisplayName: p.displayName, Status: SearchStatusUnsupported})
+		slots = append(slots, slot{p: p, fields: fields})
+	}
+	out := make([]SourceSearchOutcome, len(slots))
+	var wg sync.WaitGroup
+	for i, sl := range slots {
+		if !sl.p.searchesContent {
+			out[i] = SourceSearchOutcome{Instance: sl.p.name, DisplayName: sl.p.displayName, Status: SearchStatusUnsupported}
 			continue
 		}
 		wg.Add(1)
-		go func(p *Plugin, fields map[string][]string) {
+		go func(i int, p *Plugin, fields map[string][]string) {
 			defer wg.Done()
-			res := h.searchOne(ctx, p, query, required, fields)
-			mu.Lock()
-			out = append(out, res)
-			mu.Unlock()
-		}(p, fields)
+			out[i] = h.searchOne(ctx, p, query, required, fields)
+		}(i, sl.p, sl.fields)
 	}
 	wg.Wait()
-	sort.Slice(out, func(i, j int) bool { return out[i].Instance < out[j].Instance })
 	return out
 }
 
