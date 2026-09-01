@@ -97,7 +97,7 @@ func SearchHandler(store *index.Store, cfgStore *config.Store, fetcher Fetcher) 
 			return
 		}
 		ws := cfg.Webspaces[name]
-		results, err := store.Search(ctx, name, q, ws.Filter)
+		results, err := store.Search(ctx, name, q, ws.Filter, ws.FilterBySource)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

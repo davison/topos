@@ -30,7 +30,12 @@
 		staleSources,
 		filterItemsBySource
 	} from '$lib/format';
-	import { setWebspaceFilter, removeSourceFromWebspace } from '$lib/config-edit';
+	import {
+		setWebspaceFilter,
+		removeSourceFromWebspace,
+		setSourceFilterTerms,
+		splitFilterInput
+	} from '$lib/config-edit';
 	import { markSuccessToast, markFailureToast } from '$lib/toast';
 	import { toggleSelection, selectRange, clearSelection } from '$lib/selection';
 	import WebspaceHeader from '$lib/components/WebspaceHeader.svelte';
@@ -43,6 +48,7 @@
 	import RelinkModal from '$lib/components/RelinkModal.svelte';
 	import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';
 	import TrustKeyDialog from '$lib/components/TrustKeyDialog.svelte';
+	import FilterSourceDialog from '$lib/components/FilterSourceDialog.svelte';
 	import ManageSourcesModal from '$lib/components/ManageSourcesModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
@@ -328,6 +334,9 @@
 	let filterBusy = $state(false);
 	let filterError = $state<string | null>(null);
 	let filters = $derived(configResponse?.config.webspaces[webspace]?.filter ?? []);
+	let filterBySource = $derived(
+		configResponse?.config.webspaces[webspace]?.filter_by_source ?? {}
+	);
 
 	// pluginTypes backs the "+" add-source picker's "New {plugin type}…"
 	// rows (D-11, 07-04-PLAN.md) — every discovered-but-not-necessarily-
@@ -468,7 +477,14 @@
 			| 'trust-update'
 			| 'trust-key'
 			| 'untrust-key'
+			| 'filter'
 	) {
+		if (kind === 'filter') {
+			// M2-R3 (#55): the per-source filter session mirrors the key
+			// dialogs — one instance, a single putConfig on confirm.
+			filterSourceInstance = name;
+			return;
+		}
 		if (kind === 'trust-key' || kind === 'untrust-key') {
 			// M2-R4 (davison/topos#49): the key dialogs mirror the re-pin
 			// session — one instance, resolved live to its SourceStatus, and
@@ -601,6 +617,41 @@
 	// sources (the chip's own health/hash fields) and the stream (D-07's
 	// eager reconcile) together, so the chip recovers without a kernel
 	// restart.
+	let filterSourceInstance = $state<string | null>(null);
+
+	function handleFilterSourceClose() {
+		filterSourceInstance = null;
+	}
+	async function handleFilterSourceSaved() {
+		filterSourceInstance = null;
+		await Promise.all([loadConfig(navGeneration), load(navGeneration)]);
+	}
+	// removeSourceFilterTerm: the per-source chip's X — drops exactly one
+	// term from one instance's filter_by_source entry through the same
+	// busy/error path every other modal-less filter write uses (#55).
+	async function removeSourceFilterTerm(instance: string, term: string) {
+		if (!configResponse) return;
+		filterBusy = true;
+		try {
+			const remaining = (filterBySource[instance] ?? []).filter((t) => t !== term);
+			const nextConfig = setSourceFilterTerms(configResponse.config, webspace, instance, remaining);
+			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			configResponse = res;
+			filterError = null;
+			await load(navGeneration);
+		} catch (err) {
+			filterError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? CONFIG_CONFLICT_MESSAGE
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong removing this source filter — check the browser console and try again.';
+			await loadConfig(navGeneration);
+		} finally {
+			filterBusy = false;
+		}
+	}
+
 	function handleTrustKeyClose() {
 		trustKeyInstance = null;
 	}
@@ -1071,9 +1122,55 @@
 	// "Save as filter" affordance's own gating in WebspaceHeader.svelte
 	// already prevents offering it for a duplicate term).
 	async function saveFilter() {
-		const term = searchQuery.trim();
-		if (term === '') return;
-		await writeFilter([...filters, term], true);
+		const raw = searchQuery.trim();
+		if (raw === '') return;
+		// M2-R3 (#55): `instance:term` tokens naming a configured instance
+		// go to that instance's own filter_by_source entry; whatever
+		// remains stays ONE global term, exactly as before.
+		const { global, bySource } = splitFilterInput(raw, Object.keys(configResponse?.config.sources ?? {}));
+		if (Object.keys(bySource).length === 0) {
+			await writeFilter([...filters, raw], true);
+			return;
+		}
+		if (!configResponse) {
+			filterError = 'Config has not finished loading yet — try again in a moment.';
+			return;
+		}
+		const gen = navGeneration;
+		filterBusy = true;
+		try {
+			let nextConfig = configResponse.config;
+			if (global !== '') {
+				nextConfig = setWebspaceFilter(nextConfig, webspace, [...filters, global]);
+			}
+			for (const [instance, terms] of Object.entries(bySource)) {
+				nextConfig = setSourceFilterTerms(nextConfig, webspace, instance, [
+					...(nextConfig.webspaces[webspace]?.filter_by_source?.[instance] ?? []),
+					...terms
+				]);
+			}
+			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			if (gen !== navGeneration) return;
+			configResponse = res;
+			filterError = null;
+			searchQuery = '';
+			searchState = 'idle';
+			searchResults = [];
+			searchSources = null;
+			searchSourcesState = 'idle';
+			await load(navGeneration);
+		} catch (err) {
+			if (gen !== navGeneration) return;
+			filterError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? CONFIG_CONFLICT_MESSAGE
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong saving the filter — check the browser console and try again.';
+			await loadConfig(gen);
+		} finally {
+			if (gen === navGeneration) filterBusy = false;
+		}
 	}
 
 	// removeFilter removes exactly one matching element by value, leaving
@@ -1362,6 +1459,8 @@
 			{unknownConfigKeys}
 			onsavefilter={saveFilter}
 			onremovefilter={removeFilter}
+			{filterBySource}
+			onremovesourcefilter={removeSourceFilterTerm}
 			config={configResponse?.config ?? null}
 			baseHash={configResponse?.hash ?? ''}
 			{pluginTypes}
@@ -1426,6 +1525,23 @@
 				baseHash={configResponse.hash}
 				onclose={handleTrustKeyClose}
 				onsaved={handleTrustKeySaved}
+			/>
+		{/key}
+	{/if}
+
+	{#if configResponse && filterSourceInstance}
+		{#key filterSourceInstance}
+			<FilterSourceDialog
+				open={true}
+				{webspace}
+				instance={filterSourceInstance}
+				displayName={sourcesByInstance.get(filterSourceInstance)?.display_name ??
+					filterSourceInstance}
+				terms={filterBySource[filterSourceInstance] ?? []}
+				config={configResponse.config}
+				baseHash={configResponse.hash}
+				onclose={handleFilterSourceClose}
+				onsaved={handleFilterSourceSaved}
 			/>
 		{/key}
 	{/if}

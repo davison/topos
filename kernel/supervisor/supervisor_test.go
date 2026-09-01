@@ -1040,7 +1040,7 @@ keywords = ["demo"]
 	// The narrowed webspace: alpha's row survives, beta's is gone —
 	// asserted on the statement immediately after Apply returns, no sleep,
 	// no eventually-loop.
-	ws1Items, err := idx.StreamItems(ctx, "ws1", nil, index.ViewIncluded)
+	ws1Items, err := idx.StreamItems(ctx, "ws1", nil, nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws1): %v", err)
 	}
@@ -1055,7 +1055,7 @@ keywords = ["demo"]
 	// The OTHER webspace: both alpha's and beta's rows are untouched — a
 	// webspace narrowed for one instance must never widen into a deletion
 	// for that instance's rows anywhere else.
-	ws2Items, err := idx.StreamItems(ctx, "ws2", nil, index.ViewIncluded)
+	ws2Items, err := idx.StreamItems(ctx, "ws2", nil, nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws2): %v", err)
 	}
@@ -1127,7 +1127,7 @@ keywords = ["demo"]
 		t.Fatalf("Apply: %v", err)
 	}
 
-	items, err := idx.StreamItems(ctx, "shell-target", nil, index.ViewIncluded)
+	items, err := idx.StreamItems(ctx, "shell-target", nil, nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(shell-target): %v", err)
 	}
@@ -1186,7 +1186,7 @@ keywords = ["demo"]
 		t.Fatalf("Apply: %v", err)
 	}
 
-	items, err := idx.StreamItems(ctx, "ws1", nil, index.ViewIncluded)
+	items, err := idx.StreamItems(ctx, "ws1", nil, nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws1): %v", err)
 	}
@@ -1251,7 +1251,7 @@ keywords = ["demo"]
 		t.Fatalf("Apply: %v", err)
 	}
 
-	items, err := idx.StreamItems(ctx, "doomed", nil, index.ViewIncluded)
+	items, err := idx.StreamItems(ctx, "doomed", nil, nil, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(doomed): %v", err)
 	}

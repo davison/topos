@@ -616,6 +616,9 @@ func (cfg *Config) validateWebspaces() error {
 		if err := cfg.validateSourcesAllowlist(name, ws); err != nil {
 			return err
 		}
+		if err := cfg.validateFilterBySource(name, ws); err != nil {
+			return err
+		}
 		if err := cfg.validateFallbackCoverage(name, ws); err != nil {
 			return err
 		}
@@ -670,6 +673,40 @@ func (cfg *Config) validateMatchBlocks(webspaceName string, ws Webspace) error {
 				if strings.TrimSpace(v) == "" {
 					return fmt.Errorf("config: webspace %q match block for source %q field %q declares an empty or whitespace-only value", webspaceName, instance, field)
 				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateFilterBySource checks every [webspaces.<name>.filter_by_source]
+// entry (M2-R3, #55): the instance must be a configured source (unknown
+// instance is a typo signal), must not be excluded by the same webspace's
+// sources allowlist (dead config, exactly as validateMatchBlocks treats
+// it), and must declare at least one non-empty term — a
+// silently-narrows-nothing entry is the shape D-06 forbids elsewhere.
+func (cfg *Config) validateFilterBySource(webspaceName string, ws Webspace) error {
+	instances := make([]string, 0, len(ws.FilterBySource))
+	for instance := range ws.FilterBySource {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+
+	for _, instance := range instances {
+		if _, ok := cfg.Sources[instance]; !ok {
+			return fmt.Errorf("config: webspace %q filter_by_source names unknown source instance %q", webspaceName, instance)
+		}
+		if !ws.Participates(instance) {
+			return fmt.Errorf("config: webspace %q declares filter_by_source for source %q, which is excluded by this webspace's sources allowlist — remove one or the other", webspaceName, instance)
+		}
+		terms := ws.FilterBySource[instance]
+		if len(terms) == 0 {
+			return fmt.Errorf("config: webspace %q filter_by_source for source %q declares zero terms", webspaceName, instance)
+		}
+		for _, term := range terms {
+			if strings.TrimSpace(term) == "" {
+				return fmt.Errorf("config: webspace %q filter_by_source for source %q declares an empty or whitespace-only term", webspaceName, instance)
 			}
 		}
 	}

@@ -178,7 +178,7 @@ describe('menu contents: Refresh now first, three separators, no delete-instance
 		return -1;
 	}
 
-	it('the menu item label set equals exactly the eight expected labels, Trust updated binary… first, the two key consents next (11-06-PLAN.md Task 1, E4; M2-R4)', () => {
+	it('the menu item label set equals exactly the nine expected labels, Trust updated binary… first, the two key consents next (11-06-PLAN.md Task 1, E4; M2-R4)', () => {
 		const items = [...editMenuBlock.matchAll(/<DropdownMenuItem[\s\S]*?<\/DropdownMenuItem>/g)].map(
 			(m) => m[0]
 		);
@@ -201,6 +201,7 @@ describe('menu contents: Refresh now first, three separators, no delete-instance
 			'Refresh now',
 			'Edit connection…',
 			'Edit match settings…',
+			'Filter this source…',
 			'Re-link…',
 			'Remove from this webspace'
 		]);

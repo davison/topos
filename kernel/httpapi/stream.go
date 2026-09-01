@@ -97,7 +97,7 @@ func StreamHandler(store *index.Store, cfgStore *config.Store) http.HandlerFunc 
 			return
 		}
 
-		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, view)
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, view)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

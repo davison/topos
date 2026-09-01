@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -563,9 +564,10 @@ SELECT COUNT(*) FROM item_marks WHERE webspace_name = ? AND kind = ?
 // LIMIT — the filtered view is still the whole bucket, just narrower. An
 // FTS5-hostile filter term degrades to an empty slice with a nil error,
 // mirroring Search's own fts5-error degradation, rather than a 500.
-func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string, view MarkView) ([]item.Item, error) {
+func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string, bySource map[string][]string, view MarkView) ([]item.Item, error) {
 	match := BuildMatchQuery(filterTerms, "")
 	markClause := streamMarkFilterClause(view)
+	perSourceClause, perSourceArgs := perSourceFilterClauses(bySource)
 
 	const baseColumns = `
 SELECT items.id, items.source, items.source_type, items.source_id, items.title, items.preview,
@@ -581,10 +583,11 @@ SELECT items.id, items.source, items.source_type, items.source_id, items.title, 
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
-` + markClause + `
+` + perSourceClause + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		rows, err = s.db.QueryContext(ctx, q, webspaceName, webspaceName)
+		args := append(append([]any{webspaceName}, perSourceArgs...), webspaceName)
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	} else {
 		q := baseColumns + `
 FROM items_fts
@@ -592,10 +595,11 @@ JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
-` + markClause + `
+` + perSourceClause + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		rows, err = s.db.QueryContext(ctx, q, webspaceName, match, webspaceName)
+		args := append(append([]any{webspaceName, match}, perSourceArgs...), webspaceName)
+		rows, err = s.db.QueryContext(ctx, q, args...)
 	}
 	if err != nil {
 		// Mirror Search's fts5-error degradation (03-RESEARCH.md Pattern
@@ -672,6 +676,36 @@ func BuildMatchQuery(filterTerms []string, liveQuery string) string {
 	return strings.Join(parts, " ")
 }
 
+// perSourceFilterClauses renders [webspaces.<w>.filter_by_source] (M2-R3,
+// #55) as SQL: for each instance with terms, an AND-ed clause that leaves
+// every OTHER instance's rows untouched and admits this instance's rows
+// only when they FTS-match every term — items.source <> ? OR rowid IN
+// (SELECT rowid FROM items_fts WHERE items_fts MATCH ?). Instances are
+// sorted so the SQL and args are deterministic; an instance whose terms
+// all normalise away contributes nothing (the same degrade-to-no-op
+// BuildMatchQuery gives an empty Filter).
+func perSourceFilterClauses(bySource map[string][]string) (string, []any) {
+	if len(bySource) == 0 {
+		return "", nil
+	}
+	instances := make([]string, 0, len(bySource))
+	for instance := range bySource {
+		instances = append(instances, instance)
+	}
+	sort.Strings(instances)
+	var clause strings.Builder
+	var args []any
+	for _, instance := range instances {
+		match := BuildMatchQuery(bySource[instance], "")
+		if match == "" {
+			continue
+		}
+		clause.WriteString("  AND (items.source <> ? OR items.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?))\n")
+		args = append(args, instance, match)
+	}
+	return clause.String(), args
+}
+
 // SnippetOpen and SnippetClose are the delimiter runes Search wraps a
 // matched term with inside SearchResult.Snippet. They are the ASCII
 // control characters STX (0x02) and ETX (0x03) rather than any printable
@@ -729,7 +763,7 @@ func ftsQuery(raw string) string {
 // (03-RESEARCH.md Pattern 3). Both the webspace name and the sanitized FTS5
 // query are bound parameters — nothing here is built by string
 // concatenation.
-const searchQuery = `
+const searchQueryHead = `
 SELECT items.id, items.source, items.source_type, items.source_id, items.title, items.preview,
        items.timestamp_unix, items.secondary_timestamp_unix, items.fidelity, items.deep_link,
        items.labels_json, items.provenance_json, items.group_id, items.group_label, items.has_thumbnail,
@@ -741,7 +775,9 @@ JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
-` + markFilterClause + `
+`
+
+const searchQueryTail = `
 ORDER BY rank ASC
 LIMIT 50
 `
@@ -761,13 +797,16 @@ LIMIT 50
 // rawQuery/filterTerms combination that matches no item also returns an
 // empty slice and a nil error. Results are capped at 50 rows. This method
 // only reads the local index — it never triggers a live source call.
-func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filterTerms []string) ([]SearchResult, error) {
+func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filterTerms []string, bySource map[string][]string) ([]SearchResult, error) {
 	query := BuildMatchQuery(filterTerms, rawQuery)
 	if query == "" {
 		return []SearchResult{}, nil
 	}
 
-	rows, err := s.db.QueryContext(ctx, searchQuery, SnippetOpen, SnippetClose, webspaceName, query, webspaceName)
+	perSourceClause, perSourceArgs := perSourceFilterClauses(bySource)
+	q := searchQueryHead + perSourceClause + markFilterClause + searchQueryTail
+	args := append(append([]any{SnippetOpen, SnippetClose, webspaceName, query}, perSourceArgs...), webspaceName)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		// ftsQuery's phrase-quoting makes a genuine MATCH syntax error
 		// unreachable in principle, but a malformed query must degrade to

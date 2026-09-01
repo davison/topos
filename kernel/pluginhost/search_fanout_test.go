@@ -119,3 +119,27 @@ func TestSearchSources_NoMembershipInputNoCall(t *testing.T) {
 		t.Errorf("expected no call and no outcome, got %+v (called: %v)", out, impl.gotFields != nil)
 	}
 }
+
+// TestSearchSources_PerInstanceFilterRidesAsRequiredTerms (M2-R3, #55):
+// an instance named in the webspace's filter_by_source map receives the
+// global filter AND its own terms as required_terms; every other
+// instance receives the global filter alone, untouched.
+func TestSearchSources_PerInstanceFilterRidesAsRequiredTerms(t *testing.T) {
+	narrowed := &fakeSearchImpl{hits: 1}
+	untouched := &fakeSearchImpl{hits: 1}
+	h := &Host{plugins: []*Plugin{
+		{name: "a-narrowed", displayName: "a", sourceType: "fake", matchVocabulary: []string{"labels"}, impl: narrowed, searchesContent: true},
+		{name: "b-untouched", displayName: "b", sourceType: "fake", matchVocabulary: []string{"labels"}, impl: untouched, searchesContent: true},
+	}}
+	ws := config.Webspace{
+		Keywords:       []string{"boiler"},
+		FilterBySource: map[string][]string{"a-narrowed": {"quote", "2026"}},
+	}
+	h.SearchSources(context.Background(), ws, "boiler", []string{"invoice"})
+	if got := narrowed.gotReq; len(got) != 3 || got[0] != "invoice" || got[1] != "quote" || got[2] != "2026" {
+		t.Errorf("narrowed instance must receive global + its own terms: %v", got)
+	}
+	if got := untouched.gotReq; len(got) != 1 || got[0] != "invoice" {
+		t.Errorf("the other instance must receive the global filter alone: %v", got)
+	}
+}
