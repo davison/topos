@@ -72,7 +72,7 @@ jobs:
           fi
           changed="$(git diff --name-only "$base"...HEAD)"
           printf 'changed files:\n%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -vE '^(docs/|\.planning/|.*\.md)$' | grep -q .; then
+          if printf '%s\n' "$changed" | grep -vE '^(docs/|\.planning/)|\.md$' | grep -q .; then
             echo "code changed — the full gate runs"
             echo code=true >> "$GITHUB_OUTPUT"
           else
