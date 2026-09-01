@@ -35,9 +35,10 @@ path = "@CHECKOUT@/bin/topos-dev-index.db"
 
 [plugins]
 # Both directories resolve inside THIS checkout's own bin/, so `make dev`
-# in a worktree launches only the plugin binaries that worktree's own
-# `plugins` prerequisite just built — never another checkout's binaries,
-# and never the operator's production plugins.dir.
+# in a worktree launches only what it just placed there: the mock its
+# `plugins` prerequisite built, plus the sibling fleet it adopts from
+# DEV_PLUGINS_DIR (a topos-plugins checkout's bin/, copied in on every
+# run) — never the operator's production plugins.dir.
 #
 # external_dir must STAY present even when you use no external plugins:
 # omitting the key makes the kernel fall back to its platform data

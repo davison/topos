@@ -88,9 +88,10 @@ path = "~/.local/share/topos/index.db"
 #
 # Staleness warning if you override this to an ABSOLUTE path (e.g.
 # pointing at a different checkout's bin/plugins/ so you don't have to
-# rebuild in every worktree): `make dev`/`make build`'s plugin rebuild
-# only ever writes into THIS checkout's own bin/plugins/ — an absolute
-# `dir` elsewhere is never touched by that rebuild, so the kernel can
+# rebuild in every worktree): `make dev`/`make build` only ever write
+# into THIS checkout's own bin/plugins/ (the mock they build, and the
+# sibling fleet `make dev` adopts) — an absolute `dir` elsewhere is never
+# touched by them, so the kernel can
 # silently serve plugin binaries built from a DIFFERENT (possibly older)
 # commit than the one you're actually running. This is invisible for
 # most RPCs (Match/Health/Fetch keep working against whatever contract
@@ -98,9 +99,10 @@ path = "~/.local/share/topos/index.db"
 # feature quietly missing — e.g. every source chip falling back to the
 # generic Puzzle icon because an old binary's Describe response predates
 # the icon fields (09-02-PLAN.md). If you use an absolute dir here,
-# either point it at THIS checkout's own bin/plugins/, or re-run
-# `make plugins`/`make build` in whichever checkout it actually names
-# before expecting a plugin-side code change to take effect.
+# either point it at THIS checkout's own bin/plugins/, or rebuild in
+# whichever checkout it actually names — the kernel's `make build` for
+# the mock, the topos-plugins checkout's `make build` for a functional
+# plugin — before expecting a plugin-side code change to take effect.
 dir = "plugins"
 
 # external_dir: the SECOND, UNTRUSTED plugin directory (Phase 11,
