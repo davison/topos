@@ -51,6 +51,43 @@ The trigger is a human pushing a tag matching `v*.*.*` — nothing in CI
 creates that tag. `.github/workflows/release.yml` watches for it and, on
 a match, builds and publishes.
 
+### Versioning: the next tag is derived from the commit log
+
+The version number is never chosen by feel — it is read off the
+conventional-commit log since the last tag
+([#64](https://github.com/davison/topos/issues/64), operator-decided at
+the M2 release gate on
+[#40](https://github.com/davison/topos/issues/40)):
+
+```bash
+git log <last-tag>..main --pretty=%s
+```
+
+- Any commit whose type carries the breaking marker — `feat!:` or any
+  `<type>(scope)!:` — forces a **minor** bump.
+- Otherwise, any `feat:` (a purely additive feature) or any `fix:`
+  yields a **patch** bump.
+- A log holding only `docs:`, `chore:`, `test:`, `ci:`, `build:` or
+  `refactor:` commits bumps nothing on its own — there is no new tag to
+  cut until behaviour changes.
+- A **major** bump is reserved for substantial rework with breaking
+  changes, and is always a human decision — never derived mechanically.
+
+"Breaking" means breaking for a consumer of a published surface: the
+plugin contract (`proto/topos/v1/plugin.proto` and the SDK), the HTTP
+API (`docs/api.md`), the config schema, the CLI's commands and flags,
+or the install layout. The same derivation governs
+[`topos-plugins`](https://github.com/davison/topos-plugins)' `v*.*.*`
+tags against its own log.
+
+Because the tag is checkable from the log alone, the log's discipline
+is what the process stands on: commit types must truthfully classify
+each change, and the reviewer verifies them against the diff —
+`roles/implementer.local.md` and `roles/reviewer.local.md` carry those
+obligations. A wrongly-typed commit discovered after merge is corrected
+by a follow-up commit stating the true consequence in its own type; the
+derivation then reads both.
+
 Sequence:
 
 1. Confirm the portable gate is green (`make test-portable`, or check the
