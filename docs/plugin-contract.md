@@ -1025,12 +1025,15 @@ full resync). Return `reachable: false` with `last_error` set for any
 failure to reach the source system; never return a gRPC error from
 `Health` itself.
 
-### `Search` (optional — decided, not yet shipped)
+### `Search` (optional)
 
 **Status:** decided at [davison/topos#50](https://github.com/davison/topos/issues/50)
-(M2-R2 of [#40](https://github.com/davison/topos/issues/40)); shipping
-in the implementation tasks that issue names. Until they land, the four
-RPCs above are the whole contract.
+(M2-R2 of [#40](https://github.com/davison/topos/issues/40)); the RPC,
+the SDK's optional interface, the mock's implementation and the kernel's
+fan-out shipped at [#53](https://github.com/davison/topos/issues/53).
+The first-party plugins implement it at
+[topos-plugins#25](https://github.com/davison/topos-plugins/issues/25);
+the app's result set at [#54](https://github.com/davison/topos/issues/54).
 
 The kernel's index holds titles and bounded previews, never bodies (the
 hybrid model, above). Search over bodies therefore belongs to the source
@@ -1087,7 +1090,7 @@ implement `Search` answers `Unimplemented`; the kernel treats that as
 chip — **not** as a contract incompatibility. There is no `topos.v3` for
 this; the generation gate (above, "Handshake") is untouched. The mock
 reference plugin will implement `Search` over its fixture bodies and
-`mockstrict` will decline it, so both paths are proven in the kernel's
+`mockstrict` declines it, so both paths are proven in the kernel's
 own suite. In the SDK the RPC is an **optional interface** (a source
 that implements it is discovered by type assertion), never a new
 method on `sdk.SourcePlugin` — a plugin upgrading the SDK compiles

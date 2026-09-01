@@ -11,6 +11,13 @@ service SourcePlugin {
   rpc Match(MatchRequest) returns (MatchResponse);
   rpc Fetch(FetchRequest) returns (FetchResponse);
   rpc Health(HealthRequest) returns (HealthResponse);
+  // Search is OPTIONAL (M2-R2, davison/topos#50): a plugin that searches
+  // its own content declares searches_content in Describe and implements
+  // this; one that does not answers UNIMPLEMENTED, which the kernel
+  // treats as "no body search from this source" — a declared absence,
+  // never a contract incompatibility. Additive: no new contract
+  // generation. See docs/plugin-contract.md "Search".
+  rpc Search(SearchRequest) returns (SearchResponse);
 }
 
 message DescribeRequest {}
@@ -53,6 +60,9 @@ message DescribeResponse {
   // just "no icon for this plugin type yet" (e.g. a pre-Phase-9 binary, or
   // a plugin type with no configured/launched instance).
   bytes icon = 5;
+  // searches_content declares the OPTIONAL Search RPC (M2-R2): true only
+  // when the plugin searches its own content within membership.
+  bool searches_content = 8;
   // icon_mime is either "image/svg+xml" or "image/png". It is the empty
   // string if and only if icon is empty — a non-empty icon with an empty
   // mime, or a mime outside that two-value allowlist, is dropped kernel-
@@ -122,6 +132,39 @@ message MatchRequest {
   map<string, StringList> match_fields = 2;
 }
 message MatchResponse { repeated Item items = 1; }
+
+// SearchRequest (M2-R2, davison/topos#50): search this source's own content.
+message SearchRequest {
+  string query = 1;   // the operator's live query, whitespace-separated terms; all must match
+  int32  limit = 2;   // at most this many hits; 0 means the plugin's own default
+  // The webspace's resolved match_fields for THIS instance — the same map
+  // MatchRequest carries, same semantics. The plugin ANDs the search with
+  // membership: a hit is returned only if Match would also return it for
+  // these fields. An empty or absent map is REFUSED (InvalidArgument) —
+  // never "the whole source".
+  map<string, StringList> match_fields = 3;
+  // The webspace's saved filter terms that apply to this instance; a hit
+  // must also match every one (title, preview or body), so a body hit can
+  // never bypass a saved filter.
+  repeated string required_terms = 4;
+}
+message SearchResponse {
+  repeated SearchHit hits = 1;
+  bool   truncated = 2; // more hits existed than limit allowed
+  string note      = 3; // free text for the operator, e.g. "searched subjects and bodies of the last 90 days"
+}
+message SearchHit {
+  Item      item       = 1; // the same shape sync produces — the kernel renders and merges from it
+  string    snippet    = 2; // bounded, like Item.preview; never the body
+  MatchedIn matched_in = 3;
+}
+enum MatchedIn {
+  MATCHED_IN_UNSPECIFIED = 0;
+  MATCHED_IN_TITLE       = 1;
+  MATCHED_IN_BODY        = 2;
+  MATCHED_IN_LABELS      = 3;
+  MATCHED_IN_ATTACHMENT  = 4;
+}
 
 enum LinkFidelity {
   LINK_FIDELITY_UNSPECIFIED       = 0;

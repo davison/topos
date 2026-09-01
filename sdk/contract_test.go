@@ -20,7 +20,10 @@ const protoRelPath = "../proto/topos/v1/plugin.proto"
 // mutating verb names — a blacklist misses a creatively-named mutating
 // RPC, whereas an allowlist fails the build on *any* addition until
 // someone deliberately widens it here. See 01-04-PLAN.md Task 1.
-var allowedRPCs = []string{"Describe", "Match", "Fetch", "Health"}
+// Search (M2-R2, davison/topos#50) is a deliberate, non-mutating, OPTIONAL
+// addition: it reads the source's own content within membership and
+// writes nothing — widened here as that change.
+var allowedRPCs = []string{"Describe", "Match", "Fetch", "Health", "Search"}
 
 // TestContractRPCAllowlist is the mechanical PLUG-02 gate: it reads
 // plugin.proto from disk, strips comments so a commented-out or

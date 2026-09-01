@@ -247,6 +247,13 @@ func ParticipatesIn(ws config.Webspace, instance string) bool {
 // fallback is fanned across every source and legitimately matches nothing
 // for most of them, so only the explicit-block branch may ever produce
 // one.
+// MatchFieldsFor is matchFieldsFor exported for the search fan-out
+// (M2-R2, davison/topos#50): the kernel asks a source to search only with
+// the same resolved membership input sync gives Match — no input, no call.
+func MatchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates, explicit bool) {
+	return matchFieldsFor(ws, src)
+}
+
 func matchFieldsFor(ws config.Webspace, src Source) (fields map[string][]string, participates, explicit bool) {
 	if !ParticipatesIn(ws, src.Name()) {
 		return nil, false, false

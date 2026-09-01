@@ -80,7 +80,7 @@ func Router(store *index.Store, cfgStore *config.Store, fetcher Fetcher, prober 
 	r := chi.NewRouter()
 	r.Get("/api/webspaces", WebspacesHandler(store, cfgStore))
 	r.Get("/api/webspaces/{webspace}/stream", StreamHandler(store, cfgStore))
-	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, cfgStore))
+	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, cfgStore, fetcher))
 	r.Get("/api/items/{id}", ItemHandler(store, cfgStore, fetcher))
 	r.Get("/api/items/{id}/content", ItemContentHandler(store, fetcher))
 	r.Get("/api/items/{id}/thumbnail", ItemThumbnailHandler(store, fetcher))
