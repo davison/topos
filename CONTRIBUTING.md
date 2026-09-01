@@ -48,8 +48,8 @@ does that.
 
 `make dev` rebuilds the mock plugin (`make plugins`) and adopts the
 functional fleet from a sibling checkout: every `topos-plugin-*` binary
-in `DEV_PLUGINS_DIR` (default `../topos-plugins/bin`, which that
-repository's `make build`/`make build-signal` fill) is copied beside the
+in `DEV_PLUGINS_DIR` (default `../topos-plugins/bin`, which topos-plugins'
+`make build`/`make build-signal` fill) is copied beside the
 mock and hashed into the dev kernel's link-time manifest at build time,
 so the fleet runs at the trusted tier in the dev instance with no
 consent-pin churn. Absent or empty, dev runs with the mock only and says

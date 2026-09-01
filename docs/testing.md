@@ -502,7 +502,7 @@ Phases 12–14 drove two real source plugins through this harness: the
 filesystem plugin (six specs proving its semantics end to end, plus the
 external-tier rehearsal that reused its binary) and the clean-room
 Google Drive plugin (one spec behind the `TOPOS_GDRIVE_BIN` seam, with
-its own `make gdrive-external-rehearsal` target, both since removed). At the plugin split
+its own since-removed `make gdrive-external-rehearsal` target). At the plugin split
 ([davison/topos#13](https://github.com/davison/topos/issues/13)) their
 subjects moved to
 [`topos-plugins`](https://github.com/davison/topos-plugins) — the specs
