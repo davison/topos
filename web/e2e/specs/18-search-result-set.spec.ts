@@ -63,6 +63,31 @@ test.describe('18: the result set that says where it matched, arriving progressi
 		await expect(source(STRICT)).toContainText('no content search');
 		await expect(source(SLOW)).toHaveAttribute('data-search-source-status', 'timeout');
 		await expect(source(SLOW)).toContainText('timed out');
+		// Elapsed renders for every outcome — the fast answer in
+		// milliseconds, the timed-out one at its ~5s budget.
+		for (const id of [FAST, STRICT, SLOW]) {
+			await expect(source(id).locator('[data-search-source-elapsed]')).toHaveText(/\d+(\.\d+)?(ms|s)/);
+		}
+		await expect(source(SLOW).locator('[data-search-source-elapsed]')).toHaveText(/s$/);
+	});
+
+	test('clearing the box while the sources are still answering discards their answer', async ({
+		page
+	}) => {
+		const rows = page.getByRole('main').locator('[data-item-id]');
+		await expect(rows).toHaveCount(8); // the unfiltered stream
+		const searchBox = page.getByPlaceholder(SEARCH_PLACEHOLDER);
+		await searchBox.fill('standup');
+		await expect(rows).toHaveCount(4); // the index answer, sources still pending
+		await searchBox.clear();
+		// The stream returns at once…
+		await expect(rows).toHaveCount(8);
+		// …and STAYS: the superseded scope=all answer (still held by the
+		// slow source's delay) must never repopulate the results or the
+		// status row after the clear (PR #61 review round 1).
+		await page.waitForTimeout(6500);
+		await expect(rows).toHaveCount(8);
+		await expect(page.locator('[data-search-sources]')).toHaveCount(0);
 	});
 
 	test('the index answer is on screen while the sources are still answering', async ({ page }) => {
