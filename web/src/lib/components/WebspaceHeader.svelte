@@ -157,7 +157,14 @@
 		// through, not inferred from the child.
 		onedit: (
 			name: string,
-			kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+			kind:
+				| 'connection'
+				| 'match'
+				| 'relink'
+				| 'remove'
+				| 'trust-update'
+				| 'trust-key'
+				| 'untrust-key'
 		) => void;
 		// collapsed (checkpoint deviation, 09.1-01-PLAN.md issue 2): the
 		// caller's own scroll-driven decision, below 1024px only — the

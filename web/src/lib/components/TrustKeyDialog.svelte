@@ -153,7 +153,7 @@
 				<Button type="button" disabled={saving} onclick={confirm}>Trust this key</Button>
 			{:else if mode === 'untrust' && keyId}
 				<Button type="button" variant="destructive" disabled={saving} onclick={confirm}>
-					Stop trusting {shortHash(keyId, 12)}
+					Stop trusting {shortHash(keyId)}
 				</Button>
 			{/if}
 		</DialogFooter>
