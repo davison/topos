@@ -98,6 +98,7 @@ make test-portable       # go build + go test across the four buildable modules 
 make test                # alias of test-portable, kept for muscle memory
 make e2e                 # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check            # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
+make docs-check          # every relative doc link resolves — with scripts/split-claims-sweep.py, what CI runs on a docs-only PR
 make docs-check           # scripts/check-doc-links.sh — every relative doc link resolves
 make install-check        # scripts/install-smoke.sh — hermetic guard for `make install`/`uninstall`
 make provenance-check     # scripts/provenance-smoke.sh — keygen → sign → verify → tamper → refuse
@@ -105,6 +106,13 @@ make isolation-check      # scripts/simultaneity-smoke.sh — dev + installed si
 make dev-config           # generate config.dev.toml from config.dev.example.toml (never clobbers an existing one)
 make proto                # regenerate sdk/gen from proto/topos/v1/plugin.proto (buf, or protoc + plugins)
 ```
+
+CI runs these as two jobs: a cheap `changes` job (docs gates, always) and
+the full `test` job only when the diff touches code — anything outside
+`docs/`, `.planning/` and Markdown. A docs-only PR shows `test` as
+skipped and still satisfies `task finish`; `[skip ci]` does not (no check
+run at all is refused as `NO_CHECKS`), so never use it. See
+[`docs/testing.md`](docs/testing.md), "How CI runs the gates".
 
 `make test-portable` covers the four buildable modules — the root
 kernel module, `sdk`, `plugins/mock`, `plugins/mockstrict`; the fifth

@@ -16,5 +16,6 @@ the complete GSD working state is frozen under [`.planning/`](.planning/).
 
 | Milestone | Goal | Tracking issue | Status |
 |-----------|------|----------------|--------|
-| M1 | Plugin repo split and the third-party path (v1.3.0) | [#6](https://github.com/davison/topos/issues/6) | Closing — [record](docs/milestones/1-plugin-repo-split-and-the-third-party-path.md); v1.3.0 is cut and #6 closed by the sequence recorded there |
+| M1 | Plugin repo split and the third-party path (v1.3.0) | [#6](https://github.com/davison/topos/issues/6) | Done — [record](docs/milestones/1-plugin-repo-split-and-the-third-party-path.md), [v1.3.0](https://github.com/davison/topos/releases/tag/v1.3.0) |
+| M2 | Usability and quality of life (v1.4.0) | [#40](https://github.com/davison/topos/issues/40) | Open |
 

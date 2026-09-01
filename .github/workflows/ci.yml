@@ -1,7 +1,29 @@
-# The repository's first CI workflow (D-13). Runs the full portable gate —
-# Go tests across the four buildable workspace modules (root, sdk, mock, mockstrict; testdata/external-plugin is built by external-demo inside make e2e), svelte-check, vitest,
-# the e2e spec tree's own typecheck, and the hermetic Playwright suite —
-# on every push and pull request to main. No repository secret and no
+# The repository's CI workflow (D-13). Two jobs on every push and pull
+# request to main:
+#
+#   changes — always runs, cheap (seconds): checks out with history,
+#             decides from the DIFF whether the change touches code, runs
+#             the docs gates (make docs-check, the split-claims sweep).
+#   test    — the full portable gate — Go tests across the four buildable
+#             workspace modules (root, sdk, mock, mockstrict;
+#             testdata/external-plugin is built by external-demo inside
+#             make e2e), svelte-check, vitest, the e2e spec tree's own
+#             typecheck, and the hermetic Playwright suite — runs only
+#             when `changes` says the diff touches code.
+#
+# Why this shape (davison/topos#37, M2-R1): a docs-only PR used to spend
+# the ~4-minute gate twice (PR head, then push-to-main) on prose. The
+# alternative, `[skip ci]`, is unusable here — GitHub then creates no
+# check run at all, and CodeCrew's `task finish` refuses NO_CHECKS: the
+# gate needs a fact to verify, and a commit message is author-controlled.
+# A job that REPORTS `skipped` is such a fact (the finish gate counts
+# `skipping` as green alongside `pass`), and the decision is made by this
+# committed workflow from the diff, never by the message. "Code" is
+# everything that is not documentation — see the `changes` step — so a
+# PR that edits this workflow, the Makefile or scripts/ always takes the
+# full gate; this is no weaker than before.
+#
+# No repository secret and no
 # live-source credential variable is referenced anywhere in this file
 # (D-07/D-10 make that structurally true, not just a policy): the harness
 # never launches a real source plugin, only the mock-shaped fixtures under
@@ -22,7 +44,50 @@ on:
     branches: [main]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Documentation is docs/, .planning/ (the frozen GSD archive) and
+      # any Markdown file anywhere (README, CONTRIBUTING, ROADMAP, the
+      # plugin docs). EVERYTHING else is code: .github/, Makefile,
+      # scripts/, web/, proto/, sdk/, kernel/, cmd/, plugins/, go.*, the
+      # config examples, testdata — deliberately not enumerated, so a new
+      # top-level directory is code until someone argues otherwise here.
+      # An unknown base (a brand-new branch, a force-push whose old tip
+      # is gone) is treated as code: when in doubt, run the gate.
+      - id: classify
+        run: |
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then
+            echo "base unknown ($base) — treating the change as code"
+            echo code=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "$base"...HEAD)"
+          printf 'changed files:\n%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -vE '^(docs/|\.planning/|.*\.md)$' | grep -q .; then
+            echo "code changed — the full gate runs"
+            echo code=true >> "$GITHUB_OUTPUT"
+          else
+            echo "documentation only — the full gate is skipped"
+            echo code=false >> "$GITHUB_OUTPUT"
+          fi
+
+      # The docs gates run on every change, docs-only included — plain
+      # relative-path resolution and a claims sweep, no build, no network.
+      - run: make docs-check
+      - run: python3 scripts/split-claims-sweep.py
+
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Job-level backstop (2026-08-18, quick task 260818-ov4): two
     # consecutive runs hung >15 minutes inside an apt fetch with nothing
@@ -53,10 +118,6 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
-
-      # The cheapest gate in this job — plain relative-path resolution,
-      # no build, no network access — so it runs first and fails fast.
-      - run: make docs-check
 
       - run: npm --prefix web ci
 
