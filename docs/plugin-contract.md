@@ -1043,10 +1043,19 @@ message SearchRequest  {
   string query = 1;
   int32  limit = 2;
   // The webspace's resolved match_fields for THIS instance — the same map
-  // MatchRequest carries, same semantics (D-04/D-05). The plugin ANDs the
-  // search with membership: a hit is returned only if it would also be
-  // returned by Match for these fields. Empty map: the whole source.
-  map<string, MatchValues> match_fields = 3;
+  // MatchRequest carries, same type and semantics (D-04/D-05). The plugin
+  // ANDs the search with membership: a hit is returned only if it would
+  // also be returned by Match for these fields. An empty or absent map is
+  // REFUSED (InvalidArgument) — never "the whole source": the kernel only
+  // asks instances that participate in the webspace with resolved
+  // membership input (kernel/correlate's own rule), and a plugin must
+  // not fill the gap if a kernel ever asks without it.
+  map<string, StringList> match_fields = 3;
+  // The webspace's saved filter terms that apply to this instance — the
+  // global stack plus this instance's own entry — each of which a hit
+  // must also match (title, preview or body), so a body hit can never
+  // bypass a saved filter the stream and index search both apply.
+  repeated string required_terms = 4;
 }
 message SearchResponse { repeated SearchHit hits = 1; bool truncated = 2; string note = 3; }
 message SearchHit {
@@ -1062,8 +1071,9 @@ is the webspace's resolved map for this instance, exactly as `Match`
 receives it, and a hit is returned only if `Match` would also return
 that item for the same fields (a mailbox's folders, a document store's
 tags, a chat's conversations: the source applies its own filter in its
-own query, where it is cheap) — searching **its own content, its own
-way** — IMAP
+own query, where it is cheap); it **refuses an empty map** rather than
+searching everything; it ANDs every `required_terms` entry with the
+query — searching **its own content, its own way** — IMAP
 `SEARCH TEXT`, a document store's full-text query, a local database's
 own index, grep over local files — returns `Item`-shaped hits with a
 bounded snippet and where the term matched, respects `limit` and reports
@@ -1094,9 +1104,24 @@ decides membership, for search as for sync — by carrying the resolved
 and intersecting stable ids — a full membership scan of every source
 per search, and a second round trip on the slow path.
 
-What the kernel does with hits — fan-out, correlation into the webspace
-before anything is shown, merging with the index's own hits, the
-per-source status — is the HTTP API's business, described in
+**The trust boundary, stated.** The kernel cannot verify that a returned
+hit is a member: an `Item` does not carry the native facts (folders,
+pages, conversations) that decision needs, and nothing in the wire
+format proves it. So search trusts the source to AND its query with the
+supplied fields **exactly as sync trusts the source's `Match` result
+set today** — the same party, the same promise, no wider. What the
+kernel enforces is its own side: it asks only participating instances
+with resolved membership input, sends the fields and the required
+terms, validates the shape of what comes back, and shows it under the
+source's name. A plugin that returns non-members is a broken or
+dishonest plugin, and it was already able to return non-members from
+`Match`. If "the kernel never shows a non-member" is ever required as
+an adversarial guarantee, that is a different design — an
+independently checkable membership proof — and this record does not
+claim it.
+
+What the kernel does with hits — fan-out, merging with the index's own
+hits, the per-source status — is the HTTP API's business, described in
 [`api.md`](api.md).
 
 ## The `Item` message
