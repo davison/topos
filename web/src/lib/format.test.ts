@@ -10,6 +10,7 @@ import {
 	matchedInSummary,
 	sourceSearchSummary,
 	sourceSearchTone,
+	sourceSearchElapsed,
 	searchCopy,
 	noMatchesHeading
 } from './format';
@@ -309,6 +310,10 @@ describe('matched_in and source status wording (M2-R2, #54)', () => {
 		expect(sourceSearchSummary({ status: 'error', hits: 0, elapsed_ms: 12, error: 'x' })).toBe(
 			'failed'
 		);
+		expect(sourceSearchElapsed(3)).toBe('3ms');
+		expect(sourceSearchElapsed(999)).toBe('999ms');
+		expect(sourceSearchElapsed(5000)).toBe('5s');
+		expect(sourceSearchElapsed(5250)).toBe('5.3s');
 		expect(sourceSearchTone('ok')).toBe('ok');
 		expect(sourceSearchTone('unsupported')).toBe('muted');
 		expect(sourceSearchTone('timeout')).toBe('warning');

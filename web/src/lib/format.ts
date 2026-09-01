@@ -692,6 +692,17 @@ export function sourceSearchTone(state: SourceSearchState): 'ok' | 'muted' | 'wa
 	}
 }
 
+// The per-source elapsed time, rendered for EVERY outcome (the plan's
+// status row is "status, counts, elapsed" — a timeout's five seconds is
+// as informative as a fast answer's milliseconds).
+export function sourceSearchElapsed(ms: number): string {
+	if (ms >= 1000) {
+		const s = ms / 1000;
+		return `${Number.isInteger(s) ? s : s.toFixed(1)}s`;
+	}
+	return `${ms}ms`;
+}
+
 export const searchSourcesCopy = Object.freeze({
 	pending: 'Searching sources…',
 	failed: 'The sources could not be searched — showing what the index found.',

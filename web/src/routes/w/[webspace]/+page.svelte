@@ -1215,6 +1215,11 @@
 		// results without issuing a request — clearing the box always
 		// returns the untouched stream.
 		if (query.trim() === '') {
+			// Invalidate any in-flight request too (PR #61 review round 1):
+			// without this bump, an index or scope=all answer started for the
+			// previous query still passes live() and would repopulate the
+			// results after the box has been cleared.
+			searchRequestSeq++;
 			searchState = 'idle';
 			searchResults = [];
 			searchSources = null;

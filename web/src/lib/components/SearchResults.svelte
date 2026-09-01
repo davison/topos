@@ -7,6 +7,7 @@
 		noMatchesHeading,
 		sourceSearchSummary,
 		sourceSearchTone,
+		sourceSearchElapsed,
 		searchSourcesCopy
 	} from '$lib/format';
 	import type { SearchResult, SourceStatus, SourceSearchStatus } from '$lib/api';
@@ -74,7 +75,7 @@
 						class="inline-flex items-center gap-1"
 						data-search-source={id}
 						data-search-source-status={status.status}
-						title={status.note || status.error || `${status.elapsed_ms} ms`}
+						title={status.note || status.error || undefined}
 					>
 						<span class="text-foreground">{sourcesByInstance.get(id)?.display_name ?? id}</span>
 						<span
@@ -83,6 +84,11 @@
 								: sourceSearchTone(status.status) === 'ok'
 									? 'text-success'
 									: undefined}>{sourceSearchSummary(status)}</span
+						>
+						<!-- Elapsed renders for EVERY outcome (PR #61 review round 1)
+						     — never only in a tooltip, never displaced by a note. -->
+						<span class="tabular-nums" data-search-source-elapsed
+							>· {sourceSearchElapsed(status.elapsed_ms)}</span
 						>
 					</span>
 				{/each}
