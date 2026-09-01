@@ -18,6 +18,8 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import KeyRound from '@lucide/svelte/icons/key-round';
+	import ShieldOff from '@lucide/svelte/icons/shield-off';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
@@ -100,7 +102,14 @@
 		onrefresh: (name: string) => void;
 		onedit: (
 			name: string,
-			kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+			kind:
+				| 'connection'
+				| 'match'
+				| 'relink'
+				| 'remove'
+				| 'trust-update'
+				| 'trust-key'
+				| 'untrust-key'
 		) => void;
 		// busy (07-05-PLAN.md Task 2, the shared save/reload state pattern's
 		// in-flight rule — E6 "the initiating control disables in flight")
@@ -139,6 +148,12 @@
 	// Pitfall 2).
 	let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch');
 	let isExternal = $derived(source.tier === 'external');
+	// M2-R4 (davison/topos#49): an external binary may carry an offer — an
+	// unknown key that verifiably signed its release — and an
+	// operator-trusted one names the key that vouched; both are kernel
+	// facts the chip only renders, never derives.
+	let hasOffer = $derived(Boolean(source.offered_key));
+	let isOperatorTrusted = $derived(source.tier === 'operator_trusted');
 
 	// isManifestUnverified/isShadowed (13-06-PLAN.md, D-12/D-13/D-14) mirror
 	// isPinMismatch's shape exactly — keyed on the kernel-published
@@ -427,6 +442,18 @@
 					Trust updated binary…
 				</DropdownMenuItem>
 			{/if}
+			{#if hasOffer}
+				<DropdownMenuItem onSelect={() => onedit(source.name, 'trust-key')}>
+					<KeyRound aria-hidden="true" />
+					Trust signing key…
+				</DropdownMenuItem>
+			{/if}
+			{#if isOperatorTrusted}
+				<DropdownMenuItem onSelect={() => onedit(source.name, 'untrust-key')}>
+					<ShieldOff aria-hidden="true" />
+					Stop trusting key…
+				</DropdownMenuItem>
+			{/if}
 			<DropdownMenuItem
 				disabled={source.syncing || isPinMismatch}
 				onSelect={() => onrefresh(source.name)}
@@ -457,6 +484,16 @@
 			>
 				Remove from this webspace
 			</DropdownMenuItem>
+			{#if isOperatorTrusted && source.trusted_key}
+				<DropdownMenuSeparator />
+				<div
+					class="flex items-center gap-2 px-2 py-1.5 text-[14px] leading-[1.4] text-muted-foreground"
+					data-trusted-key={source.trusted_key}
+				>
+					<KeyRound class="size-3.5 text-success" aria-hidden="true" />
+					<span class="truncate" title={source.trusted_key}>Trusted by you: {source.trusted_key}</span>
+				</div>
+			{/if}
 			{#if isExternal && source.pinned_hash}
 				<DropdownMenuSeparator />
 				<div

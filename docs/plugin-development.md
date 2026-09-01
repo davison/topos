@@ -453,10 +453,9 @@ Today (the kernel half, [#56](https://github.com/davison/topos/issues/56))
 `topos plugin pull` places a release signed by an unknown key into the
 external tier with its manifest and signature, prints your key id,
 fingerprint and the `[[plugins.trusted_keys]]` entry that trusts it, and
-the kernel reports the same offer on `GET /api/sources`; the operator
-adds the entry and restarts. The in-app consent —
-[#57](https://github.com/davison/topos/issues/57) — makes that one
-click. A kernel older than v1.4.0 still aborts `pull` on an unknown key
+the kernel reports the same offer on `GET /api/sources`, and the app
+offers it in one click — on the source chip's menu (*Trust signing
+key…*) and on the add-source interstitial. A kernel older than v1.4.0 still aborts `pull` on an unknown key
 (and runs the plugin external if placed by hand), so say which kernel
 your signed releases need.
 

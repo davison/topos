@@ -277,6 +277,20 @@ export function thumbnailUrl(id: string): string {
 
 // --- Source health / filter / refresh (02-02's kernel/httpapi/sources.go) ---
 
+export interface OfferedKey {
+	id: string;
+	fingerprint: string;
+	public_key: string;
+	reused?: boolean;
+}
+
+export interface TrustedKey {
+	id: string;
+	public_key: string;
+	trusted_at?: string;
+	note?: string;
+}
+
 export interface SourceStatus {
 	name: string; // source INSTANCE id (the [sources.<id>] config key, D-08) — matches StreamItem.source, filter/staleness/grant identity
 	source_type: string; // plugin kind (Describe-reported), matches StreamItem.source_type — descriptive only, never identity
@@ -293,7 +307,17 @@ export interface SourceStatus {
 	// to derive a tier from. TrustBadge's external-only guard treats it
 	// like trusted (no badge), which is the correct silence for an
 	// unknown.
-	tier: '' | 'trusted' | 'external';
+	// tier (Phase 11; M2-R4 davison/topos#49 adds operator_trusted): the
+	// kernel author's word ('trusted'), the operator's ('operator_trusted' —
+	// a key in [[plugins.trusted_keys]] signed the release; trusted_key
+	// names it), or neither ('external').
+	tier: '' | 'trusted' | 'operator_trusted' | 'external';
+	trusted_key?: string;
+	// offered_key: an unknown self-describing key signed a manifest naming
+	// this external binary — the app may offer "trust this key" (writes
+	// [[plugins.trusted_keys]]) or "pin this binary only". reused marks a
+	// key id already trusted arriving with a different key.
+	offered_key?: OfferedKey;
 	// pinned_hash/current_hash/launch_failure are declared here now (the
 	// complete Phase 11 wire surface, so no later plan re-edits this file)
 	// but not yet published by the kernel — that lands with pin
@@ -470,7 +494,15 @@ export interface KernelConfig {
 	// second, untrusted plugin directory and the per-external-binary
 	// SHA-256 pin map. Both optional/absent-when-empty on the wire,
 	// matching the Go struct's own `omitempty` tags.
-	plugins: { dir: string; external_dir?: string; pins?: Record<string, string> };
+	plugins: {
+		dir: string;
+		external_dir?: string;
+		pins?: Record<string, string>;
+		// trusted_keys mirrors PluginsConfig.TrustedKeys (M2-R4): the
+		// operator's accepted signing keys, written by TrustKeyDialog /
+		// the add-source interstitial's "trust this key" consent.
+		trusted_keys?: TrustedKey[];
+	};
 	sync: { interval: string };
 	sources: Record<string, SourceConfig>;
 	webspaces: Record<string, WebspaceConfig>;
@@ -539,7 +571,7 @@ export interface PluginTypesResponse {
 	// since it is a lookup table for names a caller already holds, never
 	// a second catalog to browse) — see that Go type's own doc comment.
 	// No schema_version bump accompanies this field.
-	plugin_type_tiers: Record<string, 'trusted' | 'external'>;
+	plugin_type_tiers: Record<string, 'trusted' | 'operator_trusted' | 'external'>;
 }
 
 /** GET /api/config/plugin-types */
@@ -664,7 +696,9 @@ export function pollWhatsAppLink(session: string): Promise<WhatsAppLinkSession> 
 
 /** DELETE /api/config/whatsapp-link/{session} */
 export function cancelWhatsAppLink(session: string): Promise<WhatsAppLinkSession> {
-	return deleteJSON<WhatsAppLinkSession>(`/api/config/whatsapp-link/${encodeURIComponent(session)}`);
+	return deleteJSON<WhatsAppLinkSession>(
+		`/api/config/whatsapp-link/${encodeURIComponent(session)}`
+	);
 }
 
 export interface DescribePluginRequest {
@@ -715,8 +749,9 @@ export interface DescribePluginResponse {
 	// extended to the trial-launch describe response so the
 	// untrusted-confirm interstitial (E1) can disclose which variables
 	// this source's own configuration references.
-	tier: 'trusted' | 'external';
+	tier: 'trusted' | 'operator_trusted' | 'external';
 	binary_hash: string;
+	offered_key?: OfferedKey;
 	env_var_names: string[];
 	extras: ExtrasFieldDecl[];
 }

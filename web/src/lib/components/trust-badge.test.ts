@@ -60,7 +60,7 @@ describe('TrustBadge: renders nothing at all when tier is not external', () => {
 	it('gates the whole backdrop/glyph block on tier === "external"', () => {
 		expect(
 			/\{#if\s+tier\s*===\s*'external'\}/.test(strippedBadge),
-			'expected an {#if tier === \'external\'} branch gating the badge — a trusted-tier source must render nothing extra at all, not merely a hidden or empty element'
+			"expected an {#if tier === 'external'} branch gating the badge — a trusted-tier source must render nothing extra at all, not merely a hidden or empty element"
 		).toBe(true);
 	});
 });
@@ -68,7 +68,7 @@ describe('TrustBadge: renders nothing at all when tier is not external', () => {
 describe('TrustBadge: the badge markup carries the full E2 contract', () => {
 	it('imports CircleAlert from @lucide/svelte/icons/circle-alert — the same glyph SecretField.svelte already established', () => {
 		expect(
-			strippedBadge.includes("@lucide/svelte/icons/circle-alert"),
+			strippedBadge.includes('@lucide/svelte/icons/circle-alert'),
 			'expected TrustBadge.svelte to import CircleAlert from @lucide/svelte/icons/circle-alert'
 		).toBe(true);
 	});
@@ -76,7 +76,7 @@ describe('TrustBadge: the badge markup carries the full E2 contract', () => {
 	it('positions the backdrop absolutely at -bottom-1 -right-1', () => {
 		expect(
 			/-bottom-1/.test(strippedBadge) && /-right-1/.test(strippedBadge),
-			'expected the badge backdrop to carry -bottom-1 -right-1 (overlapping the wrapped icon\'s bottom-right corner)'
+			"expected the badge backdrop to carry -bottom-1 -right-1 (overlapping the wrapped icon's bottom-right corner)"
 		).toBe(true);
 	});
 
@@ -108,7 +108,7 @@ describe('TrustBadge: declares two scales with distinct backdrop/glyph sizes and
 		).toBe(true);
 		expect(
 			/'chip'\s*\?\s*'bg-card'/.test(strippedBadge),
-			'expected the chip-scale backdrop surface to be bg-card — matching the chip\'s own bg-card surface'
+			"expected the chip-scale backdrop surface to be bg-card — matching the chip's own bg-card surface"
 		).toBe(true);
 		expect(
 			/'chip'\s*\?\s*'size-2\.5'/.test(strippedBadge),
@@ -123,7 +123,7 @@ describe('TrustBadge: declares two scales with distinct backdrop/glyph sizes and
 		).toBe(true);
 		expect(
 			/:\s*'bg-popover'/.test(strippedBadge),
-			'expected the picker-scale backdrop surface to be bg-popover — matching PopoverContent\'s own surface token'
+			"expected the picker-scale backdrop surface to be bg-popover — matching PopoverContent's own surface token"
 		).toBe(true);
 		expect(
 			/:\s*'size-3'/.test(strippedBadge),
@@ -175,7 +175,7 @@ describe('SourceChip: wraps PluginIcon in TrustBadge without changing the pill',
 		).toBe(true);
 		expect(
 			/source\.tier/.test(wrapperTag),
-			'found a source.tier reference on the pill wrapper\'s own opening tag — the trust badge must never change the pill\'s own border/background/height (D-06); tier only ever gates the icon-corner overlay'
+			"found a source.tier reference on the pill wrapper's own opening tag — the trust badge must never change the pill's own border/background/height (D-06); tier only ever gates the icon-corner overlay"
 		).toBe(false);
 	});
 
@@ -196,7 +196,7 @@ describe('SourceChip: tooltip text gains an untrusted clause for external-tier s
 		).toBe(true);
 		expect(
 			/source\.tier\s*===\s*'external'/.test(strippedChip),
-			'expected the tooltip derivation to check source.tier === \'external\''
+			"expected the tooltip derivation to check source.tier === 'external'"
 		).toBe(true);
 	});
 
@@ -219,5 +219,19 @@ describe('SourceChip: tooltip text gains an untrusted clause for external-tier s
 			strippedChip.includes('return `${source.display_name} — not yet synced`;'),
 			'expected the unknown/default branch to remain byte-identical'
 		).toBe(true);
+	});
+});
+
+describe('TrustBadge: the operator-trusted state (M2-R4, davison/topos#49)', () => {
+	it('renders a key glyph in the success tone, gated on tier === "operator_trusted", marked data-trust="operator"', () => {
+		expect(/\{:else if\s+tier\s*===\s*'operator_trusted'\}/.test(strippedBadge)).toBe(true);
+		expect(strippedBadge.includes("import KeyRound from '@lucide/svelte/icons/key-round'")).toBe(
+			true
+		);
+		expect(/data-trust="operator"/.test(strippedBadge)).toBe(true);
+		expect(/<KeyRound class=\{`\$\{glyphSize\} text-success`\}/.test(strippedBadge)).toBe(true);
+	});
+	it("still renders nothing for 'trusted' — the kernel author's word needs no glyph", () => {
+		expect(/tier\s*===\s*'trusted'/.test(strippedBadge)).toBe(false);
 	});
 });

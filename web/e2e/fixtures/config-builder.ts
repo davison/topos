@@ -136,7 +136,21 @@ export interface FixtureConfigSpec {
 	// actually granted the launch. Empty/undefined by default, so a
 	// fixture naming nothing here is byte-identical to before this field
 	// existed.
-	signedProvenanceBinaries?: { name: string; removeSignature?: boolean }[];
+	// scratchKeyID (M2-R4): sign this entry with a freshly generated key the
+	// kernel does not accept, so its binary carries an OFFER instead of
+	// evidence; the same id across entries shares one key. reusedID: sign
+	// with the scratch key but NAME the accepted fixture key id, to drive
+	// the reused-id warning.
+	signedProvenanceBinaries?: {
+		name: string;
+		removeSignature?: boolean;
+		scratchKeyID?: string;
+		reusedID?: boolean;
+	}[];
+	// unpinnedExternalBinaries: external binaries that must NOT get a pin
+	// written — they launch pin-mismatched, carrying whatever offer their
+	// signature yields (M2-R4).
+	unpinnedExternalBinaries?: string[];
 	// env: extra environment variables layered onto the spawned KERNEL
 	// process's fixed allowlist (kernel.ts's launchKernel) — never
 	// replacing it. This is HALF of how a spec reaches a mock-plugin
@@ -179,7 +193,10 @@ const PLACEHOLDER_CONNECTION_VALUE = 'e2e-fixture-unused';
  * or empty path — this is what makes "a fixture whose spec omits
  * index.path" structurally impossible rather than merely undocumented.
  */
-export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): Record<string, unknown> {
+export function buildConfig(
+	spec: FixtureConfigSpec,
+	opts: BuildConfigOptions
+): Record<string, unknown> {
 	if (!isAbsolute(opts.tmpDir)) {
 		throw new Error(
 			`config-builder: opts.tmpDir must be an absolute path, got ${JSON.stringify(opts.tmpDir)}`
@@ -228,7 +245,10 @@ export function buildConfig(spec: FixtureConfigSpec, opts: BuildConfigOptions): 
 	// loops below must skip every name in this set, so a fixture cannot
 	// accidentally mask "which mechanism granted the launch" by writing
 	// both a pin AND a signed manifest for the same name.
-	const signedProvenanceNames = new Set((spec.signedProvenanceBinaries ?? []).map((e) => e.name));
+	const signedProvenanceNames = new Set(
+		(spec.signedProvenanceBinaries ?? []).filter((e) => !e.scratchKeyID).map((e) => e.name)
+	);
+	for (const name of spec.unpinnedExternalBinaries ?? []) signedProvenanceNames.add(name);
 
 	const pins: Record<string, string> = {};
 	for (const name of spec.externalPluginBinaries ?? []) {
@@ -282,7 +302,10 @@ function buildSourceEntry(src: FixtureSourceSpec): Record<string, unknown> {
 	// undefined (or explicitly false) writes no `recursive` key at all.
 	if (src.recursive === true) entry.recursive = true;
 	if (src.agent !== undefined) {
-		entry.agent = { read: src.agent.read ?? false, handoff: src.agent.handoff ?? false };
+		entry.agent = {
+			read: src.agent.read ?? false,
+			handoff: src.agent.handoff ?? false
+		};
 	}
 	// extras (D-12/D-13, Phase 11): emitted only when non-empty, mirroring
 	// every other optional sub-table on this entry.

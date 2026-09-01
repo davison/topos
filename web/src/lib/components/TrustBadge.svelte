@@ -27,6 +27,7 @@
 	// tooltip — it must never be the ONLY channel conveying "untrusted"
 	// to an assistive-tech user.
 	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import KeyRound from '@lucide/svelte/icons/key-round';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -38,7 +39,7 @@
 		// launch_failed record for a binary found in neither directory has
 		// no bytes to derive a tier from. The external-only guard below
 		// renders no badge for it — the correct silence for an unknown.
-		tier: '' | 'trusted' | 'external';
+		tier: '' | 'trusted' | 'operator_trusted' | 'external';
 		scale: 'chip' | 'picker';
 		children: Snippet;
 	} = $props();
@@ -56,6 +57,18 @@
 			aria-hidden="true"
 		>
 			<CircleAlert class={`${glyphSize} text-warning`} />
+		</span>
+	{:else if tier === 'operator_trusted'}
+		<!-- M2-R4 (davison/topos#49): whose word a plugin runs on is what
+		     this badge exists to say — a key glyph in the success tone for
+		     the operator's; 'trusted' (the kernel author's) still renders
+		     nothing extra. -->
+		<span
+			class={`absolute -bottom-1 -right-1 flex items-center justify-center rounded-full ${backdropSize} ${backdropBg}`}
+			aria-hidden="true"
+			data-trust="operator"
+		>
+			<KeyRound class={`${glyphSize} text-success`} />
 		</span>
 	{/if}
 </span>
