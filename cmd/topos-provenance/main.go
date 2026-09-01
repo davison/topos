@@ -286,11 +286,19 @@ func runVerify(args []string) error {
 	anyFailed := false
 	for _, name := range targets {
 		path := filepath.Join(*dir, name)
-		_, evidence, _, err := pluginhost.VerifySignedProvenance(dirs, name, path)
+		res, err := pluginhost.VerifySignedProvenanceDetailed(dirs, name, path)
+		evidence := res.Evidence
 		switch {
 		case err != nil:
 			anyFailed = true
 			fmt.Printf("%s: FAIL: %v\n", name, err)
+		case evidence == "" && res.Offer != nil:
+			anyFailed = true
+			reused := ""
+			if res.Offer.Reused {
+				reused = " — WARNING: a key id already accepted, with a different public key"
+			}
+			fmt.Printf("%s: FAIL: named by a manifest signed by a key this verifier does not accept — key id %s, fingerprint %s%s (an operator may trust it: [[plugins.trusted_keys]])\n", name, res.Offer.KeyID, res.Offer.Fingerprint, reused)
 		case evidence == "":
 			anyFailed = true
 			fmt.Printf("%s: FAIL: not named by any validly-signed release manifest in %s\n", name, *dir)

@@ -70,8 +70,9 @@ so verification never depends on JSON field ordering or whitespace.
 
 | Outcome | Cause |
 |---|---|
-| Trusted | A validly-signed manifest, from an accepted key, names this exact binary with a digest matching what's on disk. |
-| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. **Every defective candidate is the same state at launch**: a signature that does not verify, a malformed manifest, a manifest built for another platform, or a signature naming a key id the kernel does not know — each is recorded as a diagnostic (`VerifySignedProvenance` keeps going) and contributes no evidence, so the binary is external and consent-and-pin runs it. `topos plugin pull`, however, aborts and places nothing whenever provenance was published but none of it vouches for the binary — an installer refuses what the launch gate merely declines to vouch for. The operator-trusted-keys design below turns the unknown-key case into an offer and leaves the rest as they are. |
+| Trusted | A validly-signed manifest, from a key the kernel author embedded, names this exact binary with a digest matching what's on disk. |
+| Operator-trusted (`operator_trusted`) | The same, from a key in the operator's own `[[plugins.trusted_keys]]` — launches exactly as trusted; the chip and the API name the key. |
+| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. **Every defective candidate is the same state at launch**: a signature that does not verify, a malformed manifest, a manifest built for another platform, or a signature naming a key id the kernel does not know — each is recorded as a diagnostic (`VerifySignedProvenance` keeps going) and contributes no evidence, so the binary is external and consent-and-pin runs it. `topos plugin pull`, however, aborts and places nothing whenever provenance was published but none of it vouches for the binary — an installer refuses what the launch gate merely declines to vouch for. The unknown-key case, when the signature file carries the signer's public key and verifies against it, also carries an **offer** — see "Operator-trusted keys" below; the rest are exactly as described. |
 | Refused — never demote-and-run | Tamper: a manifest that verifies against an accepted key names this binary with a digest that no longer matches what's on disk. This is the only refusal the launch gate makes from signed provenance. |
 
 A refusal is never silently downgraded to "run it at a lower tier
@@ -100,14 +101,19 @@ chip, and the two-click re-pin path when its bytes change — is
 topos did not sign. Nothing about provenance narrows what you can run;
 it only widens what can run without that extra click.
 
-## Operator-trusted keys (decided, not yet shipped)
+## Operator-trusted keys
 
 **Status:** decided at [davison/topos#49](https://github.com/davison/topos/issues/49)
 (M2-R4 of [#40](https://github.com/davison/topos/issues/40)), from the
 operator's captures [#1](https://github.com/davison/topos/issues/1) and
-[#38](https://github.com/davison/topos/issues/38); shipping in the two
-implementation tasks that issue names. Until they land, everything above
-this section is the behaviour you get.
+[#38](https://github.com/davison/topos/issues/38). **The kernel half is
+shipped** ([#56](https://github.com/davison/topos/issues/56)): the
+config table, the tier, the signature-carried key, the offer on
+`GET /api/sources` and in `topos plugin pull`. The app's consent flow —
+the badge, the two-choice interstitial, *stop trusting this key* — is
+[#57](https://github.com/davison/topos/issues/57); until it lands, an
+operator trusts a key by adding the table entry `pull` prints and
+restarting the kernel.
 
 Trust today is one word: the kernel author's, spoken by the embedded key
 set. A third-party plugin is external for every operator forever, and
@@ -143,31 +149,37 @@ The design adds a second word — the operator's:
   difference is honesty on the chip and in `GET /api/sources`, and a
   place for "stop trusting this key" to hang.
 - **An unknown key is an offer.** A manifest whose signature names a
-  key the kernel does not know stays what it is at launch today — *no
-  evidence*, `external` — but now carries an offer: the source exposes
-  the offered key's id and fingerprint, and the add-source interstitial
-  and the chip menu offer two consents — **trust this key for future
-  releases** (writes the table entry; the plugin becomes
-  operator-trusted, no pin needed) or **pin this binary only** (today's
-  path). `topos plugin pull` stops aborting on an unknown key: it places
-  into the external tier and prints the same offer. **Launch behaviour
+  key the kernel does not know stays what it always was at launch — *no
+  evidence*, `external` — but carries an offer: `GET /api/sources`
+  exposes the offered key's id, fingerprint and public key on that
+  source (and on a `pin_mismatch` failure), and the app ([#57](https://github.com/davison/topos/issues/57))
+  offers two consents — **trust this key for future releases** (writes
+  the table entry; the plugin becomes operator-trusted, no pin needed)
+  or **pin this binary only** (today's path). `topos plugin pull` no
+  longer aborts on such a key: it places the binary *and* its manifest
+  and signature into the external tier — so the kernel re-derives the
+  same offer at launch — and prints the key, its fingerprint and the
+  config entry that trusts it. **Launch behaviour
   for every other case is preserved**: tamper stays the one refusal; a
   signature that does not verify, a malformed manifest or a manifest for
   another platform stay no-evidence-at-launch (external) exactly as
   today, and pull keeps aborting on them — only the unknown key, which
   now carries a verifiable public key, is treated differently.
-- **The key travels with the signature.** The signature file gains one
-  field: `public_key`, the signer's ed25519 public key in standard
-  base64 (`topos-provenance sign` writes it; it holds the pair). The
-  kernel verifies the signature against *that* key when the id is
-  unknown, so an offer is only ever made for a key that demonstrably
-  signed this manifest; the fingerprint shown is the SHA-256 of the raw
-  key bytes, abbreviated. Trusting stores the bytes. A later manifest
-  whose `key_id` matches a trusted key but whose `public_key` differs is
-  treated as unknown and the offer says so — *this key id was seen
-  before with a different key* — because a reused id is exactly the
-  impersonation this guards against. The schema stays
-  `topos.provenance.sig.v1`: an added field an older kernel ignores.
+- **The key travels with the signature.** The signature file carries
+  one more field: `public_key`, the signer's ed25519 public key in
+  standard base64 — `topos-provenance sign` writes it with every
+  signature (it holds the pair). The kernel verifies the signature
+  against *that* key when the id is unknown, so an offer is only ever
+  made for a key that demonstrably signed this manifest; the
+  fingerprint is the SHA-256 of the raw key bytes. Trusting stores the
+  bytes. A signature whose `key_id` matches an accepted key but whose
+  `public_key` differs is an unknown key wearing a trusted name: no
+  evidence, offered with `reused` set and a warning, because a reused
+  id is exactly the impersonation this guards against. An older
+  signature file with no `public_key` from an unknown key is what it
+  always was — no evidence, no offer, and `pull` still aborts on it.
+  The schema stays `topos.provenance.sig.v1`: an added field an older
+  kernel ignores.
 - **Removal and rotation.** Removing a key demotes its plugins to
   `external` at next launch, by name, into the existing consent path —
   no new failure vocabulary. A developer rotating keys ships a new key

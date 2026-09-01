@@ -551,6 +551,7 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 //     leaves the prior set fully intact. Apply keeps the OLD generation:
 //     it restarts the scheduler against oldCfg, and the running kernel is
 //     simply unchanged.
+//
 //   - After Reconcile commits (every failure beneath it: the D-07
 //     removed-instance index cleanup, and the match-vocabulary check):
 //     there is no undo. Reconcile has already mutated the launched
@@ -642,6 +643,11 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 
 	newCfg := s.cfgStore.Expanded()
 	oldCfg := s.cfg
+	// The operator's accepted keys follow the config they live in
+	// (davison/topos#49): installed here so a saved key takes effect at
+	// the launches this apply performs, and at the listing endpoints that
+	// evaluate trust without launching.
+	pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(newCfg.Plugins.TrustedKeys))
 
 	s.stopScheduler()
 

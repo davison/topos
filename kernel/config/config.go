@@ -2,7 +2,9 @@ package config
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -370,6 +372,9 @@ func (cfg *Config) Validate(missing []string) error {
 		return err
 	}
 
+	if err := cfg.validateTrustedKeys(); err != nil {
+		return err
+	}
 	if err := cfg.validatePins(); err != nil {
 		return err
 	}
@@ -422,6 +427,43 @@ func (cfg *Config) validatePins() error {
 		value := cfg.Plugins.Pins[name]
 		if !pinHashPattern.MatchString(value) {
 			return fmt.Errorf("config: [plugins.pins] value for %q is not a 64-character lowercase hex SHA-256 digest, got %q", name, value)
+		}
+	}
+	return nil
+}
+
+// trustedKeyIDPattern mirrors kernel/pluginhost.ValidateProvenanceKeyID's
+// charset by hand — kernel/config MUST NOT import kernel/pluginhost
+// (import cycle), the same duplication discipline pinKeyPluginPrefix's
+// comment records. Both must change together.
+var trustedKeyIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// validateTrustedKeys checks every [[plugins.trusted_keys]] entry
+// (M2-R4, davison/topos#49): a well-formed key id, a standard-base64
+// ed25519 public key of exactly 32 bytes, ids unique across the table,
+// and trusted_at either empty or RFC 3339. Entries are checked in array
+// order so a multi-error table reports the same entry run to run.
+func (cfg *Config) validateTrustedKeys() error {
+	seen := make(map[string]bool, len(cfg.Plugins.TrustedKeys))
+	for i, k := range cfg.Plugins.TrustedKeys {
+		if k.ID == "" || !trustedKeyIDPattern.MatchString(k.ID) {
+			return fmt.Errorf("config: [[plugins.trusted_keys]] entry %d has key id %q — must be non-empty and use only A-Z, a-z, 0-9, '.', '_', '-'", i, k.ID)
+		}
+		if seen[k.ID] {
+			return fmt.Errorf("config: [[plugins.trusted_keys]] names key id %q more than once — one entry per key id (a rotated key has a new id)", k.ID)
+		}
+		seen[k.ID] = true
+		raw, err := base64.StdEncoding.DecodeString(k.PublicKey)
+		if err != nil {
+			return fmt.Errorf("config: [[plugins.trusted_keys]] public_key for %q is not standard base64: %v", k.ID, err)
+		}
+		if len(raw) != ed25519.PublicKeySize {
+			return fmt.Errorf("config: [[plugins.trusted_keys]] public_key for %q decodes to %d bytes, not an ed25519 public key (%d bytes)", k.ID, len(raw), ed25519.PublicKeySize)
+		}
+		if k.TrustedAt != "" {
+			if _, err := time.Parse(time.RFC3339, k.TrustedAt); err != nil {
+				return fmt.Errorf("config: [[plugins.trusted_keys]] trusted_at for %q is not RFC 3339: %v", k.ID, err)
+			}
 		}
 	}
 	return nil

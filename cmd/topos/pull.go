@@ -47,6 +47,7 @@ package main
 //     never-demote-and-run rule the launch gate applies).
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -227,9 +228,44 @@ func pullPlugin(rawURL string, cfg *config.Config, out io.Writer) error {
 	// refusal (tamper) aborts; a MATCH earns trusted; and published
 	// evidence that never vouches for this binary is an abort too —
 	// only the no-evidence-at-all state earns the external tier.
-	_, evidence, diagnostics, err := pluginhost.VerifySignedProvenance(pluginhost.Dirs{Trusted: stage}, name, stagedBinary)
+	res, err := pluginhost.VerifySignedProvenanceDetailed(pluginhost.Dirs{Trusted: stage}, name, stagedBinary)
+	evidence, diagnostics := res.Evidence, res.Diagnostics
 	if err != nil {
 		return fmt.Errorf("plugin pull: provenance verification refused %s: %w — nothing was placed%s", name, err, pullFormatDiagnostics(diagnostics))
+	}
+	if evidence == "" && res.Offer != nil {
+		// An unknown key that carried its public key signed a manifest
+		// naming exactly these bytes (davison/topos#49): no evidence, so
+		// the external tier — but the manifest and signature are placed
+		// beside the binary so the kernel can re-derive the same offer at
+		// launch, and the offer is printed here for an operator who
+		// trusts by config rather than through the app.
+		files := []pullPlacement{{name: name, mode: 0o755}}
+		for _, f := range provenanceFiles {
+			files = append(files, pullPlacement{name: f, mode: 0o644})
+		}
+		placed, err := pullPlace(stage, externalDir, files)
+		if err != nil {
+			return fmt.Errorf("plugin pull: place into external directory %s: %w", externalDir, err)
+		}
+		fmt.Fprintf(out, "plugin pull: %s is signed by a key this kernel does not trust — it earned the EXTERNAL tier, with an offer\n", name)
+		for _, p := range placed {
+			fmt.Fprintf(out, "plugin pull:   wrote %s\n", p)
+		}
+		fmt.Fprintf(out, "plugin pull: the signature verifies against the public key it carries:\n")
+		fmt.Fprintf(out, "plugin pull:   key id:      %s\n", res.Offer.KeyID)
+		fmt.Fprintf(out, "plugin pull:   fingerprint: %s\n", res.Offer.Fingerprint)
+		if res.Offer.Reused {
+			fmt.Fprintf(out, "plugin pull:   WARNING: this key id is already trusted with a DIFFERENT public key — a reused id. Do not trust it without checking with the publisher.\n")
+		}
+		fmt.Fprintf(out, "plugin pull: to trust this key for every future release its holder signs, add to your config:\n")
+		fmt.Fprintf(out, "plugin pull:   [[plugins.trusted_keys]]\n")
+		fmt.Fprintf(out, "plugin pull:   id         = %q\n", res.Offer.KeyID)
+		fmt.Fprintf(out, "plugin pull:   public_key = %q\n", base64.StdEncoding.EncodeToString(res.Offer.PublicKey))
+		fmt.Fprintf(out, "plugin pull:   note       = \"<who this key belongs to, and where you checked the fingerprint>\"\n")
+		fmt.Fprintf(out, "plugin pull: then restart the kernel: the plugin runs at the operator-trusted tier, unpinned. Or add the source\n")
+		fmt.Fprintf(out, "plugin pull: through the app's consent flow and pin this binary only, as for any external plugin.\n")
+		return nil
 	}
 	if evidence == "" && len(provenanceFiles) > 0 {
 		return fmt.Errorf("plugin pull: the release publishes provenance evidence (%s) but none of it vouches for %s — an unknown signing key, a wrong platform, or a manifest that does not name this binary; nothing was placed%s", strings.Join(provenanceFiles, ", "), name, pullFormatDiagnostics(diagnostics))

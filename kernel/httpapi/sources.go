@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"sort"
 	"strings"
@@ -48,6 +49,23 @@ type Refresher interface {
 }
 
 // sourceStatus mirrors one entry of GET /api/sources's "sources" array.
+// offeredKey is GET /api/sources' wire shape of a pluginhost.KeyOffer
+// (davison/topos#49): everything the app needs to show the offer and,
+// on consent, to write the [[plugins.trusted_keys]] entry itself.
+type offeredKey struct {
+	ID          string `json:"id"`
+	Fingerprint string `json:"fingerprint"`
+	PublicKey   string `json:"public_key"`
+	Reused      bool   `json:"reused,omitempty"`
+}
+
+func offeredKeyFrom(o *pluginhost.KeyOffer) *offeredKey {
+	if o == nil {
+		return nil
+	}
+	return &offeredKey{ID: o.KeyID, Fingerprint: o.Fingerprint, PublicKey: base64.StdEncoding.EncodeToString(o.PublicKey), Reused: o.Reused}
+}
+
 type sourceStatus struct {
 	Name        string `json:"name"`
 	SourceType  string `json:"source_type"`
@@ -73,6 +91,15 @@ type sourceStatus struct {
 	// is currently reachable. Always empty for a trusted-tier entry
 	// (D-04: never pinned).
 	PinnedHash string `json:"pinned_hash,omitempty"`
+	// TrustedKey is the operator key id that vouched for this instance's
+	// binary — present only when tier is "operator_trusted"
+	// (davison/topos#49). OfferedKey is an unknown self-describing key's
+	// offer carried by an external binary: the operator may trust it (the
+	// app writes [[plugins.trusted_keys]] through PUT /api/config) or pin
+	// the binary only. Reused marks a key id already trusted arriving
+	// with a different public key.
+	TrustedKey string      `json:"trusted_key,omitempty"`
+	OfferedKey *offeredKey `json:"offered_key,omitempty"`
 	// CurrentHash is the on-disk SHA-256 of a pin-mismatched instance's
 	// binary — the value the operator would be re-pinning to if they
 	// confirm the "Trust updated binary" action (11-UI-SPEC.md E4). Empty
@@ -188,6 +215,8 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			Plugin:         h.Plugin,
 			Tier:           string(h.Tier),
 			PinnedHash:     h.PinnedHash,
+			TrustedKey:     h.TrustedKey,
+			OfferedKey:     offeredKeyFrom(h.OfferedKey),
 			LaunchAdvisory: h.LaunchAdvisory,
 			Reachable:      h.Reachable,
 			Syncing:        syncing[h.Name],
@@ -221,6 +250,7 @@ func sourceStatusesFrom(ctx context.Context, store *index.Store, prober HealthPr
 			Plugin:        f.Plugin,
 			Tier:          string(f.Tier),
 			PinnedHash:    f.PinnedHash,
+			OfferedKey:    offeredKeyFrom(f.OfferedKey),
 			CurrentHash:   f.CurrentHash,
 			LaunchFailure: f.Reason,
 			Reachable:     false,

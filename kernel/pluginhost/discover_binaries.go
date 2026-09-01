@@ -181,7 +181,21 @@ const (
 	// runs with the same OS-level access as any other plugin process
 	// (11-CONTEXT.md's explicit out-of-scope note on sandboxing).
 	TierExternal Tier = "external"
+	// TierOperatorTrusted names a binary EvaluateTrust verified against a
+	// validly-signed release manifest whose key is one the OPERATOR
+	// trusts ([[plugins.trusted_keys]], davison/topos#49) — the
+	// operator's word rather than the kernel author's. It launches
+	// exactly as TierTrusted does (unpinned; the evidence is the
+	// signature), and is a distinct value only so the chip and the API
+	// say on whose word the plugin runs.
+	TierOperatorTrusted Tier = "operator_trusted"
 )
+
+// Vouched reports whether a tier was earned by evidence — the kernel
+// author's or the operator's word — as opposed to TierExternal, which no
+// evidence vouches for. Every place that used to ask "== TierTrusted"
+// to mean "carries evidence" asks this instead.
+func (t Tier) Vouched() bool { return t == TierTrusted || t == TierOperatorTrusted }
 
 // Dirs is the two configured plugin SEARCH PATHS every discovery and
 // launch call site addresses a plugin binary through (D-11): the kernel
@@ -318,13 +332,13 @@ func DiscoverAllTiered(dirs Dirs) ([]TieredBinary, error) {
 // the refusal and the only place that runs code.
 func evaluateListingTier(dirs Dirs, name, trustedPath, externalPath string) Tier {
 	if trustedPath != "" {
-		if trust, err := EvaluateTrust(dirs, name, trustedPath); err == nil && trust.Tier == TierTrusted {
-			return TierTrusted
+		if trust, err := EvaluateTrust(dirs, name, trustedPath); err == nil && trust.Tier.Vouched() {
+			return trust.Tier
 		}
 	}
 	if externalPath != "" {
-		if trust, err := EvaluateTrust(dirs, name, externalPath); err == nil && trust.Tier == TierTrusted {
-			return TierTrusted
+		if trust, err := EvaluateTrust(dirs, name, externalPath); err == nil && trust.Tier.Vouched() {
+			return trust.Tier
 		}
 	}
 	return TierExternal
@@ -516,12 +530,12 @@ func resolveBinaryDetailed(dirs Dirs, name string, logger hclog.Logger) (path st
 			return externalPath, externalTrust, shadowed, externalErr
 		}
 
-		if trustedTrust.Tier == TierTrusted {
+		if trustedTrust.Tier.Vouched() {
 			logger.Warn("plugin binary name collides across trusted and external directories: trusted copy carries evidence and wins (D-11)",
 				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", trustedTrust.Evidence)
 			return trustedPath, trustedTrust, shadowed, nil
 		}
-		if externalTrust.Tier == TierTrusted {
+		if externalTrust.Tier.Vouched() {
 			logger.Warn("plugin binary name collides across trusted and external directories: external copy carries evidence and wins (D-11)",
 				"binary", name, "trusted_path", trustedPath, "external_path", externalPath, "evidence", externalTrust.Evidence)
 			return externalPath, externalTrust, shadowed, nil

@@ -787,6 +787,29 @@ never a `500`.
   human to read, and a copy edit to it must never change what the UI
   offers to do. Additive: `schema_version` stays `1`.
 
+**`operator_trusted`, `trusted_key`, `offered_key` (M2-R4,
+[#49](https://github.com/davison/topos/issues/49), kernel half shipped by
+[#56](https://github.com/davison/topos/issues/56)):** `tier` has a third
+value, `"operator_trusted"` — the binary's release manifest is signed by
+a key in the operator's own `[[plugins.trusted_keys]]`; `trusted_key`
+names that key id. It launches exactly as `trusted` does (unpinned; the
+evidence is the signature) and is distinct only so the chip can say on
+whose word the plugin runs. An `external` source whose binary is named
+by a manifest signed by a key the kernel does **not** trust, where the
+signature file carries the signer's public key and verifies against it,
+carries `offered_key`: `{id, fingerprint, public_key, reused}` —
+`fingerprint` is the SHA-256 of the raw key, `public_key` the standard
+base64 the app writes into `[[plugins.trusted_keys]]` on consent, and
+`reused` marks a key id already trusted arriving with a *different* key
+(an id wearing a trusted name — the offer must say so). A `pin_mismatch`
+launch failure carries the same `offered_key` when one exists, so the
+app can offer "trust this key" beside "trust updated binary". Until the
+app's consent flow lands ([#57](https://github.com/davison/topos/issues/57)),
+an operator trusts a key by adding the table entry (which
+`topos plugin pull` prints) and restarting; removing an entry demotes
+its plugins to `external` at next launch, by name, into the
+consent-and-pin path.
+
 **`tier`, `pinned_hash`, `current_hash`, `launch_failure` (Phase 11,
 `PLUG-06`/`PLUG-07`/`PLUG-08`) — the trust facts the kernel derives, never
 the browser.** Every field below is a kernel-computed fact the client only
