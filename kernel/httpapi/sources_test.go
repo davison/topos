@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1134,5 +1135,49 @@ func TestSources_UnsignedExternalBinaryConsentAndPinPathUnchanged(t *testing.T) 
 	}
 	if len(h4.LaunchFailures()) != 0 {
 		t.Fatalf("expected zero launch failures after re-pinning, got %+v", h4.LaunchFailures())
+	}
+}
+
+// TestSourcesHandler_ReportsOperatorTrustedKeyAndOffer (M2-R4,
+// davison/topos#49): an operator-trusted instance names its key; an
+// external instance carrying an offer exposes it — id, fingerprint, the
+// public key the app writes to config on consent, and the reused flag;
+// a pin-mismatch failure carries the offer too.
+func TestSourcesHandler_ReportsOperatorTrustedKeyAndOffer(t *testing.T) {
+	store := newTestStoreForHTTP(t)
+	pub := make([]byte, 32)
+	for i := range pub {
+		pub[i] = byte(i)
+	}
+	offer := &pluginhost.KeyOffer{KeyID: "acme-2026a", PublicKey: pub, Fingerprint: pluginhost.KeyFingerprint(pub), Reused: true}
+	prober := &fakeProber{
+		healths: []pluginhost.SourceHealth{
+			{Name: "byyou", SourceType: "x", DisplayName: "By You", Reachable: true, Tier: pluginhost.TierOperatorTrusted, TrustedKey: "acme-2026a"},
+			{Name: "offered", SourceType: "x", DisplayName: "Offered", Reachable: true, Tier: pluginhost.TierExternal, PinnedHash: "cccc", OfferedKey: offer},
+		},
+		failures: []pluginhost.LaunchFailure{
+			{Instance: "mismatched", Plugin: "topos-plugin-x", DisplayName: "Mismatched", Tier: pluginhost.TierExternal, Reason: pluginhost.LaunchFailurePinMismatch, PinnedHash: "aaaa", CurrentHash: "bbbb", OfferedKey: offer},
+		},
+	}
+	router := newTestSourcesRouter(store, &config.Config{}, prober, &fakeRefresher{})
+	req := httptest.NewRequest(http.MethodGet, "/api/sources", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var resp sourcesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	byName := map[string]sourceStatus{}
+	for _, s := range resp.Sources {
+		byName[s.Name] = s
+	}
+	if s := byName["byyou"]; s.Tier != "operator_trusted" || s.TrustedKey != "acme-2026a" || s.OfferedKey != nil {
+		t.Errorf("operator-trusted source: %+v", s)
+	}
+	if s := byName["offered"]; s.Tier != "external" || s.OfferedKey == nil || s.OfferedKey.ID != "acme-2026a" || s.OfferedKey.Fingerprint != offer.Fingerprint || s.OfferedKey.PublicKey != base64.StdEncoding.EncodeToString(pub) || !s.OfferedKey.Reused || s.TrustedKey != "" {
+		t.Errorf("offered external source: %+v", s)
+	}
+	if s := byName["mismatched"]; s.LaunchFailure != "pin_mismatch" || s.OfferedKey == nil || s.OfferedKey.ID != "acme-2026a" {
+		t.Errorf("pin-mismatched source must carry the offer: %+v", s)
 	}
 }

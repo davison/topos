@@ -68,6 +68,29 @@ type PluginsConfig struct {
 	// lands in a later Phase 11 plan — this field only declares the
 	// config surface now, so no later plan needs to re-touch this file.
 	Pins map[string]string `toml:"pins,omitempty" json:"pins,omitempty"`
+	// TrustedKeys is the OPERATOR's accepted signing keys (M2-R4,
+	// davison/topos#49): a plugin whose release manifest is signed by one
+	// of these runs at the operator_trusted tier across releases, with no
+	// per-binary pin. Decision D-12 (revised): the kernel author's keys
+	// stay link-time data; the operator's are runtime configuration
+	// exactly as the pins are, because both are the operator's own trust
+	// decisions and this file is already that surface. Trusting a key
+	// admits every future release its holder signs — the same model the
+	// operator already accepts for the kernel author's key, with the
+	// party chosen by the operator, which is what the consent step is
+	// for. Removing an entry demotes its plugins to external at next
+	// launch, by name, into the consent-and-pin path.
+	TrustedKeys []TrustedKey `toml:"trusted_keys,omitempty" json:"trusted_keys,omitempty"`
+}
+
+// TrustedKey is one [[plugins.trusted_keys]] entry: the key id a
+// signature file names, the ed25519 public key in standard base64, when
+// the operator trusted it (RFC 3339, informational), and a free note.
+type TrustedKey struct {
+	ID        string `toml:"id" json:"id"`
+	PublicKey string `toml:"public_key" json:"public_key"`
+	TrustedAt string `toml:"trusted_at,omitempty" json:"trusted_at,omitempty"`
+	Note      string `toml:"note,omitempty" json:"note,omitempty"`
 }
 
 // SyncConfig configures the background scheduler's global sync interval

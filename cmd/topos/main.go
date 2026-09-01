@@ -462,6 +462,7 @@ func runSync(path string) error {
 	defer store.Close()
 
 	cfg := cfgStore.Expanded()
+	pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(cfg.Plugins.TrustedKeys))
 	pdir, err := pluginsDir(cfg)
 	if err != nil {
 		return err

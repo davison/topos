@@ -132,6 +132,11 @@ type LaunchFailure struct {
 	PinnedHash  string
 	CurrentHash string
 	Message     string
+	// OfferedKey is the unknown self-describing key that signed a
+	// manifest naming this external binary (davison/topos#49) — carried
+	// on a pin-mismatch failure so the UI can offer "trust this key"
+	// beside "trust updated binary". Nil otherwise.
+	OfferedKey *KeyOffer
 }
 
 // pinMismatchError carries the structured facts a caller (Discover,
@@ -144,6 +149,7 @@ type pinMismatchError struct {
 	instance, plugin, displayName string
 	tier                          Tier
 	pinnedHash, currentHash       string
+	offeredKey                    *KeyOffer
 }
 
 // Error names the instance, the binary, the pinned value (or "not pinned"
@@ -178,6 +184,7 @@ func (e *pinMismatchError) toLaunchFailure() LaunchFailure {
 		PinnedHash:  e.pinnedHash,
 		CurrentHash: e.currentHash,
 		Message:     e.Error(),
+		OfferedKey:  e.offeredKey,
 	}
 }
 
@@ -426,7 +433,9 @@ type Plugin struct {
 	// (D-14, resolveBinaryDetailed) — carried onto ProbeSources'
 	// SourceHealth.LaunchAdvisory. Always false for a TierExternal
 	// instance (only a trusted copy can shadow, never the reverse).
-	shadowed bool
+	shadowed   bool
+	trustedKey string    // the operator key id that vouched (TierOperatorTrusted only, davison/topos#49)
+	offeredKey *KeyOffer // an unknown self-describing key's offer (TierExternal only)
 	// extras mirrors this instance's Describe-declared
 	// DescribeResponse.extras (D-15), filtered to drop any entry with an
 	// empty key (filterExtras) — a plugin must not be able to inject a
@@ -456,6 +465,24 @@ func (p *Plugin) DisplayName() string { return p.displayName }
 // or TierExternal, set once at launch by ResolveBinary and never
 // re-derived from anything the plugin process reports (T-11-01).
 func (p *Plugin) Tier() Tier { return p.tier }
+
+// TrustedKey returns the operator key id that vouched for this instance's
+// binary — non-empty only for TierOperatorTrusted.
+func (p *Plugin) TrustedKey() string { return p.trustedKey }
+
+// OfferedKey returns the unknown self-describing key's offer carried by
+// this external instance's binary, or nil.
+func (p *Plugin) OfferedKey() *KeyOffer { return p.offeredKey }
+
+// operatorKeyID is the key id to report for a trust result: only the
+// operator's word is named on the wire (the kernel author's is implicit
+// in TierTrusted).
+func operatorKeyID(t Trust) string {
+	if t.Word == KeyWordOperator {
+		return t.KeyID
+	}
+	return ""
+}
 
 // BinaryHash returns this instance's on-disk SHA-256, computed at launch
 // time for TierExternal only — empty for TierTrusted (11-03-PLAN.md Task 2).
@@ -1074,6 +1101,13 @@ func allowedEnv(rawSrc config.Source, sourceConfigJSON []byte, describeOnly bool
 // flow (TRUST-03) — trust is evaluated exactly once per launch, by
 // resolveBinaryDetailed, and still before exec.Command is constructed.
 func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw *config.Config, logger hclog.Logger, describeOnly bool) (*Plugin, error) {
+	if raw != nil {
+		// The operator's accepted keys come from the same raw config the
+		// pins do, installed before this launch evaluates trust — the
+		// kernel hands pluginhost the operator's keys; pluginhost never
+		// reads config itself (D-12 revised, davison/topos#49).
+		SetOperatorProvenanceKeys(OperatorProvenanceKeysFromConfig(raw.Plugins.TrustedKeys))
+	}
 	binPath, trust, shadowed, resolveErr := resolveBinaryDetailed(dirs, src.Plugin, logger)
 	if resolveErr != nil && binPath == "" {
 		// binPath is empty ONLY when the binary was not found in either
@@ -1137,7 +1171,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 			cause:       resolveErr,
 		}
 	}
-	if tier == TierTrusted {
+	if tier.Vouched() {
 		manifestHash = trust.Hash
 	}
 
@@ -1185,6 +1219,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 					tier:        tier,
 					pinnedHash:  pinnedHash,
 					currentHash: currentHash,
+					offeredKey:  trust.Offer,
 				}
 			}
 			launchPinnedHash = pinnedHash
@@ -1375,6 +1410,8 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		binaryHash:      binaryHash,
 		manifestHash:    manifestHash,
 		shadowed:        shadowed,
+		trustedKey:      operatorKeyID(trust),
+		offeredKey:      trust.Offer,
 		extras:          filterExtras(desc.GetExtras()),
 	}, nil
 }
@@ -1524,6 +1561,11 @@ type SourceHealth struct {
 	// external-tier GET /api/sources entry show its current pin, not only
 	// a pin-mismatched one.
 	PinnedHash string
+	// TrustedKey is the operator key id that vouched (TierOperatorTrusted
+	// only); OfferedKey is an unknown self-describing key's offer carried
+	// by an external binary (davison/topos#49). Empty/nil otherwise.
+	TrustedKey string
+	OfferedKey *KeyOffer
 	// LaunchAdvisory is a closed-vocabulary, non-fatal fact about a
 	// LAUNCHED instance's provenance (13-05-PLAN.md Task 3, D-14) — today
 	// only LaunchAdvisoryShadowed, set when this trusted-tier instance's
@@ -1565,7 +1607,7 @@ func (h *Host) ProbeSources(ctx context.Context) []SourceHealth {
 		wg.Add(1)
 		go func(i int, p *Plugin) {
 			defer wg.Done()
-			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier, PinnedHash: p.pinnedHash, LaunchAdvisory: launchAdvisoryFor(p)}
+			health := SourceHealth{Name: p.Name(), SourceType: p.SourceType(), DisplayName: p.DisplayName(), Plugin: p.src.Plugin, Tier: p.tier, PinnedHash: p.pinnedHash, TrustedKey: p.trustedKey, OfferedKey: p.offeredKey, LaunchAdvisory: launchAdvisoryFor(p)}
 			resp, err := p.Health(ctx)
 			switch {
 			case err != nil:

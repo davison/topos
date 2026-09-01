@@ -10,7 +10,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -104,6 +106,26 @@ func (e *pullTestEnv) sign(base, goos, goarch string, names ...string) {
 
 // writeChecksums writes checksums.txt over the named files' current
 // bytes — the release's own asset manifest, sha256sum shape.
+// stripPublicKey rewrites base's signature file without public_key — an
+// older signer's output.
+func (e *pullTestEnv) stripPublicKey(base string) {
+	e.t.Helper()
+	p := filepath.Join(e.releaseDir, base+pluginhost.ProvenanceSignatureSuffix)
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	var sig pluginhost.ProvenanceSignature
+	if err := json.Unmarshal(raw, &sig); err != nil {
+		e.t.Fatal(err)
+	}
+	sig.PublicKey = ""
+	out, _ := json.Marshal(sig)
+	if err := os.WriteFile(p, out, 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 func (e *pullTestEnv) writeChecksums(names ...string) {
 	e.t.Helper()
 	var b strings.Builder
@@ -253,14 +275,75 @@ func TestPull_TamperedBinaryAbortsUnplaced(t *testing.T) {
 	e.expectAbortUnplaced(e.url("topos-plugin-demo"), "provenance verification refused")
 }
 
-func TestPull_UnknownKeyAbortsUnplaced(t *testing.T) {
+// TestPull_UnknownKeyWithCarriedPublicKeyPlacesExternalWithOffer (M2-R4,
+// davison/topos#49): a release signed by a key this kernel does not
+// trust, whose signature carries its public key and verifies, earns the
+// EXTERNAL tier with an offer — the binary AND its manifest/signature are
+// placed so the kernel re-derives the offer at launch, and the command
+// prints the key, its fingerprint and the config entry that trusts it.
+func TestPull_UnknownKeyWithCarriedPublicKeyPlacesExternalWithOffer(t *testing.T) {
 	e := newPullTestEnv(t)
-	// Sign with a key the kernel does NOT accept.
+	pub, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.keyID, e.priv = "acme-2026a", otherPriv
+	e.writeBinary("topos-plugin-demo", "bytes")
+	e.sign("acme-v1.0.0", runtime.GOOS, runtime.GOARCH, "topos-plugin-demo")
+	e.writeChecksums("topos-plugin-demo", "acme-v1.0.0"+pluginhost.ProvenanceManifestSuffix, "acme-v1.0.0"+pluginhost.ProvenanceSignatureSuffix)
+
+	var out strings.Builder
+	if err := pullPlugin(e.url("topos-plugin-demo"), e.cfg, &out); err != nil {
+		t.Fatalf("expected the pull to succeed into the external tier with an offer, got: %v", err)
+	}
+	for _, f := range []string{"topos-plugin-demo", "acme-v1.0.0" + pluginhost.ProvenanceManifestSuffix, "acme-v1.0.0" + pluginhost.ProvenanceSignatureSuffix} {
+		if _, err := os.Stat(filepath.Join(e.cfg.Plugins.ExternalDir, f)); err != nil {
+			t.Errorf("expected %s in the external directory: %v", f, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(e.cfg.Plugins.Dir, "topos-plugin-demo")); !os.IsNotExist(err) {
+		t.Errorf("an offered key must not place into the trusted directory")
+	}
+	for _, want := range []string{"EXTERNAL tier, with an offer", "key id:      acme-2026a", "fingerprint: " + pluginhost.KeyFingerprint(pub), "[[plugins.trusted_keys]]", `public_key = "` + base64.StdEncoding.EncodeToString(pub) + `"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("expected the output to contain %q, got:\n%s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "reused id") {
+		t.Errorf("a fresh key id must not be reported as reused")
+	}
+}
+
+// TestPull_ReusedKeyIDWithDifferentKeyIsOfferedWithWarning: an accepted
+// key id arriving with a DIFFERENT public key is an unknown key wearing
+// a trusted name — placed external with the offer, and the warning.
+func TestPull_ReusedKeyIDWithDifferentKeyIsOfferedWithWarning(t *testing.T) {
+	e := newPullTestEnv(t)
 	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
-	e.priv = otherPriv // keyID stays "pull-test", but the signature won't verify against the accepted key
+	e.priv = otherPriv // keyID stays "pull-test" — the accepted id, a different key
 	e.writeBinary("topos-plugin-demo", "bytes")
 	e.sign("example-v9.9.9", runtime.GOOS, runtime.GOARCH, "topos-plugin-demo")
 	e.writeChecksums("topos-plugin-demo", "example-v9.9.9"+pluginhost.ProvenanceManifestSuffix, "example-v9.9.9"+pluginhost.ProvenanceSignatureSuffix)
+	var out strings.Builder
+	if err := pullPlugin(e.url("topos-plugin-demo"), e.cfg, &out); err != nil {
+		t.Fatalf("expected external placement with a reused-id warning, got: %v", err)
+	}
+	if !strings.Contains(out.String(), "reused id") || !strings.Contains(out.String(), "WARNING") {
+		t.Errorf("expected the reused-id warning, got:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(e.cfg.Plugins.Dir, "topos-plugin-demo")); !os.IsNotExist(err) {
+		t.Errorf("a reused id must never reach the trusted directory")
+	}
+}
+
+// TestPull_UnknownKeyWithoutCarriedPublicKeyAbortsUnplaced: an older-style
+// signature file (no public_key) from an unknown key is provenance that
+// vouches for nothing and cannot be offered — the pull aborts, as before.
+func TestPull_UnknownKeyWithoutCarriedPublicKeyAbortsUnplaced(t *testing.T) {
+	e := newPullTestEnv(t)
+	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.keyID, e.priv = "acme-2026a", otherPriv
+	e.writeBinary("topos-plugin-demo", "bytes")
+	e.sign("acme-v1.0.0", runtime.GOOS, runtime.GOARCH, "topos-plugin-demo")
+	e.stripPublicKey("acme-v1.0.0")
+	e.writeChecksums("topos-plugin-demo", "acme-v1.0.0"+pluginhost.ProvenanceManifestSuffix, "acme-v1.0.0"+pluginhost.ProvenanceSignatureSuffix)
 	e.expectAbortUnplaced(e.url("topos-plugin-demo"), "none of it vouches")
 }
 

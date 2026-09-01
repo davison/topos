@@ -429,29 +429,34 @@ external tier do its job; the consent interstitial shows your operator
 the hash they are accepting, which is exactly the informed decision the
 model wants them to make.
 
-### 8a. Sign with your own key — decided, not yet shipped
+### 8a. Sign with your own key
 
-The kernel is gaining a second trust word, the operator's
-([#49](https://github.com/davison/topos/issues/49); the design is in
-[`plugin-trust.md`](plugin-trust.md), "Operator-trusted keys"). When it
-ships, you sign your releases with your own ed25519 key using the same
-tooling the fleet uses — `topos-provenance keygen`, `sign`, `verify`,
-unchanged — and the signature file `topos-provenance sign` writes carries your
-**key id** and **public key**. An operator who installs your plugin is offered that key once:
-*trust this key for future releases*, after which every release you sign
-runs at *trusted by you* on their instance without a per-binary pin; or
-*pin this binary only*, today's path. Rotate by shipping a new key id;
-they are offered it the same way.
+The kernel has a second trust word, the operator's
+([#49](https://github.com/davison/topos/issues/49); the design and what
+is shipped are in [`plugin-trust.md`](plugin-trust.md),
+"Operator-trusted keys"). You sign your releases with your own ed25519
+key using the same tooling the fleet uses — `topos-provenance keygen`,
+`sign`, `verify`, unchanged — and the signature file `sign` writes
+carries your **key id** and **public key**; publish the key's
+fingerprint (the SHA-256 of the raw key, which `verify` and
+`topos plugin pull` print) somewhere your operators can check it. An
+operator who installs your plugin is offered that key once — *trust
+this key for future releases*, after which every release you sign runs
+at *trusted by you* on their instance without a per-binary pin; or *pin
+this binary only*, the external path. Rotate by shipping a new key id;
+they are offered it the same way. Never reuse a key id for a different
+key: the kernel treats that as an impersonation and warns.
 
-Until that lands, **do not ship a signed manifest**. Today a manifest
-signed by a key the kernel does not know earns nothing at launch (the
-kernel treats it as no evidence and runs the plugin external, by
-consent-and-pin — §8) and costs you the installer: `topos plugin pull`
-aborts and places nothing when provenance is present but none of it is
-accepted. Ship unsigned for now, and tell your operators the signed
-path arrives with v1.4.0. When it does, `topos-provenance sign` will
-write your public key into the `.sig` beside your manifest, and that is
-the whole publication step.
+Today (the kernel half, [#56](https://github.com/davison/topos/issues/56))
+`topos plugin pull` places a release signed by an unknown key into the
+external tier with its manifest and signature, prints your key id,
+fingerprint and the `[[plugins.trusted_keys]]` entry that trusts it, and
+the kernel reports the same offer on `GET /api/sources`; the operator
+adds the entry and restarts. The in-app consent —
+[#57](https://github.com/davison/topos/issues/57) — makes that one
+click. A kernel older than v1.4.0 still aborts `pull` on an unknown key
+(and runs the plugin external if placed by hand), so say which kernel
+your signed releases need.
 
 ## 9. Before you call it done
 

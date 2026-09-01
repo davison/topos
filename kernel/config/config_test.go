@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1252,5 +1255,33 @@ token = "tok"
 				t.Errorf("expected the error to name the source instance %q, got: %v", "example", err)
 			}
 		})
+	}
+}
+
+func TestValidate_TrustedKeys(t *testing.T) {
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	good := base64.StdEncoding.EncodeToString(pub)
+	base := func(keys ...TrustedKey) *Config {
+		return &Config{Sync: SyncConfig{Interval: "15m"}, Plugins: PluginsConfig{TrustedKeys: keys}}
+	}
+	if err := base(TrustedKey{ID: "acme-2026a", PublicKey: good, TrustedAt: "2026-09-02T10:00:00Z", Note: "Acme"}).Validate(nil); err != nil {
+		t.Fatalf("a well-formed trusted key must validate: %v", err)
+	}
+	cases := map[string]TrustedKey{
+		"empty id":       {ID: "", PublicKey: good},
+		"id charset":     {ID: "acme 2026a", PublicKey: good},
+		"not base64":     {ID: "acme", PublicKey: "not base64!"},
+		"wrong length":   {ID: "acme", PublicKey: base64.StdEncoding.EncodeToString([]byte("short"))},
+		"bad trusted_at": {ID: "acme", PublicKey: good, TrustedAt: "yesterday"},
+	}
+	for name, k := range cases {
+		if err := base(k).Validate(nil); err == nil {
+			t.Errorf("%s: expected a validation error", name)
+		} else if !strings.Contains(err.Error(), "trusted_keys") {
+			t.Errorf("%s: error must name the table, got: %v", name, err)
+		}
+	}
+	if err := base(TrustedKey{ID: "acme", PublicKey: good}, TrustedKey{ID: "acme", PublicKey: good}).Validate(nil); err == nil || !strings.Contains(err.Error(), "more than once") {
+		t.Errorf("duplicate ids must be refused naming the rule, got: %v", err)
 	}
 }

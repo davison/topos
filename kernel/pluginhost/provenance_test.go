@@ -10,6 +10,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -607,4 +608,189 @@ func mutateSignatureValue(t *testing.T, sigJSON string) string {
 		b[valueStart] = 'A'
 	}
 	return string(b)
+}
+
+// --- operator-trusted keys (M2-R4, davison/topos#49) -------------------
+
+// isolatedMockDir copies the built mock binary into a fresh directory of
+// its own — the shared buildMockPluginDir accumulates other tests'
+// manifests, and under the offer rule (davison/topos#49) a stale
+// unknown-key manifest naming the binary would be offered here too.
+func isolatedMockDir(t *testing.T) string {
+	t.Helper()
+	src := buildMockPluginDir(t) + "/topos-plugin-mock"
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "topos-plugin-mock"), raw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestSignProvenanceManifest_CarriesPublicKey: every signature this
+// kernel produces names the signer's public key, so an unknown key can be
+// verified and offered.
+func TestSignProvenanceManifest_CarriesPublicKey(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigBytes, err := SignProvenanceManifest([]byte(`{"schema":"x"}`), "acme-2026a", priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sig ProvenanceSignature
+	if err := json.Unmarshal(sigBytes, &sig); err != nil {
+		t.Fatal(err)
+	}
+	if sig.Schema != ProvenanceSignatureSchema {
+		t.Errorf("schema must stay %q (an added field, not a new schema), got %q", ProvenanceSignatureSchema, sig.Schema)
+	}
+	raw, err := base64.StdEncoding.DecodeString(sig.PublicKey)
+	if err != nil || !ed25519.PublicKey(raw).Equal(pub) {
+		t.Errorf("public_key must be the signer's key in standard base64, got %q (%v)", sig.PublicKey, err)
+	}
+}
+
+// TestVerifySignedProvenance_UnknownKeyWithCarriedPublicKeyIsAnOffer: an
+// unknown key that carries its public key and verifies yields NO
+// evidence (external) but an offer naming the key and its fingerprint.
+func TestVerifySignedProvenance_UnknownKeyWithCarriedPublicKeyIsAnOffer(t *testing.T) {
+	dir := isolatedMockDir(t)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	writeSignedManifest(t, dir, "acme-v1.0.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}},
+		"acme-2026a", priv)
+
+	res, err := VerifySignedProvenanceDetailed(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil {
+		t.Fatalf("an unknown key is no evidence, never a refusal: %v", err)
+	}
+	if res.Evidence != "" {
+		t.Fatalf("expected no evidence, got %q", res.Evidence)
+	}
+	if res.Offer == nil {
+		t.Fatalf("expected an offer, got none (diagnostics: %v)", res.Diagnostics)
+	}
+	if res.Offer.KeyID != "acme-2026a" || !res.Offer.PublicKey.Equal(pub) || res.Offer.Fingerprint != KeyFingerprint(pub) || res.Offer.Reused {
+		t.Errorf("offer mismatch: %+v", res.Offer)
+	}
+	trust, err := EvaluateTrust(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || trust.Tier != TierExternal || trust.Offer == nil || trust.Offer.KeyID != "acme-2026a" {
+		t.Errorf("EvaluateTrust: want external with the offer, got %+v (%v)", trust, err)
+	}
+}
+
+// TestVerifySignedProvenance_OfferOnlyWhenManifestNamesThisBinary: the key
+// signed a manifest for a different binary — no offer for this one.
+func TestVerifySignedProvenance_OfferOnlyWhenManifestNamesThisBinary(t *testing.T) {
+	dir := isolatedMockDir(t)
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	writeSignedManifest(t, dir, "acme-v1.0.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-other", SHA256: strings.Repeat("a", 64), Version: "1.0.0", Contract: "topos.v2"}},
+		"acme-2026a", priv)
+	res, err := VerifySignedProvenanceDetailed(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || res.Evidence != "" || res.Offer != nil {
+		t.Errorf("expected no evidence and no offer, got %+v (%v)", res, err)
+	}
+}
+
+// TestVerifySignedProvenance_ReusedKeyIDIsOfferedMarkedReused: a signature
+// naming an ACCEPTED key id but carrying a different public key is an
+// unknown key wearing a trusted name — offered, with Reused set.
+func TestVerifySignedProvenance_ReusedKeyIDIsOfferedMarkedReused(t *testing.T) {
+	dir := isolatedMockDir(t)
+	keyID, _ := installProvenanceTestKey(t)
+	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	writeSignedManifest(t, dir, "impostor-v1.0.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}},
+		keyID, otherPriv)
+	res, err := VerifySignedProvenanceDetailed(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || res.Evidence != "" {
+		t.Fatalf("a reused id is no evidence and no refusal, got evidence %q err %v", res.Evidence, err)
+	}
+	if res.Offer == nil || !res.Offer.Reused || res.Offer.KeyID != keyID {
+		t.Fatalf("expected an offer marked reused for %q, got %+v", keyID, res.Offer)
+	}
+	if !anyContains(res.Diagnostics, "reused id") {
+		t.Errorf("expected the diagnostic to say the id is reused, got %v", res.Diagnostics)
+	}
+}
+
+// TestVerifySignedProvenance_UnknownKeyWithoutCarriedKeyIsNotOffered: an
+// older-style signature file (no public_key) from an unknown key stays
+// exactly what it was — no evidence, no offer.
+func TestVerifySignedProvenance_UnknownKeyWithoutCarriedKeyIsNotOffered(t *testing.T) {
+	dir := isolatedMockDir(t)
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	manifestBytes, err := BuildProvenanceManifest(nativeRelease(), []ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sigBytes, _ := json.Marshal(ProvenanceSignature{Schema: ProvenanceSignatureSchema, KeyID: "acme-2026a", Algorithm: "ed25519", Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, manifestBytes))})
+	if err := os.WriteFile(filepath.Join(dir, "acme-v1.0.0"+ProvenanceManifestSuffix), manifestBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "acme-v1.0.0"+ProvenanceSignatureSuffix), sigBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := VerifySignedProvenanceDetailed(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || res.Evidence != "" || res.Offer != nil {
+		t.Errorf("expected no evidence and no offer, got %+v (%v)", res, err)
+	}
+	if !anyContains(res.Diagnostics, "unknown key id") {
+		t.Errorf("expected the unknown-key diagnostic, got %v", res.Diagnostics)
+	}
+}
+
+// TestEvaluateTrust_OperatorKeyEarnsOperatorTrustedTier: the operator's
+// word is its own tier, named by key id; withdrawing the key returns the
+// binary to external — with the offer, since the key still self-describes.
+func TestEvaluateTrust_OperatorKeyEarnsOperatorTrustedTier(t *testing.T) {
+	dir := isolatedMockDir(t)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	writeSignedManifest(t, dir, "acme-v1.0.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}},
+		"acme-2026a", priv)
+	SetOperatorProvenanceKeys(OperatorProvenanceKeysFromConfig([]config.TrustedKey{{ID: "acme-2026a", PublicKey: base64.StdEncoding.EncodeToString(pub)}}))
+	t.Cleanup(func() { SetOperatorProvenanceKeys(nil) })
+
+	trust, err := EvaluateTrust(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trust.Tier != TierOperatorTrusted || trust.KeyID != "acme-2026a" || trust.Word != KeyWordOperator || trust.Evidence == "" || trust.Offer != nil {
+		t.Fatalf("expected operator_trusted by acme-2026a, got %+v", trust)
+	}
+	if !trust.Tier.Vouched() || TierExternal.Vouched() {
+		t.Error("Vouched: operator_trusted must count, external must not")
+	}
+
+	SetOperatorProvenanceKeys(nil)
+	trust, err = EvaluateTrust(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || trust.Tier != TierExternal || trust.Offer == nil {
+		t.Errorf("after withdrawing the key: expected external with the offer, got %+v (%v)", trust, err)
+	}
+}
+
+// TestOperatorProvenanceKeysFromConfig_SkipsMalformed: config validation
+// refuses malformed entries; if one ever reaches here it is skipped —
+// trusting nothing is the fail-safe.
+func TestOperatorProvenanceKeysFromConfig_SkipsMalformed(t *testing.T) {
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	keys := OperatorProvenanceKeysFromConfig([]config.TrustedKey{
+		{ID: "bad-b64", PublicKey: "not base64!"},
+		{ID: "short", PublicKey: base64.StdEncoding.EncodeToString([]byte("short"))},
+		{ID: "good", PublicKey: base64.StdEncoding.EncodeToString(pub)},
+	})
+	if len(keys) != 1 || keys[0].ID != "good" || keys[0].Word != KeyWordOperator {
+		t.Errorf("expected only the good key, with the operator's word: %+v", keys)
+	}
 }
