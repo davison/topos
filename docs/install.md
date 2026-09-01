@@ -268,8 +268,8 @@ package and the SQLite version floor):
 cd topos-plugins && make install-signal   # builds, then places into the external directory
 ```
 
-`make install-signal` builds through `make build-signal` and places
-the binary atomically into the installed instance's **external** plugin
+From the topos-plugins checkout, `make install-signal` builds through
+`make build-signal` and places the binary atomically into the installed instance's **external** plugin
 directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or the
 directory your config's `[plugins] external_dir` names via
 `TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); `make uninstall-signal` removes

@@ -158,7 +158,7 @@ build:
 		CGO_ENABLED=0 go build -ldflags "-X $(MANIFEST_LDFLAGS_VAR)=$$MANIFEST" -o bin/topos ./cmd/topos
 
 # plugins builds the kernel repo's own plugin set — just the mock
-# reference plugin now (the six functional plugins live in
+# reference plugin now (the six functional plugins moved to
 # davison/topos-plugins; mockstrict is the e2e target's own fixture and
 # is built there). No npm, no kernel build, so `make dev` can guarantee
 # a fresh binary without paying for a full `build`.
