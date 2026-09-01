@@ -12,6 +12,9 @@ package httpapi
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -22,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1321,4 +1325,86 @@ func TestDescribePluginHandler_UnknownBinaryStillReturns404AlongsidePhase11Field
 	router.ServeHTTP(rec, req)
 
 	assertErrorEnvelope(t, rec, http.StatusNotFound, "plugin_binary_not_found")
+}
+
+// signMockWithUnknownKey copies the built mock into its own directory and
+// signs a manifest naming it with a key the kernel does NOT accept — the
+// signature carries the key, so the trial launch yields an OFFER
+// (M2-R4, davison/topos#49).
+func signMockWithUnknownKey(t *testing.T, keyID string) (dir string, pub ed25519.PublicKey) {
+	t.Helper()
+	src := filepath.Join(buildMockPluginDir(t), "topos-plugin-mock")
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "topos-plugin-mock"), raw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hash, err := pluginhost.HashBinary(filepath.Join(dir, "topos-plugin-mock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := pluginhost.BuildProvenanceManifest(
+		pluginhost.ProvenanceRelease{Repo: "acme/plugins", Tag: "v1.0.0", OS: runtime.GOOS, Arch: runtime.GOARCH},
+		[]pluginhost.ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := pluginhost.SignProvenanceManifest(manifest, keyID, priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "acme-v1.0.0"+pluginhost.ProvenanceManifestSuffix), manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "acme-v1.0.0"+pluginhost.ProvenanceSignatureSuffix), sig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir, pub
+}
+
+// TestDescribePluginHandler_ReportsTheOfferAndTheOperatorTrustedTier
+// (M2-R4, #57 plan step 0): the trial launch's own trust evaluation
+// reaches the response — an unknown self-describing key is offered by
+// id, fingerprint and public key while the tier stays external; once the
+// operator trusts that key the tier is operator_trusted and no offer is
+// made. The add-source interstitial keys off exactly these facts.
+func TestDescribePluginHandler_ReportsTheOfferAndTheOperatorTrustedTier(t *testing.T) {
+	dir, pub := signMockWithUnknownKey(t, "acme-2026a")
+	router := newExternalTierDescribeRouter(dir)
+	t.Cleanup(func() { pluginhost.SetOperatorProvenanceKeys(nil) })
+
+	describe := func() describePluginResponse {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/config/describe-plugin", strings.NewReader(`{"plugin":"topos-plugin-mock","source":{}}`))
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp describePluginResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		return resp
+	}
+
+	pluginhost.SetOperatorProvenanceKeys(nil)
+	resp := describe()
+	if resp.Tier != "external" {
+		t.Errorf("an unknown key earns no tier: got %q", resp.Tier)
+	}
+	if resp.OfferedKey == nil || resp.OfferedKey.ID != "acme-2026a" || resp.OfferedKey.Fingerprint != pluginhost.KeyFingerprint(pub) || resp.OfferedKey.PublicKey != base64.StdEncoding.EncodeToString(pub) || resp.OfferedKey.Reused {
+		t.Fatalf("expected the offer for acme-2026a with its fingerprint and public key, got %+v", resp.OfferedKey)
+	}
+
+	pluginhost.SetOperatorProvenanceKeys([]pluginhost.ProvenanceKey{{ID: "acme-2026a", PublicKey: pub}})
+	resp = describe()
+	if resp.Tier != "operator_trusted" || resp.OfferedKey != nil {
+		t.Errorf("a trusted key: expected operator_trusted with no offer, got tier %q offer %+v", resp.Tier, resp.OfferedKey)
+	}
 }
