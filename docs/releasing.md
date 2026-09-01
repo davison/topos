@@ -60,11 +60,17 @@ the M2 release gate on
 [#40](https://github.com/davison/topos/issues/40)):
 
 ```bash
-git log "$(git describe --tags --abbrev=0)"..main --pretty=%s
+git fetch --tags origin "+refs/heads/main:refs/remotes/origin/main"
+git log "$(git describe --tags --abbrev=0 origin/main)"..origin/main --pretty=%s
 ```
 
-(`git describe --tags --abbrev=0` resolves the last tag; substitute a
-specific tag to derive against a different baseline.)
+The first line is the preparation that makes the second runnable from
+any full clone, whatever its checked-out branch: it brings the tags and
+the current `main` in. `git describe --tags --abbrev=0 origin/main`
+resolves the last tag reachable from `main`; substitute a specific tag
+to derive against a different baseline. A shallow (`--depth`) clone
+cannot run the derivation — the log between the last tag and `main` is
+exactly what shallowness cuts away — so derive from a full checkout.
 
 - Any commit whose type carries the breaking marker — any `<type>!:` or
   `<type>(scope)!:`, so `feat!:` and an unscoped `fix!:` alike — forces
