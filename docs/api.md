@@ -815,13 +815,15 @@ consent-and-pin path.
 the browser.** Every field below is a kernel-computed fact the client only
 ever renders; none of them is decided client-side.
 
-- **`tier`** is `"trusted"` or `"external"` — this instance's launched
-  binary's launch-time provenance (`docs/plugin-contract.md`'s "Trust
-  tiers"), never anything the plugin itself asserts.
+- **`tier`** is `"trusted"`, `"operator_trusted"` or `"external"` —
+  this instance's launched binary's launch-time provenance
+  (`docs/plugin-contract.md`'s "Trust tiers"; `operator_trusted` is
+  described above), never anything the plugin itself asserts.
 - **`pinned_hash`** is the SHA-256 this instance's binary is currently
   pinned to in `[plugins.pins]` — populated for EVERY external-tier
-  entry, whether healthy or pin-mismatched (empty for `tier: "trusted"`,
-  which is never pinned).
+  entry, whether healthy or pin-mismatched (empty for `"trusted"` and
+  `"operator_trusted"`, which are never pinned: their evidence is the
+  signature).
 - **`current_hash`** is the on-disk SHA-256 of a pin-mismatched instance's
   binary — the value an operator would be re-pinning to. Empty except on
   a `launch_failure` entry.

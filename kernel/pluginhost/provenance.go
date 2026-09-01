@@ -464,15 +464,30 @@ func AcceptedProvenanceKeys() []ProvenanceKey {
 	operatorProvenanceMu.RUnlock()
 
 	out := make([]ProvenanceKey, 0, len(embeddedProvenanceKeys)+len(provenanceExtraParsed)+len(operator))
+	taken := make(map[string]bool, len(embeddedProvenanceKeys)+len(provenanceExtraParsed))
 	for _, k := range embeddedProvenanceKeys {
 		k.Word = KeyWordEmbedded
 		out = append(out, k)
+		taken[k.ID] = true
 	}
 	for _, k := range provenanceExtraParsed {
 		k.Word = KeyWordBuild
 		out = append(out, k)
+		taken[k.ID] = true
 	}
-	out = append(out, operator...)
+	for _, k := range operator {
+		// The kernel author's key ids are not the operator's to reuse: an
+		// operator entry wearing an embedded or build key id would
+		// otherwise replace that identity in the by-id lookup and let a
+		// manifest signed by different bytes verify as accepted. Such an
+		// entry is ignored — the fail-safe is trusting nothing extra —
+		// and a manifest it would have vouched for takes the reused-id
+		// offer path instead (davison/topos#58, review round 1).
+		if taken[k.ID] {
+			continue
+		}
+		out = append(out, k)
+	}
 	return out
 }
 

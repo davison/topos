@@ -416,18 +416,20 @@ re-pin ("Trust updated binary") action once.
 
 ## 8. The trust story, truthfully
 
-The kernel's trusted tier is earned by **a signed release manifest
-whose key is in the kernel's embedded key set** — today, only the
-`topos-plugins` repository's release key. Your plugin is therefore
-external-tier by construction: content-pinned, badged untrusted,
+The kernel's `trusted` tier is earned by **a signed release manifest
+whose key is in the kernel's embedded key set** — the `topos-plugins`
+repository's release key. There is a second word since v1.4.0
+(§8a): a manifest signed by a key the *operator* has chosen to trust
+earns `operator_trusted`, which launches exactly the same way. Without
+either, your plugin is external-tier: content-pinned, badged untrusted,
 consented to once per machine. Signing your release with your own key
-produces a manifest the kernel cannot verify — and a manifest that
-exists but does not verify is treated as *evidence that failed*, so a
-pull of such a release aborts. Until a certification path exists
-(tracked as PLUG-CERT), publish `checksums.txt` alone and let the
-external tier do its job; the consent interstitial shows your operator
-the hash they are accepting, which is exactly the informed decision the
-model wants them to make.
+does not make it trusted on its own — it makes it *offerable*: the
+signature carries your public key, and an operator who checks your
+published fingerprint can trust the key once, for every release you
+sign. If you would rather not sign, publish `checksums.txt` alone and
+let the external tier do its job; the consent interstitial shows your
+operator the hash they are accepting, which is exactly the informed
+decision the model wants them to make.
 
 ### 8a. Sign with your own key
 

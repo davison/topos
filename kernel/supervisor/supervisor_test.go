@@ -2,6 +2,9 @@ package supervisor
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1338,4 +1341,72 @@ func idsOfSupervisorTest(items []item.Item) map[string]bool {
 		ids[it.ID] = true
 	}
 	return ids
+}
+
+// TestApply_RejectedApplyRestoresThePreviousGenerationsTrustedKeys (M2-R4,
+// PR #58 review round 1): the operator's accepted keys follow the config
+// generation. An apply that fails before Reconcile commits must leave the
+// OLD generation's keys installed — never the proposed set — and a
+// successful apply installs the new ones.
+func TestApply_RejectedApplyRestoresThePreviousGenerationsTrustedKeys(t *testing.T) {
+	dir := buildMockPluginDir(t)
+	idx := newTestIndex(t)
+	ctx := context.Background()
+	t.Cleanup(func() { pluginhost.SetOperatorProvenanceKeys(nil) })
+
+	cfgStore := newTestConfigStore(t, `
+[sources.control]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
+
+[webspaces.everything]
+keywords = ["labels"]
+`)
+	sup, err := NewSupervisor(ctx, idx, cfgStore, pluginhost.Dirs{Trusted: dir}, hclog.NewNullLogger())
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+	defer sup.Shutdown()
+
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	next := &config.Config{
+		Plugins: config.PluginsConfig{TrustedKeys: []config.TrustedKey{{ID: "acme-2026a", PublicKey: base64.StdEncoding.EncodeToString(pub)}}},
+		Sources: map[string]config.Source{
+			"control": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+			// A NEW instance, so Reconcile must launch — and, under a
+			// cancelled context, abort before committing.
+			"added": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
+		},
+		Webspaces: map[string]config.Webspace{"everything": {Keywords: []string{"labels"}}},
+	}
+	if err := cfgStore.Save(next, cfgStore.Hash()); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	hasKey := func() bool {
+		for _, k := range pluginhost.AcceptedProvenanceKeys() {
+			if k.ID == "acme-2026a" {
+				return true
+			}
+		}
+		return false
+	}
+
+	// A cancelled context makes Reconcile fail before it commits — the
+	// pre-Reconcile branch.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := sup.Apply(cancelled); err == nil {
+		t.Fatal("expected the apply under a cancelled context to be rejected")
+	}
+	if hasKey() {
+		t.Fatal("a rejected apply left the proposed generation's trusted key installed")
+	}
+
+	if err := sup.Apply(ctx); err != nil {
+		t.Fatalf("expected the same save to apply under a live context: %v", err)
+	}
+	if !hasKey() {
+		t.Fatal("a successful apply must install the new generation's trusted keys")
+	}
 }
