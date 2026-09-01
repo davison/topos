@@ -40,10 +40,10 @@ GitHub's own milestone objects are not part of it.
 
 Before the migration to CodeCrew, milestones lived under `.planning/`
 (the GSD era — see [the genesis record](milestones/0-genesis-the-gsd-era.md));
-that directory is a frozen archive now, and `scripts/sync-milestones.sh`,
-which mirrored its milestone state into GitHub milestone objects, is a
-GSD-era leftover whose premise is gone — its removal is tracked as its
-own task under M2.
+that directory is a frozen archive now. The GSD-era script that mirrored
+its milestone state into GitHub milestone objects went with the premise
+([#44](https://github.com/davison/topos/issues/44)); the milestone
+objects it created remain as history.
 
 ## Cutting a release
 
