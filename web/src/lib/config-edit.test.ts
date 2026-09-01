@@ -17,7 +17,9 @@ import {
 	upsertSourceInstance,
 	removeSourceInstance,
 	setTrustedKey,
-	removeTrustedKey
+	removeTrustedKey,
+	setSourceFilterTerms,
+	splitFilterInput,
 } from './config-edit';
 import { isEmptyWebspaceShell } from './participation';
 import type { KernelConfig, WebspaceConfig } from './api';
@@ -628,5 +630,52 @@ describe('setTrustedKey / removeTrustedKey (M2-R4)', () => {
 		expect(removeTrustedKey(other, 'acme-2026a').plugins.trusted_keys?.map((k) => k.id)).toEqual([
 			'other'
 		]);
+	});
+});
+
+describe('setSourceFilterTerms / splitFilterInput (M2-R3, #55)', () => {
+	const base = () =>
+		({
+			server: { listen: '' },
+			paths: {},
+			sources: { 'mock-01': { plugin: 'topos-plugin-mock' }, 'mock-02': { plugin: 'topos-plugin-mock' } },
+			webspaces: {
+				house: { keywords: ['demo'], sources: [], match: {}, filter: ['boiler'] }
+			}
+		}) as unknown as Parameters<typeof setSourceFilterTerms>[0];
+
+	it('sets, replaces and removes an instance entry, preserving filter', () => {
+		let cfg = setSourceFilterTerms(base(), 'house', 'mock-01', ['quote']);
+		expect(cfg.webspaces.house.filter_by_source).toEqual({ 'mock-01': ['quote'] });
+		expect(cfg.webspaces.house.filter).toEqual(['boiler']);
+		cfg = setSourceFilterTerms(cfg, 'house', 'mock-01', []);
+		expect(cfg.webspaces.house.filter_by_source).toBeUndefined();
+	});
+
+	it('setWebspaceFilter preserves filter_by_source', () => {
+		let cfg = setSourceFilterTerms(base(), 'house', 'mock-01', ['quote']);
+		cfg = setWebspaceFilter(cfg, 'house', ['boiler', 'van']);
+		expect(cfg.webspaces.house.filter_by_source).toEqual({ 'mock-01': ['quote'] });
+	});
+
+	it('removing the source drops its entry', () => {
+		let cfg = setSourceFilterTerms(base(), 'house', 'mock-01', ['quote']);
+		cfg = removeSourceFromWebspace(cfg, 'house', 'mock-01');
+		expect(cfg.webspaces.house.filter_by_source).toBeUndefined();
+		cfg = setSourceFilterTerms(base(), 'house', 'mock-01', ['quote']);
+		cfg = removeSourceInstance(cfg, 'mock-01');
+		expect(cfg.webspaces.house.filter_by_source).toBeUndefined();
+	});
+
+	it('splits instance:term tokens and keeps the rest as one global term', () => {
+		expect(splitFilterInput('mock-01:quote boiler van mock-01:2026', ['mock-01', 'mock-02'])).toEqual({
+			global: 'boiler van',
+			bySource: { 'mock-01': ['quote', '2026'] }
+		});
+		// unknown prefix and bare colon stay global, never dropped
+		expect(splitFilterInput('ghost:x :y plain', ['mock-01'])).toEqual({
+			global: 'ghost:x :y plain',
+			bySource: {}
+		});
 	});
 });

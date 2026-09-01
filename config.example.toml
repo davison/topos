@@ -412,6 +412,24 @@ handoff = false
 # removing, or reordering terms directly in this file) is fully
 # supported; the UI and a hand-edit always agree on this one persisted
 # shape.
+#
+# filter_by_source (M2-R3, OPTIONAL, added with the body-search work): a
+# per-instance companion to filter — a table keyed by source instance id
+# (the [sources.<id>] key, exactly as match is), each value a list of
+# AND-ed terms applied ON TOP of filter to THAT instance's rows alone.
+# An item from a named instance must match every global filter term AND
+# every term in its own list; items from every other instance are
+# untouched. It narrows the stream and search identically, and each
+# instance's terms ride to its own source as required terms in the
+# content search. Validation mirrors match blocks: the instance must be
+# a configured source not excluded by this webspace's sources allowlist,
+# and every entry needs at least one non-empty term. The UI writes this
+# map itself (the chip menu's "Filter this source…" dialog, and
+# `instance:term` tokens in a "Save as filter" save), but hand-editing
+# is fully supported:
+#
+#   [webspaces.demo.filter_by_source]
+#   mock = ["standup"]
 
 # [webspaces.demo] — pairs with the live [sources.mock] block above:
 # "demo" matches the label every one of the mock's fixed items carries,

@@ -16,6 +16,7 @@
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Filter from '@lucide/svelte/icons/filter';
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import KeyRound from '@lucide/svelte/icons/key-round';
@@ -86,6 +87,7 @@
 		onfilter,
 		onrefresh,
 		onedit,
+		filtered = false,
 		busy = false,
 		// shrinkable (14-06, G-14-2): for the measured header row ONLY. A
 		// floor-forced chip at narrow widths must give way itself — its
@@ -110,7 +112,12 @@
 				| 'trust-update'
 				| 'trust-key'
 				| 'untrust-key'
+				| 'filter'
 		) => void;
+		// filtered (M2-R3, #55): this instance has its own filter_by_source
+		// terms in the current webspace — surfaced as a small funnel beside
+		// the name so a narrowed source is legible at a glance.
+		filtered?: boolean;
 		// busy (07-05-PLAN.md Task 2, the shared save/reload state pattern's
 		// in-flight rule — E6 "the initiating control disables in flight")
 		// disables ONLY the "Remove from this webspace" item below: it is
@@ -388,6 +395,20 @@
 								selected ? 'text-primary-foreground' : 'text-foreground'
 							)}>{source.display_name}</span
 						>
+						{#if filtered}
+							<!-- M2-R3 (#55): this instance is narrowed by its own
+							     filter_by_source terms — the funnel makes that legible
+							     on the chip itself; the terms live in the filter chip
+							     row and the "Filter this source…" dialog. -->
+							<Filter
+								class={cn(
+									'size-3 shrink-0',
+									selected ? 'text-primary-foreground' : 'text-muted-foreground'
+								)}
+								aria-hidden="true"
+								data-source-filtered
+							/>
+						{/if}
 					</button>
 				{/snippet}
 			</TooltipTrigger>
@@ -469,6 +490,10 @@
 			<DropdownMenuItem onSelect={() => onedit(source.name, 'match')}>
 				<Pencil aria-hidden="true" />
 				Edit match settings…
+			</DropdownMenuItem>
+			<DropdownMenuItem onSelect={() => onedit(source.name, 'filter')}>
+				<Filter aria-hidden="true" />
+				Filter this source…
 			</DropdownMenuItem>
 			{#if isWhatsApp}
 				<DropdownMenuItem onSelect={() => onedit(source.name, 'relink')}>

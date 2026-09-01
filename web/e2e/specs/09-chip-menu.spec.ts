@@ -7,7 +7,8 @@
 // Verbatim pass conditions this spec encodes (09-UI-SPEC.md):
 //   Fix 5: "The chip's remaining trailing control collapses from two
 //   size-8 hover-revealed buttons to ONE (the ⋮ trigger)... New menu
-//   order: Refresh now → separator → Edit connection… → Edit match
+//   order (updated for #55's Filter this source…): Refresh now →
+//   separator → Edit connection… → Edit match
 //   settings… → (Re-link…, WhatsApp only) → separator → Remove from this
 //   webspace."
 //   Fix 3: "no trailing 'ago' — formatRelativeTime's own output already
@@ -78,7 +79,13 @@ test.describe('09-05 Task 3: chip single trailing control, menu order, refresh, 
 		expect(
 			items,
 			'expected the menu item TEXT SEQUENCE — not merely membership — to equal the Fix 5 order for a non-WhatsApp source, which has no Re-link… item'
-		).toEqual(['Refresh now', 'Edit connection…', 'Edit match settings…', 'Remove from this webspace']);
+		).toEqual([
+			'Refresh now',
+			'Edit connection…',
+			'Edit match settings…',
+			'Filter this source…',
+			'Remove from this webspace'
+		]);
 	});
 
 	test('Refresh now triggers a real refresh request against the kernel, proving the relocated control is wired', async ({

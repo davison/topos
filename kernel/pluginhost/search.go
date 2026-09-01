@@ -87,11 +87,18 @@ func (h *Host) SearchSources(ctx context.Context, ws config.Webspace, query stri
 			out[i] = SourceSearchOutcome{Instance: sl.p.name, DisplayName: sl.p.displayName, Status: SearchStatusUnsupported}
 			continue
 		}
+		// This instance's own filter_by_source terms ride WITH the
+		// webspace's global filter as required_terms (M2-R3, #55) — the
+		// source ANDs both, exactly as the index query does.
+		instanceRequired := required
+		if extra := ws.FilterBySource[sl.p.name]; len(extra) > 0 {
+			instanceRequired = append(append([]string{}, required...), extra...)
+		}
 		wg.Add(1)
-		go func(i int, p *Plugin, fields map[string][]string) {
+		go func(i int, p *Plugin, fields map[string][]string, required []string) {
 			defer wg.Done()
 			out[i] = h.searchOne(ctx, p, query, required, fields)
-		}(i, sl.p, sl.fields)
+		}(i, sl.p, sl.fields, instanceRequired)
 	}
 	wg.Wait()
 	return out

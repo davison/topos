@@ -13,11 +13,17 @@
 	let {
 		term,
 		disabled,
-		onremove
+		onremove,
+		instance = ''
 	}: {
 		term: string;
 		disabled: boolean;
 		onremove: (term: string) => void;
+		// instance (M2-R3, #55): non-empty for a per-source filter chip —
+		// the chip shows whose rows the term narrows, and the remove
+		// control names both. The global chips pass nothing and render
+		// exactly as before.
+		instance?: string;
 	} = $props();
 
 	// stopPropagation first, matching SourceChip's refresh-click discipline
@@ -38,12 +44,14 @@
 	)}
 >
 	<Filter class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-	<span class="truncate text-[14px] leading-[1.4] text-foreground">"{term}"</span>
+	<span class="truncate text-[14px] leading-[1.4] text-foreground" data-filter-instance={instance || undefined}
+		>{#if instance}<span class="text-muted-foreground">{instance}:</span> {/if}"{term}"</span
+	>
 	<Button
 		variant="ghost"
 		size="icon"
 		class="size-8 shrink-0 rounded-md"
-		aria-label={`Remove filter ${term}`}
+		aria-label={instance ? `Remove ${instance} filter ${term}` : `Remove filter ${term}`}
 		{disabled}
 		onclick={handleRemoveClick}
 	>

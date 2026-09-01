@@ -71,6 +71,9 @@ export function setWebspaceFilter(cfg: KernelConfig, name: string, terms: string
 		keywords: existing?.keywords ?? [],
 		sources: existing?.sources ?? [],
 		match: existing?.match ?? {},
+		...(existing?.filter_by_source !== undefined
+			? { filter_by_source: existing.filter_by_source }
+			: {}),
 		filter: terms
 	};
 	return next;
@@ -98,7 +101,10 @@ export function setMatchBlock(
 		keywords: existing?.keywords ?? [],
 		sources: existing?.sources ?? [],
 		match: { ...(existing?.match ?? {}) },
-		...(existing?.filter !== undefined ? { filter: existing.filter } : {})
+		...(existing?.filter !== undefined ? { filter: existing.filter } : {}),
+		...(existing?.filter_by_source !== undefined
+			? { filter_by_source: existing.filter_by_source }
+			: {})
 	};
 	if (Object.keys(block).length === 0) {
 		delete ws.match[instance];
@@ -220,6 +226,7 @@ export function removeSourceFromWebspace(
 		match,
 		sources: seededAllowlist.filter((s) => s !== instance)
 	};
+	dropSourceFilterEntry(next.webspaces[webspace], instance);
 	return next;
 }
 
@@ -279,8 +286,94 @@ export function removeSourceInstance(cfg: KernelConfig, instanceId: string): Ker
 		if (ws.sources.includes(instanceId)) {
 			ws.sources = ws.sources.filter((s) => s !== instanceId);
 		}
+		dropSourceFilterEntry(ws, instanceId);
 	}
 	return next;
+}
+
+
+/**
+ * Drops `instance`'s entry from ws.filter_by_source in place, removing the
+ * key entirely when the map empties — the kernel validates a
+ * filter_by_source entry against configured, participating instances, so
+ * a webspace losing an instance must lose that instance's filter terms in
+ * the same write (M2-R3, #55; the same dangling-reference rule
+ * removeSourceInstance already applies to match blocks).
+ */
+function dropSourceFilterEntry(ws: WebspaceConfig, instance: string): void {
+	if (!ws.filter_by_source || !(instance in ws.filter_by_source)) return;
+	const map = { ...ws.filter_by_source };
+	delete map[instance];
+	if (Object.keys(map).length === 0) {
+		delete ws.filter_by_source;
+	} else {
+		ws.filter_by_source = map;
+	}
+}
+
+/**
+ * Returns a new document with `[webspaces.<webspace>.filter_by_source.<instance>]`
+ * set to `terms`, or removed outright when `terms` is empty — an empty
+ * entry is never written, since the kernel's validateFilterBySource
+ * rejects zero-term entries exactly as validateMatchBlocks rejects
+ * zero-field blocks (M2-R3, #55). A webspace absent from the input is
+ * created with empty defaults first, the same never-needs-a-special-case
+ * discipline as setWebspaceFilter above.
+ */
+export function setSourceFilterTerms(
+	cfg: KernelConfig,
+	webspace: string,
+	instance: string,
+	terms: string[]
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	const existing = next.webspaces[webspace];
+	const ws: WebspaceConfig = {
+		keywords: existing?.keywords ?? [],
+		sources: existing?.sources ?? [],
+		match: { ...(existing?.match ?? {}) },
+		...(existing?.filter !== undefined ? { filter: existing.filter } : {}),
+		...(existing?.filter_by_source !== undefined
+			? { filter_by_source: { ...existing.filter_by_source } }
+			: {})
+	};
+	if (terms.length === 0) {
+		dropSourceFilterEntry(ws, instance);
+	} else {
+		ws.filter_by_source = { ...(ws.filter_by_source ?? {}), [instance]: terms };
+	}
+	next.webspaces[webspace] = ws;
+	return next;
+}
+
+/**
+ * Splits a Save-as-filter input into the global term and per-instance
+ * terms (M2-R3, #55): each whitespace token of the form `<instance>:<term>`
+ * whose prefix names one of `instances` goes to that instance's own list;
+ * whatever remains is re-joined as ONE global term, preserving the
+ * long-standing "the whole query is one filter term" behaviour when no
+ * token targets an instance. A token with a colon whose prefix is NOT a
+ * configured instance stays in the global term untouched — never silently
+ * dropped, never misassigned.
+ */
+export function splitFilterInput(
+	raw: string,
+	instances: string[]
+): { global: string; bySource: Record<string, string[]> } {
+	const bySource: Record<string, string[]> = {};
+	const rest: string[] = [];
+	for (const token of raw.trim().split(/\s+/)) {
+		if (token === '') continue;
+		const i = token.indexOf(':');
+		const prefix = i > 0 ? token.slice(0, i) : '';
+		const term = i > 0 ? token.slice(i + 1) : '';
+		if (prefix !== '' && term !== '' && instances.includes(prefix)) {
+			(bySource[prefix] ??= []).push(term);
+		} else {
+			rest.push(token);
+		}
+	}
+	return { global: rest.join(' '), bySource };
 }
 
 /**

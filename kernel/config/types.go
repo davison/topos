@@ -296,6 +296,17 @@ type Webspace struct {
 	// permanent filter is active, and a webspace with no filter key
 	// streams byte-identically to its pre-Phase-7 output.
 	Filter []string `toml:"filter,omitempty" json:"filter,omitempty"`
+	// FilterBySource narrows ONE instance's rows without touching the
+	// others (M2-R3, #50/#55): keyed by source instance id exactly as
+	// Match is, each entry an AND-ed list of FTS terms applied ON TOP of
+	// Filter — an item from that instance must match every global term
+	// AND every term here; items from other instances are untouched. It
+	// narrows the stream and the index search identically to Filter, and
+	// each instance's terms ride to its own source as required_terms in
+	// the content-search fan-out. Query-time only, like Filter: removing
+	// an entry instantly widens the view with no resync. Empty means no
+	// per-instance narrowing.
+	FilterBySource map[string][]string `toml:"filter_by_source,omitempty" json:"filter_by_source,omitempty"`
 }
 
 // Participates reports whether source instance participates in webspace w:

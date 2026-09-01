@@ -49,6 +49,8 @@
 		filterError,
 		unknownConfigKeys,
 		onsavefilter,
+		filterBySource,
+		onremovesourcefilter,
 		onremovefilter,
 		config,
 		baseHash,
@@ -120,6 +122,11 @@
 		// only after a click appears to do nothing.
 		unknownConfigKeys: string[];
 		onsavefilter: () => void;
+		// filterBySource (M2-R3, #55): the current webspace's per-instance
+		// filter map — renders one labelled chip per (instance, term) in the
+		// filter row and the funnel marker on the instance's own SourceChip.
+		filterBySource: Record<string, string[]>;
+		onremovesourcefilter: (instance: string, term: string) => void;
 		onremovefilter: (term: string) => void;
 		// Add-source picker/flows (D-11, 07-04-PLAN.md): config/baseHash are
 		// the same last GET/PUT /api/config snapshot the filter-write path
@@ -165,6 +172,7 @@
 				| 'trust-update'
 				| 'trust-key'
 				| 'untrust-key'
+				| 'filter'
 		) => void;
 		// collapsed (checkpoint deviation, 09.1-01-PLAN.md issue 2): the
 		// caller's own scroll-driven decision, below 1024px only — the
@@ -528,6 +536,7 @@
 					{onrefresh}
 					{onedit}
 					busy={filterBusy}
+					filtered={(filterBySource[source.name] ?? []).length > 0}
 					shrinkable
 				/>
 			{/each}
@@ -562,6 +571,7 @@
 									{onrefresh}
 									{onedit}
 									busy={filterBusy}
+									filtered={(filterBySource[source.name] ?? []).length > 0}
 								/>
 							{/each}
 						</div>
@@ -707,10 +717,23 @@
 	  header. Gated on filters.length so it is ABSENT (not an
 	  empty-styled row) with zero active filters.
 	-->
-	{#if filters.length > 0}
+	{#if filters.length > 0 || Object.keys(filterBySource).length > 0}
 		<div class="mt-3 flex flex-wrap items-center gap-2">
 			{#each filters as term (term)}
 				<FilterChip {term} disabled={filterBusy} onremove={onremovefilter} />
+			{/each}
+			<!-- Per-source filter chips (M2-R3, #55): labelled with whose rows
+			     they narrow, removable independently, after the global chips
+			     in a stable instance-then-term order. -->
+			{#each Object.keys(filterBySource).sort() as instance (instance)}
+				{#each filterBySource[instance] as term (instance + ':' + term)}
+					<FilterChip
+						{term}
+						{instance}
+						disabled={filterBusy}
+						onremove={(t) => onremovesourcefilter(instance, t)}
+					/>
+				{/each}
 			{/each}
 		</div>
 	{/if}

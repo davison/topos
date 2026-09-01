@@ -408,7 +408,13 @@ the app's result set shipped at
 [#54](https://github.com/davison/topos/issues/54) — rows tagged by
 where they matched, unsynced hits marked, the per-source status row,
 the two-request progressive delivery, find-in-page labelled;
-the per-source filter map is [#55](https://github.com/davison/topos/issues/55).
+the per-source filter map shipped at
+[#55](https://github.com/davison/topos/issues/55) —
+`[webspaces.<w>.filter_by_source]`, per-instance AND-ed terms on top of
+`filter`, honoured identically by the stream, the index search and (as
+`required_terms`, per instance) the content-search fan-out, with the
+chip-menu dialog, labelled filter chips and `instance:term` save tokens
+in the app.
 
 **Search reaches bodies through the sources, not the index.** The
 plugin contract gains an optional `Search` RPC

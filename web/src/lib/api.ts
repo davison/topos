@@ -523,6 +523,11 @@ export interface WebspaceConfig {
 	// and removed independently, in stored array order (UI-12 ordering
 	// edge). Optional/absent means no active filter.
 	filter?: string[];
+	// filter_by_source (M2-R3, #55): per-instance AND-ed FTS terms applied
+	// ON TOP of `filter` for that instance's rows alone — the stream, the
+	// index search and (as required_terms) the content-search fan-out all
+	// honour it identically. Keyed by source instance id, like `match`.
+	filter_by_source?: Record<string, string[]>;
 }
 
 export interface KernelConfig {
