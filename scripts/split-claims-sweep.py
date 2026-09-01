@@ -40,6 +40,10 @@ CLASSES = [
     ("absent-dirs", r"\bplugins/(paperless|proton|signal|silverbullet|whatsapp|filesystem|gdrive)\b", ELSEWHERE),
     ("counted-plugins", r"\b(five|six|seven|four) (source |functional |real |shipped |first-party )?plugins?\b(?! ?-?(owned|populated)| keys)", ELSEWHERE),
     ("in-repo-plugins", r"in-repo plugin|in this repository'?s? plugins|this repository'?s (own )?(source )?plugins\b(?! set)", ELSEWHERE),
+    # ownership: the functional fleet, or a named member of it, claimed as
+    # this repository's — the class QA read for meaning and the vocabulary
+    # sweep missed (#32)
+    ("in-repo-fleet", r"(this repositor(y's|y)|in-repo|in this repository)[^.;:,()]{0,60}\b(paperless|silverbullet|proton|signal|whatsapp|gdrive|google drive|filesystem|fleet|functional plugins?)\b", ELSEWHERE),
     ("every-workspace-module", r"every (go )?workspace module|all workspace modules", HISTORY),
     ("release-carries-plugins", r"(release|nightly)s? (ships?|carr(y|ies)|publish(es)?|includ(e|es)|contains?)[^.;]{0,80}plugin binar|plugin binaries (among|in) (the|every) (published|release)", HISTORY + r"|ships? no|never (ship|publish|among)|no plugin binar|not (published|among)"),
 ]
@@ -72,30 +76,34 @@ def clause_exempts(window, pos, exempt):
     return re.search(exempt, clause_of(window, pos), re.I) is not None
 
 def self_test():
-    """Reviewer fixtures (davison/topos#31, rounds 2–4): a stale claim with
-    history language nearby — a sentence above, or the same sentence across
-    a comma, a line break, a colon, a parenthetical or an em dash — must
-    flag; a claim scoped in its own clause must not."""
-    must_flag = (
-        "The configuration moved to a new section during routine cleanup.\n\nRun `make plugins-portable` to build the portable plugin fleet.",
-        "The configuration moved to a new section, while make plugins-portable builds every portable plugin.",
-        "The configuration moved during routine cleanup,\nand make plugins-portable builds every portable plugin.",
-        "The configuration moved during cleanup: run make plugins-portable to build the portable plugin fleet.",
-        "The configuration moved during cleanup (an unrelated change), and make plugins-portable builds every portable plugin.",
-        "The configuration moved during cleanup — make plugins-portable builds every portable plugin.",
-    )
-    must_exempt = (
-        "The functional plugins moved to davison/topos-plugins; `make plugins-portable` was removed with them.",
-        "At the split the fleet left this repository, and `make plugins-portable` was removed with it.",
+    """Reviewer and QA fixtures (davison/topos#31 rounds 2–4, #32): a stale
+    claim with history language nearby — a sentence above, or the same
+    sentence across a comma, a line break, a colon, a parenthetical or an
+    em dash — must flag; a claim scoped in its own clause must not."""
+    by_name = {name: (pat, exempt) for name, pat, exempt in CLASSES}
+    fixtures = (
+        ("removed-targets", True, "The configuration moved to a new section during routine cleanup.\n\nRun `make plugins-portable` to build the portable plugin fleet."),
+        ("removed-targets", True, "The configuration moved to a new section, while make plugins-portable builds every portable plugin."),
+        ("removed-targets", True, "The configuration moved during routine cleanup,\nand make plugins-portable builds every portable plugin."),
+        ("removed-targets", True, "The configuration moved during cleanup: run make plugins-portable to build the portable plugin fleet."),
+        ("removed-targets", True, "The configuration moved during cleanup (an unrelated change), and make plugins-portable builds every portable plugin."),
+        ("removed-targets", True, "The configuration moved during cleanup — make plugins-portable builds every portable plugin."),
+        ("removed-targets", False, "The functional plugins moved to davison/topos-plugins; `make plugins-portable` was removed with them."),
+        ("removed-targets", False, "At the split the fleet left this repository, and `make plugins-portable` was removed with it."),
+        ("in-repo-fleet", True, "a deployment mixing this repository's own trusted paperless/SilverBullet/Proton/Signal/WhatsApp plugins with a third-party external one is the expected shape"),
+        ("in-repo-fleet", False, "this repository's functional plugins moved to topos-plugins at the split"),
     )
     ok = True
-    for text, want_flag in [(t, True) for t in must_flag] + [(t, False) for t in must_exempt]:
+    for cls, want_flag, text in fixtures:
+        pat, exempt = by_name[cls]
         window = ' '.join(text.split('\n'))
-        m = re.search(CLASSES[3][1], window, re.I)
-        assert m, "self-test pattern miss"
-        flagged_here = not clause_exempts(window, m.start(), CLASSES[3][2])
-        print(f"self-test: {'FLAGGED' if flagged_here else 'exempt '} — {text[:60]!r}… (want {'flag' if want_flag else 'exempt'})")
+        m = re.search(pat, window, re.I)
+        assert m, f"self-test pattern miss: {cls}: {text[:50]!r}"
+        flagged_here = not clause_exempts(window, m.start(), exempt)
+        print(f"self-test: {'FLAGGED' if flagged_here else 'exempt '} — [{cls}] {text[:60]!r}… (want {'flag' if want_flag else 'exempt'})")
         ok = ok and (flagged_here == want_flag)
+    # the trusted-dir sentence is a kernel fact and must not even match
+    assert not re.search(by_name['in-repo-fleet'][0], "the directory this repository's own `make build`/`make dev` populates", re.I)
     print("self-test:", "PASS" if ok else "FAIL")
     sys.exit(0 if ok else 2)
 

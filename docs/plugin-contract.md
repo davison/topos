@@ -339,7 +339,7 @@ naming the same plugin binary always resolve to the same tier — tier
 belongs to the binary's own evidence, not to the instance, so the same
 bytes evaluate identically for every instance that names them — but two
 DIFFERENT plugin binaries can freely sit in different tiers — a
-deployment mixing this repository's own trusted paperless/SilverBullet/
+deployment mixing topos-plugins' trusted paperless/SilverBullet/
 Proton/Signal/WhatsApp plugins with a third-party external one is the
 expected shape this whole mechanism exists to support.
 
@@ -646,8 +646,8 @@ freely, but choose deliberately: `source_type` is retained as descriptive
 provenance on every item your plugin ever emits (see "Provenance", below)
 and is user-visible in the kernel's own UI and HTTP API, so treat it as
 effectively permanent once chosen. A short, lowercase, no-punctuation
-token matching the shape of this repository's own examples (`"paperless"`,
-`"filesystem"`) reads well next to them; `display_name` is the
+token matching the shape of the first-party ids in topos-plugins
+(`"paperless"`, `"filesystem"`) reads well next to them; `display_name` is the
 human-readable form an operator recognizes in the add-source form and
 logs (e.g. `"paperless-ngx"`).
 
