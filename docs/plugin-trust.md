@@ -71,8 +71,8 @@ so verification never depends on JSON field ordering or whitespace.
 | Outcome | Cause |
 |---|---|
 | Trusted | A validly-signed manifest, from an accepted key, names this exact binary with a digest matching what's on disk. |
-| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. A manifest whose signature names a key id the kernel does not know is the same state at launch (no evidence, external, consent-and-pin runs it); `topos plugin pull`, however, aborts and places nothing when provenance is present but yields no accepted evidence, so an installer refuses what the launch gate merely declines to vouch for. The operator-trusted-keys design below turns that unknown key into an offer. |
-| Refused — never demote-and-run | A signature that does not verify; a manifest built for a different platform; a manifest that DOES verify but names this binary with a digest that no longer matches what's on disk (tamper). |
+| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. **Every defective candidate is the same state at launch**: a signature that does not verify, a malformed manifest, a manifest built for another platform, or a signature naming a key id the kernel does not know — each is recorded as a diagnostic (`VerifySignedProvenance` keeps going) and contributes no evidence, so the binary is external and consent-and-pin runs it. `topos plugin pull`, however, aborts and places nothing whenever provenance was published but none of it vouches for the binary — an installer refuses what the launch gate merely declines to vouch for. The operator-trusted-keys design below turns the unknown-key case into an offer and leaves the rest as they are. |
+| Refused — never demote-and-run | Tamper: a manifest that verifies against an accepted key names this binary with a digest that no longer matches what's on disk. This is the only refusal the launch gate makes from signed provenance. |
 
 A refusal is never silently downgraded to "run it at a lower tier
 anyway" — verification never demotes-and-runs. Every refusal names the
@@ -150,9 +150,12 @@ The design adds a second word — the operator's:
   releases** (writes the table entry; the plugin becomes
   operator-trusted, no pin needed) or **pin this binary only** (today's
   path). `topos plugin pull` stops aborting on an unknown key: it places
-  into the external tier and prints the same offer. Tamper, a signature
-  that does not verify, malformed manifests and platform mismatch stay
-  refusals.
+  into the external tier and prints the same offer. **Launch behaviour
+  for every other case is preserved**: tamper stays the one refusal; a
+  signature that does not verify, a malformed manifest or a manifest for
+  another platform stay no-evidence-at-launch (external) exactly as
+  today, and pull keeps aborting on them — only the unknown key, which
+  now carries a verifiable public key, is treated differently.
 - **The key travels with the signature.** The signature file gains one
   field: `public_key`, the signer's ed25519 public key in standard
   base64 (`topos-provenance sign` writes it; it holds the pair). The
