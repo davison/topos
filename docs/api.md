@@ -406,11 +406,13 @@ plugin contract gains an optional `Search` RPC
 ([`plugin-contract.md`](plugin-contract.md), "`Search`"). For a query,
 the kernel answers from the local FTS as today and, in parallel, asks
 every participating source instance that declares the capability, each
-under a per-source budget and cancellation. A plugin searches its whole
-source, so the kernel applies the **webspace's own correlation rules**
-(keywords / per-instance match fields — the same code sync uses) to the
-returned hits before any can appear; a hit that does not correlate is
-dropped. Hits merge with the FTS hits by stable id.
+under a per-source budget and cancellation. Membership is decided where it is
+decided for sync: the kernel resolves the webspace's `match_fields` for
+the instance — exactly what `Match` receives — and sends them in
+`SearchRequest`; the source ANDs the search with membership in its own
+query and returns only hits `Match` would also return. The kernel never
+shows a hit outside the webspace because the source never returns one;
+the mocks prove the promise. Hits merge with the FTS hits by stable id.
 
 **The result set says what happened.** Each result gains `matched_in`
 (`title`/`preview` from the index; `body`/`labels`/`attachment` from a
@@ -437,9 +439,11 @@ map when saved as a filter.
 
 **Decisions recorded (#50).** Additive optional RPC rather than a new
 contract generation (rejected: `topos.v3` — it would refuse every
-existing plugin for a capability they merely lack). Correlate before
-merge (rejected: showing whatever a source returns — it would leak items
-that do not belong to the webspace). Show correlated hits for unsynced
+existing plugin for a capability they merely lack). Membership is the
+source's, carried as `match_fields` in the request (rejected at review:
+a kernel-side predicate over returned Items — no such predicate exists,
+sync itself asks `Match`; and the kernel calling `Match` and
+intersecting ids — a full membership scan per search). Show correlated hits for unsynced
 items, marked (rejected: index-known only — the body hits are the
 point). Progressive arrival with a status row (rejected: wait for every
 source — one slow IMAP server would hold the whole result). Chip popover
