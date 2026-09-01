@@ -60,11 +60,15 @@ the M2 release gate on
 [#40](https://github.com/davison/topos/issues/40)):
 
 ```bash
-git log <last-tag>..main --pretty=%s
+git log "$(git describe --tags --abbrev=0)"..main --pretty=%s
 ```
 
-- Any commit whose type carries the breaking marker — `feat!:` or any
-  `<type>(scope)!:` — forces a **minor** bump.
+(`git describe --tags --abbrev=0` resolves the last tag; substitute a
+specific tag to derive against a different baseline.)
+
+- Any commit whose type carries the breaking marker — any `<type>!:` or
+  `<type>(scope)!:`, so `feat!:` and an unscoped `fix!:` alike — forces
+  a **minor** bump.
 - Otherwise, any `feat:` (a purely additive feature) or any `fix:`
   yields a **patch** bump.
 - A log holding only `docs:`, `chore:`, `test:`, `ci:`, `build:` or
