@@ -98,8 +98,8 @@ make test-portable       # go build + go test across the four buildable modules 
 make test                # alias of test-portable, kept for muscle memory
 make e2e                 # build + hermetic Playwright suite (Chromium) — the pre-ship gate
 make dev-check            # scripts/dev-guard-smoke.sh — behavioural guard for `make dev`
-make docs-check          # every relative doc link resolves — with scripts/split-claims-sweep.py, what CI runs on a docs-only PR
 make docs-check           # scripts/check-doc-links.sh — every relative doc link resolves
+python3 scripts/split-claims-sweep.py   # the split-claims sweep; with docs-check, what CI runs on a docs-only PR
 make install-check        # scripts/install-smoke.sh — hermetic guard for `make install`/`uninstall`
 make provenance-check     # scripts/provenance-smoke.sh — keygen → sign → verify → tamper → refuse
 make isolation-check      # scripts/simultaneity-smoke.sh — dev + installed side by side (ISOL-03)
