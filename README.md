@@ -31,24 +31,35 @@ the browser._
 
 ## Status
 
-topos is past its v1 milestones and shipped v1.3.0, the plugin repo
-split. Seven sources ship today — paperless-ngx, SilverBullet, Proton
-Mail (via Bridge, never marking mail read), Signal Desktop (read
-strictly read-only from its local database), WhatsApp (as a linked
-device, with its own persistent message store), Google Drive, and a
-local/network filesystem folder — interleaved in one chronological
-stream per webspace. They live in their own repository,
+topos is past its v1 milestones and shipped v1.3.1, the usability
+milestone. Seven sources ship today — paperless-ngx, SilverBullet,
+Proton Mail (via Bridge, never marking mail read), Signal Desktop (read
+strictly read-only from its local database, with a schema ceiling that
+advances by a verify-and-accept command run against your own database,
+never by hand), WhatsApp (as a linked device, with its own persistent
+message store), Google Drive, and a local/network filesystem folder —
+interleaved in one chronological stream per webspace. They live in
+their own repository,
 [`topos-plugins`](https://github.com/davison/topos-plugins), and cross
 the same published contract a third-party plugin does: signed releases
 the kernel verifies, one-command install and update independent of the
-kernel, a mismatch refused by name rather than silently, and a
+kernel, a mismatch refused by name rather than silently, a
 [developer guide](docs/plugin-development.md) from an empty module to
-`topos plugin pull`. You get source filtering, per-source health with
-manual refresh, full-text search across a webspace, a live detail pane,
-webspace creation and source configuration entirely from the browser
-(no hand-editing TOML required to get started), a default-deny agent
-permission model, and a responsive layout that adapts down to mobile
-widths. The record of each milestone lives under
+`topos plugin pull` — and a developer whose signing key you choose to
+trust, through a consent step that says what a key admits, earns a
+trusted-by-you tier across their releases instead of a per-binary pin.
+You get source filtering (including per-source filter terms, set from
+each source's chip or as `instance:term` in the search box), per-source
+health with manual refresh, full-text search that reaches item bodies
+across every source in a webspace — each source searching its own
+store, with a result set that says where each hit matched and which
+sources answered — a live detail pane, webspace creation and source
+configuration entirely from the browser (no hand-editing TOML required
+to get started), a default-deny agent permission model, and a
+responsive layout that adapts down to mobile widths. Development
+quality-of-life moved with it: docs-only changes clear CI in seconds,
+and release version numbers are derived from the commit log rather
+than chosen by feel. The record of each milestone lives under
 [`docs/milestones/`](docs/milestones/).
 
 ## Install
