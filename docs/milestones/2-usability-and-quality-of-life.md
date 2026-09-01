@@ -285,8 +285,11 @@ unrecorded gap this record names rather than fills.
 
 ## Why the record looks like this: the review loop
 
-Every implementation PR in this milestone took at least one
-CHANGES REQUESTED round, and — twice — the review rewrote the design
+Every implementation PR in this milestone but one took at least one
+CHANGES REQUESTED round — the exception is
+[topos-plugins PR #22](https://github.com/davison/topos-plugins/pull/22#issuecomment-5496183728)
+(tp#21, the root-refusal install guard), approved on its first round
+with no findings, and — twice — the review rewrote the design
 before any code existed. On the search design
 ([PR #51](https://github.com/davison/topos/pull/51), three rounds), the
 reviewer proved correlate-before-merge unimplementable as drafted (no
