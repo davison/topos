@@ -1025,6 +1025,52 @@ full resync). Return `reachable: false` with `last_error` set for any
 failure to reach the source system; never return a gRPC error from
 `Health` itself.
 
+### `Search` (optional — decided, not yet shipped)
+
+**Status:** decided at [davison/topos#50](https://github.com/davison/topos/issues/50)
+(M2-R2 of [#40](https://github.com/davison/topos/issues/40)); shipping
+in the implementation tasks that issue names. Until they land, the four
+RPCs above are the whole contract.
+
+The kernel's index holds titles and bounded previews, never bodies (the
+hybrid model, above). Search over bodies therefore belongs to the source
+that holds them, and the contract gains an **optional** fifth RPC:
+
+```proto
+rpc Search(SearchRequest) returns (SearchResponse);
+
+message SearchRequest  { string query = 1; int32 limit = 2; }
+message SearchResponse { repeated SearchHit hits = 1; bool truncated = 2; string note = 3; }
+message SearchHit {
+  Item   item       = 1;  // the same shape sync produces — the kernel renders and correlates from it
+  string snippet    = 2;  // bounded, like Item.preview; never the body
+  MatchedIn matched_in = 3;  // TITLE | BODY | LABELS | ATTACHMENT
+}
+```
+
+`Describe` gains a capability flag (`searches_content`). Declaring it
+promises: the plugin searches **its own content, its own way** — IMAP
+`SEARCH TEXT`, a document store's full-text query, a local database's
+own index, grep over local files — returns `Item`-shaped hits with a
+bounded snippet and where the term matched, respects `limit` and reports
+`truncated`, and returns within the kernel's per-source budget (a few
+seconds) or is cancelled. It never stores anything, never mutates the
+source, and never returns a body.
+
+**Additive, not a new generation.** A `topos.v2` plugin that does not
+implement `Search` answers `Unimplemented`; the kernel treats that as
+*no body search from this source* — a declared absence shown on the
+chip — **not** as a contract incompatibility. There is no `topos.v3` for
+this; the generation gate (above, "Handshake") is untouched. The mock
+reference plugin will implement `Search` over its fixture bodies and
+`mockstrict` will decline it, so both paths are proven in the kernel's
+own suite.
+
+What the kernel does with hits — fan-out, correlation into the webspace
+before anything is shown, merging with the index's own hits, the
+per-source status — is the HTTP API's business, described in
+[`api.md`](api.md).
+
 ## The `Item` message
 
 Every item a plugin returns from `Match` is normalized into this shape:
