@@ -1,48 +1,49 @@
 # Releasing
 
 The one page to read when cutting a release or crossing a milestone
-boundary: how GitHub milestones stay in step with `.planning/`, how a
+boundary: how a milestone opens and closes under CodeCrew, how a
 release is actually cut, what the nightly build does, and why no plugin
 binary is among the published artifacts.
 
 ## Milestones
 
-`.planning/` is the source of truth for milestone state. GitHub
-milestones are a mirror, kept in step by an explicit step — never the
-reverse. If a milestone's title, state, or description is edited directly
-in the GitHub UI, that edit is silently overwritten the next time the
-sync step below runs. GSD has no native mechanism for keeping a GitHub
-milestone in step with a `.planning/` milestone, so this repository
-carries its own: a committed, idempotent `gh api` wrapper.
+A milestone is a GitHub issue labelled `cc:milestone` — [#6](https://github.com/davison/topos/issues/6)
+was M1, [#40](https://github.com/davison/topos/issues/40) is M2 — and
+its lifecycle is CodeCrew's, driven by the `gh codecrew` verbs (the
+protocol is [gh-codecrew's SPEC](https://github.com/radiusred/gh-codecrew/blob/main/SPEC.md);
+`AGENTS.md` at the repository root says how this project runs it).
+GitHub's own milestone objects are not part of it.
 
-At a milestone boundary, run `scripts/sync-milestones.sh` with the
-milestone title from `.planning/STATE.md`'s frontmatter `milestone` key,
-and the appropriate action — once when the milestone opens, once when it
-closes:
+- **Opening.** `gh codecrew milestone new --title … --goal … --requirement …`
+  creates the issue with its numbered requirements (`M<n>-R<k>`) and
+  writes the milestone's row into [`ROADMAP.md`](../ROADMAP.md) locally —
+  that edit rides in the milestone's first PR, as the verb says.
+- **Work.** Every change is a task issue (`task new --milestone N`), with
+  its plan in the issue body, started (`task start`, which creates the
+  linked branch) and finished (`task finish --operator-confirm`, which
+  enforces the gates — closing PR, CI checks reporting green or skipped,
+  a model review under the reviewer contract, operator confirmation —
+  and rebase-merges). Decisions and deviations are recorded on the task
+  as they happen; a question only the operator can answer is raised as a
+  `cc:needs-decision` gate (`checkpoint`).
+- **Closing.** `milestone evidence N` checks every link the milestone's
+  record cites; the qa seat posts one verdict line per requirement on
+  the milestone issue and files a remedy task for anything not
+  satisfied; the milestone document lands under
+  [`docs/milestones/`](milestones/) as the last task; the release tag is
+  cut from the main that document merged into (below); the operator's
+  live-instance UAT is raised as a checkpoint; then
+  `gh codecrew milestone close N` closes the issue once its gates —
+  tasks closed, requirements declared, QA verdicts present, document
+  merged — all pass. The close verb sweeps every task's PR and takes
+  several minutes; that is normal.
 
-```bash
-# When a milestone opens (e.g. right after /gsd-new-milestone):
-scripts/sync-milestones.sh v1.0 open
-
-# When a milestone closes (e.g. right after /gsd-complete-milestone):
-scripts/sync-milestones.sh v1.0 close
-```
-
-Two guarantees make this safe to trust:
-
-- **Idempotent.** The script looks the milestone up by exact title,
-  across all states, before deciding whether to create or patch it. Safe
-  to re-run.
-- **No delete path.** The script cannot delete a milestone — the
-  capability is absent, not merely unused. `.planning/` never deletes a
-  milestone either, only opens or closes one; a delete would orphan every
-  issue assigned to it.
-
-The real current state is the worked example: milestone `v1.0` already
-exists on `davison/topos` as milestone number 1. Running
-`scripts/sync-milestones.sh v1.0 open` against it reconciles that
-existing milestone rather than creating a second, differently-numbered
-`v1.0`.
+Before the migration to CodeCrew, milestones lived under `.planning/`
+(the GSD era — see [the genesis record](milestones/0-genesis-the-gsd-era.md));
+that directory is a frozen archive now, and `scripts/sync-milestones.sh`,
+which mirrored its milestone state into GitHub milestone objects, is a
+GSD-era leftover whose premise is gone — its removal is tracked as its
+own task under M2.
 
 ## Cutting a release
 

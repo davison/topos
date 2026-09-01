@@ -164,6 +164,9 @@ cut and what the nightly build does.
 - **[`docs/plugins/`](docs/plugins/)** — where the per-plugin operator
   docs went: each plugin's own README in `topos-plugins`.
 - **[`docs/releasing.md`](docs/releasing.md)** — cutting a release,
-  nightly builds, and GitHub milestone sync.
-- **[`.planning/`](.planning/)** — this project's phase-by-phase
-  requirements, design decisions, and roadmap.
+  nightly builds, and the milestone lifecycle under CodeCrew.
+- **[`ROADMAP.md`](ROADMAP.md)** and **[`docs/milestones/`](docs/milestones/)**
+  — the live roadmap and the record of each milestone.
+- **[`.planning/`](.planning/)** — the frozen archive of the GSD era:
+  requirements, phase plans and the debug records code comments still
+  cite.
