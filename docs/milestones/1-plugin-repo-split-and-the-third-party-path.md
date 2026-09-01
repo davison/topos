@@ -2,8 +2,10 @@
 
 Milestone issue [#6](https://github.com/davison/topos/issues/6); the
 first milestone run under CodeCrew, opened 2026-08-31 at the migration
-this repository's [genesis record](0-genesis-the-gsd-era.md) describes
-and closed the same day. Every claim below links to the comment, PR or
+this repository's [genesis record](0-genesis-the-gsd-era.md) describes.
+This record is the milestone's last task: it merges ahead of the tag,
+the operator's live UAT and the close verb, in the sequence #6 records
+as each happens. Every claim below links to the comment, PR or
 issue that recorded it; where a choice clearly happened without a
 record, this document says so rather than reconstructing a rationale.
 
@@ -272,6 +274,10 @@ first task's PR and followed thereafter.
 
 ## The release
 
-v1.3.0 is the first kernel release that carries the provenance
-verifier, `topos plugin pull`, and the R6 gate — tagged at this
-milestone's close; the fleet it pairs with is topos-plugins v0.3.0.
+v1.3.0 is cut after this record merges, from the main it lands on:
+the first kernel release to carry the provenance verifier, `topos plugin
+pull`, and the R6 gate. The fleet it pairs with is topos-plugins v0.3.0,
+whose verifier pin moves to the tag once it exists. The tag, the
+operator's live UAT and the close verb are recorded on #6 as they
+happen; the roadmap row moves to Done with the M2-opening edit that
+adds the next row.
