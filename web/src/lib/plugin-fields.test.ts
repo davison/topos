@@ -92,9 +92,10 @@ describe('connectionFieldsFor', () => {
 		expect(pathField?.defaultValue).toBe('~/.local/share/topos/whatsapp');
 	});
 
-	it('falls back to a minimal field set for an unknown plugin type', () => {
+	it('falls back to the generic form for an unknown plugin type: display name, the kernel-known keys as advanced options, sync interval (M2-R4, #57)', () => {
 		const fields = connectionFieldsFor('topos-plugin-does-not-exist');
-		expect(fields.map((f) => f.key)).toEqual(['display_name', 'sync_interval']);
+		expect(fields.map((f) => f.key)).toEqual(['display_name', 'path', 'base_url', 'token', 'sync_interval']);
+		expect(fields.filter((f) => f.advanced).map((f) => f.key)).toEqual(['path', 'base_url', 'token', 'sync_interval']);
 	});
 
 	// 07.1-02-PLAN.md Task 2: the browser E2E harness's hermetic
@@ -425,5 +426,22 @@ describe('missingRequiredFields: topos-plugin-filesystem', () => {
 			agent: { read: false, handoff: false }
 		});
 		expect(filledRecursiveTrue).toEqual([]);
+	});
+});
+
+describe('connectionFieldsFor: the generic form for an unknown plugin type (M2-R4, #57)', () => {
+	it('offers the three kernel-known keys as optional Advanced options beside display name and sync interval', () => {
+		const fields = connectionFieldsFor('topos-plugin-somebody-elses');
+		const byKey = Object.fromEntries(fields.map((f) => [f.key, f]));
+		expect(Object.keys(byKey)).toEqual(['display_name', 'path', 'base_url', 'token', 'sync_interval']);
+		for (const key of ['path', 'base_url', 'token']) {
+			expect(byKey[key].required, `${key} must be optional`).toBe(false);
+			expect(byKey[key].advanced, `${key} sits under Advanced options`).toBe(true);
+		}
+		expect(byKey.token.secret).toBe(true);
+		expect(byKey.path.secret).toBe(false);
+	});
+	it('leaves every catalogued plugin type on its own field list', () => {
+		expect(connectionFieldsFor('topos-plugin-paperless').map((f) => f.key)).not.toContain('path');
 	});
 });

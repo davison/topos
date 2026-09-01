@@ -295,8 +295,39 @@ const CONNECTION_FIELDS: Record<string, ConnectionField[]> = {
  * rather than throwing or returning nothing, so Step 1 of the two-step
  * modal always has at least a name field to submit.
  */
+// GENERIC_CONNECTION_FIELDS is the connect form for a plugin type this
+// catalogue does not know — a third-party plugin (M2-R4, davison/topos#57).
+// Beside the display name it offers the three KERNEL-KNOWN connection keys
+// the envelope carries (docs/plugin-contract.md "Configuration") as
+// optional Advanced options — a plugin that needs one (a local-store
+// plugin's path, a service's base URL and token) says so in its own
+// README, and its Describe-declared extras cover everything else. Without
+// these, a third-party plugin whose fatal-guard requires `path` could not
+// be added from the picker at all.
+const GENERIC_CONNECTION_FIELDS: ConnectionField[] = [
+	DISPLAY_NAME_FIELD,
+	{
+		key: 'path',
+		label: 'Local Path',
+		required: false,
+		secret: false,
+		advanced: true,
+		placeholder: 'Only if this plugin reads a local path'
+	},
+	{
+		key: 'base_url',
+		label: 'Base URL',
+		required: false,
+		secret: false,
+		advanced: true,
+		placeholder: 'Only if this plugin talks to a service'
+	},
+	{ key: 'token', label: 'API Token', required: false, secret: true, advanced: true },
+	SYNC_INTERVAL_FIELD
+];
+
 export function connectionFieldsFor(pluginBinary: string): ConnectionField[] {
-	return CONNECTION_FIELDS[pluginBinary] ?? [DISPLAY_NAME_FIELD, SYNC_INTERVAL_FIELD];
+	return CONNECTION_FIELDS[pluginBinary] ?? GENERIC_CONNECTION_FIELDS;
 }
 
 /**

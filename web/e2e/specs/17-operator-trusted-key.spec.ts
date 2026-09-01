@@ -23,6 +23,11 @@ import { EXTERNAL_DEMO_BIN_DIR } from '../fixtures/plugin-binaries';
 const WEBSPACE = 'operator-trusted-key';
 const OFFERED = 'topos-plugin-external-demo';
 const REUSED = 'topos-plugin-external-demo-reused';
+// Two more copies of the same binary, signed with the scratch key and NOT
+// configured as sources: the picker offers them as new, so the add-source
+// interstitial's two consents can be driven for real.
+const FRESH_PIN = 'topos-plugin-external-demo-pinonly';
+const FRESH_KEY = 'topos-plugin-external-demo-trustkey';
 const SCRATCH_KEY_ID = 'acme-e2e';
 
 const configSpec: FixtureConfigSpec = {
@@ -47,13 +52,17 @@ const configSpec: FixtureConfigSpec = {
 	pluginBinaries: ['topos-plugin-mock'],
 	externalBinaryLinks: [
 		{ name: OFFERED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
-		{ name: REUSED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` }
+		{ name: REUSED, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
+		{ name: FRESH_PIN, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` },
+		{ name: FRESH_KEY, srcPath: `${EXTERNAL_DEMO_BIN_DIR}/${OFFERED}` }
 	],
 	signedProvenanceBinaries: [
 		{ name: OFFERED, scratchKeyID: SCRATCH_KEY_ID },
-		{ name: REUSED, scratchKeyID: SCRATCH_KEY_ID, reusedID: true }
+		{ name: REUSED, scratchKeyID: SCRATCH_KEY_ID, reusedID: true },
+		{ name: FRESH_PIN, scratchKeyID: SCRATCH_KEY_ID },
+		{ name: FRESH_KEY, scratchKeyID: SCRATCH_KEY_ID }
 	],
-	unpinnedExternalBinaries: [OFFERED, REUSED]
+	unpinnedExternalBinaries: [OFFERED, REUSED, FRESH_PIN, FRESH_KEY]
 };
 test.use({ configSpec });
 
@@ -180,4 +189,81 @@ test.describe('M2-R4: a developer key the operator trusts', () => {
 		await dialog.getByRole('button', { name: 'Cancel' }).click();
 		await expect(dialog).toHaveCount(0);
 	});
+
+	// The add-source interstitial (#57 plan): the trial launch reports the
+	// offer before the source exists; "pin this binary only" is the
+	// default and writes a pin, never a key; choosing the key writes the
+	// [[plugins.trusted_keys]] entry, never a pin — and the source lands
+	// operator-trusted.
+	async function addOffered(page: import('@playwright/test').Page, binary: string, displayName: string, choice: 'pin' | 'key') {
+		await page.getByRole('button', { name: 'Add source' }).click();
+		// The picker names a plugin type by pluginTypeLabel — the binary name
+		// without its prefix, title-cased per dash segment — not by the
+		// binary itself; the four copies of the demo binary share a Describe
+		// display name, so the label is what tells them apart.
+		const label = binary
+			.replace('topos-plugin-', '')
+			.split('-')
+			.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+			.join(' ');
+		await expect(page.getByText('Install a new source', { exact: true })).toHaveCount(1);
+		const tile = page.getByRole('button', { name: new RegExp(label) }).first();
+		await expect(tile).toBeVisible();
+		await tile.click();
+		const dialog = page.getByRole('dialog');
+		await dialog.locator('#conn-display_name').fill(displayName);
+		// The connect form's fields are keyed by binary name (plugin-fields.ts);
+		// these copies are unknown names, so fill whatever the generic form
+		// and the plugin's own declared extras present.
+		// An unknown plugin type gets the generic form: the kernel-known keys
+		// sit under Advanced options — the demo plugin's fatal-guard requires
+		// `path`, exactly the third-party case the generic form exists for.
+		await dialog.getByRole('button', { name: 'Advanced options' }).click();
+		await dialog.locator('#conn-path').fill(`/tmp/topos-e2e-17-${binary}`);
+		if (await dialog.locator('#extra-workspace_id').count()) await dialog.locator('#extra-workspace_id').fill('e2e');
+		await dialog.getByRole('button', { name: 'Next' }).click();
+		await expect(dialog.getByRole('heading', { name: 'Add an untrusted source' })).toBeVisible();
+		const offer = dialog.locator(`fieldset[data-offered-key="${SCRATCH_KEY_ID}"]`);
+		await expect(offer, 'the interstitial shows the offer the trial launch reported').toBeVisible();
+		await expect(offer.getByText(`Key id: ${SCRATCH_KEY_ID}`)).toBeVisible();
+		await expect(offer.getByText(/Fingerprint \(SHA-256\): [0-9a-f]{64}/)).toBeVisible();
+		await expect(offer.getByText(/reused id/)).toHaveCount(0);
+		await expect(offer.locator('input[value="pin"]'), 'pin this binary only is the default').toBeChecked();
+		if (choice === 'key') await offer.locator('input[value="key"]').check();
+		await dialog.locator('#untrusted-confirm-typed').fill(binary);
+		await dialog.getByRole('button', { name: 'Add untrusted source' }).click();
+		await expect(dialog.getByRole('heading', { name: `Match settings for ${WEBSPACE}` })).toBeVisible();
+		await dialog.getByRole('button', { name: 'Add source' }).click();
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+	}
+
+	test('add-source interstitial, offer → pin this binary only: a pin is written and no key', async ({ page, kernel }) => {
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+		await addOffered(page, FRESH_PIN, 'Pin Only Demo', 'pin');
+		const cfg = (await (await fetch(`${kernel.baseURL}/api/config`)).json()) as {
+			config: { plugins: { pins?: Record<string, string>; trusted_keys?: { id: string }[] } };
+		};
+		expect(cfg.config.plugins.pins?.[FRESH_PIN] ?? '').toMatch(/^[0-9a-f]{64}$/);
+		expect((cfg.config.plugins.trusted_keys ?? []).map((k) => k.id)).not.toContain(SCRATCH_KEY_ID);
+		await expect
+			.poll(async () => (await sources(kernel.baseURL)).get('pin-only-demo')?.tier, { timeout: 15_000 })
+			.toBe('external');
+	});
+
+	test('add-source interstitial, offer → trust the key: the entry is written, no pin, and the source lands operator-trusted', async ({ page, kernel }) => {
+		await page.goto(`${kernel.baseURL}/w/${WEBSPACE}`);
+		await addOffered(page, FRESH_KEY, 'Trust Key Demo', 'key');
+		const cfg = (await (await fetch(`${kernel.baseURL}/api/config`)).json()) as {
+			config: { plugins: { pins?: Record<string, string>; trusted_keys?: { id: string; public_key: string }[] } };
+		};
+		expect(cfg.config.plugins.pins?.[FRESH_KEY], 'the key consent writes no pin').toBeUndefined();
+		expect((cfg.config.plugins.trusted_keys ?? []).map((k) => k.id)).toContain(SCRATCH_KEY_ID);
+		await expect
+			.poll(async () => (await sources(kernel.baseURL)).get('trust-key-demo')?.tier, { timeout: 15_000 })
+			.toBe('operator_trusted');
+		const row = (await sources(kernel.baseURL)).get('trust-key-demo');
+		expect(row?.trusted_key).toBe(SCRATCH_KEY_ID);
+		expect(row?.pinned_hash ?? '').toBe('');
+	});
 });
+
