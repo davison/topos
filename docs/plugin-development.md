@@ -436,17 +436,22 @@ The kernel is gaining a second trust word, the operator's
 [`plugin-trust.md`](plugin-trust.md), "Operator-trusted keys"). When it
 ships, you sign your releases with your own ed25519 key using the same
 tooling the fleet uses — `topos-provenance keygen`, `sign`, `verify`,
-unchanged — and publish your **key id** and **public key** with the
-release. An operator who installs your plugin is offered that key once:
+unchanged — and the signature file `topos-provenance sign` writes carries your
+**key id** and **public key**. An operator who installs your plugin is offered that key once:
 *trust this key for future releases*, after which every release you sign
 runs at *trusted by you* on their instance without a per-binary pin; or
 *pin this binary only*, today's path. Rotate by shipping a new key id;
 they are offered it the same way.
 
-Until that lands, **do not ship a signed manifest**: today a manifest
-signed by a key the kernel does not know is refused outright, and your
-plugin will not run at all. Ship unsigned — the consent-and-pin path in
-§8 — and tell your operators the signed path arrives with v1.4.0.
+Until that lands, **do not ship a signed manifest**. Today a manifest
+signed by a key the kernel does not know earns nothing at launch (the
+kernel treats it as no evidence and runs the plugin external, by
+consent-and-pin — §8) and costs you the installer: `topos plugin pull`
+aborts and places nothing when provenance is present but none of it is
+accepted. Ship unsigned for now, and tell your operators the signed
+path arrives with v1.4.0. When it does, `topos-provenance sign` will
+write your public key into the `.sig` beside your manifest, and that is
+the whole publication step.
 
 ## 9. Before you call it done
 
