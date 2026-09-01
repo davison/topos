@@ -409,10 +409,18 @@ every participating source instance that declares the capability, each
 under a per-source budget and cancellation. Membership is decided where it is
 decided for sync: the kernel resolves the webspace's `match_fields` for
 the instance — exactly what `Match` receives — and sends them in
-`SearchRequest`; the source ANDs the search with membership in its own
-query and returns only hits `Match` would also return. The kernel never
-shows a hit outside the webspace because the source never returns one;
-the mocks prove the promise. Hits merge with the FTS hits by stable id.
+`SearchRequest`, together with the saved filter terms that apply to
+that instance (the global stack plus its own entry) as `required_terms`;
+the source ANDs the search with membership and with every required
+term in its own query. The kernel asks **only** instances that
+participate in the webspace with resolved membership input — the same
+rule `kernel/correlate` applies to sync, under which no match input
+means no call, never "the whole source" — and refuses to fan out
+otherwise. **What the kernel guarantees is its own side**; whether a
+returned hit is a member is the source's promise, trusted exactly as
+sync trusts the source's `Match` result set, no wider (the contract
+states the boundary). The mocks prove the reference behaviour. Hits
+merge with the FTS hits by stable id.
 
 **The result set says what happened.** Each result gains `matched_in`
 (`title`/`preview` from the index; `body`/`labels`/`attachment` from a
@@ -440,10 +448,18 @@ map when saved as a filter.
 **Decisions recorded (#50).** Additive optional RPC rather than a new
 contract generation (rejected: `topos.v3` — it would refuse every
 existing plugin for a capability they merely lack). Membership is the
-source's, carried as `match_fields` in the request (rejected at review:
-a kernel-side predicate over returned Items — no such predicate exists,
-sync itself asks `Match`; and the kernel calling `Match` and
-intersecting ids — a full membership scan per search). Show correlated hits for unsynced
+source's, carried as `match_fields` in the request, with the kernel
+fanning out only under resolved membership input and an empty map
+refused at the RPC (rejected at review: a kernel-side predicate over
+returned Items — no such predicate exists, sync itself asks `Match`;
+the kernel calling `Match` and intersecting ids — a full membership
+scan per search; and "empty map means the whole source" — fail-open,
+against correlate's own invariant). Saved filter terms ride to the
+source as `required_terms` (rejected: post-filtering source hits on
+their snippets — it would drop true body matches whose snippet does not
+show the term). The trust boundary is stated, not overstated: search
+trusts the source as sync does; no kernel-side membership guarantee is
+claimed. Show correlated hits for unsynced
 items, marked (rejected: index-known only — the body hits are the
 point). Progressive arrival with a status row (rejected: wait for every
 source — one slow IMAP server would hold the whole result). Chip popover
