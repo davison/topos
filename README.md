@@ -246,9 +246,13 @@ detects a non-loopback bind, but does not refuse to start.
   [`topos-plugins`](https://github.com/davison/topos-plugins).
 - **[`SECURITY.md`](SECURITY.md)** — how to report a vulnerability.
 - **[`docs/releasing.md`](docs/releasing.md)** — how a release is cut,
-  what the nightly build does, and GitHub milestone sync.
-- **[`.planning/`](.planning/)** — this project's phase-by-phase
-  requirements, design decisions, and roadmap.
+  what the nightly build does, and how a milestone opens and closes
+  under CodeCrew.
+- **[`ROADMAP.md`](ROADMAP.md)** and **[`docs/milestones/`](docs/milestones/)**
+  — the live roadmap and the record of each milestone.
+- **[`.planning/`](.planning/)** — the frozen archive of the GSD era:
+  its requirements, phase plans and the debug records that code
+  comments still cite.
 
 ## Credits
 
