@@ -631,24 +631,30 @@
 	// busy/error path every other modal-less filter write uses (#55).
 	async function removeSourceFilterTerm(instance: string, term: string) {
 		if (!configResponse) return;
+		// Same stale-navigation discipline as writeFilter (PR #62 review
+		// round 1): a webspace switch mid-write must neither apply this
+		// response's state nor clear the NEW webspace's busy flag.
+		const gen = navGeneration;
 		filterBusy = true;
 		try {
 			const remaining = (filterBySource[instance] ?? []).filter((t) => t !== term);
 			const nextConfig = setSourceFilterTerms(configResponse.config, webspace, instance, remaining);
 			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			if (gen !== navGeneration) return;
 			configResponse = res;
 			filterError = null;
 			await load(navGeneration);
 		} catch (err) {
+			if (gen !== navGeneration) return;
 			filterError =
 				err instanceof ApiError && err.code === 'config_changed_on_disk'
 					? CONFIG_CONFLICT_MESSAGE
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong removing this source filter — check the browser console and try again.';
-			await loadConfig(navGeneration);
+			await loadConfig(gen);
 		} finally {
-			filterBusy = false;
+			if (gen === navGeneration) filterBusy = false;
 		}
 	}
 
