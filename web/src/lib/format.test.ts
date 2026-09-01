@@ -6,6 +6,10 @@ import {
 	healthTone,
 	parseSnippet,
 	searchVariant,
+	matchedInLabel,
+	matchedInSummary,
+	sourceSearchSummary,
+	sourceSearchTone,
 	searchCopy,
 	noMatchesHeading
 } from './format';
@@ -280,5 +284,33 @@ describe('noMatchesHeading', () => {
 	it('interpolates the query verbatim even when it carries markup-like characters', () => {
 		expect(noMatchesHeading('<script>')).toBe('No matches for "<script>"');
 		expect(noMatchesHeading('a "quoted" term')).toBe('No matches for "a "quoted" term"');
+	});
+});
+
+describe('matched_in and source status wording (M2-R2, #54)', () => {
+	it('names each closed matched_in value and passes an unknown one through', () => {
+		expect(matchedInLabel('title')).toBe('Title');
+		expect(matchedInLabel('body')).toBe('Body');
+		expect(matchedInLabel('attachment')).toBe('Attachment');
+		expect(matchedInLabel('elsewhere')).toBe('elsewhere');
+	});
+	it('summarises a row found by both index and source without repeating', () => {
+		expect(matchedInSummary(['title', 'body', 'title'])).toBe('Title · Body');
+	});
+	it('says how each source answered', () => {
+		expect(sourceSearchSummary({ status: 'ok', hits: 1, elapsed_ms: 3 })).toBe('1 hit');
+		expect(sourceSearchSummary({ status: 'ok', hits: 2, truncated: true, elapsed_ms: 3 })).toBe(
+			'2 hits (more than shown)'
+		);
+		expect(sourceSearchSummary({ status: 'unsupported', hits: 0, elapsed_ms: 0 })).toBe(
+			'no content search'
+		);
+		expect(sourceSearchSummary({ status: 'timeout', hits: 0, elapsed_ms: 5000 })).toBe('timed out');
+		expect(sourceSearchSummary({ status: 'error', hits: 0, elapsed_ms: 12, error: 'x' })).toBe(
+			'failed'
+		);
+		expect(sourceSearchTone('ok')).toBe('ok');
+		expect(sourceSearchTone('unsupported')).toBe('muted');
+		expect(sourceSearchTone('timeout')).toBe('warning');
 	});
 });

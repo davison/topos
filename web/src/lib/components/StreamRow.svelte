@@ -9,7 +9,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import Thumbnail from './Thumbnail.svelte';
 	import PluginIcon from './PluginIcon.svelte';
-	import { formatItemDate, parseSnippet, highlightText } from '$lib/format';
+	import { formatItemDate, parseSnippet, highlightText, matchedInSummary, searchSourcesCopy } from '$lib/format';
 	import { cn } from '$lib/utils.js';
 	import type { StreamItem } from '$lib/api';
 
@@ -48,6 +48,8 @@
 		plugin = '',
 		snippet,
 		searchQuery = '',
+		matchedIn = [],
+		unsynced = false,
 		bulkSelected = false,
 		bulkModeActive = false,
 		onbulktoggle
@@ -70,6 +72,12 @@
 		plugin?: string;
 		snippet?: string;
 		searchQuery?: string;
+		// matchedIn / unsynced (M2-R2, #54): a search result's own tags —
+		// where it matched (title, preview, body, labels, attachment) and
+		// whether the local index has it at all (a source hit rendered from
+		// the plugin's Item alone is marked, never passed off as synced).
+		matchedIn?: ReadonlyArray<string>;
+		unsynced?: boolean;
 		bulkSelected?: boolean;
 		bulkModeActive?: boolean;
 		onbulktoggle?: (id: string, mode: 'toggle' | 'range') => void;
@@ -277,6 +285,23 @@
 			     and tag pills are the two things dropped at compact size) —
 			     the full tag list stays visible in the detail pane,
 			     unchanged. Hidden as a group below 768px. -->
+			<!-- Search-result tags (M2-R2, #54), ahead of the tag pills so
+			     they survive the compact clip: where this row matched, and
+			     the unsynced mark for a source hit the index has not seen. -->
+			{#if matchedIn.length > 0}
+				<Badge variant="outline" data-matched-in={matchedIn.join(' ')} title="Where this matched"
+					>In {matchedInSummary(matchedIn)}</Badge
+				>
+			{/if}
+			{#if unsynced}
+				<Badge
+					variant="secondary"
+					class="text-warning"
+					data-unsynced
+					title="Found by the source, not yet in the local index — shown from the source's own record"
+					>{searchSourcesCopy.unsynced}</Badge
+				>
+			{/if}
 			<span class="contents max-md:hidden">
 				{#each item.labels as label (label)}
 					<Badge variant="secondary">{label}</Badge>

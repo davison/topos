@@ -9,7 +9,13 @@
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Eye from '@lucide/svelte/icons/eye';
-	import { detailPaneState, detailBodyVariant, formatItemDate, highlightText } from '$lib/format';
+	import {
+		detailPaneState,
+		detailBodyVariant,
+		formatItemDate,
+		highlightText,
+		searchSourcesCopy
+	} from '$lib/format';
 
 	// item is the stream row already held in memory — the header below
 	// renders from it synchronously, before getItem(id) resolves (stage
@@ -183,6 +189,18 @@
 					<span class="rounded-full bg-secondary px-2 py-0.5 text-secondary-foreground">{label}</span>
 				{/each}
 			</div>
+			<!-- Find-in-page (M2-R2, #54): the highlights below mark the
+			     query's words wherever they occur on this page — a second
+			     mechanism from the search that found the item (which may
+			     have matched in a body the index never saw). Labelled so
+			     the two no longer look like one. -->
+			{#if searchQuery.trim()}
+				<p class="text-[14px] leading-[1.4] text-muted-foreground" data-find-in-page>
+					<span class="font-medium text-foreground">{searchSourcesCopy.findInPage}:</span>
+					“{searchQuery.trim()}” is highlighted below — the words on this page, not why it was
+					found.
+				</p>
+			{/if}
 			<div class="max-md:hidden flex items-center gap-2">
 				<OpenInSource link={item.link} {displayName} />
 				<!-- Exclude/Include control, desktop header instance (E5,

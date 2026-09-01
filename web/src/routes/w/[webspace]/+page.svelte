@@ -19,6 +19,7 @@
 		type StreamResponse,
 		type SourceStatus,
 		type SearchResult,
+		type SourceSearchStatus,
 		type ConfigResponse,
 		type ExtrasFieldDecl
 	} from '$lib/api';
@@ -305,6 +306,13 @@
 	let searchQuery = $state('');
 	let searchState: 'idle' | 'loading' | 'error' | 'ready' = $state('idle');
 	let searchResults = $state<SearchResult[]>([]);
+	// The source fan-out's half of a search (M2-R2, #54): progressive as two
+	// requests — the index answer lands first and is shown at once; the
+	// scope=all answer replaces it (the kernel merges by stable id) and
+	// brings the per-source status map. A slow source can only ever delay
+	// the second answer.
+	let searchSources = $state<Record<string, SourceSearchStatus> | null>(null);
+	let searchSourcesState: 'idle' | 'pending' | 'ready' | 'error' = $state('idle');
 	let searchRequestSeq = 0;
 
 	// Search-promotion permanent filter state (D-16-D-19, 07-01-PLAN.md
@@ -1209,22 +1217,53 @@
 		if (query.trim() === '') {
 			searchState = 'idle';
 			searchResults = [];
+			searchSources = null;
+			searchSourcesState = 'idle';
 			return;
 		}
 
 		searchState = 'loading';
+		searchSources = null;
+		searchSourcesState = 'pending';
 		const seq = ++searchRequestSeq;
 		const gen = navGeneration; // captured now so a webspace nav mid-flight also invalidates this response
+		const live = () => seq === searchRequestSeq && gen === navGeneration;
+
+		// Both requests leave together; whichever lands first is shown. The
+		// index answer never overwrites a fuller scope=all answer that beat
+		// it, and the scope=all answer always supersedes the index one.
+		let allLanded = false;
+		const indexHalf = searchWebspace(webspace, query, 'index').then(
+			(res) => {
+				if (!live() || allLanded) return;
+				searchResults = res.results;
+				searchState = 'ready';
+			},
+			() => {
+				/* the scope=all answer, or its failure, decides */
+			}
+		);
 		try {
-			const res = await searchWebspace(webspace, query);
-			// a newer search or a webspace navigation has since superseded this one
-			if (seq !== searchRequestSeq || gen !== navGeneration) return;
+			const res = await searchWebspace(webspace, query, 'all');
+			if (!live()) return;
+			allLanded = true;
 			searchResults = res.results;
+			searchSources = res.sources ?? {};
 			searchState = 'ready';
+			searchSourcesState = 'ready';
 		} catch {
-			if (seq !== searchRequestSeq || gen !== navGeneration) return;
-			searchResults = [];
-			searchState = 'error';
+			if (!live()) return;
+			allLanded = true;
+			await indexHalf;
+			if (!live()) return;
+			if (searchState === 'ready') {
+				// The index answered; only the fan-out failed — say so, keep the rows.
+				searchSourcesState = 'error';
+			} else {
+				searchResults = [];
+				searchState = 'error';
+				searchSourcesState = 'idle';
+			}
 		}
 	}
 
@@ -1259,6 +1298,8 @@
 			searchQuery = '';
 			searchState = 'idle';
 			searchResults = [];
+			searchSources = null;
+			searchSourcesState = 'idle';
 			filterError = null;
 			headerCollapsed = false;
 			lastStreamScrollTop = 0;
@@ -1485,6 +1526,8 @@
 						query={searchQuery}
 						state={searchState}
 						results={searchResults}
+						sources={searchSources}
+						sourcesState={searchSourcesState}
 						{selectedId}
 						onselect={selectItem}
 						staleSources={staleInstances}

@@ -19,9 +19,12 @@ import (
 // required_terms entry with the query, honours limit and reports
 // truncated, and says where each hit matched. Bounded snippet; never a
 // body.
-func (p *SourcePlugin) Search(_ context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error) {
+func (p *SourcePlugin) Search(ctx context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error) {
 	if len(req.GetMatchFields()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "search: match_fields is empty — a search without membership input would be the whole source, which is refused (kernel/correlate's own rule)")
+	}
+	if err := p.waitSearchDelay(ctx); err != nil {
+		return nil, err
 	}
 	terms := searchTerms(req.GetQuery())
 	if len(terms) == 0 {
@@ -36,13 +39,13 @@ func (p *SourcePlugin) Search(_ context.Context, req *toposv1.SearchRequest) (*t
 	keywords := req.GetMatchFields()["labels"].GetValues()
 
 	var hits []*toposv1.SearchHit
-	for _, it := range mockItems {
+	for _, it := range append(append([]*toposv1.Item{}, mockItems...), searchOnlyItems...) {
 		if !labelsMatchAnyKeyword(it.GetLabels(), keywords) {
 			continue // not a member — never returned, whatever the query
 		}
 		title := strings.ToLower(it.GetTitle())
 		preview := strings.ToLower(it.GetPreview())
-		body := strings.ToLower(mockFullText[it.GetSourceId()])
+		body := strings.ToLower(fullTextFor(it.GetSourceId()))
 		labels := strings.ToLower(strings.Join(it.GetLabels(), " "))
 		all := title + " " + preview + " " + body + " " + labels
 		ok := true
@@ -66,7 +69,7 @@ func (p *SourcePlugin) Search(_ context.Context, req *toposv1.SearchRequest) (*t
 		default:
 			where = toposv1.MatchedIn_MATCHED_IN_TITLE // a match spread across title+preview reads as the item's own summary
 		}
-		hits = append(hits, &toposv1.SearchHit{Item: it, Snippet: snippetAround(mockFullText[it.GetSourceId()], terms[0]), MatchedIn: where})
+		hits = append(hits, &toposv1.SearchHit{Item: it, Snippet: snippetAround(fullTextFor(it.GetSourceId()), terms[0]), MatchedIn: where})
 	}
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].GetItem().GetSourceId() < hits[j].GetItem().GetSourceId() })
 	truncated := false
@@ -126,4 +129,13 @@ func snippetAround(body, term string) string {
 		snip += "…"
 	}
 	return snip
+}
+
+// fullTextFor is the body text Search reads for an item — the Fetch
+// fixture's for a listed item, the search-only table's for an orphan.
+func fullTextFor(sourceID string) string {
+	if body, ok := searchOnlyFullText[sourceID]; ok {
+		return body
+	}
+	return mockFullText[sourceID]
 }

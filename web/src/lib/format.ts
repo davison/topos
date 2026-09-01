@@ -634,6 +634,71 @@ export function noMatchesHeading(query: string): string {
 	return `No matches for "${query}"`;
 }
 
+// --- Where a result matched, and how each source answered (M2-R2, #54) ---
+
+import type { MatchedIn, SourceSearchStatus, SourceSearchState } from './api';
+
+// matchedInLabel: the one wording per matched_in value — a closed
+// vocabulary (docs/api.md), so an unknown value renders as itself rather
+// than nothing.
+export function matchedInLabel(where: MatchedIn | string): string {
+	switch (where) {
+		case 'title':
+			return 'Title';
+		case 'preview':
+			return 'Preview';
+		case 'body':
+			return 'Body';
+		case 'labels':
+			return 'Labels';
+		case 'attachment':
+			return 'Attachment';
+		default:
+			return where;
+	}
+}
+
+// matchedInSummary joins the labels for a row's tag: "Title · Body".
+export function matchedInSummary(where: ReadonlyArray<MatchedIn | string>): string {
+	return Array.from(new Set(where.map(matchedInLabel))).join(' · ');
+}
+
+// The status row's per-source sentence: the closed vocabulary
+// ok | unsupported | timeout | error, with the count where there is one.
+export function sourceSearchSummary(status: SourceSearchStatus): string {
+	const n = status.hits;
+	switch (status.status) {
+		case 'ok':
+			return `${n} ${n === 1 ? 'hit' : 'hits'}${status.truncated ? ' (more than shown)' : ''}`;
+		case 'unsupported':
+			return 'no content search';
+		case 'timeout':
+			return 'timed out';
+		case 'error':
+			return 'failed';
+		default:
+			return status.status;
+	}
+}
+
+export function sourceSearchTone(state: SourceSearchState): 'ok' | 'muted' | 'warning' {
+	switch (state) {
+		case 'ok':
+			return 'ok';
+		case 'unsupported':
+			return 'muted';
+		default:
+			return 'warning';
+	}
+}
+
+export const searchSourcesCopy = Object.freeze({
+	pending: 'Searching sources…',
+	failed: 'The sources could not be searched — showing what the index found.',
+	unsynced: 'Not yet synced',
+	findInPage: 'Find in page'
+});
+
 // --- Search-term highlighting (UI-09) ---
 //
 // This section is the client half of UI-09's shared term-derivation rule.

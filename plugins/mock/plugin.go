@@ -191,6 +191,8 @@ func provenanceFor(sourceID string) map[string]string {
 // carry, ready, is not connection state: it is a fixture-only affordance
 // (see readiness.go) that is nil in every normal launch.
 type SourcePlugin struct {
+	// searchDelay is zero in the normal case — see searchfixture.go.
+	searchDelay time.Duration
 	// ready is nil in the normal case — see readiness.go for why the field
 	// exists at all (08-UAT.md gap G-08-4's fixture).
 	ready *readinessWindow

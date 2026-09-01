@@ -80,13 +80,41 @@ export interface StreamResponse {
 // result unchanged, with `snippet` swapped in for the preview region.
 export interface SearchResult extends StreamItem {
 	snippet: string;
+	// M2-R2 (#50/#53): where the item matched — "title"/"preview" from the
+	// index, "body"/"labels"/"attachment" from a source; both when found by
+	// both — where it came from, and whether the local index holds it
+	// (false: a source hit rendered from the plugin's own Item fields).
+	matched_in: MatchedIn[];
+	origin: 'index' | 'source' | 'both';
+	indexed: boolean;
 }
+
+export type MatchedIn = 'title' | 'preview' | 'body' | 'labels' | 'attachment';
+
+// The closed per-instance outcome vocabulary of the source fan-out
+// (kernel/pluginhost/search.go): present only for scope=all.
+export type SourceSearchState = 'ok' | 'unsupported' | 'timeout' | 'error';
+
+export interface SourceSearchStatus {
+	status: SourceSearchState;
+	hits: number;
+	truncated?: boolean;
+	note?: string;
+	error?: string;
+	elapsed_ms: number;
+}
+
+export type SearchScope = 'index' | 'all';
 
 export interface SearchResponse {
 	schema_version: number;
 	webspace: string;
 	query: string;
+	scope: SearchScope;
 	results: SearchResult[];
+	// Absent for scope=index; for scope=all, every participating instance
+	// and how it answered.
+	sources?: Record<string, SourceSearchStatus>;
 }
 
 // SNIPPET_OPEN/SNIPPET_CLOSE mirror kernel/index/store.go's SnippetOpen/
@@ -243,10 +271,21 @@ export function getStream(
 	return getJSON<StreamResponse>(view === 'excluded' ? `${path}?view=excluded` : path);
 }
 
-/** GET /api/webspaces/{webspace}/search?q= */
-export function searchWebspace(webspace: string, query: string): Promise<SearchResponse> {
+/**
+ * GET /api/webspaces/{webspace}/search?q=&scope=index|all — progressive
+ * as two requests (decided at #53, docs/api.md): `index` is the
+ * milliseconds FTS answer alone; `all` adds every source's own content
+ * search and the `sources` status map, returning when each has answered
+ * or its budget expired. The caller issues both and shows the first as
+ * soon as it lands.
+ */
+export function searchWebspace(
+	webspace: string,
+	query: string,
+	scope: SearchScope = 'all'
+): Promise<SearchResponse> {
 	return getJSON<SearchResponse>(
-		`/api/webspaces/${encodeURIComponent(webspace)}/search?q=${encodeURIComponent(query)}`
+		`/api/webspaces/${encodeURIComponent(webspace)}/search?q=${encodeURIComponent(query)}&scope=${scope}`
 	);
 }
 
