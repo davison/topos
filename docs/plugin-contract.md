@@ -1031,9 +1031,9 @@ failure to reach the source system; never return a gRPC error from
 (M2-R2 of [#40](https://github.com/davison/topos/issues/40)); the RPC,
 the SDK's optional interface, the mock's implementation and the kernel's
 fan-out shipped at [#53](https://github.com/davison/topos/issues/53).
-The first-party plugins implement it at
+The first-party plugins' implementations shipped at
 [topos-plugins#25](https://github.com/davison/topos-plugins/issues/25);
-the app's result set at [#54](https://github.com/davison/topos/issues/54).
+the app's result set shipped at [#54](https://github.com/davison/topos/issues/54).
 
 The kernel's index holds titles and bounded previews, never bodies (the
 hybrid model, above). Search over bodies therefore belongs to the source

@@ -245,6 +245,19 @@ func (s *Supervisor) ProbeSources(ctx context.Context) []pluginhost.SourceHealth
 	return s.Host().ProbeSources(ctx)
 }
 
+// SearchSources satisfies kernel/httpapi.Searcher, delegating to the
+// CURRENT plugin host — resolved fresh via Host() on every call, the
+// same never-a-snapshot discipline as ProbeSources above. Without this
+// method the serve path's scope=all quietly degrades to the index-only
+// answer: httpapi.SearchHandler type-asserts its Fetcher to Searcher,
+// and the Supervisor is what serve passes as the Fetcher (M2-R2, #54 —
+// caught by web/e2e/specs/18-search-result-set.spec.ts, the live half
+// the fan-out's own unit tests, which hand the handler a fake Searcher
+// directly, cannot see).
+func (s *Supervisor) SearchSources(ctx context.Context, ws config.Webspace, query string, required []string) []pluginhost.SourceSearchOutcome {
+	return s.Host().SearchSources(ctx, ws, query, required)
+}
+
 // LaunchFailures delegates to the CURRENT plugin host's LaunchFailures,
 // resolved fresh via Host() on every call — never a captured host pointer,
 // the same "never a snapshot taken once" discipline ProbeSources above

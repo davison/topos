@@ -69,11 +69,19 @@ func main() {
 	// declared verbatim; the kernel's launch gate is what judges it.
 	declaredContract := contractVersionFromEnv(os.Getenv)
 
+	// Fixture-only Search delay (searchfixture.go, davison/topos#54) — off
+	// by default; a malformed value fails startup loudly like the others.
+	searchDelay, err := searchDelayFromEnv(os.Getenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "topos-plugin-mock:", err)
+		os.Exit(1)
+	}
+
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: sdk.Handshake,
 		Plugins: map[string]goplugin.Plugin{
 			"source": &sdk.SourcePluginGRPCPlugin{
-				Impl: NewSourcePlugin().withReadinessWindow(ready).withRenditionFixture(renditionFixture).withContractVersion(declaredContract),
+				Impl: NewSourcePlugin().withReadinessWindow(ready).withRenditionFixture(renditionFixture).withContractVersion(declaredContract).withSearchDelay(searchDelay),
 			},
 		},
 		// sdk.GRPCServer (not goplugin.DefaultGRPCServer) raises the gRPC

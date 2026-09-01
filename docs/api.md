@@ -400,10 +400,14 @@ This route has **no `/agent/v1` mirror** in this version — see "The
 **Shipped in the kernel** at [#53](https://github.com/davison/topos/issues/53):
 `?scope=index|all` on the search route, the fan-out, the merged result
 set with `matched_in`/`origin`/`indexed`, the per-source `sources` map.
-The first-party plugins' `Search` implementations are
+The first-party plugins' `Search` implementations shipped at
 [topos-plugins#25](https://github.com/davison/topos-plugins/issues/25)
-(until they land, every first-party source reports `unsupported` and
-only the mock answers); the app's result set is [#54](https://github.com/davison/topos/issues/54);
+— all seven search their own content within the webspace's membership
+(a fleet release carrying them pairs with this kernel's next);
+the app's result set shipped at
+[#54](https://github.com/davison/topos/issues/54) — rows tagged by
+where they matched, unsynced hits marked, the per-source status row,
+the two-request progressive delivery, find-in-page labelled;
 the per-source filter map is [#55](https://github.com/davison/topos/issues/55).
 
 **Search reaches bodies through the sources, not the index.** The
