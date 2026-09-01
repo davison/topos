@@ -41,6 +41,7 @@
 	import EditSourceModal from '$lib/components/EditSourceModal.svelte';
 	import RelinkModal from '$lib/components/RelinkModal.svelte';
 	import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';
+	import TrustKeyDialog from '$lib/components/TrustKeyDialog.svelte';
 	import ManageSourcesModal from '$lib/components/ManageSourcesModal.svelte';
 	import { writeLastWebspace } from '$lib/last-webspace';
 
@@ -429,6 +430,10 @@
 	// live pinned_hash/current_hash facts; TrustUpdateDialog never derives
 	// or computes a hash itself).
 	let trustUpdateInstance = $state<string | null>(null);
+	// trustKeyInstance/trustKeyMode (M2-R4): the one key-consent session —
+	// trust an offered key, or stop trusting the key that vouches.
+	let trustKeyInstance = $state<string | null>(null);
+	let trustKeyMode = $state<'trust' | 'untrust'>('trust');
 
 	// The single edit-session reset site (mirrors AddSourceModal.svelte's
 	// own single resetFlowState) — handleEditClose and handleEditSaved both
@@ -447,8 +452,23 @@
 
 	async function handleChipEdit(
 		name: string,
-		kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'
+		kind:
+			| 'connection'
+			| 'match'
+			| 'relink'
+			| 'remove'
+			| 'trust-update'
+			| 'trust-key'
+			| 'untrust-key'
 	) {
+		if (kind === 'trust-key' || kind === 'untrust-key') {
+			// M2-R4 (davison/topos#49): the key dialogs mirror the re-pin
+			// session — one instance, resolved live to its SourceStatus, and
+			// a single putConfig on confirm.
+			trustKeyInstance = name;
+			trustKeyMode = kind === 'trust-key' ? 'trust' : 'untrust';
+			return;
+		}
 		if (kind === 'remove') {
 			await handleRemoveSource(name);
 			return;
@@ -573,6 +593,13 @@
 	// sources (the chip's own health/hash fields) and the stream (D-07's
 	// eager reconcile) together, so the chip recovers without a kernel
 	// restart.
+	function handleTrustKeyClose() {
+		trustKeyInstance = null;
+	}
+	async function handleTrustKeySaved() {
+		trustKeyInstance = null;
+		await Promise.all([loadConfig(navGeneration), loadSources(), load(navGeneration)]);
+	}
 	function handleTrustUpdateClose() {
 		trustUpdateInstance = null;
 	}
@@ -710,6 +737,9 @@
 	// per-instance lookup already uses — declared here, after
 	// sourcesByInstance, so its own $derived reads an already-initialized
 	// value rather than one still in its declaration's temporal dead zone.
+	let trustKeySource = $derived(
+		trustKeyInstance ? (sourcesByInstance.get(trustKeyInstance) ?? null) : null
+	);
 	let trustUpdateSource = $derived(
 		trustUpdateInstance ? (sourcesByInstance.get(trustUpdateInstance) ?? null) : null
 	);
@@ -1336,6 +1366,20 @@
 				config={configResponse.config}
 				onclose={handleRelinkClose}
 				onrelinked={handleRelinked}
+			/>
+		{/key}
+	{/if}
+
+	{#if configResponse && trustKeyInstance && trustKeySource}
+		{#key trustKeyInstance + trustKeyMode}
+			<TrustKeyDialog
+				open={true}
+				mode={trustKeyMode}
+				source={trustKeySource}
+				config={configResponse.config}
+				baseHash={configResponse.hash}
+				onclose={handleTrustKeyClose}
+				onsaved={handleTrustKeySaved}
 			/>
 		{/key}
 	{/if}

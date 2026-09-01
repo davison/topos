@@ -92,13 +92,18 @@ describe('chip-edit-menu guard: found non-empty comment-stripped sources', () =>
 // ONLY Button element.
 const ariaLabelMarker = 'aria-label={`${source.display_name} actions`}';
 const ariaLabelIndex = strippedChip.indexOf(ariaLabelMarker);
-expect(ariaLabelIndex, `expected to find "${ariaLabelMarker}" in the scanned source`).toBeGreaterThanOrEqual(
-	0
-);
+expect(
+	ariaLabelIndex,
+	`expected to find "${ariaLabelMarker}" in the scanned source`
+).toBeGreaterThanOrEqual(0);
 const editButtonStart = strippedChip.lastIndexOf('<Button', ariaLabelIndex);
 const editButtonEnd = strippedChip.indexOf('</Button>', ariaLabelIndex);
 const editButtonBlock = strippedChip.slice(editButtonStart, editButtonEnd + '</Button>'.length);
-const editMenuBlock = extractBetween(strippedChip, '<DropdownMenuContent>', '</DropdownMenuContent>');
+const editMenuBlock = extractBetween(
+	strippedChip,
+	'<DropdownMenuContent>',
+	'</DropdownMenuContent>'
+);
 const filterButtonBlock = extractBetween(strippedChip, '<button', '</button>');
 const editClickHandlerBody = extractBetween(
 	strippedChip,
@@ -114,11 +119,11 @@ describe('overflow trigger: aria-label reads "{name} actions" (Fix 5, no longer 
 	it('the trigger button carries size-8 sizing', () => {
 		expect(
 			/\bsize-8\b/.test(editButtonBlock),
-			'expected the overflow trigger to carry size-8 sizing — the chip\'s only sub-44px control now that Fix 5 removed the standalone refresh button'
+			"expected the overflow trigger to carry size-8 sizing — the chip's only sub-44px control now that Fix 5 removed the standalone refresh button"
 		).toBe(true);
 	});
 
-	it('exactly two aria-label attributes exist in the file — the overflow trigger and the E5 pinned-hash footer\'s copy button (11-06-PLAN.md Task 1)', () => {
+	it("exactly two aria-label attributes exist in the file — the overflow trigger and the E5 pinned-hash footer's copy button (11-06-PLAN.md Task 1)", () => {
 		const matches = strippedChip.match(/aria-label=/g) ?? [];
 		expect(matches.length).toBe(2);
 	});
@@ -128,31 +133,32 @@ describe('click handling: stopPropagation before the callback, filter button unt
 	it('handleEditClick calls stopPropagation before invoking the trigger callback', () => {
 		const stopIndex = editClickHandlerBody.indexOf('event.stopPropagation()');
 		const callbackIndex = editClickHandlerBody.indexOf('triggerOnClick?.(event)');
-		expect(stopIndex, 'expected handleEditClick to call event.stopPropagation()').toBeGreaterThanOrEqual(
-			0
-		);
+		expect(
+			stopIndex,
+			'expected handleEditClick to call event.stopPropagation()'
+		).toBeGreaterThanOrEqual(0);
 		expect(
 			callbackIndex,
 			'expected handleEditClick to invoke the forwarded trigger callback'
 		).toBeGreaterThanOrEqual(0);
 		expect(
 			stopIndex < callbackIndex,
-			'expected stopPropagation() to run BEFORE the forwarded callback — this is the D-12 vs Phase 6 D-01 collision, and getting the order wrong would let an edit-menu open also toggle the chip\'s filter'
+			"expected stopPropagation() to run BEFORE the forwarded callback — this is the D-12 vs Phase 6 D-01 collision, and getting the order wrong would let an edit-menu open also toggle the chip's filter"
 		).toBe(true);
 	});
 
-	it('the filter button\'s own click handler is untouched (still just onfilter(source.name))', () => {
+	it("the filter button's own click handler is untouched (still just onfilter(source.name))", () => {
 		expect(
 			filterButtonBlock.includes('onclick={() => onfilter(source.name)}'),
-			'expected the filter button\'s click handler to remain exactly onclick={() => onfilter(source.name)} — a plain chip click must still only toggle the filter'
+			"expected the filter button's click handler to remain exactly onclick={() => onfilter(source.name)} — a plain chip click must still only toggle the filter"
 		).toBe(true);
 	});
 });
 
 describe('menu contents: Refresh now first, three separators, no delete-instance item', () => {
-	it('contains exactly three DropdownMenuSeparators (Fix 5\'s two, plus the E5 pinned-hash footer\'s own — 11-06-PLAN.md Task 1)', () => {
+	it("contains exactly four DropdownMenuSeparators (Fix 5's two, the E5 pinned-hash footer's own — 11-06-PLAN.md Task 1 — and the operator-trusted key footer's own, M2-R4)", () => {
 		const separators = editMenuBlock.match(/<DropdownMenuSeparator/g) ?? [];
-		expect(separators.length).toBe(3);
+		expect(separators.length).toBe(4);
 	});
 
 	// Finds the index of the `>` that closes an opening JSX tag starting at
@@ -172,7 +178,7 @@ describe('menu contents: Refresh now first, three separators, no delete-instance
 		return -1;
 	}
 
-	it('the menu item label set equals exactly the six expected labels, Trust updated binary… first (11-06-PLAN.md Task 1, E4)', () => {
+	it('the menu item label set equals exactly the eight expected labels, Trust updated binary… first, the two key consents next (11-06-PLAN.md Task 1, E4; M2-R4)', () => {
 		const items = [...editMenuBlock.matchAll(/<DropdownMenuItem[\s\S]*?<\/DropdownMenuItem>/g)].map(
 			(m) => m[0]
 		);
@@ -187,9 +193,11 @@ describe('menu contents: Refresh now first, three separators, no delete-instance
 		});
 		expect(
 			labels,
-			'expected the menu item label set to equal exactly [Trust updated binary…, Refresh now, Edit connection…, Edit match settings…, Re-link…, Remove from this webspace], Trust updated binary… first — proven by an ordered array, not merely membership'
+			'expected the menu item label set to equal exactly [Trust updated binary…, Trust signing key…, Stop trusting key…, Refresh now, Edit connection…, Edit match settings…, Re-link…, Remove from this webspace], the trust remedies first — proven by an ordered array, not merely membership'
 		).toEqual([
 			'Trust updated binary…',
+			'Trust signing key…',
+			'Stop trusting key…',
 			'Refresh now',
 			'Edit connection…',
 			'Edit match settings…',
@@ -212,7 +220,10 @@ describe('Refresh now: disabled and spinning while syncing (Fix 5, new guard)', 
 	const refreshTextIdx = editMenuBlock.indexOf('Refresh now');
 	const refreshItemStart = editMenuBlock.lastIndexOf('<DropdownMenuItem', refreshTextIdx);
 	const refreshItemEnd = editMenuBlock.indexOf('</DropdownMenuItem>', refreshTextIdx);
-	const refreshItemBlock = editMenuBlock.slice(refreshItemStart, refreshItemEnd + '</DropdownMenuItem>'.length);
+	const refreshItemBlock = editMenuBlock.slice(
+		refreshItemStart,
+		refreshItemEnd + '</DropdownMenuItem>'.length
+	);
 
 	it('is the first DropdownMenuItem in the menu OUTSIDE the conditional Trust updated binary… item (11-06-PLAN.md Task 1, E4)', () => {
 		const firstItemIndex = editMenuBlock.indexOf('<DropdownMenuItem');
@@ -231,7 +242,7 @@ describe('Refresh now: disabled and spinning while syncing (Fix 5, new guard)', 
 		);
 		expect(
 			firstItemBlock.includes('Trust updated binary'),
-			'expected the menu\'s literal first DropdownMenuItem in source order to be the conditional Trust updated binary… item'
+			"expected the menu's literal first DropdownMenuItem in source order to be the conditional Trust updated binary… item"
 		).toBe(true);
 		expect(
 			refreshTextIndex,
@@ -249,17 +260,20 @@ describe('Refresh now: disabled and spinning while syncing (Fix 5, new guard)', 
 	it('calls the existing onrefresh(source.name) — no prop-shape change', () => {
 		expect(
 			refreshItemBlock.includes('onSelect={() => onrefresh(source.name)}'),
-			'expected Refresh now to call the component\'s existing onrefresh(source.name), the same call the removed standalone button made'
+			"expected Refresh now to call the component's existing onrefresh(source.name), the same call the removed standalone button made"
 		).toBe(true);
 		const matches = strippedChip.match(/onrefresh\(source\.name\)/g) ?? [];
-		expect(matches.length, 'expected exactly one onrefresh(source.name) call site — the refresh call survived the move, unduplicated').toBe(1);
+		expect(
+			matches.length,
+			'expected exactly one onrefresh(source.name) call site — the refresh call survived the move, unduplicated'
+		).toBe(1);
 	});
 
 	it('its RefreshCw icon carries animate-spin while source.syncing', () => {
 		expect(
 			/<RefreshCw[^>]*animate-spin[^>]*>/.test(refreshItemBlock) ||
 				/<RefreshCw[\s\S]*?source\.syncing[\s\S]*?animate-spin/.test(refreshItemBlock),
-			'expected the Refresh now item\'s RefreshCw icon to carry an animate-spin class while source.syncing'
+			"expected the Refresh now item's RefreshCw icon to carry an animate-spin class while source.syncing"
 		).toBe(true);
 		const matches = strippedChip.match(/animate-spin/g) ?? [];
 		expect(matches.length, 'expected exactly one animate-spin reference in the file').toBe(1);
@@ -287,7 +301,7 @@ describe('Re-link… entry: guarded on the WhatsApp source type', () => {
 
 	it('isWhatsApp is derived from source.source_type, not the plugin binary name', () => {
 		expect(
-			strippedChip.includes("source.source_type === WHATSAPP_SOURCE_TYPE"),
+			strippedChip.includes('source.source_type === WHATSAPP_SOURCE_TYPE'),
 			'expected isWhatsApp to key off source.source_type — the field GET /api/sources actually exposes, not a plugin binary name this component has no other reason to know'
 		).toBe(true);
 	});
@@ -301,7 +315,10 @@ describe('remove item: destructive tint', () => {
 			'</DropdownMenuItem>'
 		);
 		const precedingOpenTag = editMenuBlock.slice(
-			editMenuBlock.lastIndexOf('<DropdownMenuItem', editMenuBlock.indexOf('Remove from this webspace')),
+			editMenuBlock.lastIndexOf(
+				'<DropdownMenuItem',
+				editMenuBlock.indexOf('Remove from this webspace')
+			),
 			editMenuBlock.indexOf('Remove from this webspace')
 		);
 		expect(
@@ -332,9 +349,10 @@ describe('measurement clones keep no-op handlers', () => {
 		const realBlocks = [...strippedHeader.matchAll(/<SourceChip[\s\S]*?\/>/g)].filter(
 			(m) => !m[0].includes('onfilter={() => {}}')
 		);
-		expect(realBlocks.length, 'expected to find real (row + overflow) SourceChip usages').toBeGreaterThan(
-			0
-		);
+		expect(
+			realBlocks.length,
+			'expected to find real (row + overflow) SourceChip usages'
+		).toBeGreaterThan(0);
 		for (const real of realBlocks) {
 			expect(
 				real[0].includes('{onedit}'),

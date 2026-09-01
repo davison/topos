@@ -803,12 +803,15 @@ base64 the app writes into `[[plugins.trusted_keys]]` on consent, and
 `reused` marks a key id already trusted arriving with a *different* key
 (an id wearing a trusted name — the offer must say so). A `pin_mismatch`
 launch failure carries the same `offered_key` when one exists, so the
-app can offer "trust this key" beside "trust updated binary". Until the
-app's consent flow lands ([#57](https://github.com/davison/topos/issues/57)),
-an operator trusts a key by adding the table entry (which
-`topos plugin pull` prints) and restarting; removing an entry demotes
-its plugins to `external` at next launch, by name, into the
-consent-and-pin path.
+app can offer "trust this key" beside "trust updated binary". The app's
+consent writes the entry through `PUT /api/config` (the chip menu's
+*Trust signing key…* / *Stop trusting key…*, the add-source
+interstitial's second choice); an operator can also add the entry
+`topos plugin pull` prints by hand. Removing an entry demotes its
+plugins to `external` at the apply that removed it — the kernel
+relaunches every instance the change affects — by name, into the
+consent-and-pin path; trusting an offered key promotes its running
+instance the same way.
 
 **`tier`, `pinned_hash`, `current_hash`, `launch_failure` (Phase 11,
 `PLUG-06`/`PLUG-07`/`PLUG-08`) — the trust facts the kernel derives, never
@@ -1229,9 +1232,11 @@ plugin-invocation surface for request-supplied input.
 - **`tier`** is `"trusted"`, `"operator_trusted"` or `"external"` — this
   trial-launched binary's provenance (`docs/plugin-contract.md`'s "Trust
   tiers"), the same fact `GET /api/sources` publishes per instance,
-  available here before the source is ever added. (The offer an
-  external binary may carry reaches this response with
-  [#57](https://github.com/davison/topos/issues/57).)
+  available here before the source is ever added.
+- **`offered_key`** — the same offer `GET /api/sources` publishes
+  (`{id, fingerprint, public_key, reused}`), learned from the trial
+  launch, so the add-source interstitial can offer *trust this key*
+  beside *pin this binary only*. Absent when there is no offer.
 - **`binary_hash`** is the SHA-256 the kernel itself computed from the
   resolved binary this trial launch actually ran — non-empty only for
   `tier: "external"` (nothing is pinned for the trusted tier). This is

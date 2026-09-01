@@ -18,7 +18,7 @@
 // fully plain, non-reactive document regardless of whether the caller
 // passed a $state value or an already-plain object.
 
-import type { KernelConfig, SourceConfig, WebspaceConfig } from './api';
+import type { KernelConfig, SourceConfig, WebspaceConfig, OfferedKey } from './api';
 import { isEmptyWebspaceShell, webspaceSources } from './participation';
 
 /**
@@ -213,8 +213,7 @@ export function removeSourceFromWebspace(
 	delete match[instance];
 
 	const currentAllowlist = webspaceSources(cfg.webspaces[webspace]);
-	const seededAllowlist =
-		currentAllowlist.length > 0 ? currentAllowlist : Object.keys(cfg.sources);
+	const seededAllowlist = currentAllowlist.length > 0 ? currentAllowlist : Object.keys(cfg.sources);
 
 	next.webspaces[webspace] = {
 		...existing,
@@ -296,12 +295,54 @@ export function removeSourceInstance(cfg: KernelConfig, instanceId: string): Ker
  * so a re-accept (the chip menu's future "Trust updated binary" action)
  * updates every instance at once by construction, never diverging.
  */
-export function setPluginPin(
+export function setPluginPin(cfg: KernelConfig, pluginBinary: string, hash: string): KernelConfig {
+	const next = cloneConfig(cfg);
+	next.plugins = {
+		...next.plugins,
+		pins: { ...(next.plugins.pins ?? {}), [pluginBinary]: hash }
+	};
+	return next;
+}
+
+/**
+ * setTrustedKey (M2-R4, davison/topos#49): trust an offered signing key —
+ * add (or replace, by id) a [[plugins.trusted_keys]] entry from the
+ * kernel-reported offer, stamping trusted_at now. Every future release
+ * that key signs then runs at the operator_trusted tier, unpinned. Pure,
+ * like setPluginPin: the write rides the caller's own putConfig.
+ */
+export function setTrustedKey(
 	cfg: KernelConfig,
-	pluginBinary: string,
-	hash: string
+	offer: OfferedKey,
+	note = '',
+	now: Date = new Date()
 ): KernelConfig {
 	const next = cloneConfig(cfg);
-	next.plugins = { ...next.plugins, pins: { ...(next.plugins.pins ?? {}), [pluginBinary]: hash } };
+	const kept = (next.plugins.trusted_keys ?? []).filter((k) => k.id !== offer.id);
+	next.plugins = {
+		...next.plugins,
+		trusted_keys: [
+			...kept,
+			{
+				id: offer.id,
+				public_key: offer.public_key,
+				trusted_at: now.toISOString(),
+				note
+			}
+		]
+	};
+	return next;
+}
+
+/**
+ * removeTrustedKey: stop trusting a key — its plugins return to the
+ * external tier at their next launch, by name, into the consent-and-pin
+ * path. Removing the last entry drops the table entirely (omitempty).
+ */
+export function removeTrustedKey(cfg: KernelConfig, keyId: string): KernelConfig {
+	const next = cloneConfig(cfg);
+	const kept = (next.plugins.trusted_keys ?? []).filter((k) => k.id !== keyId);
+	const { trusted_keys: _dropped, ...rest } = next.plugins;
+	next.plugins = kept.length ? { ...rest, trusted_keys: kept } : rest;
 	return next;
 }

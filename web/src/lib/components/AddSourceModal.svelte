@@ -44,7 +44,12 @@
 		WHATSAPP_PLUGIN_BINARY,
 		type ExtrasRow
 	} from '$lib/plugin-fields';
-	import { addSourceToWebspace, upsertSourceInstance, setPluginPin } from '$lib/config-edit';
+	import {
+		addSourceToWebspace,
+		upsertSourceInstance,
+		setPluginPin,
+		setTrustedKey
+	} from '$lib/config-edit';
 	import { participatingInstances } from '$lib/participation';
 	import { resolveNewInstanceId } from '$lib/instance-id';
 	import {
@@ -54,7 +59,8 @@
 		CONFIG_CONFLICT_MESSAGE,
 		type KernelConfig,
 		type SourceConfig,
-		type ExtrasFieldDecl
+		type ExtrasFieldDecl,
+		type OfferedKey
 	} from '$lib/api';
 
 	let {
@@ -164,7 +170,24 @@
 	// (T-11-25). confirmTyped is the type-to-confirm input's own local
 	// value; the primary action stays disabled until it exactly equals
 	// selectedPluginType (case-sensitive).
+	// tierOf: the picker badge shows the kernel's own tier word for a plugin
+	// type — trusted, operator_trusted (M2-R4) or external — never a
+	// client-side guess; absent from the table is treated as external,
+	// exactly as isExternalTier does.
+	function tierOf(
+		tiers: Record<string, string>,
+		plugin: string
+	): 'trusted' | 'operator_trusted' | 'external' {
+		const t = tiers[plugin];
+		return t === 'trusted' || t === 'operator_trusted' ? t : 'external';
+	}
 	let pendingBinaryHash = $state('');
+	// pendingOffer/trustChoice (M2-R4, davison/topos#49): the offer the
+	// trial launch reported — an unknown key that verifiably signed this
+	// binary's release — and which consent the operator chose: pin this
+	// binary only (today's path) or trust the key for future releases.
+	let pendingOffer = $state<OfferedKey | null>(null);
+	let trustChoice = $state<'pin' | 'key'>('pin');
 	let pendingEnvVarNames = $state<string[]>([]);
 	let confirmTyped = $state('');
 
@@ -199,6 +222,8 @@
 		linkOffered = false;
 		linkNotice = '';
 		pendingBinaryHash = '';
+		pendingOffer = null;
+		trustChoice = 'pin';
 		pendingEnvVarNames = [];
 		confirmTyped = '';
 		declaredExtras = [];
@@ -260,6 +285,8 @@
 		connectError = null;
 		linkNotice = '';
 		pendingBinaryHash = '';
+		pendingOffer = null;
+		trustChoice = 'pin';
 		pendingEnvVarNames = [];
 		confirmTyped = '';
 		declaredExtras = [];
@@ -440,6 +467,8 @@
 				step = 'link';
 			} else if (isExternalTier(pluginTypeTiers, selectedPluginType)) {
 				pendingBinaryHash = resp.binary_hash;
+				pendingOffer = resp.offered_key ?? null;
+				trustChoice = 'pin';
 				pendingEnvVarNames = resp.env_var_names;
 				confirmTyped = '';
 				step = 'untrusted-confirm';
@@ -526,8 +555,13 @@
 			// round trip — using pendingBinaryHash, the kernel-computed hash
 			// the untrusted-confirm step already displayed and the operator
 			// already confirmed against.
+			// External-tier: the consent the operator chose on the
+			// interstitial rides this same single write — the pin (today's
+			// path), or the offered key (M2-R4), never both.
 			const nextConfig = isExternalTier(pluginTypeTiers, selectedPluginType)
-				? setPluginPin(withMatch, selectedPluginType, pendingBinaryHash)
+				? trustChoice === 'key' && pendingOffer
+					? setTrustedKey(withMatch, pendingOffer)
+					: setPluginPin(withMatch, selectedPluginType, pendingBinaryHash)
 				: withMatch;
 			await putConfig({ base_hash: baseHash, config: nextConfig });
 			resetFlowState();
@@ -609,7 +643,7 @@
 							class="flex items-start gap-1.5 rounded-sm px-2 py-1.5 text-left hover:bg-muted"
 							onclick={() => selectExisting(instanceId)}
 						>
-							<TrustBadge tier={untrusted ? 'external' : 'trusted'} scale="picker">
+							<TrustBadge tier={tierOf(pluginTypeTiers, source.plugin)} scale="picker">
 								<PluginIcon plugin={source.plugin} size="size-4 mt-0.5 shrink-0" />
 							</TrustBadge>
 							<span class="flex min-w-0 flex-col">
@@ -652,7 +686,7 @@
 							onclick={() => selectPluginType(plugin)}
 						>
 							<span class="flex items-center gap-1.5">
-								<TrustBadge tier={untrusted ? 'external' : 'trusted'} scale="picker">
+								<TrustBadge tier={tierOf(pluginTypeTiers, plugin)} scale="picker">
 									<PluginIcon plugin={plugin} size="size-4 shrink-0" />
 								</TrustBadge>
 								{pluginTypeLabel(plugin)}
@@ -844,6 +878,51 @@
 							Pinned hash (SHA-256): {pendingBinaryHash}
 						</p>
 					</div>
+					{#if pendingOffer}
+						<!-- M2-R4 (davison/topos#49): the release is signed by a key
+						     topos does not know, and the signature verifies against
+						     the key it carries. Two consents: pin this binary only
+						     (the default, today's path) or trust the key for every
+						     future release it signs. Kernel facts only. -->
+						<fieldset class="flex flex-col gap-2 rounded-md border border-border p-3" data-offered-key={pendingOffer.id}>
+							<legend class="px-1 text-[14px] leading-[1.4] text-foreground">
+								This release is signed by a key topos does not know
+							</legend>
+							<p class="font-mono text-[14px] leading-[1.4]">Key id: {pendingOffer.id}</p>
+							<p class="break-all font-mono text-[14px] leading-[1.4]">
+								Fingerprint (SHA-256): {pendingOffer.fingerprint}
+							</p>
+							{#if pendingOffer.reused}
+								<p class="text-[14px] leading-[1.4] text-destructive">
+									This key id is already trusted with a different key — a reused id. Do not trust it
+									without checking with the publisher.
+								</p>
+							{/if}
+							<label class="flex items-start gap-2 text-[14px] leading-[1.4]">
+								<input
+									type="radio"
+									name="trust-choice"
+									value="pin"
+									checked={trustChoice === 'pin'}
+									onchange={() => (trustChoice = 'pin')}
+								/>
+								<span>Pin this binary only — accept these exact bytes; a new release asks again.</span>
+							</label>
+							<label class="flex items-start gap-2 text-[14px] leading-[1.4]">
+								<input
+									type="radio"
+									name="trust-choice"
+									value="key"
+									checked={trustChoice === 'key'}
+									onchange={() => (trustChoice = 'key')}
+								/>
+								<span
+									>Trust key {pendingOffer.id} for future releases — every release it signs runs as
+									trusted by you, unpinned. Check the fingerprint with the publisher first.</span
+								>
+							</label>
+						</fieldset>
+					{/if}
 					{#if pendingEnvVarNames.length === 0}
 						<p class="text-[14px] leading-[1.4] text-muted-foreground">
 							topos will hand this plugin only the standard PATH/HOME/locale environment — this

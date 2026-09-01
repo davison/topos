@@ -7,6 +7,7 @@ package pluginhost
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -474,6 +475,40 @@ func (p *Plugin) TrustedKey() string { return p.trustedKey }
 // this external instance's binary, or nil.
 func (p *Plugin) OfferedKey() *KeyOffer { return p.offeredKey }
 
+// trustKeysChanged reports whether the operator's accepted keys in raw
+// would change this running instance's tier, so Reconcile relaunches it
+// under the new keys (M2-R4, davison/topos#49): a key withdrawn from
+// [[plugins.trusted_keys]] demotes its plugins at the apply that removed
+// it, not at some later launch; a key trusted while its plugin runs
+// external (pinned) promotes it at that apply. Cheap and filesystem-free:
+// it compares the instance's launch-time facts (the key that vouched, or
+// the key that was offered) with the table; the relaunch's own
+// EvaluateTrust makes the actual decision.
+func trustKeysChanged(p *Plugin, raw *config.Config) bool {
+	var keys []config.TrustedKey
+	if raw != nil {
+		keys = raw.Plugins.TrustedKeys
+	}
+	switch {
+	case p.tier == TierOperatorTrusted:
+		for _, k := range keys {
+			if k.ID == p.trustedKey {
+				return false
+			}
+		}
+		return true // the vouching key is gone
+	case p.tier == TierExternal && p.offeredKey != nil:
+		for _, k := range keys {
+			if k.ID == p.offeredKey.KeyID && k.PublicKey == base64.StdEncoding.EncodeToString(p.offeredKey.PublicKey) {
+				return true // the offered key is now trusted
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
 // operatorKeyID is the key id to report for a trust result: only the
 // operator's word is named on the wire (the kernel author's is implicit
 // in TierTrusted).
@@ -755,7 +790,7 @@ func (h *Host) Reconcile(ctx context.Context, raw *config.Config, sources map[st
 	var toLaunch []string
 	for _, name := range names {
 		p, ok := existing[name]
-		if ok && reflect.DeepEqual(p.src, sources[name]) {
+		if ok && reflect.DeepEqual(p.src, sources[name]) && !trustKeysChanged(p, raw) {
 			kept[name] = p
 			continue
 		}
@@ -1474,6 +1509,11 @@ type DescribeInfo struct {
 	// launch's own *Plugin, never from anything the plugin's Describe
 	// response itself asserts.
 	Tier Tier
+	// OfferedKey is the trial-launched binary's offer, if an unknown
+	// self-describing key signed a manifest naming it (davison/topos#49)
+	// — learned here BEFORE the source is added, so the add-source
+	// interstitial can offer the key.
+	OfferedKey *KeyOffer
 	// BinaryHash is the SHA-256 of the trial-launched binary, computed by
 	// launch() at the exact point ResolveBinary hands back TierExternal
 	// (11-03-PLAN.md Task 2) — the fact the add-source flow's confirm
@@ -1528,6 +1568,7 @@ func DescribePluginType(ctx context.Context, dirs Dirs, src config.Source, logge
 		MatchVocabulary:   p.MatchVocabulary(),
 		Tier:              p.Tier(),
 		BinaryHash:        p.BinaryHash(),
+		OfferedKey:        p.OfferedKey(),
 		Extras:            p.Extras(),
 	}, nil
 }

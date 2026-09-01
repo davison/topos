@@ -14,7 +14,14 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 
-import { KERNEL_BIN, linkPluginBinaries, linkPluginBinaryAs, signProvenanceFixture } from './plugin-binaries';
+import {
+	KERNEL_BIN,
+	linkPluginBinaries,
+	linkPluginBinaryAs,
+	signProvenanceFixture,
+	keygenScratchKey,
+	PROVENANCE_FIXTURE_KEY_ID
+} from './plugin-binaries';
 import { buildConfig, writeConfig, type FixtureConfigSpec } from './config-builder';
 
 export { expect };
@@ -128,7 +135,9 @@ async function waitForKernelReady(
 			if (!res.ok) {
 				lastError = new Error(`unexpected status ${res.status}`);
 			} else {
-				const body = (await res.json()) as { webspaces?: Array<{ name: string }> };
+				const body = (await res.json()) as {
+					webspaces?: Array<{ name: string }>;
+				};
 				const actual = new Set((body.webspaces ?? []).map((w) => w.name));
 				if (!setsEqual(actual, expectedWebspaces)) {
 					// A mismatch means the probe reached some OTHER kernel
@@ -188,7 +197,11 @@ export async function waitForFirstSync(
 			const res = await fetch(`${baseURL}/api/sources`);
 			if (res.ok) {
 				const body = (await res.json()) as {
-					sources?: Array<{ name: string; syncing: boolean; last_status: string }>;
+					sources?: Array<{
+						name: string;
+						syncing: boolean;
+						last_status: string;
+					}>;
 				};
 				lastBody = body;
 				const byName = new Map((body.sources ?? []).map((s) => [s.name, s]));
@@ -274,7 +287,14 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	const externalPluginsDirPath = join(tmpDir, 'plugins-external');
 	const shareDir = join(tmpDir, 'share');
 	const cacheDir = join(tmpDir, 'cache');
-	for (const dir of [configDir, indexDir, pluginsDirPath, externalPluginsDirPath, shareDir, cacheDir]) {
+	for (const dir of [
+		configDir,
+		indexDir,
+		pluginsDirPath,
+		externalPluginsDirPath,
+		shareDir,
+		cacheDir
+	]) {
 		mkdirSync(dir, { recursive: true });
 	}
 
@@ -313,8 +333,23 @@ async function launchKernel(configSpec: FixtureConfigSpec): Promise<LaunchedKern
 	// trust (the exact same binary, in the exact same directory, with its
 	// signature missing, earns nothing) without also revoking a sibling
 	// entry's own, independently-signed trust.
+	const scratchKeys = new Map<string, { keyFile: string; publicKey: string }>();
 	for (const entry of configSpec.signedProvenanceBinaries ?? []) {
-		const { signaturePath } = signProvenanceFixture(externalPluginsDirPath, [entry.name]);
+		let opts = {};
+		if (entry.scratchKeyID) {
+			// M2-R4: a key the kernel does not accept — the manifest yields
+			// an OFFER, never evidence (davison/topos#49).
+			let key = scratchKeys.get(entry.scratchKeyID);
+			if (!key) {
+				key = keygenScratchKey(join(tmpDir, 'scratch-keys'), entry.scratchKeyID);
+				scratchKeys.set(entry.scratchKeyID, key);
+			}
+			opts = {
+				keyFile: key.keyFile,
+				keyID: entry.reusedID ? PROVENANCE_FIXTURE_KEY_ID : entry.scratchKeyID
+			};
+		}
+		const { signaturePath } = signProvenanceFixture(externalPluginsDirPath, [entry.name], opts);
 		if (entry.removeSignature) {
 			rmSync(signaturePath, { force: true });
 		}

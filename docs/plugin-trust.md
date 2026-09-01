@@ -106,14 +106,14 @@ it only widens what can run without that extra click.
 **Status:** decided at [davison/topos#49](https://github.com/davison/topos/issues/49)
 (M2-R4 of [#40](https://github.com/davison/topos/issues/40)), from the
 operator's captures [#1](https://github.com/davison/topos/issues/1) and
-[#38](https://github.com/davison/topos/issues/38). **The kernel half is
-shipped** ([#56](https://github.com/davison/topos/issues/56)): the
-config table, the tier, the signature-carried key, the offer on
-`GET /api/sources` and in `topos plugin pull`. The app's consent flow —
-the badge, the two-choice interstitial, *stop trusting this key* — is
-[#57](https://github.com/davison/topos/issues/57); until it lands, an
-operator trusts a key by adding the table entry `pull` prints and
-restarting the kernel.
+[#38](https://github.com/davison/topos/issues/38). **Shipped in
+v1.4.0**: the kernel half ([#56](https://github.com/davison/topos/issues/56)
+— the config table, the tier, the signature-carried key, the offer on
+`GET /api/sources` and in `topos plugin pull`) and the app
+([#57](https://github.com/davison/topos/issues/57) — the badge, the
+chip menu's *Trust signing key…* and *Stop trusting key…*, the
+add-source interstitial's two consents). An operator can still trust a
+key by hand, adding the table entry `pull` prints and restarting.
 
 Before this, trust was one word: the kernel author's, spoken by the
 embedded key set. A third-party plugin was external for every operator
@@ -152,10 +152,13 @@ The second word — the operator's:
   key the kernel does not know stays what it always was at launch — *no
   evidence*, `external` — but carries an offer: `GET /api/sources`
   exposes the offered key's id, fingerprint and public key on that
-  source (and on a `pin_mismatch` failure), and the app ([#57](https://github.com/davison/topos/issues/57))
-  offers two consents — **trust this key for future releases** (writes
-  the table entry; the plugin becomes operator-trusted, no pin needed)
-  or **pin this binary only** (today's path). `topos plugin pull` no
+  source (and on a `pin_mismatch` failure), and the app offers two
+  consents — **trust this key for future releases** (the chip menu's
+  *Trust signing key…*, or the add-source interstitial's second choice;
+  writes the table entry, the plugin becomes operator-trusted, no pin
+  needed) or **pin this binary only** (the interstitial's default, the
+  external path). *Stop trusting key…* on an operator-trusted chip
+  withdraws it. `topos plugin pull` no
   longer aborts on such a key: it places the binary *and* its manifest
   and signature into the external tier — so the kernel re-derives the
   same offer at launch — and prints the key, its fingerprint and the
@@ -181,8 +184,10 @@ The second word — the operator's:
   The schema stays `topos.provenance.sig.v1`: an added field an older
   kernel ignores.
 - **Removal and rotation.** Removing a key demotes its plugins to
-  `external` at next launch, by name, into the existing consent path —
-  no new failure vocabulary. A developer rotating keys ships a new key
+  `external` at the apply that removed it (the kernel relaunches every
+  instance whose tier the change affects), by name, into the existing
+  consent path — no new failure vocabulary; trusting an offered key
+  promotes its running instance the same way. A developer rotating keys ships a new key
   id; the operator is offered it like any unknown key; D-03's additive
   overlap applies to the operator's set as to the embedded one. No
   expiry — pins have none either.

@@ -289,6 +289,10 @@ type describePluginResponse struct {
 	// value the confirm interstitial displays and, on save, the value
 	// written to [plugins.pins].
 	BinaryHash string `json:"binary_hash,omitempty"`
+	// OfferedKey is the offer an external binary carries (davison/topos#49):
+	// the same shape GET /api/sources publishes, learned from the trial
+	// launch before the source exists.
+	OfferedKey *offeredKey `json:"offered_key,omitempty"`
 	// EnvVarNames lists every ${VAR}/$VAR name referenced anywhere in the
 	// submitted source (including inside extras), sorted and
 	// de-duplicated — NAMES only, never a value (D-05): this response
@@ -379,6 +383,7 @@ func DescribePluginHandler(dirs pluginhost.Dirs, logger hclog.Logger) http.Handl
 			MatchVocabulary:   info.MatchVocabulary,
 			Tier:              string(info.Tier),
 			BinaryHash:        info.BinaryHash,
+			OfferedKey:        offeredKeyFrom(info.OfferedKey),
 			// EnvVarNames is scanned from req.Source (the just-authoritative-
 			// stamped submission, extras included — config.EnvRefNames walks
 			// every string field reachable from it), the identical scanner

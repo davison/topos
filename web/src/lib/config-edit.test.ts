@@ -15,7 +15,9 @@ import {
 	addSourceToWebspace,
 	removeSourceFromWebspace,
 	upsertSourceInstance,
-	removeSourceInstance
+	removeSourceInstance,
+	setTrustedKey,
+	removeTrustedKey
 } from './config-edit';
 import { isEmptyWebspaceShell } from './participation';
 import type { KernelConfig, WebspaceConfig } from './api';
@@ -27,7 +29,10 @@ import type { KernelConfig, WebspaceConfig } from './api';
 // three-instance config makes each outcome distinguishable. `docs` is a
 // second, untouched webspace present in every case, asserted unchanged.
 function carsConfig(ws: WebspaceConfig): KernelConfig {
-	const instance = (plugin: string) => ({ plugin, agent: { read: true, handoff: false } });
+	const instance = (plugin: string) => ({
+		plugin,
+		agent: { read: true, handoff: false }
+	});
 	return {
 		server: { listen: '127.0.0.1:7777' },
 		index: { path: '/tmp/index.db' },
@@ -40,7 +45,11 @@ function carsConfig(ws: WebspaceConfig): KernelConfig {
 		},
 		webspaces: {
 			cars: ws,
-			docs: { keywords: ['paperwork'], sources: ['a'], match: { a: { tags: ['docs'] } } }
+			docs: {
+				keywords: ['paperwork'],
+				sources: ['a'],
+				match: { a: { tags: ['docs'] } }
+			}
 		}
 	};
 }
@@ -105,7 +114,11 @@ describe('addWebspace', () => {
 	it('adds an empty webspace entry with no sources allowlist yet (D-14)', () => {
 		const cfg = fixtureConfig();
 		const next = addWebspace(cfg, 'new-project');
-		expect(next.webspaces['new-project']).toEqual({ keywords: [], sources: [], match: {} });
+		expect(next.webspaces['new-project']).toEqual({
+			keywords: [],
+			sources: [],
+			match: {}
+		});
 		expect(next.webspaces['new-project'].filter).toBeUndefined();
 	});
 
@@ -179,14 +192,22 @@ describe('setWebspaceFilter', () => {
 describe('setMatchBlock', () => {
 	it('writes a new match block for an instance with no existing block', () => {
 		const cfg = fixtureConfig();
-		const next = setMatchBlock(cfg, 'catch-all', 'silverbullet', { tags: ['project-x'] });
-		expect(next.webspaces['catch-all'].match).toEqual({ silverbullet: { tags: ['project-x'] } });
+		const next = setMatchBlock(cfg, 'catch-all', 'silverbullet', {
+			tags: ['project-x']
+		});
+		expect(next.webspaces['catch-all'].match).toEqual({
+			silverbullet: { tags: ['project-x'] }
+		});
 	});
 
 	it('replaces an existing match block for the same instance', () => {
 		const cfg = fixtureConfig();
-		const next = setMatchBlock(cfg, 'house-move', 'paperless', { tags: ['renamed'] });
-		expect(next.webspaces['house-move'].match).toEqual({ paperless: { tags: ['renamed'] } });
+		const next = setMatchBlock(cfg, 'house-move', 'paperless', {
+			tags: ['renamed']
+		});
+		expect(next.webspaces['house-move'].match).toEqual({
+			paperless: { tags: ['renamed'] }
+		});
 	});
 
 	it('deletes the entry outright when the block has no fields', () => {
@@ -224,25 +245,35 @@ describe('setMatchBlock', () => {
 describe('addSourceToWebspace', () => {
 	it('appends to an existing allowlist without reordering', () => {
 		const cfg = fixtureConfig();
-		const next = addSourceToWebspace(cfg, 'house-move', 'silverbullet', { tags: ['x'] });
+		const next = addSourceToWebspace(cfg, 'house-move', 'silverbullet', {
+			tags: ['x']
+		});
 		expect(next.webspaces['house-move'].sources).toEqual(['paperless', 'silverbullet']);
 	});
 
 	it('seeds an allowlist-free webspace with every previously participating instance plus the new one', () => {
 		const cfg = fixtureConfig();
-		const next = addSourceToWebspace(cfg, 'catch-all', 'silverbullet', { tags: ['x'] });
+		const next = addSourceToWebspace(cfg, 'catch-all', 'silverbullet', {
+			tags: ['x']
+		});
 		expect(next.webspaces['catch-all'].sources).toEqual(['paperless', 'silverbullet']);
 	});
 
 	it('writes the match block alongside the allowlist in one call', () => {
 		const cfg = fixtureConfig();
-		const next = addSourceToWebspace(cfg, 'catch-all', 'silverbullet', { tags: ['project-x'] });
-		expect(next.webspaces['catch-all'].match).toEqual({ silverbullet: { tags: ['project-x'] } });
+		const next = addSourceToWebspace(cfg, 'catch-all', 'silverbullet', {
+			tags: ['project-x']
+		});
+		expect(next.webspaces['catch-all'].match).toEqual({
+			silverbullet: { tags: ['project-x'] }
+		});
 	});
 
 	it('adding an instance already present in the allowlist does not duplicate it', () => {
 		const cfg = fixtureConfig();
-		const next = addSourceToWebspace(cfg, 'house-move', 'paperless', { tags: ['y'] });
+		const next = addSourceToWebspace(cfg, 'house-move', 'paperless', {
+			tags: ['y']
+		});
 		expect(next.webspaces['house-move'].sources).toEqual(['paperless']);
 	});
 
@@ -270,22 +301,29 @@ describe('addSourceToWebspace', () => {
 			token: '${PROTON_TOKEN}',
 			agent: { read: true, handoff: false }
 		});
-		const next = addSourceToWebspace(withThird, 'new-project', 'paperless', { tags: ['x'] });
+		const next = addSourceToWebspace(withThird, 'new-project', 'paperless', {
+			tags: ['x']
+		});
 		expect(next.webspaces['new-project'].sources).toEqual(['paperless']);
 	});
 
 	it('seeds every configured instance without throwing when a hand-written webspace arrives with a null sources allowlist', () => {
 		const cfg = fixtureConfig();
 		const withNullSources = cloneConfig(cfg);
-		(withNullSources.webspaces['catch-all'] as unknown as { sources: string[] | null }).sources =
-			null;
+		(
+			withNullSources.webspaces['catch-all'] as unknown as {
+				sources: string[] | null;
+			}
+		).sources = null;
 		const next = addSourceToWebspace(withNullSources, 'catch-all', 'silverbullet', { tags: ['x'] });
 		expect(next.webspaces['catch-all'].sources).toEqual(['paperless', 'silverbullet']);
 	});
 
 	it('sequenced create-then-compose: addWebspace then addSourceToWebspace twice yields exactly those two instances in add order', () => {
 		const created = addWebspace(fixtureConfig(), 'brand-new');
-		const withFirst = addSourceToWebspace(created, 'brand-new', 'paperless', { tags: ['a'] });
+		const withFirst = addSourceToWebspace(created, 'brand-new', 'paperless', {
+			tags: ['a']
+		});
 		const withSecond = addSourceToWebspace(withFirst, 'brand-new', 'silverbullet', { tags: ['b'] });
 		expect(withSecond.webspaces['brand-new'].sources).toEqual(['paperless', 'silverbullet']);
 		expect(withSecond.webspaces['brand-new'].match).toEqual({
@@ -332,7 +370,10 @@ describe('removeSourceFromWebspace', () => {
 		});
 		const next = removeSourceFromWebspace(cfg, 'cars', 'b');
 		expect([...next.webspaces['cars'].sources].sort()).toEqual(['a', 'c']);
-		expect(next.webspaces['cars'].match).toEqual({ a: { tags: ['x'] }, c: { tags: ['z'] } });
+		expect(next.webspaces['cars'].match).toEqual({
+			a: { tags: ['x'] },
+			c: { tags: ['z'] }
+		});
 	});
 
 	it('seeds every configured instance without throwing when the allowlist arrives as null', () => {
@@ -392,7 +433,10 @@ describe('removeSourceFromWebspace', () => {
 		});
 		const next = removeSourceFromWebspace(cfg, 'cars', 'c');
 		expect(next.webspaces['cars'].sources).toEqual(['a', 'b']);
-		expect(next.webspaces['cars'].match).toEqual({ a: { tags: ['x'] }, b: { tags: ['y'] } });
+		expect(next.webspaces['cars'].match).toEqual({
+			a: { tags: ['x'] },
+			b: { tags: ['y'] }
+		});
 	});
 
 	it('removing the same instance twice in sequence yields equal results (idempotent)', () => {
@@ -503,7 +547,9 @@ describe('removeSourceInstance', () => {
 		expect(withRefs.webspaces['catch-all'].match).toHaveProperty('silverbullet');
 
 		const next = removeSourceInstance(withRefs, 'silverbullet');
-		expect(next.webspaces['house-move'].match).toEqual({ paperless: { tags: ['house-move'] } });
+		expect(next.webspaces['house-move'].match).toEqual({
+			paperless: { tags: ['house-move'] }
+		});
 		expect(next.webspaces['house-move'].sources).toEqual(['paperless']);
 		expect(next.webspaces['catch-all'].match).toEqual({});
 		// catch-all's allowlist was SEEDED by addSourceToWebspace (D-14, from
@@ -538,5 +584,49 @@ describe('removeSourceInstance', () => {
 		const before = JSON.stringify(cfg);
 		removeSourceInstance(cfg, 'paperless');
 		expect(JSON.stringify(cfg)).toBe(before);
+	});
+});
+
+describe('setTrustedKey / removeTrustedKey (M2-R4)', () => {
+	const base: KernelConfig = {
+		server: { listen: '127.0.0.1:7777' },
+		index: { path: 'x' },
+		plugins: { dir: 'plugins', pins: { 'topos-plugin-x': 'a'.repeat(64) } },
+		sync: { interval: '15m' },
+		sources: {},
+		webspaces: {}
+	};
+	const offer = {
+		id: 'acme-2026a',
+		fingerprint: 'ff'.repeat(32),
+		public_key: 'AAAA'
+	};
+	it('adds the entry from the offer, stamping trusted_at, and leaves pins alone', () => {
+		const next = setTrustedKey(base, offer, 'Acme', new Date('2026-09-02T10:00:00Z'));
+		expect(next.plugins.trusted_keys).toEqual([
+			{
+				id: 'acme-2026a',
+				public_key: 'AAAA',
+				trusted_at: '2026-09-02T10:00:00.000Z',
+				note: 'Acme'
+			}
+		]);
+		expect(next.plugins.pins).toEqual(base.plugins.pins);
+		expect(base.plugins.trusted_keys, 'must not mutate the input').toBeUndefined();
+	});
+	it('replaces an entry with the same id rather than duplicating it', () => {
+		const once = setTrustedKey(base, offer);
+		const twice = setTrustedKey(once, { ...offer, public_key: 'BBBB' });
+		expect(twice.plugins.trusted_keys).toHaveLength(1);
+		expect(twice.plugins.trusted_keys?.[0].public_key).toBe('BBBB');
+	});
+	it('removeTrustedKey drops the entry, and the table when it was the last', () => {
+		const once = setTrustedKey(base, offer);
+		const gone = removeTrustedKey(once, 'acme-2026a');
+		expect('trusted_keys' in gone.plugins).toBe(false);
+		const other = setTrustedKey(once, { ...offer, id: 'other' });
+		expect(removeTrustedKey(other, 'acme-2026a').plugins.trusted_keys?.map((k) => k.id)).toEqual([
+			'other'
+		]);
 	});
 });

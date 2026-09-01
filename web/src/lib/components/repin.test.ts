@@ -81,12 +81,16 @@ describe('format.ts: healthTone branches on launch_failure before its existing t
 		);
 		expect(
 			healthTone(
-				baseSource({ launch_failure: 'pin_mismatch', last_status: '', reachable: false })
+				baseSource({
+					launch_failure: 'pin_mismatch',
+					last_status: '',
+					reachable: false
+				})
 			)
 		).toBe('destructive');
-		expect(
-			healthTone(baseSource({ launch_failure: 'pin_mismatch', last_status: 'error' }))
-		).toBe('destructive');
+		expect(healthTone(baseSource({ launch_failure: 'pin_mismatch', last_status: 'error' }))).toBe(
+			'destructive'
+		);
 	});
 
 	it('still returns the four pre-existing values for a source with no pin mismatch', () => {
@@ -96,7 +100,7 @@ describe('format.ts: healthTone branches on launch_failure before its existing t
 		expect(healthTone(baseSource({ launch_failure: '', last_status: 'ok' }))).toBe('success');
 	});
 
-	it('healthTone\'s source places the launch_failure check as the FIRST branch (extends the chain, never a parallel tone system)', () => {
+	it("healthTone's source places the launch_failure check as the FIRST branch (extends the chain, never a parallel tone system)", () => {
 		const fnBody = extractBetween(
 			strippedFormat,
 			'export function healthTone(source: SourceStatus): HealthTone {',
@@ -131,13 +135,15 @@ describe('format.ts: shortHash — fixed 12-char-plus-ellipsis short form', () =
 // --- Refresh now disable, pinned-hash footer ---
 
 describe('SourceChip.svelte: isPinMismatch/isExternal keyed on kernel-published fields', () => {
-	it('derives isPinMismatch from source.launch_failure === \'pin_mismatch\', never a last_error match (T-11-32)', () => {
+	it("derives isPinMismatch from source.launch_failure === 'pin_mismatch', never a last_error match (T-11-32)", () => {
 		expect(
-			strippedChip.includes("let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch')")
+			strippedChip.includes(
+				"let isPinMismatch = $derived(source.launch_failure === 'pin_mismatch')"
+			)
 		).toBe(true);
 	});
 
-	it('derives isExternal from source.tier === \'external\'', () => {
+	it("derives isExternal from source.tier === 'external'", () => {
 		expect(strippedChip.includes("let isExternal = $derived(source.tier === 'external')")).toBe(
 			true
 		);
@@ -165,19 +171,25 @@ describe('SourceChip.svelte: Trust updated binary… menu item (E4)', () => {
 		expect(idx, 'expected to find the "Trust updated binary…" menu item').toBeGreaterThanOrEqual(0);
 		const guardIdx = menuBlock.lastIndexOf('{#if isPinMismatch}', idx);
 		const guardCloseIdx = menuBlock.indexOf('{/if}', idx);
-		expect(guardIdx, 'expected the item to be preceded by {#if isPinMismatch}').toBeGreaterThanOrEqual(
-			0
-		);
-		expect(guardCloseIdx, 'expected the {#if isPinMismatch} guard to close with {/if}').toBeGreaterThan(
-			idx
-		);
+		expect(
+			guardIdx,
+			'expected the item to be preceded by {#if isPinMismatch}'
+		).toBeGreaterThanOrEqual(0);
+		expect(
+			guardCloseIdx,
+			'expected the {#if isPinMismatch} guard to close with {/if}'
+		).toBeGreaterThan(idx);
 		// No `disabled=` attribute anywhere on this item — an absent item,
 		// never a merely-disabled one (E4's own empty-state contract).
-		const itemBlock = extractBetween(menuBlock.slice(guardIdx), '<DropdownMenuItem', '</DropdownMenuItem>');
+		const itemBlock = extractBetween(
+			menuBlock.slice(guardIdx),
+			'<DropdownMenuItem',
+			'</DropdownMenuItem>'
+		);
 		expect(itemBlock.includes('disabled')).toBe(false);
 	});
 
-	it('is the literal first DropdownMenuItem in the menu, calling onedit(source.name, \'trust-update\')', () => {
+	it("is the literal first DropdownMenuItem in the menu, calling onedit(source.name, 'trust-update')", () => {
 		const firstItemIndex = menuBlock.indexOf('<DropdownMenuItem');
 		const firstItemBlock = menuBlock.slice(
 			firstItemIndex,
@@ -195,7 +207,7 @@ describe('SourceChip.svelte: Trust updated binary… menu item (E4)', () => {
 });
 
 describe('SourceChip.svelte: Refresh now disabled while isPinMismatch (E4)', () => {
-	it('the Refresh now item\'s disabled expression references both source.syncing and isPinMismatch', () => {
+	it("the Refresh now item's disabled expression references both source.syncing and isPinMismatch", () => {
 		expect(strippedChip.includes('disabled={source.syncing || isPinMismatch}')).toBe(true);
 		// The disabled expression precedes the item's own "Refresh now" text
 		// in source order, confirming it is this item's own attribute.
@@ -247,13 +259,11 @@ describe('SourceChip.svelte: pinned-hash footer (E5)', () => {
 	});
 });
 
-describe('SourceChip.svelte: onedit kind union widened with \'trust-update\'', () => {
-	it('the onedit prop type includes trust-update alongside the four pre-existing kinds', () => {
-		expect(
-			strippedChip.includes(
-				"kind: 'connection' | 'match' | 'relink' | 'remove' | 'trust-update'"
-			)
-		).toBe(true);
+describe("SourceChip.svelte: onedit kind union widened with 'trust-update'", () => {
+	it('the onedit prop type includes trust-update alongside the four pre-existing kinds (and, since M2-R4, the two key consents)', () => {
+		const union =
+			/kind:\s*\|?\s*'connection'\s*\|\s*'match'\s*\|\s*'relink'\s*\|\s*'remove'\s*\|\s*'trust-update'\s*\|\s*'trust-key'\s*\|\s*'untrust-key'/;
+		expect(union.test(strippedChip)).toBe(true);
 	});
 });
 
@@ -371,14 +381,16 @@ describe('TrustUpdateDialog.svelte: confirm handler — setPluginPin + putConfig
 	});
 });
 
-describe('+page.svelte: the \'trust-update\' kind is handled and mounts TrustUpdateDialog', () => {
+describe("+page.svelte: the 'trust-update' kind is handled and mounts TrustUpdateDialog", () => {
 	it('imports TrustUpdateDialog', () => {
 		expect(
-			strippedRoute.includes("import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';")
+			strippedRoute.includes(
+				"import TrustUpdateDialog from '$lib/components/TrustUpdateDialog.svelte';"
+			)
 		).toBe(true);
 	});
 
-	it('handleChipEdit branches on kind === \'trust-update\' before the describe path, exactly like \'relink\'', () => {
+	it("handleChipEdit branches on kind === 'trust-update' before the describe path, exactly like 'relink'", () => {
 		const handleChipEditBody = extractBetween(
 			strippedRoute,
 			'async function handleChipEdit(',
@@ -387,9 +399,10 @@ describe('+page.svelte: the \'trust-update\' kind is handled and mounts TrustUpd
 		const relinkIdx = handleChipEditBody.indexOf("kind === 'relink'");
 		const trustUpdateIdx = handleChipEditBody.indexOf("kind === 'trust-update'");
 		const describeIdx = handleChipEditBody.indexOf('describePlugin(');
-		expect(trustUpdateIdx, "expected handleChipEdit to check kind === 'trust-update'").toBeGreaterThanOrEqual(
-			0
-		);
+		expect(
+			trustUpdateIdx,
+			"expected handleChipEdit to check kind === 'trust-update'"
+		).toBeGreaterThanOrEqual(0);
 		expect(relinkIdx).toBeGreaterThanOrEqual(0);
 		expect(
 			trustUpdateIdx,
@@ -401,7 +414,7 @@ describe('+page.svelte: the \'trust-update\' kind is handled and mounts TrustUpd
 		).toBeGreaterThan(relinkIdx);
 	});
 
-	it('sets trustUpdateInstance = name inside the \'trust-update\' branch', () => {
+	it("sets trustUpdateInstance = name inside the 'trust-update' branch", () => {
 		const handleChipEditBody = extractBetween(
 			strippedRoute,
 			'async function handleChipEdit(',

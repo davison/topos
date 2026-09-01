@@ -61,7 +61,7 @@ export const PROVENANCE_KEY_FILE = join(REPO_ROOT, 'bin', 'e2e-fixture.key');
 // E2E_PROVENANCE_KEY_ID literal exactly — the two are written
 // independently (a Make variable and a TypeScript constant cannot share
 // one physical source), so a future edit to either must update both.
-const PROVENANCE_FIXTURE_KEY_ID = 'e2e-fixture';
+export const PROVENANCE_FIXTURE_KEY_ID = 'e2e-fixture';
 
 function assertExists(path: string, label: string): void {
 	if (!existsSync(path)) {
@@ -168,6 +168,10 @@ export function linkPluginBinaryAs(destDir: string, destName: string, srcPath: s
  * naming convention). */
 export interface SignProvenanceFixtureOptions {
 	keyID?: string;
+	// keyFile signs with a key OTHER than the e2e fixture key — one the
+	// kernel does not accept — to drive the operator-trusted-key flows
+	// (M2-R4, davison/topos#49): the offer, the consent, the withdrawal.
+	keyFile?: string;
 	repo?: string;
 	tag?: string;
 	version?: string;
@@ -198,7 +202,10 @@ export function signProvenanceFixture(
 	names: string[],
 	opts: SignProvenanceFixtureOptions = {}
 ): SignedProvenanceFixture {
-	assertExists(PROVENANCE_BIN, 'topos-provenance CLI (bin/topos-provenance) — run `make e2e` first');
+	assertExists(
+		PROVENANCE_BIN,
+		'topos-provenance CLI (bin/topos-provenance) — run `make e2e` first'
+	);
 	assertExists(
 		PROVENANCE_KEY_FILE,
 		'e2e fixture provenance signing key (bin/e2e-fixture.key) — run `make e2e` first'
@@ -217,7 +224,10 @@ export function signProvenanceFixture(
 
 	const binaryPaths = names.map((name) => {
 		const path = join(destDir, name);
-		assertExists(path, `plugin binary "${name}" — must already be linked into ${destDir} before signing`);
+		assertExists(
+			path,
+			`plugin binary "${name}" — must already be linked into ${destDir} before signing`
+		);
 		return path;
 	});
 
@@ -228,7 +238,7 @@ export function signProvenanceFixture(
 			'--key-id',
 			keyID,
 			'--key-file',
-			PROVENANCE_KEY_FILE,
+			opts.keyFile ?? PROVENANCE_KEY_FILE,
 			'--repo',
 			repo,
 			'--tag',
@@ -256,4 +266,32 @@ export function signProvenanceFixture(
 		);
 	}
 	return { manifestPath, signaturePath };
+}
+
+/**
+ * keygenScratchKey runs `topos-provenance keygen` for a key the kernel does
+ * NOT accept — never injected into the build's link-time seam — into
+ * outDir, returning the private key file (for signProvenanceFixture's
+ * keyFile) and the base64 public key (what the kernel offers back).
+ */
+export function keygenScratchKey(
+	outDir: string,
+	keyID: string
+): { keyFile: string; publicKey: string } {
+	assertExists(
+		PROVENANCE_BIN,
+		'topos-provenance CLI (bin/topos-provenance) — run `make e2e` first'
+	);
+	mkdirSync(outDir, { recursive: true });
+	const result = spawnSync(PROVENANCE_BIN, ['keygen', '--key-id', keyID, '--out-dir', outDir], {
+		encoding: 'utf-8'
+	});
+	if (result.status !== 0) {
+		throw new Error(
+			`keygenScratchKey: keygen exited ${result.status}\n${result.stdout}\n${result.stderr}`
+		);
+	}
+	const keyFile = join(outDir, `${keyID}.key`);
+	const publicKey = readFileSync(join(outDir, `${keyID}.pub`), 'utf-8').trim();
+	return { keyFile, publicKey };
 }
