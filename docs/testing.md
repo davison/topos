@@ -117,6 +117,29 @@ Needs no network and no config file; safe to run at any time,
 including while a real kernel is up, since it only ever writes inside
 its own temp directory.
 
+## How CI runs the gates — two jobs, and what counts as code
+
+`.github/workflows/ci.yml` runs on every push and pull request to main
+as two jobs. **`changes`** always runs and takes seconds: it checks out
+with history, classifies the diff against the base (`pull_request.base.sha`
+on a PR, `event.before` on a push; an unknown base counts as code), and
+runs the docs gates — `make docs-check` and `scripts/split-claims-sweep.py`.
+**`test`** — the full portable gate above, `make test-portable` through
+`make e2e` — runs behind `needs`/`if` only when `changes` says the diff
+touches code.
+
+*Documentation* is `docs/`, `.planning/` and any Markdown file; **everything
+else is code** — `.github/`, `Makefile`, `scripts/`, `web/`, the Go trees,
+`go.*`, the config examples, testdata — so a PR that edits the workflow
+itself always takes the full gate. A docs-only PR therefore shows
+`changes` passed and `test` skipped, and CodeCrew's `task finish` counts
+that as green: its CI gate classifies a *skipped* check alongside a
+passed one. What it does not count is *no* check at all — which is why
+**`[skip ci]` must never be used here**: GitHub then creates no check
+run, the finish verb refuses `NO_CHECKS`, and the decision would have
+been the commit message's rather than the workflow's (davison/topos#37;
+radiusred/gh-codecrew#191).
+
 ## The real config and the dev config
 
 The kernel resolves its config file from three sources, in precedence
@@ -820,7 +843,9 @@ spec in `web/e2e/specs/` rather than staying a manual checklist entry.
 This is the user's own stated reasoning, and it is the reason this
 document exists at all: a manual check that has to be remembered is not
 a gate. A gate runs whether or not anyone remembers it — on every push,
-on every pull request, without anyone deciding to run it that day. Every
+on every pull request, without anyone deciding to run it that day (the
+workflow's `changes` job decides from the diff whether the heavy gate
+is needed; nobody decides it in a commit message). Every
 future phase's planner and executor should read this rule as a hard
 requirement on scope, not an aspiration: if a phase adds or changes
 UI behaviour, its definition of done includes the spec (or spec update)
