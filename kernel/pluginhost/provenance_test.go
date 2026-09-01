@@ -794,3 +794,28 @@ func TestOperatorProvenanceKeysFromConfig_SkipsMalformed(t *testing.T) {
 		t.Errorf("expected only the good key, with the operator's word: %+v", keys)
 	}
 }
+
+// TestAcceptedProvenanceKeys_OperatorMayNotWearAnEmbeddedKeyID (PR #58,
+// review round 1): an operator entry reusing the kernel author's key id
+// with different bytes is ignored, never substituted — and a manifest
+// signed by those bytes takes the reused-id offer path.
+func TestAcceptedProvenanceKeys_OperatorMayNotWearAnEmbeddedKeyID(t *testing.T) {
+	embeddedID := embeddedProvenanceKeys[0].ID
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	SetOperatorProvenanceKeys([]ProvenanceKey{{ID: embeddedID, PublicKey: pub}})
+	t.Cleanup(func() { SetOperatorProvenanceKeys(nil) })
+	for _, k := range AcceptedProvenanceKeys() {
+		if k.ID == embeddedID && (k.Word != KeyWordEmbedded || !k.PublicKey.Equal(embeddedProvenanceKeys[0].PublicKey)) {
+			t.Fatalf("the embedded identity was replaced: %+v", k)
+		}
+	}
+	dir := isolatedMockDir(t)
+	hash := mustHashBinary(t, dir+"/topos-plugin-mock")
+	writeSignedManifest(t, dir, "impostor-v1.0.0", nativeRelease(),
+		[]ProvenanceEntry{{Name: "topos-plugin-mock", SHA256: hash, Version: "1.0.0", Contract: "topos.v2"}},
+		embeddedID, priv)
+	res, err := VerifySignedProvenanceDetailed(Dirs{Trusted: dir}, "topos-plugin-mock", dir+"/topos-plugin-mock")
+	if err != nil || res.Evidence != "" || res.Offer == nil || !res.Offer.Reused {
+		t.Fatalf("expected no evidence and a reused-id offer, got %+v (%v)", res, err)
+	}
+}

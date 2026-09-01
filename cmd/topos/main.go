@@ -441,6 +441,17 @@ func setup(ctx context.Context, logger hclog.Logger, path string) (*config.Store
 	return cfgStore, store, nil
 }
 
+// installOperatorKeys hands pluginhost the operator's accepted keys from
+// the active config — before ANY trust evaluation the process performs:
+// launches, the picker's listing, describe-plugin trial launches (M2-R4,
+// davison/topos#49; D-12 revised: the kernel installs the keys,
+// pluginhost never reads config). Both entry points call it right after
+// the config is expanded; supervisor.Apply re-installs at every apply
+// and restores the previous set when an apply is rejected.
+func installOperatorKeys(cfg *config.Config) {
+	pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(cfg.Plugins.TrustedKeys))
+}
+
 func runSync(path string) error {
 	// Same reachability requirement as runServe: `defer sup.Shutdown()`
 	// below is what kills the plugin subprocesses, and a signal that
@@ -462,7 +473,7 @@ func runSync(path string) error {
 	defer store.Close()
 
 	cfg := cfgStore.Expanded()
-	pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(cfg.Plugins.TrustedKeys))
+	installOperatorKeys(cfg)
 	pdir, err := pluginsDir(cfg)
 	if err != nil {
 		return err
@@ -524,6 +535,7 @@ func runServe(path string) error {
 		return err
 	}
 	cfg := cfgStore.Expanded()
+	installOperatorKeys(cfg)
 	defer store.Close()
 
 	// Repair sync_runs rows stranded at "running" by a previous kernel that

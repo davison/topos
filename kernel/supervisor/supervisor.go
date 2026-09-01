@@ -688,7 +688,12 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 		// Pre-Reconcile failure: Reconcile's own T-07-11 guarantee means the
 		// previously running plugin set is genuinely untouched, so the OLD
 		// generation is the consistent one here — this is the mirror image
-		// of every branch below and must stay asymmetric with them.
+		// of every branch below and must stay asymmetric with them. The
+		// operator's keys follow the generation: the proposed set was
+		// installed above for the launches this apply would have made,
+		// so the OLD config's set is reinstalled here — trust must never
+		// outlive the config it came from (davison/topos#49).
+		pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(oldCfg.Plugins.TrustedKeys))
 		s.startScheduler(oldCfg)
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}

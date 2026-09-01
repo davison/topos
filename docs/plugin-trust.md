@@ -115,18 +115,18 @@ the badge, the two-choice interstitial, *stop trusting this key* — is
 operator trusts a key by adding the table entry `pull` prints and
 restarting the kernel.
 
-Trust today is one word: the kernel author's, spoken by the embedded key
-set. A third-party plugin is external for every operator forever, and
-every release of it needs a fresh consent-and-pin, because a pin is per
-binary. A developer who signs their release with their *own* key gains
-nothing today: at launch the kernel records "signature names unknown key
-id" as a diagnostic and treats the manifest as no evidence (external,
-consent-and-pin), and `topos plugin pull` goes further and refuses to
-place the download at all, because provenance is present but none of
-it is accepted. The honest developer is, for the installer, worse off
-than one who ships unsigned.
+Before this, trust was one word: the kernel author's, spoken by the
+embedded key set. A third-party plugin was external for every operator
+forever, and every release of it needed a fresh consent-and-pin, because
+a pin is per binary. A developer who signed their release with their
+*own* key gained nothing: at launch the kernel recorded "signature names
+unknown key id" as a diagnostic and treated the manifest as no evidence
+(external, consent-and-pin), and `topos plugin pull` went further and
+refused to place the download at all, because provenance was present
+but none of it accepted. The honest developer was, for the installer,
+worse off than one who shipped unsigned.
 
-The design adds a second word — the operator's:
+The second word — the operator's:
 
 - **Where it lives.** Keys the operator has chosen to trust are runtime
   configuration in the operator's own config, beside the pins, which are
