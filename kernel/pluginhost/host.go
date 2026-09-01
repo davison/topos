@@ -382,6 +382,7 @@ type Plugin struct {
 	pluginName      string // Describe-learned display name (e.g. "paperless-ngx") — the plugin KIND's own label
 	displayName     string // resolved instance display name (config display_name, or name if unset) — D-09
 	matchVocabulary []string
+	searchesContent bool // Describe-declared: the plugin implements the optional Search RPC (M2-R2)
 	// iconBytes/iconMIME are captured from the same Describe call launch()
 	// already makes (no new RPC), validated by captureIcon. Both are the
 	// zero value when the plugin declared no icon, declared one that
@@ -507,6 +508,20 @@ func (p *Plugin) PluginDisplayName() string { return p.pluginName }
 // keys correlate.matchFieldsFor may populate in a Match request sent to
 // this instance. Satisfies correlate.Source.
 func (p *Plugin) MatchVocabulary() []string { return p.matchVocabulary }
+
+// SearchesContent reports the plugin's Describe-declared Search capability.
+func (p *Plugin) SearchesContent() bool { return p.searchesContent }
+
+// Search calls the plugin's optional Search RPC (M2-R2). A plugin that
+// never implemented it answers Unimplemented over the wire; the caller
+// classifies that as a declared absence, not a failure.
+func (p *Plugin) Search(ctx context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error) {
+	cs, ok := p.impl.(sdk.ContentSearcher)
+	if !ok {
+		return nil, status.Error(codes.Unimplemented, "plugin client exposes no Search")
+	}
+	return cs.Search(ctx, req)
+}
 
 // Match calls the plugin's Match RPC, wrapping each declared field's value
 // list in a StringList (proto3 map values cannot be repeated fields
@@ -1400,6 +1415,7 @@ func launch(ctx context.Context, dirs Dirs, name string, src config.Source, raw 
 		pluginName:      desc.GetDisplayName(),
 		displayName:     instanceDisplayName,
 		matchVocabulary: desc.GetMatchVocabulary(),
+		searchesContent: desc.GetSearchesContent(),
 		iconBytes:       iconBytes,
 		iconMIME:        iconMIME,
 		src:             src,

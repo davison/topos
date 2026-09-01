@@ -260,6 +260,9 @@ func (p *SourcePlugin) Describe(_ context.Context, _ *toposv1.DescribeRequest) (
 		MatchVocabulary: matchVocabulary,
 		Icon:            iconSVG,
 		IconMime:        iconMIME,
+		// M2-R2: the mock searches its fixture bodies (search.go) so the
+		// kernel's fan-out, merge and matched_in are proven in its own suite.
+		SearchesContent: true,
 	}, nil
 }
 

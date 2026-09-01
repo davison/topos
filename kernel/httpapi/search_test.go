@@ -25,7 +25,7 @@ func newSearchTestRouter(store *index.Store) http.Handler {
 // loading a real TOML file.
 func newSearchTestRouterWithConfig(store *index.Store, cfg *config.Config) http.Handler {
 	r := chi.NewRouter()
-	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, config.NewStoreForTesting(cfg)))
+	r.Get("/api/webspaces/{webspace}/search", SearchHandler(store, config.NewStoreForTesting(cfg), &fakeFetcher{}))
 	return r
 }
 

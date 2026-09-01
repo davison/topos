@@ -6,6 +6,8 @@ package sdk
 
 import (
 	"context"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
@@ -102,6 +104,17 @@ type SourcePlugin interface {
 	Health(ctx context.Context, req *toposv1.HealthRequest) (*toposv1.HealthResponse, error)
 }
 
+// ContentSearcher is the OPTIONAL Search RPC (M2-R2, davison/topos#50) as
+// a separate interface, so SourcePlugin gains no method and every
+// existing plugin compiles unchanged. A plugin that implements it must
+// also declare searches_content in Describe; the plugin-side gRPC server
+// discovers it by type assertion and answers Unimplemented otherwise.
+// The kernel-side client always exposes Search; the kernel treats
+// Unimplemented as "no body search from this source".
+type ContentSearcher interface {
+	Search(ctx context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error)
+}
+
 // SourcePluginGRPCPlugin implements plugin.GRPCPlugin, wiring a SourcePlugin
 // Go implementation to the generated gRPC server/client on the plugin and
 // host sides respectively.
@@ -146,6 +159,16 @@ func (s *grpcServer) Health(ctx context.Context, req *toposv1.HealthRequest) (*t
 	return s.impl.Health(ctx, req)
 }
 
+// Search dispatches to the implementation only if it opted in (ContentSearcher);
+// otherwise the plugin declines exactly as an older plugin without the RPC
+// would — Unimplemented, which the kernel reads as a declared absence.
+func (s *grpcServer) Search(ctx context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error) {
+	if cs, ok := s.impl.(ContentSearcher); ok {
+		return cs.Search(ctx, req)
+	}
+	return nil, status.Error(codes.Unimplemented, "this plugin does not search its own content")
+}
+
 // grpcClient adapts the generated toposv1.SourcePluginClient to the
 // SourcePlugin interface, used host-side after Dispense.
 type grpcClient struct {
@@ -166,4 +189,10 @@ func (c *grpcClient) Fetch(ctx context.Context, req *toposv1.FetchRequest) (*top
 
 func (c *grpcClient) Health(ctx context.Context, req *toposv1.HealthRequest) (*toposv1.HealthResponse, error) {
 	return c.client.Health(ctx, req)
+}
+
+// Search on the kernel side always exists; a plugin without the RPC
+// answers Unimplemented over the wire.
+func (c *grpcClient) Search(ctx context.Context, req *toposv1.SearchRequest) (*toposv1.SearchResponse, error) {
+	return c.client.Search(ctx, req)
 }

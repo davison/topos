@@ -394,12 +394,17 @@ answers `200` here too, never `404`.
 This route has **no `/agent/v1` mirror** in this version — see "The
 `/agent/v1` namespace", below, for why.
 
-#### Decided, not yet shipped: body search and per-source filters (M2-R2, M2-R3)
+#### Body search and per-source filters (M2-R2, M2-R3)
 
-**Status:** decided at [davison/topos#50](https://github.com/davison/topos/issues/50);
-shipping in the implementation tasks that issue names. Until they land,
-the search route above is the whole behaviour: FTS over titles and
-previews, never bodies.
+**Status:** decided at [davison/topos#50](https://github.com/davison/topos/issues/50).
+**Shipped in the kernel** at [#53](https://github.com/davison/topos/issues/53):
+`?scope=index|all` on the search route, the fan-out, the merged result
+set with `matched_in`/`origin`/`indexed`, the per-source `sources` map.
+The first-party plugins' `Search` implementations are
+[topos-plugins#25](https://github.com/davison/topos-plugins/issues/25)
+(until they land, every first-party source reports `unsupported` and
+only the mock answers); the app's result set is [#54](https://github.com/davison/topos/issues/54);
+the per-source filter map is [#55](https://github.com/davison/topos/issues/55).
 
 **Search reaches bodies through the sources, not the index.** The
 plugin contract gains an optional `Search` RPC
@@ -428,9 +433,18 @@ source), `origin` (`index`, `source`, `both`) and `indexed` (`false` for
 a body hit whose item is not yet synced — rendered from the plugin's own
 `Item` fields and marked as such). The response gains `sources`: per
 participating instance, `ok | unsupported | timeout | error`, hit count,
-elapsed. Delivery is **progressive**: the index answers first; source
-hits arrive as each source answers, and the UI adds them per source with
-the status row updating — a slow source never delays the fast ones.
+elapsed. Delivery is **progressive as two requests** (decided at #53): the
+UI asks `?scope=index` first — milliseconds, the FTS answer alone, no
+`sources` map — then `?scope=all` (the default), which returns when
+every participating source has answered or its budget
+(`pluginhost.SearchBudget`, five seconds) has expired, each named in
+`sources` as `ok | unsupported | timeout | error` with its hit count,
+note and elapsed time; a slow source can delay only the second answer,
+never the first. Results: the index's ranked rows first, then source
+hits by timestamp; an item found by both is one row with `origin:
+"both"` and both `matched_in` values. Rejected: server-sent events —
+a second transport for one screen, when two requests give the same
+experience.
 Nothing is written to the index by a search. The detail pane's `?hl=`
 highlight (above) stays, **labelled as find-in-page**, so it no longer
 reads as a search result.
