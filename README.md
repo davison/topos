@@ -99,8 +99,8 @@ source plugins live there now, and its signed releases carry the fleet;
 kernel releases here ship the kernel alone. Install and update the
 fleet with that repository's own `make install` (see
 [`docs/install.md`](docs/install.md#plugins-on-an-installed-instance);
-for Signal, the fleet's one cgo build, its `make build-signal` and the
-external-tier consent flow). Older kernel releases still carry
+for Signal, the fleet's one cgo build, topos-plugins' `make build-signal`
+and the external-tier consent flow). Older kernel releases still carry
 whatever their tag published.
 
 ### From source
