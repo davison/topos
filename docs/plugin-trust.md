@@ -72,7 +72,7 @@ so verification never depends on JSON field ordering or whitespace.
 |---|---|
 | Trusted | A validly-signed manifest, from an accepted key, names this exact binary with a digest matching what's on disk. |
 | Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. |
-| Refused — never demote-and-run | A manifest signed by an unknown key id; a signature that does not verify; a manifest built for a different platform; a manifest that DOES verify but names this binary with a digest that no longer matches what's on disk (tamper). |
+| Refused — never demote-and-run | A manifest signed by an unknown key id (**until the operator-trusted-keys design below ships, when this becomes an offer**); a signature that does not verify; a manifest built for a different platform; a manifest that DOES verify but names this binary with a digest that no longer matches what's on disk (tamper). |
 
 A refusal is never silently downgraded to "run it at a lower tier
 anyway" — verification never demotes-and-runs. Every refusal names the
@@ -99,6 +99,82 @@ chip, and the two-click re-pin path when its bytes change — is
 **unchanged by this phase** and is the fully supported way to run code
 topos did not sign. Nothing about provenance narrows what you can run;
 it only widens what can run without that extra click.
+
+## Operator-trusted keys (decided, not yet shipped)
+
+**Status:** decided at [davison/topos#49](https://github.com/davison/topos/issues/49)
+(M2-R4 of [#40](https://github.com/davison/topos/issues/40)), from the
+operator's captures [#1](https://github.com/davison/topos/issues/1) and
+[#38](https://github.com/davison/topos/issues/38); shipping in the two
+implementation tasks that issue names. Until they land, everything above
+this section is the behaviour you get.
+
+Trust today is one word: the kernel author's, spoken by the embedded key
+set. A third-party plugin is external for every operator forever, and
+every release of it needs a fresh consent-and-pin, because a pin is per
+binary. Worse, a developer who signs their release with their *own* key
+is refused outright ("signature names unknown key id" — see the table
+above): the honest developer is worse off than the one who ships
+unsigned.
+
+The design adds a second word — the operator's:
+
+- **Where it lives.** Keys the operator has chosen to trust are runtime
+  configuration in the operator's own config, beside the pins, which are
+  the same kind of decision:
+
+  ```toml
+  [[plugins.trusted_keys]]
+  id         = "acme-2026a"          # the manifest's key_id
+  public_key = "<base64 ed25519 public key>"
+  trusted_at = 2026-09-02T10:00:00Z
+  note       = "Acme's plugin signing key, from their release page"
+  ```
+
+  The accepted key set becomes embedded ∪ link-time extras ∪ operator
+  keys, and each key remembers whose word it is.
+- **A tier named for whose word it is.** A binary whose manifest verifies
+  against an operator key runs at `operator_trusted` — *trusted by you
+  (key acme-2026a)* on the chip — beside `trusted` (*signed by
+  topos-plugins*) and `external`. It launches like trusted; the
+  difference is honesty on the chip and in `GET /api/sources`, and a
+  place for "stop trusting this key" to hang.
+- **An unknown key is an offer, not a refusal.** A manifest that
+  verifies structurally but names a key the kernel does not know is *no
+  evidence* (like no manifest), not *bad evidence* (like a digest that no
+  longer matches). The binary is `external`; the source carries the
+  offered key's id and fingerprint; the add-source interstitial and the
+  chip menu offer two consents — **trust this key for future releases**
+  (writes the table entry; the plugin becomes operator-trusted, no pin
+  needed) or **pin this binary only** (today's path). Tamper, malformed
+  manifests and platform mismatch stay refusals.
+- **Removal and rotation.** Removing a key demotes its plugins to
+  `external` at next launch, by name, into the existing consent path —
+  no new failure vocabulary. A developer rotating keys ships a new key
+  id; the operator is offered it like any unknown key; D-03's additive
+  overlap applies to the operator's set as to the embedded one. No
+  expiry — pins have none either.
+- **Threat model, stated.** Editing the config already decides what runs
+  (pins, plugin directories), so operator keys widen nothing. A key
+  admits every future release by its signer — the same model the
+  operator already accepts for the kernel author's key; the difference
+  is that this party is chosen by the operator, which is what the
+  consent step is for.
+
+**Decision D-12 (revised at #49).** D-12 made the accepted key set
+link-time data only — never a file, an environment variable or
+configuration at run time. That stays true of the *kernel author's*
+keys: the embedded set and the `provenanceKeysExtra` build seam are
+untouched. The *operator's* keys are runtime configuration, exactly as
+the operator's pins are, because both are the operator's own trust
+decisions and the config file is already that surface. Rejected: a
+separate keyring file (a second trust surface for the same decision),
+and folding operator keys into `trusted` (the chip would then hide
+whose word a plugin runs on).
+
+Out of scope: a certificate authority, a registry, a marketplace
+([#3](https://github.com/davison/topos/issues/3)), in-app install
+([#2](https://github.com/davison/topos/issues/2)), key expiry.
 
 ## Verifying by hand
 
