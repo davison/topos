@@ -71,8 +71,8 @@ so verification never depends on JSON field ordering or whitespace.
 | Outcome | Cause |
 |---|---|
 | Trusted | A validly-signed manifest, from an accepted key, names this exact binary with a digest matching what's on disk. |
-| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. |
-| Refused — never demote-and-run | A manifest signed by an unknown key id (**until the operator-trusted-keys design below ships, when this becomes an offer**); a signature that does not verify; a manifest built for a different platform; a manifest that DOES verify but names this binary with a digest that no longer matches what's on disk (tamper). |
+| Untrusted (external tier) | No manifest present names this binary at all — a legitimate "no evidence" state, not an error. A manifest whose signature names a key id the kernel does not know is the same state at launch (no evidence, external, consent-and-pin runs it); `topos plugin pull`, however, aborts and places nothing when provenance is present but yields no accepted evidence, so an installer refuses what the launch gate merely declines to vouch for. The operator-trusted-keys design below turns that unknown key into an offer. |
+| Refused — never demote-and-run | A signature that does not verify; a manifest built for a different platform; a manifest that DOES verify but names this binary with a digest that no longer matches what's on disk (tamper). |
 
 A refusal is never silently downgraded to "run it at a lower tier
 anyway" — verification never demotes-and-runs. Every refusal names the
@@ -112,10 +112,13 @@ this section is the behaviour you get.
 Trust today is one word: the kernel author's, spoken by the embedded key
 set. A third-party plugin is external for every operator forever, and
 every release of it needs a fresh consent-and-pin, because a pin is per
-binary. Worse, a developer who signs their release with their *own* key
-is refused outright ("signature names unknown key id" — see the table
-above): the honest developer is worse off than the one who ships
-unsigned.
+binary. A developer who signs their release with their *own* key gains
+nothing today: at launch the kernel records "signature names unknown key
+id" as a diagnostic and treats the manifest as no evidence (external,
+consent-and-pin), and `topos plugin pull` goes further and refuses to
+place the download at all, because provenance is present but none of
+it is accepted. The honest developer is, for the installer, worse off
+than one who ships unsigned.
 
 The design adds a second word — the operator's:
 
@@ -139,15 +142,29 @@ The design adds a second word — the operator's:
   topos-plugins*) and `external`. It launches like trusted; the
   difference is honesty on the chip and in `GET /api/sources`, and a
   place for "stop trusting this key" to hang.
-- **An unknown key is an offer, not a refusal.** A manifest that
-  verifies structurally but names a key the kernel does not know is *no
-  evidence* (like no manifest), not *bad evidence* (like a digest that no
-  longer matches). The binary is `external`; the source carries the
-  offered key's id and fingerprint; the add-source interstitial and the
-  chip menu offer two consents — **trust this key for future releases**
-  (writes the table entry; the plugin becomes operator-trusted, no pin
-  needed) or **pin this binary only** (today's path). Tamper, malformed
-  manifests and platform mismatch stay refusals.
+- **An unknown key is an offer.** A manifest whose signature names a
+  key the kernel does not know stays what it is at launch today — *no
+  evidence*, `external` — but now carries an offer: the source exposes
+  the offered key's id and fingerprint, and the add-source interstitial
+  and the chip menu offer two consents — **trust this key for future
+  releases** (writes the table entry; the plugin becomes
+  operator-trusted, no pin needed) or **pin this binary only** (today's
+  path). `topos plugin pull` stops aborting on an unknown key: it places
+  into the external tier and prints the same offer. Tamper, a signature
+  that does not verify, malformed manifests and platform mismatch stay
+  refusals.
+- **The key travels with the signature.** The signature file gains one
+  field: `public_key`, the signer's ed25519 public key in standard
+  base64 (`topos-provenance sign` writes it; it holds the pair). The
+  kernel verifies the signature against *that* key when the id is
+  unknown, so an offer is only ever made for a key that demonstrably
+  signed this manifest; the fingerprint shown is the SHA-256 of the raw
+  key bytes, abbreviated. Trusting stores the bytes. A later manifest
+  whose `key_id` matches a trusted key but whose `public_key` differs is
+  treated as unknown and the offer says so — *this key id was seen
+  before with a different key* — because a reused id is exactly the
+  impersonation this guards against. The schema stays
+  `topos.provenance.sig.v1`: an added field an older kernel ignores.
 - **Removal and rotation.** Removing a key demotes its plugins to
   `external` at next launch, by name, into the existing consent path —
   no new failure vocabulary. A developer rotating keys ships a new key
@@ -171,6 +188,13 @@ decisions and the config file is already that surface. Rejected: a
 separate keyring file (a second trust surface for the same decision),
 and folding operator keys into `trusted` (the chip would then hide
 whose word a plugin runs on).
+
+**Decision (key transport, review round 1 of the design PR).** The
+public key rides in the signature file. Rejected: a separately
+published `<name>.pubkey` asset (a discovery rule to get wrong, and a
+second fetch for `topos plugin pull`'s single URL), and carrying the key
+in the manifest (the manifest is the thing signed; the signature file
+is the signer's own statement and already names the key id).
 
 Out of scope: a certificate authority, a registry, a marketplace
 ([#3](https://github.com/davison/topos/issues/3)), in-app install
