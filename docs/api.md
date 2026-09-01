@@ -394,6 +394,60 @@ answers `200` here too, never `404`.
 This route has **no `/agent/v1` mirror** in this version — see "The
 `/agent/v1` namespace", below, for why.
 
+#### Decided, not yet shipped: body search and per-source filters (M2-R2, M2-R3)
+
+**Status:** decided at [davison/topos#50](https://github.com/davison/topos/issues/50);
+shipping in the implementation tasks that issue names. Until they land,
+the search route above is the whole behaviour: FTS over titles and
+previews, never bodies.
+
+**Search reaches bodies through the sources, not the index.** The
+plugin contract gains an optional `Search` RPC
+([`plugin-contract.md`](plugin-contract.md), "`Search`"). For a query,
+the kernel answers from the local FTS as today and, in parallel, asks
+every participating source instance that declares the capability, each
+under a per-source budget and cancellation. A plugin searches its whole
+source, so the kernel applies the **webspace's own correlation rules**
+(keywords / per-instance match fields — the same code sync uses) to the
+returned hits before any can appear; a hit that does not correlate is
+dropped. Hits merge with the FTS hits by stable id.
+
+**The result set says what happened.** Each result gains `matched_in`
+(`title`/`preview` from the index; `body`/`labels`/`attachment` from a
+source), `origin` (`index`, `source`, `both`) and `indexed` (`false` for
+a body hit whose item is not yet synced — rendered from the plugin's own
+`Item` fields and marked as such). The response gains `sources`: per
+participating instance, `ok | unsupported | timeout | error`, hit count,
+elapsed. Delivery is **progressive**: the index answers first; source
+hits arrive as each source answers, and the UI adds them per source with
+the status row updating — a slow source never delays the fast ones.
+Nothing is written to the index by a search. The detail pane's `?hl=`
+highlight (above) stays, **labelled as find-in-page**, so it no longer
+reads as a search result.
+
+**Filters speak per source.** Beside a webspace's global `filter` stack
+(every source), `[webspaces.<w>.filter_by_source]` maps a source
+instance to its own AND-ed terms: an item passes when it matches every
+global term and, if its instance has an entry, every term there. The
+stream and search routes apply it (FTS per instance group, union);
+`PUT /api/config` carries it; a live search still refines within the
+saved filters. The source chip's menu gains *Filter this source…*; the
+search box accepts `instance:term` tokens as sugar, parsed into the same
+map when saved as a filter.
+
+**Decisions recorded (#50).** Additive optional RPC rather than a new
+contract generation (rejected: `topos.v3` — it would refuse every
+existing plugin for a capability they merely lack). Correlate before
+merge (rejected: showing whatever a source returns — it would leak items
+that do not belong to the webspace). Show correlated hits for unsynced
+items, marked (rejected: index-known only — the body hits are the
+point). Progressive arrival with a status row (rejected: wait for every
+source — one slow IMAP server would hold the whole result). Chip popover
+first, syntax as sugar (rejected: syntax only — undiscoverable). No local
+body index (option C in [#39](https://github.com/davison/topos/issues/39))
+— deferred, a separate decision if live search proves too slow for a
+source whose content is already local.
+
 ### `GET /api/items/{id}`
 
 `{id}` is the stable composite id (`{source}:{source_id}`, e.g.
