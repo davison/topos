@@ -1039,7 +1039,15 @@ that holds them, and the contract gains an **optional** fifth RPC:
 ```proto
 rpc Search(SearchRequest) returns (SearchResponse);
 
-message SearchRequest  { string query = 1; int32 limit = 2; }
+message SearchRequest  {
+  string query = 1;
+  int32  limit = 2;
+  // The webspace's resolved match_fields for THIS instance — the same map
+  // MatchRequest carries, same semantics (D-04/D-05). The plugin ANDs the
+  // search with membership: a hit is returned only if it would also be
+  // returned by Match for these fields. Empty map: the whole source.
+  map<string, MatchValues> match_fields = 3;
+}
 message SearchResponse { repeated SearchHit hits = 1; bool truncated = 2; string note = 3; }
 message SearchHit {
   Item   item       = 1;  // the same shape sync produces — the kernel renders and correlates from it
@@ -1049,7 +1057,13 @@ message SearchHit {
 ```
 
 `Describe` gains a capability flag (`searches_content`). Declaring it
-promises: the plugin searches **its own content, its own way** — IMAP
+promises: the plugin **searches within membership** — `match_fields`
+is the webspace's resolved map for this instance, exactly as `Match`
+receives it, and a hit is returned only if `Match` would also return
+that item for the same fields (a mailbox's folders, a document store's
+tags, a chat's conversations: the source applies its own filter in its
+own query, where it is cheap) — searching **its own content, its own
+way** — IMAP
 `SEARCH TEXT`, a document store's full-text query, a local database's
 own index, grep over local files — returns `Item`-shaped hits with a
 bounded snippet and where the term matched, respects `limit` and reports
@@ -1064,7 +1078,21 @@ chip — **not** as a contract incompatibility. There is no `topos.v3` for
 this; the generation gate (above, "Handshake") is untouched. The mock
 reference plugin will implement `Search` over its fixture bodies and
 `mockstrict` will decline it, so both paths are proven in the kernel's
-own suite.
+own suite. In the SDK the RPC is an **optional interface** (a source
+that implements it is discovered by type assertion), never a new
+method on `sdk.SourcePlugin` — a plugin upgrading the SDK compiles
+unchanged.
+
+**Decision (#50, review round 1): membership is the source's, not the
+kernel's.** The first draft had the kernel apply "the same correlation
+rules sync uses" to each hit. Sync does not correlate locally: it
+resolves `match_fields` and asks the plugin's `Match`, and an `Item`
+does not carry the native values (folders, pages, conversations) that
+decision needs. So the boundary is the one that exists — the source
+decides membership, for search as for sync — by carrying the resolved
+`match_fields` in `SearchRequest`. Rejected: the kernel calling `Match`
+and intersecting stable ids — a full membership scan of every source
+per search, and a second round trip on the slow path.
 
 What the kernel does with hits — fan-out, correlation into the webspace
 before anything is shown, merging with the index's own hits, the
