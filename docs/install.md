@@ -272,7 +272,17 @@ topos-plugins' `make install-signal` builds through its
 `make build-signal` and places the binary atomically into the installed instance's **external** plugin
 directory (by default `$XDG_DATA_HOME/topos/plugins-external`, or the
 directory your config's `[plugins] external_dir` names via
-`TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); topos-plugins' `make uninstall-signal` removes exactly that one file. Then add the Signal source once through the
+`TOPOS_EXTERNAL_PLUGINS_DIR=<dir>`); topos-plugins' `make uninstall-signal` removes exactly that one file.
+
+**Privileges differ by step, and the difference matters.** The kernel's
+`make install` and the fleet's `make install` write under `$PREFIX`
+(`/usr/local` by default) and need `sudo`; topos-plugins' `make
+install-signal` and `make uninstall-signal` must run **without** it, as
+the user the kernel runs as — the external plugin directory is that user's own data
+directory, and under `sudo` the binary lands in root's, where no kernel
+looks, while the script reports success. The script refuses to run as
+root unless `TOPOS_EXTERNAL_PLUGINS_DIR` names the directory explicitly
+([topos-plugins#21](https://github.com/davison/topos-plugins/issues/21)). Then add the Signal source once through the
 app's untrusted-add consent flow — it runs pinned and badged. A locally built binary carries no signed provenance and is not
 in any release manifest, so a trusted-directory placement would be
 refused at launch; the external tier's consent-and-pin flow is the
