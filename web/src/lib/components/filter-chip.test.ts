@@ -122,8 +122,8 @@ const filterRowBlock = extractBetween(strippedHeader, '{#if filters.length', '{/
 describe('E9 empty: the filter row is absent (not empty-styled) at zero filters', () => {
 	it('WebspaceHeader gates the filter row on filters.length', () => {
 		expect(
-			/\{#if filters\.length\s*>\s*0\s*\|\|\s*Object\.keys\(filterBySource\)\.length\s*>\s*0\}/.test(strippedHeader),
-			'expected the filter row to be gated behind the filters.length / filterBySource check — with zero active filters the row must be absent entirely, not rendered empty-styled'
+			/\{#if filters\.length\s*>\s*0\s*\|\|\s*Object\.keys\(filterBySource\)\.length\s*>\s*0\s*\|\|\s*dateRange\.from\s*\|\|\s*dateRange\.to\}/.test(strippedHeader),
+			'expected the filter row to be gated behind the filters/filterBySource/dateRange check — with zero active filters the row must be absent entirely, not rendered empty-styled'
 		).toBe(true);
 	});
 	it('the gated block actually renders a FilterChip', () => {

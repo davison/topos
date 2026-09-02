@@ -124,11 +124,11 @@ func agentSourcesHandler(store *index.Store, cfgStore *config.Store, prober Heal
 // no dedicated per-source-filtered index query, so this reuses StreamItems
 // (the same read StreamHandler/agentStreamHandler use) rather than adding
 // a new Store method outside this plan's scope.
-func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool, filterTerms []string, bySource map[string][]string) (int, error) {
+func agentGrantedItemCount(ctx context.Context, store *index.Store, webspaceName string, granted map[string]bool, filterTerms []string, bySource map[string][]string, dateFrom, dateTo int64) (int, error) {
 	// index.ViewIncluded, explicit: the agent mirror has no excluded view
 	// (13-02-PLAN.md Task 1) — an agent grant can never surface the
 	// excluded bucket.
-	items, err := store.StreamItems(ctx, webspaceName, filterTerms, bySource, index.ViewIncluded)
+	items, err := store.StreamItems(ctx, webspaceName, filterTerms, bySource, dateFrom, dateTo, index.ViewIncluded)
 	if err != nil {
 		return 0, err
 	}
@@ -174,7 +174,8 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 
 		resp := webspacesResponse{SchemaVersion: schemaVersion, Webspaces: make([]webspaceSummary, 0, len(names))}
 		for _, name := range names {
-			count, err := agentGrantedItemCount(ctx, store, name, granted, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource)
+			gFrom, gTo := cfg.Webspaces[name].DateRange()
+			count, err := agentGrantedItemCount(ctx, store, name, granted, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, gFrom, gTo)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 				return
@@ -231,7 +232,8 @@ func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober Healt
 		// index.ViewIncluded, explicit: the agent mirror has no excluded
 		// view (13-02-PLAN.md Task 1) — an agent grant can never surface
 		// the excluded bucket.
-		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, index.ViewIncluded)
+		wsDateFrom, wsDateTo := cfg.Webspaces[name].DateRange()
+		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, wsDateFrom, wsDateTo, index.ViewIncluded)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return

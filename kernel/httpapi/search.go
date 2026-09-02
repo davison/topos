@@ -97,7 +97,12 @@ func SearchHandler(store *index.Store, cfgStore *config.Store, fetcher Fetcher) 
 			return
 		}
 		ws := cfg.Webspaces[name]
-		results, err := store.Search(ctx, name, q, ws.Filter, ws.FilterBySource)
+		dateFrom, dateTo, derr := effectiveDateRange(r, ws)
+		if derr != nil {
+			WriteError(w, http.StatusBadRequest, "invalid_request", derr.Error())
+			return
+		}
+		results, err := store.Search(ctx, name, q, ws.Filter, ws.FilterBySource, dateFrom, dateTo)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
 			return
@@ -117,6 +122,14 @@ func SearchHandler(store *index.Store, cfgStore *config.Store, fetcher Fetcher) 
 			for _, o := range outcomes {
 				resp.Sources[o.Instance] = sourceSearchStatus{Status: o.Status, Hits: len(o.Hits), Truncated: o.Truncated, Note: o.Note, Error: o.Error, ElapsedMS: o.ElapsedMS}
 				for _, hit := range o.Hits {
+					// The date narrowing applies to source hits too (M3-R1,
+					// #76 — caught by spec 21): the index rows above were
+					// filtered in SQL, and a source's own answer must not
+					// smuggle an out-of-range item past the same range.
+					if (dateFrom > 0 && hit.Item.TimestampUnix < dateFrom) ||
+						(dateTo > 0 && hit.Item.TimestampUnix > dateTo) {
+						continue
+					}
 					if i, seen := byID[hit.Item.ID]; seen {
 						merged[i].Origin = "both"
 						if hit.MatchedIn != "" && !contains(merged[i].MatchedIn, hit.MatchedIn) {

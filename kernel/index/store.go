@@ -564,10 +564,11 @@ SELECT COUNT(*) FROM item_marks WHERE webspace_name = ? AND kind = ?
 // LIMIT — the filtered view is still the whole bucket, just narrower. An
 // FTS5-hostile filter term degrades to an empty slice with a nil error,
 // mirroring Search's own fts5-error degradation, rather than a 500.
-func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string, bySource map[string][]string, view MarkView) ([]item.Item, error) {
+func (s *Store) StreamItems(ctx context.Context, webspaceName string, filterTerms []string, bySource map[string][]string, dateFrom, dateTo int64, view MarkView) ([]item.Item, error) {
 	match := BuildMatchQuery(filterTerms, "")
 	markClause := streamMarkFilterClause(view)
 	perSourceClause, perSourceArgs := perSourceFilterClauses(bySource)
+	dateClause, dateArgs := dateRangeClause(dateFrom, dateTo)
 
 	const baseColumns = `
 SELECT items.id, items.source, items.source_type, items.source_id, items.title, items.preview,
@@ -583,10 +584,10 @@ SELECT items.id, items.source, items.source_type, items.source_id, items.title, 
 FROM items
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
-` + perSourceClause + markClause + `
+` + perSourceClause + dateClause + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		args := append(append([]any{webspaceName}, perSourceArgs...), webspaceName)
+		args := append(append(append([]any{webspaceName}, perSourceArgs...), dateArgs...), webspaceName)
 		rows, err = s.db.QueryContext(ctx, q, args...)
 	} else {
 		q := baseColumns + `
@@ -595,10 +596,10 @@ JOIN items ON items.rowid = items_fts.rowid
 JOIN webspace_items ON webspace_items.item_id = items.id
 WHERE webspace_items.webspace_name = ?
   AND items_fts MATCH ?
-` + perSourceClause + markClause + `
+` + perSourceClause + dateClause + markClause + `
 ORDER BY items.timestamp_unix DESC, items.secondary_timestamp_unix DESC, items.id ASC
 `
-		args := append(append([]any{webspaceName, match}, perSourceArgs...), webspaceName)
+		args := append(append(append([]any{webspaceName, match}, perSourceArgs...), dateArgs...), webspaceName)
 		rows, err = s.db.QueryContext(ctx, q, args...)
 	}
 	if err != nil {
@@ -674,6 +675,24 @@ func BuildMatchQuery(filterTerms []string, liveQuery string) string {
 		parts = append(parts, live)
 	}
 	return strings.Join(parts, " ")
+}
+
+// dateRangeClause renders a webspace's date narrowing (M3-R1, #70) as
+// SQL over items.timestamp_unix: unix-second bounds, either side zero
+// meaning open, applied with the same query-time-only semantics as the
+// filter clauses around it.
+func dateRangeClause(from, to int64) (string, []any) {
+	var clause strings.Builder
+	var args []any
+	if from > 0 {
+		clause.WriteString("  AND items.timestamp_unix >= ?\n")
+		args = append(args, from)
+	}
+	if to > 0 {
+		clause.WriteString("  AND items.timestamp_unix <= ?\n")
+		args = append(args, to)
+	}
+	return clause.String(), args
 }
 
 // perSourceFilterClauses renders [webspaces.<w>.filter_by_source] (M2-R3,
@@ -797,15 +816,16 @@ LIMIT 50
 // rawQuery/filterTerms combination that matches no item also returns an
 // empty slice and a nil error. Results are capped at 50 rows. This method
 // only reads the local index — it never triggers a live source call.
-func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filterTerms []string, bySource map[string][]string) ([]SearchResult, error) {
+func (s *Store) Search(ctx context.Context, webspaceName, rawQuery string, filterTerms []string, bySource map[string][]string, dateFrom, dateTo int64) ([]SearchResult, error) {
 	query := BuildMatchQuery(filterTerms, rawQuery)
 	if query == "" {
 		return []SearchResult{}, nil
 	}
 
 	perSourceClause, perSourceArgs := perSourceFilterClauses(bySource)
-	q := searchQueryHead + perSourceClause + markFilterClause + searchQueryTail
-	args := append(append([]any{SnippetOpen, SnippetClose, webspaceName, query}, perSourceArgs...), webspaceName)
+	dateClause, dateArgs := dateRangeClause(dateFrom, dateTo)
+	q := searchQueryHead + perSourceClause + dateClause + markFilterClause + searchQueryTail
+	args := append(append(append([]any{SnippetOpen, SnippetClose, webspaceName, query}, perSourceArgs...), dateArgs...), webspaceName)
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		// ftsQuery's phrase-quoting makes a genuine MATCH syntax error

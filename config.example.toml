@@ -430,6 +430,17 @@ handoff = false
 #
 #   [webspaces.demo.filter_by_source]
 #   mock = ["standup"]
+#
+# date_from / date_to (M3-R1, OPTIONAL): calendar dates ("YYYY-MM-DD")
+# narrowing this webspace by item timestamp at query time — from's day
+# start through to's day END, inclusive, in the kernel's local time;
+# either side may stand alone. Exactly filter's semantics otherwise:
+# stream, search and the agent mirror all honour it, and removing the
+# keys instantly widens with no resync. The UI writes these via the
+# date pickers' Save as filter; hand-editing is fully supported:
+#
+#   date_from = "2026-03-01"
+#   date_to = "2026-03-31"
 
 # [webspaces.demo] — pairs with the live [sources.mock] block above:
 # "demo" matches the label every one of the mock's fixed items carries,

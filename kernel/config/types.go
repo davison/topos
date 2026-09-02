@@ -1,6 +1,8 @@
 // Package config loads and validates the topos TOML config file.
 package config
 
+import "time"
+
 // Config is the root of ~/.config/topos/config.toml (or
 // $XDG_CONFIG_HOME/topos/config.toml). One file holds kernel settings,
 // source connections, and webspace definitions (D-04).
@@ -307,7 +309,37 @@ type Webspace struct {
 	// an entry instantly widens the view with no resync. Empty means no
 	// per-instance narrowing.
 	FilterBySource map[string][]string `toml:"filter_by_source,omitempty" json:"filter_by_source,omitempty"`
+	// DateFrom/DateTo narrow the webspace by item timestamp (M3-R1, #70):
+	// calendar dates ("2006-01-02"), either side optional, applied at
+	// query time exactly as Filter is — the stream, the search and the
+	// agent mirror all honour the range identically, and clearing it
+	// instantly widens with no resync. DateFrom is the day's start,
+	// DateTo runs through the END of its day (inclusive), both in the
+	// kernel's local time — a range of one day means that whole day.
+	DateFrom string `toml:"date_from,omitempty" json:"date_from,omitempty"`
+	DateTo   string `toml:"date_to,omitempty" json:"date_to,omitempty"`
 }
+
+// DateRange resolves the webspace's saved date narrowing to unix-second
+// bounds: from is the start of DateFrom's day, to the end of DateTo's day
+// (inclusive), each zero when its side is unset. Invalid values cannot
+// reach here — config validation refuses them at load.
+func (w Webspace) DateRange() (from, to int64) {
+	if w.DateFrom != "" {
+		if t, err := time.ParseInLocation(dateLayout, w.DateFrom, time.Local); err == nil {
+			from = t.Unix()
+		}
+	}
+	if w.DateTo != "" {
+		if t, err := time.ParseInLocation(dateLayout, w.DateTo, time.Local); err == nil {
+			to = t.AddDate(0, 0, 1).Unix() - 1
+		}
+	}
+	return from, to
+}
+
+// dateLayout is the one accepted shape for date_from/date_to.
+const dateLayout = "2006-01-02"
 
 // Participates reports whether source instance participates in webspace w:
 // true when Sources is empty (every configured instance participates by

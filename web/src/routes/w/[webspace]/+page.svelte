@@ -19,6 +19,7 @@
 		type StreamResponse,
 		type SourceStatus,
 		type SearchResult,
+		type DateRange,
 		type SourceSearchStatus,
 		type ConfigResponse,
 		type ExtrasFieldDecl
@@ -34,6 +35,7 @@
 		setWebspaceFilter,
 		removeSourceFromWebspace,
 		setSourceFilterTerms,
+		setWebspaceDateRange,
 		splitFilterInput
 	} from '$lib/config-edit';
 	import { markSuccessToast, markFailureToast } from '$lib/toast';
@@ -337,6 +339,14 @@
 	let filterBySource = $derived(
 		configResponse?.config.webspaces[webspace]?.filter_by_source ?? {}
 	);
+	// The date narrowing (M3-R1, #70): savedDateRange is config truth;
+	// liveRange is the pickers' unsaved preview, riding ?from/?to so it
+	// can only narrow within the saved range until promoted.
+	let savedDateRange = $derived({
+		from: configResponse?.config.webspaces[webspace]?.date_from,
+		to: configResponse?.config.webspaces[webspace]?.date_to
+	});
+	let liveRange = $state<DateRange>({});
 
 	// pluginTypes backs the "+" add-source picker's "New {plugin type}…"
 	// rows (D-11, 07-04-PLAN.md) — every discovered-but-not-necessarily-
@@ -998,7 +1008,7 @@
 		const quiet = options?.quiet ?? false;
 		if (!quiet) loadState = 'loading';
 		try {
-			const res = await getStream(webspace, view);
+			const res = await getStream(webspace, view, liveRange);
 			if (gen !== navGeneration) return; // a newer webspace navigation has since superseded this one
 			// Auto-flip (13-UI-SPEC.md E4): the excluded view emptied while
 			// it was showing (the last item was un-excluded, undone, or
@@ -1127,14 +1137,82 @@
 	// existing filter array (never prepends, never dedupes silently — the
 	// "Save as filter" affordance's own gating in WebspaceHeader.svelte
 	// already prevents offering it for a duplicate term).
+
+	// The pickers' live preview (M3-R1, #70): refetch the stream — and the
+	// active search, if any — under the new range at once; promotion is
+	// saveFilter's job, clearing is one putConfig dropping both keys.
+	async function handleRangeChange(from: string, to: string) {
+		liveRange = { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+		await Promise.all([
+			load(navGeneration, { quiet: true }),
+			searchQuery.trim() ? handleSearch(searchQuery) : Promise.resolve()
+		]);
+	}
+
+	async function removeDateRange() {
+		if (!configResponse) return;
+		filterBusy = true;
+		try {
+			const nextConfig = setWebspaceDateRange(configResponse.config, webspace, '', '');
+			const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+			configResponse = res;
+			filterError = null;
+			await load(navGeneration);
+		} catch (err) {
+			filterError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? CONFIG_CONFLICT_MESSAGE
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong removing the date range — check the browser console and try again.';
+			await loadConfig(navGeneration);
+		} finally {
+			filterBusy = false;
+		}
+	}
+
 	async function saveFilter() {
 		const raw = searchQuery.trim();
-		if (raw === '') return;
+		const hasRange = Boolean(liveRange.from || liveRange.to);
+		if (raw === '' && !hasRange) return;
+		if (raw === '') {
+			// A range alone promotes too (M3-R1, #70) — same write path,
+			// no term involved.
+			if (!configResponse) {
+				filterError = 'Config has not finished loading yet — try again in a moment.';
+				return;
+			}
+			filterBusy = true;
+			try {
+				const nextConfig = setWebspaceDateRange(
+					configResponse.config,
+					webspace,
+					liveRange.from ?? '',
+					liveRange.to ?? ''
+				);
+				const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
+				configResponse = res;
+				filterError = null;
+				liveRange = {};
+				await load(navGeneration);
+			} catch (err) {
+				filterError =
+					err instanceof ApiError && err.code === 'config_changed_on_disk'
+						? CONFIG_CONFLICT_MESSAGE
+						: err instanceof ApiError
+							? err.message
+							: 'Something went wrong saving the date range — check the browser console and try again.';
+				await loadConfig(navGeneration);
+			} finally {
+				filterBusy = false;
+			}
+			return;
+		}
 		// M2-R3 (#55): `instance:term` tokens naming a configured instance
 		// go to that instance's own filter_by_source entry; whatever
 		// remains stays ONE global term, exactly as before.
 		const { global, bySource } = splitFilterInput(raw, Object.keys(configResponse?.config.sources ?? {}));
-		if (Object.keys(bySource).length === 0) {
+		if (Object.keys(bySource).length === 0 && !hasRange) {
 			await writeFilter([...filters, raw], true);
 			return;
 		}
@@ -1146,8 +1224,15 @@
 		filterBusy = true;
 		try {
 			let nextConfig = configResponse.config;
-			if (global !== '') {
+			if (Object.keys(bySource).length === 0 && global !== '') {
+				// The plain-term-plus-range save: the whole raw query is one
+				// term, exactly as writeFilter would have written it.
+				nextConfig = setWebspaceFilter(nextConfig, webspace, [...filters, raw]);
+			} else if (global !== '') {
 				nextConfig = setWebspaceFilter(nextConfig, webspace, [...filters, global]);
+			}
+			if (hasRange) {
+				nextConfig = setWebspaceDateRange(nextConfig, webspace, liveRange.from ?? '', liveRange.to ?? '');
 			}
 			for (const [instance, terms] of Object.entries(bySource)) {
 				nextConfig = setSourceFilterTerms(nextConfig, webspace, instance, [
@@ -1164,6 +1249,7 @@
 			searchResults = [];
 			searchSources = null;
 			searchSourcesState = 'idle';
+			liveRange = {};
 			await load(navGeneration);
 		} catch (err) {
 			if (gen !== navGeneration) return;
@@ -1341,7 +1427,7 @@
 		// index answer never overwrites a fuller scope=all answer that beat
 		// it, and the scope=all answer always supersedes the index one.
 		let allLanded = false;
-		const indexHalf = searchWebspace(webspace, query, 'index').then(
+		const indexHalf = searchWebspace(webspace, query, 'index', liveRange).then(
 			(res) => {
 				if (!live() || allLanded) return;
 				searchResults = res.results;
@@ -1352,7 +1438,7 @@
 			}
 		);
 		try {
-			const res = await searchWebspace(webspace, query, 'all');
+			const res = await searchWebspace(webspace, query, 'all', liveRange);
 			if (!live()) return;
 			allLanded = true;
 			searchResults = res.results;
@@ -1408,6 +1494,7 @@
 			searchResults = [];
 			searchSources = null;
 			searchSourcesState = 'idle';
+			liveRange = {};
 			filterError = null;
 			headerCollapsed = false;
 			lastStreamScrollTop = 0;
@@ -1467,6 +1554,10 @@
 			onremovefilter={removeFilter}
 			{filterBySource}
 			onremovesourcefilter={removeSourceFilterTerm}
+			dateRange={savedDateRange}
+			{liveRange}
+			onrangechange={handleRangeChange}
+			onremovedaterange={removeDateRange}
 			config={configResponse?.config ?? null}
 			baseHash={configResponse?.hash ?? ''}
 			{pluginTypes}

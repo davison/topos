@@ -265,10 +265,28 @@ export function listWebspaces(): Promise<WebspacesResponse> {
  */
 export function getStream(
 	webspace: string,
-	view?: 'included' | 'excluded'
+	view?: 'included' | 'excluded',
+	range?: DateRange
 ): Promise<StreamResponse> {
 	const path = `/api/webspaces/${encodeURIComponent(webspace)}/stream`;
-	return getJSON<StreamResponse>(view === 'excluded' ? `${path}?view=excluded` : path);
+	const params = new URLSearchParams();
+	if (view === 'excluded') params.set('view', 'excluded');
+	appendRangeParams(params, range);
+	const qs = params.toString();
+	return getJSON<StreamResponse>(qs ? `${path}?${qs}` : path);
+}
+
+// DateRange is the LIVE, unsaved preview the pickers hold (M3-R1, #70):
+// ?from/?to only ever narrow further within whatever the webspace's saved
+// range already admits — promotion via Save as filter is what persists it.
+export interface DateRange {
+	from?: string;
+	to?: string;
+}
+
+function appendRangeParams(params: URLSearchParams, range?: DateRange): void {
+	if (range?.from) params.set('from', range.from);
+	if (range?.to) params.set('to', range.to);
 }
 
 /**
@@ -282,10 +300,13 @@ export function getStream(
 export function searchWebspace(
 	webspace: string,
 	query: string,
-	scope: SearchScope = 'all'
+	scope: SearchScope = 'all',
+	range?: DateRange
 ): Promise<SearchResponse> {
+	const params = new URLSearchParams({ q: query, scope });
+	appendRangeParams(params, range);
 	return getJSON<SearchResponse>(
-		`/api/webspaces/${encodeURIComponent(webspace)}/search?q=${encodeURIComponent(query)}&scope=${scope}`
+		`/api/webspaces/${encodeURIComponent(webspace)}/search?${params.toString()}`
 	);
 }
 
@@ -523,6 +544,12 @@ export interface WebspaceConfig {
 	// and removed independently, in stored array order (UI-12 ordering
 	// edge). Optional/absent means no active filter.
 	filter?: string[];
+	// date_from/date_to (M3-R1, #70): calendar dates ("2006-01-02")
+	// narrowing the webspace by item timestamp at query time, either side
+	// optional — from's day start through to's day END, inclusive, in the
+	// kernel's local time. Saved by "Save as filter" alongside terms.
+	date_from?: string;
+	date_to?: string;
 	// filter_by_source (M2-R3, #55): per-instance AND-ed FTS terms applied
 	// ON TOP of `filter` for that instance's rows alone — the stream, the
 	// index search and (as required_terms) the content-search fan-out all

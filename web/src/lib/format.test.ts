@@ -5,6 +5,7 @@ import {
 	formatRelativeTime,
 	healthTone,
 	parseSnippet,
+	dateRangeChipLabel,
 	searchVariant,
 	matchedInLabel,
 	matchedInSummary,
@@ -353,5 +354,11 @@ describe('clampLabels (M3-R3, #63)', () => {
 			visible: ['a-very-long-first-label-beyond-budget'],
 			hidden: ['x']
 		});
+describe('dateRangeChipLabel (M3-R1, #70)', () => {
+	it('renders both-sided and open-ended ranges', () => {
+		expect(dateRangeChipLabel('2026-03-12', '2026-04-04')).toMatch(/12.*Mar.*2026.*–.*4.*Apr.*2026/);
+		expect(dateRangeChipLabel('2026-03-12', undefined)).toMatch(/^from /);
+		expect(dateRangeChipLabel(undefined, '2026-04-04')).toMatch(/^until /);
+		expect(dateRangeChipLabel(undefined, undefined)).toBe('');
 	});
 });

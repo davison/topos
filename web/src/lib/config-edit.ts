@@ -74,6 +74,8 @@ export function setWebspaceFilter(cfg: KernelConfig, name: string, terms: string
 		...(existing?.filter_by_source !== undefined
 			? { filter_by_source: existing.filter_by_source }
 			: {}),
+		...(existing?.date_from !== undefined ? { date_from: existing.date_from } : {}),
+		...(existing?.date_to !== undefined ? { date_to: existing.date_to } : {}),
 		filter: terms
 	};
 	return next;
@@ -102,6 +104,8 @@ export function setMatchBlock(
 		sources: existing?.sources ?? [],
 		match: { ...(existing?.match ?? {}) },
 		...(existing?.filter !== undefined ? { filter: existing.filter } : {}),
+		...(existing?.date_from !== undefined ? { date_from: existing.date_from } : {}),
+		...(existing?.date_to !== undefined ? { date_to: existing.date_to } : {}),
 		...(existing?.filter_by_source !== undefined
 			? { filter_by_source: existing.filter_by_source }
 			: {})
@@ -333,6 +337,8 @@ export function setSourceFilterTerms(
 		sources: existing?.sources ?? [],
 		match: { ...(existing?.match ?? {}) },
 		...(existing?.filter !== undefined ? { filter: existing.filter } : {}),
+		...(existing?.date_from !== undefined ? { date_from: existing.date_from } : {}),
+		...(existing?.date_to !== undefined ? { date_to: existing.date_to } : {}),
 		...(existing?.filter_by_source !== undefined
 			? { filter_by_source: { ...existing.filter_by_source } }
 			: {})
@@ -374,6 +380,36 @@ export function splitFilterInput(
 		}
 	}
 	return { global: rest.join(' '), bySource };
+}
+
+
+/**
+ * Returns a new document with the webspace's saved date range set (M3-R1,
+ * #70): either side empty string clears that side; both empty removes both
+ * keys — an absent range is never written as "". Every other field is
+ * preserved, the same discipline as setSourceFilterTerms above.
+ */
+export function setWebspaceDateRange(
+	cfg: KernelConfig,
+	name: string,
+	from: string,
+	to: string
+): KernelConfig {
+	const next = cloneConfig(cfg);
+	const existing = next.webspaces[name];
+	const ws: WebspaceConfig = {
+		keywords: existing?.keywords ?? [],
+		sources: existing?.sources ?? [],
+		match: { ...(existing?.match ?? {}) },
+		...(existing?.filter !== undefined ? { filter: existing.filter } : {}),
+		...(existing?.filter_by_source !== undefined
+			? { filter_by_source: existing.filter_by_source }
+			: {})
+	};
+	if (from) ws.date_from = from;
+	if (to) ws.date_to = to;
+	next.webspaces[name] = ws;
+	return next;
 }
 
 /**

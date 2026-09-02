@@ -416,6 +416,17 @@ the per-source filter map shipped at
 chip-menu dialog, labelled filter chips and `instance:term` save tokens
 in the app.
 
+**A webspace narrows by date range** (M3-R1,
+[#70](https://github.com/davison/topos/issues/70)/[#76](https://github.com/davison/topos/issues/76)):
+`[webspaces.<w>] date_from`/`date_to` — calendar dates (`YYYY-MM-DD`),
+either side optional, from's day start through to's day END inclusive,
+kernel-local time — narrow the stream, the search and the agent mirror
+identically at query time, exactly as `filter` does. The stream and
+search routes also accept live `?from=`/`?to=` params (same shape, 400
+by name when malformed) that can only narrow further within the saved
+range — the UI's unsaved picker preview; promotion through Save as
+filter is what persists a range.
+
 **Search reaches bodies through the sources, not the index.** The
 plugin contract gains an optional `Search` RPC
 ([`plugin-contract.md`](plugin-contract.md), "`Search`"). For a query,

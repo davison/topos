@@ -20,6 +20,7 @@ import {
 	removeTrustedKey,
 	setSourceFilterTerms,
 	splitFilterInput,
+	setWebspaceDateRange,
 } from './config-edit';
 import { isEmptyWebspaceShell } from './participation';
 import type { KernelConfig, WebspaceConfig } from './api';
@@ -677,5 +678,37 @@ describe('setSourceFilterTerms / splitFilterInput (M2-R3, #55)', () => {
 			global: 'ghost:x :y plain',
 			bySource: {}
 		});
+	});
+});
+
+describe('setWebspaceDateRange (M3-R1, #70)', () => {
+	const base = () =>
+		({
+			server: { listen: '' },
+			paths: {},
+			sources: { 'mock-01': { plugin: 'topos-plugin-mock' } },
+			webspaces: {
+				holiday: { keywords: ['demo'], sources: [], match: {}, filter: ['boiler'] }
+			}
+		}) as unknown as Parameters<typeof setWebspaceDateRange>[0];
+
+	it('sets, clears one side, and removes both — preserving filter', () => {
+		let cfg = setWebspaceDateRange(base(), 'holiday', '2026-03-01', '2026-03-31');
+		expect(cfg.webspaces.holiday.date_from).toBe('2026-03-01');
+		expect(cfg.webspaces.holiday.date_to).toBe('2026-03-31');
+		expect(cfg.webspaces.holiday.filter).toEqual(['boiler']);
+		cfg = setWebspaceDateRange(cfg, 'holiday', '2026-03-01', '');
+		expect(cfg.webspaces.holiday.date_to).toBeUndefined();
+		cfg = setWebspaceDateRange(cfg, 'holiday', '', '');
+		expect(cfg.webspaces.holiday.date_from).toBeUndefined();
+		expect(cfg.webspaces.holiday.date_to).toBeUndefined();
+	});
+
+	it('setWebspaceFilter and setSourceFilterTerms preserve the range', () => {
+		let cfg = setWebspaceDateRange(base(), 'holiday', '2026-03-01', '2026-03-31');
+		cfg = setWebspaceFilter(cfg, 'holiday', ['boiler', 'van']);
+		expect(cfg.webspaces.holiday.date_from).toBe('2026-03-01');
+		cfg = setSourceFilterTerms(cfg, 'holiday', 'mock-01', ['quote']);
+		expect(cfg.webspaces.holiday.date_to).toBe('2026-03-31');
 	});
 });
