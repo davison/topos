@@ -12,6 +12,12 @@ roles:
   # session loaded with `gh codecrew roles show reviewer` — de-correlated
   # judgment without an App (solo mode; merges use --operator-confirm).
   reviewer: { identity: ~, harness: codex }
+  # qa: ~ is the solo-mode design, not an omission — verdicts come from
+  # dispatched clean-context sessions loaded with `gh codecrew roles show
+  # qa`, posting under the operator's own auth, which is exactly the
+  # identity an unrouted seat resolves to (SPEC §5). `milestone close`
+  # counts those verdicts as the operator holding the role; its
+  # "qa is unrouted" note is informational in this tier (#73, M3-R5).
   qa: { identity: ~ }
   doc-synthesizer: { identity: ~ }
   coordinator: { identity: ~ }
