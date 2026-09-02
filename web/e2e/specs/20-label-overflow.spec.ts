@@ -88,6 +88,24 @@ test.describe('20: label pills clamp and declare, never clip', () => {
 		}
 	});
 
+	test("at QA's 768-840 band the declaration still survives (#82)", async ({ page }) => {
+		// The pane clamp bottoms out here (~216px row, ~73px strip): the
+		// date collapses entirely before the declaration gives an inch.
+		await page.setViewportSize({ width: 800, height: 800 });
+		const row = page
+			.getByRole('main')
+			.locator('[data-item-id]', { hasText: 'Shopping list' });
+		await row.click();
+		const marker = row.locator('[data-label-overflow]');
+		await expect(marker).toBeVisible();
+		const rowBox = await row.boundingBox();
+		const markerBox = await marker.boundingBox();
+		expect(rowBox && markerBox).toBeTruthy();
+		expect(markerBox!.x).toBeGreaterThanOrEqual(rowBox!.x - 1);
+		expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+		expect(markerBox!.y + markerBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height + 1);
+	});
+
 	test('a row whose labels fit shows no overflow marker', async ({ page }) => {
 		const row = page
 			.getByRole('main')
