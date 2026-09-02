@@ -1,4 +1,8 @@
 <script lang="ts">
+	import {
+		DialogFooter
+	} from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
 	// D-13's deliberately minimal escape hatch — the ONE place in the app
 	// that deletes a source instance or a webspace outright. Opened only
 	// from WebspaceSwitcher's "Manage sources…" item (07-05-PLAN.md Task
@@ -38,7 +42,7 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import PluginIcon from '$lib/components/PluginIcon.svelte';
-	import { removeSourceInstance, removeWebspace } from '$lib/config-edit';
+	import { removeSourceInstance, removeWebspace, renameWebspace } from '$lib/config-edit';
 	import {
 		putConfig,
 		getConfig,
@@ -78,6 +82,8 @@
 	let localHash = $state(baseHash);
 	let instanceDeleteTarget = $state<string | null>(null);
 	let webspaceDeleteTarget = $state<string | null>(null);
+	let webspaceRenameTarget = $state<string | null>(null);
+	let renameValue = $state('');
 	let editInstance = $state<string | null>(null);
 	let deleting = $state(false);
 	let deleteError = $state<string | null>(null);
@@ -127,6 +133,49 @@
 					: err instanceof ApiError
 						? err.message
 						: 'Something went wrong deleting this source — check the browser console and try again.';
+		} finally {
+			deleting = false;
+		}
+	}
+
+
+	// The rename write (M3-R2, #77): one putConfig carrying the key change
+	// alone — the kernel's rename detection pairs on the byte-identical
+	// body and migrates the index rows, so items and exclusion marks
+	// survive. Renaming the webspace the user is on navigates to the new
+	// URL, the delete flow's own discipline.
+	let renameError = $state<string | null>(null);
+	async function confirmRenameWebspace() {
+		const from = webspaceRenameTarget;
+		const to = renameValue.trim();
+		if (!from || deleting || to === '') return;
+		if (to !== from && to in localConfig.webspaces) {
+			renameError = `A webspace named "${to}" already exists.`;
+			return;
+		}
+		if (to === from) {
+			webspaceRenameTarget = null;
+			return;
+		}
+		deleting = true;
+		renameError = null;
+		try {
+			const nextConfig = renameWebspace(localConfig, from, to);
+			const res = await putConfig({ base_hash: localHash, config: nextConfig });
+			localConfig = res.config;
+			localHash = res.hash;
+			webspaceRenameTarget = null;
+			onchanged();
+			if (from === currentWebspace) {
+				await goto(`/w/${encodeURIComponent(to)}`);
+			}
+		} catch (err) {
+			renameError =
+				err instanceof ApiError && err.code === 'config_changed_on_disk'
+					? CONFIG_CONFLICT_MESSAGE
+					: err instanceof ApiError
+						? err.message
+						: 'Something went wrong renaming this webspace — check the browser console and try again.';
 		} finally {
 			deleting = false;
 		}
@@ -246,15 +295,32 @@
 						<p class="truncate text-[14px] leading-[1.4] text-foreground" title={name}>
 							{name}
 						</p>
-						<Button
-							variant="ghost"
-							size="sm"
-							class="text-destructive"
-							onclick={() => (webspaceDeleteTarget = name)}
-						>
-							<Trash2 class="size-3.5" aria-hidden="true" />
-							Delete
-						</Button>
+						<div class="flex shrink-0 items-center gap-1">
+							<!-- M3-R2 (#77): the rename affordance the capture's
+							     fallback names — beside the delete, never in-place
+							     in the header (it collides with the switcher). -->
+							<Button
+								variant="ghost"
+								size="sm"
+								aria-label={`Rename webspace ${name}`}
+								onclick={() => {
+									webspaceRenameTarget = name;
+									renameValue = name;
+								}}
+							>
+								<Pencil class="size-3.5" aria-hidden="true" />
+								Rename
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								class="text-destructive"
+								onclick={() => (webspaceDeleteTarget = name)}
+							>
+								<Trash2 class="size-3.5" aria-hidden="true" />
+								Delete
+							</Button>
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -336,4 +402,37 @@
 			onsaved={handleEditSaved}
 		/>
 	{/key}
+{/if}
+
+{#if webspaceRenameTarget}
+	<Dialog open={true} onOpenChange={(o: boolean) => { if (!o) webspaceRenameTarget = null; }}>
+		<DialogContent class="max-w-md" data-rename-webspace-dialog={webspaceRenameTarget}>
+			<DialogHeader>
+				<DialogTitle>Rename {webspaceRenameTarget}</DialogTitle>
+			</DialogHeader>
+			<p class="text-[14px] leading-[1.4] text-muted-foreground">
+				Everything the webspace holds — its sources, filters, items and exclusions — follows the
+				new name, and its address becomes /w/{renameValue.trim() || '…'}.
+			</p>
+			<Input
+				bind:value={renameValue}
+				aria-label="New webspace name"
+				data-rename-webspace-input
+				disabled={deleting}
+			/>
+			{#if renameError}
+				<p class="text-[14px] leading-[1.4] text-destructive">{renameError}</p>
+			{/if}
+			<DialogFooter>
+				<Button variant="ghost" onclick={() => (webspaceRenameTarget = null)} disabled={deleting}
+					>Cancel</Button
+				>
+				<Button
+					onclick={confirmRenameWebspace}
+					disabled={deleting || renameValue.trim() === ''}
+					data-rename-webspace-save>Rename</Button
+				>
+			</DialogFooter>
+		</DialogContent>
+	</Dialog>
 {/if}

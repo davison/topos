@@ -409,6 +409,19 @@ export function setWebspaceDateRange(
 	if (from) ws.date_from = from;
 	if (to) ws.date_to = to;
 	next.webspaces[name] = ws;
+ * Returns a new document with the webspace renamed (M3-R2, #77): the map
+ * key changes and the body — keywords, sources, match, filter,
+ * filter_by_source, date range — is carried byte-identical, which is
+ * exactly the shape the kernel's rename detection pairs on; a rename must
+ * never ride with a body edit in the same write. A collision with an
+ * existing name, or a no-op rename, returns the input unchanged — the
+ * caller validates and refuses before writing.
+ */
+export function renameWebspace(cfg: KernelConfig, from: string, to: string): KernelConfig {
+	if (from === to || !(from in cfg.webspaces) || to in cfg.webspaces) return cfg;
+	const next = cloneConfig(cfg);
+	next.webspaces[to] = next.webspaces[from];
+	delete next.webspaces[from];
 	return next;
 }
 
