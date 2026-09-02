@@ -683,7 +683,6 @@ describe('setSourceFilterTerms / splitFilterInput (M2-R3, #55)', () => {
 });
 
 describe('setWebspaceDateRange (M3-R1, #70)', () => {
-describe('renameWebspace (M3-R2, #77)', () => {
 	const base = () =>
 		({
 			server: { listen: '' },
@@ -712,6 +711,16 @@ describe('renameWebspace (M3-R2, #77)', () => {
 		expect(cfg.webspaces.holiday.date_from).toBe('2026-03-01');
 		cfg = setSourceFilterTerms(cfg, 'holiday', 'mock-01', ['quote']);
 		expect(cfg.webspaces.holiday.date_to).toBe('2026-03-31');
+	});
+});
+
+describe('renameWebspace (M3-R2, #77)', () => {
+	const base = () =>
+		({
+			server: { listen: '' },
+			paths: {},
+			sources: { 'mock-01': { plugin: 'topos-plugin-mock' } },
+			webspaces: {
 				old: { keywords: ['demo'], sources: [], match: {}, filter: ['boiler'] },
 				other: { keywords: ['x'], sources: [], match: {} }
 			}
