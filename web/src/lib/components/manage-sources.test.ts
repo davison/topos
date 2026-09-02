@@ -217,7 +217,7 @@ describe('reload control relocation (09-06-PLAN.md Task 2, 09-UI-SPEC.md Fix 7):
 		return labels;
 	}
 
-	it("the Dialog region's own control-label set equals exactly {Delete, Edit} — the instance/webspace rows' own labels, nothing else", () => {
+	it("the Dialog region's own control-label set equals exactly {Delete, Edit, Rename} — the instance/webspace rows' own labels, nothing else", () => {
 		const dialogBlock = extractBetween(
 			stripped,
 			'<Dialog {open} onOpenChange={handleOpenChange}>',
@@ -227,7 +227,7 @@ describe('reload control relocation (09-06-PLAN.md Task 2, 09-UI-SPEC.md Fix 7):
 		expect(
 			labels,
 			'expected the modal\'s Dialog-region control-label set to equal exactly {Delete, Edit} — a lingering Reload config label would surface here as an unexpected third member'
-		).toEqual(['Delete', 'Edit']);
+		).toEqual(['Delete', 'Edit', 'Rename']);
 	});
 
 	it('the file no longer imports the config-reload API client or the RotateCw icon', () => {

@@ -725,6 +725,32 @@ func perSourceFilterClauses(bySource map[string][]string) (string, []any) {
 	return clause.String(), args
 }
 
+// RenameWebspace carries every per-webspace row from one name to another
+// in a single transaction (M3-R2, #77): webspace_items, item_marks and
+// the webspaces sync record. The caller (Supervisor.Apply's rename
+// detection) has already validated that from exists and to does not —
+// this is the mechanical half, refusing nothing but a failed write.
+func (s *Store) RenameWebspace(ctx context.Context, from, to string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("index: rename webspace: begin: %w", err)
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`UPDATE webspace_items SET webspace_name = ? WHERE webspace_name = ?`,
+		`UPDATE item_marks SET webspace_name = ? WHERE webspace_name = ?`,
+		`UPDATE OR REPLACE webspaces SET name = ? WHERE name = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, to, from); err != nil {
+			return fmt.Errorf("index: rename webspace %s -> %s: %w", from, to, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("index: rename webspace: commit: %w", err)
+	}
+	return nil
+}
+
 // SnippetOpen and SnippetClose are the delimiter runes Search wraps a
 // matched term with inside SearchResult.Snippet. They are the ASCII
 // control characters STX (0x02) and ETX (0x03) rather than any printable

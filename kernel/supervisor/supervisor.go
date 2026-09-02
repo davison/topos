@@ -650,6 +650,31 @@ func (s *Supervisor) commitGeneration(cfg *config.Config) {
 // See 07-10-PLAN.md for the fix that closed 07-VERIFICATION.md's
 // 2026-08-08 gaps[0] (07-REVIEW.md's post-07-09 CR-01) — the D-07 cleanup
 // had regressed to running only on the success path.
+// detectWebspaceRenames pairs each vanished webspace key with an appeared
+// key carrying a byte-identical body (M3-R2, #77). Ambiguity refuses:
+// with several candidates on either side, nothing is paired — a wrong
+// carry would be worse than a resync.
+func detectWebspaceRenames(oldCfg, newCfg *config.Config) [][2]string {
+	var vanished, appeared []string
+	for name := range oldCfg.Webspaces {
+		if _, ok := newCfg.Webspaces[name]; !ok {
+			vanished = append(vanished, name)
+		}
+	}
+	for name := range newCfg.Webspaces {
+		if _, ok := oldCfg.Webspaces[name]; !ok {
+			appeared = append(appeared, name)
+		}
+	}
+	if len(vanished) != 1 || len(appeared) != 1 {
+		return nil
+	}
+	if !reflect.DeepEqual(oldCfg.Webspaces[vanished[0]], newCfg.Webspaces[appeared[0]]) {
+		return nil
+	}
+	return [][2]string{{vanished[0], appeared[0]}}
+}
+
 func (s *Supervisor) Apply(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -663,6 +688,20 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	pluginhost.SetOperatorProvenanceKeys(pluginhost.OperatorProvenanceKeysFromConfig(newCfg.Plugins.TrustedKeys))
 
 	s.stopScheduler()
+
+	// The rename migration (M3-R2, #77; the Decision on that issue): a
+	// webspace key that vanished while another appeared with an IDENTICAL
+	// body is a rename — carry its index rows (items, exclusion marks,
+	// sync record) to the new name before the reconcile, so operator
+	// judgments survive. A simultaneous rename-and-edit defeats the
+	// detection by design and falls back to clear-and-resync for the new
+	// key; the UI's rename dialog writes the rename alone, so it never
+	// produces that case.
+	for _, pair := range detectWebspaceRenames(oldCfg, newCfg) {
+		if err := s.idx.RenameWebspace(ctx, pair[0], pair[1]); err != nil {
+			s.logger.Error("webspace rename migration failed; the new name will resync from scratch", "from", pair[0], "to", pair[1], "error", err)
+		}
+	}
 
 	// WR-02 (08-REVIEW.md): exclude every currently suspended instance
 	// name from what Reconcile is asked to launch. A suspended instance

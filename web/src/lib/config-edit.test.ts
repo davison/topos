@@ -21,6 +21,7 @@ import {
 	setSourceFilterTerms,
 	splitFilterInput,
 	setWebspaceDateRange,
+	renameWebspace,
 } from './config-edit';
 import { isEmptyWebspaceShell } from './participation';
 import type { KernelConfig, WebspaceConfig } from './api';
@@ -682,6 +683,7 @@ describe('setSourceFilterTerms / splitFilterInput (M2-R3, #55)', () => {
 });
 
 describe('setWebspaceDateRange (M3-R1, #70)', () => {
+describe('renameWebspace (M3-R2, #77)', () => {
 	const base = () =>
 		({
 			server: { listen: '' },
@@ -710,5 +712,20 @@ describe('setWebspaceDateRange (M3-R1, #70)', () => {
 		expect(cfg.webspaces.holiday.date_from).toBe('2026-03-01');
 		cfg = setSourceFilterTerms(cfg, 'holiday', 'mock-01', ['quote']);
 		expect(cfg.webspaces.holiday.date_to).toBe('2026-03-31');
+				old: { keywords: ['demo'], sources: [], match: {}, filter: ['boiler'] },
+				other: { keywords: ['x'], sources: [], match: {} }
+			}
+		}) as unknown as Parameters<typeof renameWebspace>[0];
+
+	it('carries the body byte-identical under the new key', () => {
+		const cfg = renameWebspace(base(), 'old', 'new');
+		expect(cfg.webspaces.new).toEqual(base().webspaces.old);
+		expect(cfg.webspaces.old).toBeUndefined();
+	});
+	it('refuses collisions, unknown names and no-ops by returning the input', () => {
+		const b = base();
+		expect(renameWebspace(b, 'old', 'other')).toBe(b);
+		expect(renameWebspace(b, 'ghost', 'new')).toBe(b);
+		expect(renameWebspace(b, 'old', 'old')).toBe(b);
 	});
 });
