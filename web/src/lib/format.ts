@@ -736,6 +736,8 @@ export function clampLabels(
 		used += cost;
 	}
 	return { visible, hidden };
+}
+
 // dateRangeChipLabel renders the saved date narrowing's chip (M3-R1,
 // #70): both sides, or the open-ended forms, in the reader's locale.
 export function dateRangeChipLabel(from?: string, to?: string): string {
