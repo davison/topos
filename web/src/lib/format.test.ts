@@ -338,7 +338,20 @@ describe('clampLabels (M3-R3, #63)', () => {
 		);
 	});
 	it('keeps order: hidden labels are exactly the trailing ones that did not fit', () => {
+		// cost = len + 4: 14 + 14 = 28 > 24 after the first — exactly one visible.
 		const { visible, hidden } = clampLabels(['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc'], 24);
-		expect([...visible, ...hidden]).toEqual(['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc']);
+		expect(visible).toEqual(['aaaaaaaaaa']);
+		expect(hidden).toEqual(['bbbbbbbbbb', 'cccccccccc']);
+	});
+	it('pins the cost rule: len+4 per pill, equality fits, one over hides', () => {
+		// two pills of cost 8 each: budget 16 fits both (16 > 16 is false)…
+		expect(clampLabels(['aaaa', 'bbbb'], 16)).toEqual({ visible: ['aaaa', 'bbbb'], hidden: [] });
+		// …budget 15 hides the second (8 + 8 > 15).
+		expect(clampLabels(['aaaa', 'bbbb'], 15)).toEqual({ visible: ['aaaa'], hidden: ['bbbb'] });
+		// the first-label exception holds even with a tail that must hide.
+		expect(clampLabels(['a-very-long-first-label-beyond-budget', 'x'], 10)).toEqual({
+			visible: ['a-very-long-first-label-beyond-budget'],
+			hidden: ['x']
+		});
 	});
 });

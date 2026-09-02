@@ -258,9 +258,22 @@
 			     768px — the combined span above carries the group label at
 			     compact size instead. -->
 			{#if item.group_label}
-				<span class="shrink-0 max-md:hidden">{item.group_label}</span>
+				<!-- Long sender labels (the operator's own screenshot names
+				     Enterprise Rent-A-Car) truncate rather than starve the
+				     date and the overflow declaration (PR #78 round 1). -->
+				<span class="max-md:hidden overflow-hidden text-ellipsis whitespace-nowrap" style="flex:0 1 auto;min-width:0"
+					>{item.group_label}</span
+				>
 			{/if}
-			<span class="shrink-0">{formatItemDate(item.timestamp_unix)}</span>
+			<!-- The date yields BEFORE the overflow declaration does (PR #78
+			     round 1): at the selected-item layout's narrowest pane the
+			     strip is ~100px — a full date would starve the +N pill, so
+			     the date shrinks to a floor and truncates while the
+			     declaration keeps shrink-0. At every normal width the date
+			     renders at its natural size exactly as before. -->
+			<span class="overflow-hidden text-ellipsis whitespace-nowrap" style="flex:0 1 auto;min-width:2rem"
+				>{formatItemDate(item.timestamp_unix)}</span
+			>
 			{#if stale}
 				<!-- D-10: tertiary, per-row proof the affected source's items
 				     are still visible (not silently dropped) — subtle, never
@@ -310,12 +323,22 @@
 				     title — never wrapped into the fixed row's clip zone.
 				     Each visible pill also truncates so one enormous label
 				     degrades to ellipsis, not overflow. -->
-				{#each clampedLabels.visible as label (label)}
-					<Badge variant="secondary" class="max-w-[10rem] text-ellipsis">{label}</Badge>
-				{/each}
+				<!-- PR #78 round 1: the pills are the ONLY shrinkable region —
+				     each overrides Badge's shrink-0 so flexbox ellipsizes
+				     them at narrow desktop panes, while the declaration
+				     (+N), the search badges and the date keep shrink-0 and
+				     always survive the width. -->
+				<span class="flex items-center gap-2 overflow-hidden" style="flex:1 1 0;min-width:0">
+					{#each clampedLabels.visible as label (label)}
+						<Badge variant="secondary" class="max-w-[10rem] text-ellipsis"
+							>{label}</Badge
+						>
+					{/each}
+				</span>
 				{#if clampedLabels.hidden.length > 0}
 					<Badge
 						variant="outline"
+						class="shrink-0"
 						data-label-overflow={clampedLabels.hidden.length}
 						title={clampedLabels.hidden.join(', ')}>+{clampedLabels.hidden.length}</Badge
 					>
