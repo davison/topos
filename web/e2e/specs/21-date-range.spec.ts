@@ -107,24 +107,65 @@ test.describe('21: date-range narrowing, promotion and removal', () => {
 		expect((await resp.json()).items).toHaveLength(2);
 	});
 
-	test('the pickers dress like the header — labels, muted hint, accent focus, dark scheme (#87)', async ({
+	test('the pickers dress like the header — exact tokens, both fields (#87)', async ({
 		page
 	}) => {
-		await expect(page.locator('[data-date-from-label]')).toHaveText('From');
-		await expect(page.locator('[data-date-to-label]')).toHaveText('To');
-		const input = page.locator('[data-date-from]');
-		// The native control follows the page's declared dark scheme — the
-		// calendar popover and indicator render dark, not browser-light.
-		expect(await input.evaluate((el) => getComputedStyle(el).colorScheme)).toContain('dark');
-		// Muted while empty, foreground once set.
-		const emptyColor = await input.evaluate((el) => getComputedStyle(el).color);
-		await input.fill('2024-01-02');
-		const filledColor = await input.evaluate((el) => getComputedStyle(el).color);
-		expect(filledColor).not.toBe(emptyColor);
-		// The focus treatment is the shared accent ring, not a bright border.
-		await input.focus();
-		const ring = await input.evaluate((el) => getComputedStyle(el).getPropertyValue('--tw-ring-color') || getComputedStyle(el).boxShadow);
-		expect(ring.trim().length).toBeGreaterThan(0);
+		// Live token references, not raw CSS variables (whose declared
+		// oklch strings never string-match computed rgb): the label spans
+		// ARE muted-foreground, the row titles ARE foreground.
+		const mutedRef = await page
+			.locator('[data-date-from-label]')
+			.evaluate((el) => getComputedStyle(el).color);
+		const foregroundRef = await page
+			.getByRole('main')
+			.locator('[data-item-id] p')
+			.first()
+			.evaluate((el) => getComputedStyle(el).color);
+		expect(mutedRef).not.toBe(foregroundRef);
+
+		for (const [inputSel, labelSel, labelText, value] of [
+			['[data-date-from]', '[data-date-from-label]', 'From', '2024-01-02'],
+			['[data-date-to]', '[data-date-to-label]', 'To', '2024-01-03']
+		] as const) {
+			const input = page.locator(inputSel);
+			const label = page.locator(labelSel);
+			// A visible label, associated by wrapping <label> — clicking it
+			// focuses the control.
+			await expect(label).toBeVisible();
+			await expect(label).toHaveText(labelText);
+			await label.click();
+			expect(await input.evaluate((el) => document.activeElement === el)).toBe(true);
+			await page.keyboard.press('Escape');
+
+			// The native control inherits the page's dark scheme. (What the
+			// browser paints inside its own popover/indicator is not
+			// automatable — that claim stays with the operator's UAT.)
+			expect(await input.evaluate((el) => getComputedStyle(el).colorScheme)).toContain('dark');
+
+			// Empty = exactly the muted token; filled = exactly foreground.
+			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
+			await input.fill(value);
+			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(foregroundRef);
+			await input.fill('');
+			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
+
+			// Focus wears the shared accent ring, never a bright border: the
+			// focused border-color equals the ring token (focus-visible:
+			// border-ring) and the ring's box-shadow carries that same
+			// colour — compared against the search bar's own focused input,
+			// the explicitly named reference treatment.
+			const search = page.getByPlaceholder('Search this webspace');
+			await search.focus();
+			const refBorder = await search.evaluate((el) => getComputedStyle(el).borderColor);
+			const refShadowColor = await search.evaluate(
+				(el) => getComputedStyle(el).boxShadow.match(/rgba?\([^)]+\)/)?.[0] ?? ''
+			);
+			await input.focus();
+			expect(await input.evaluate((el) => getComputedStyle(el).borderColor)).toBe(refBorder);
+			const shadow = await input.evaluate((el) => getComputedStyle(el).boxShadow);
+			expect(refShadowColor.length).toBeGreaterThan(0);
+			expect(shadow).toContain(refShadowColor);
+		}
 	});
 
 	test('an active search narrows under the live range too', async ({ page }) => {
