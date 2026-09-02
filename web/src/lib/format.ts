@@ -703,6 +703,40 @@ export function sourceSearchElapsed(ms: number): string {
 	return `${ms}ms`;
 }
 
+// --- Stream-row label overflow (M3-R3, #63/#75) ---
+//
+// The desktop meta strip no longer wraps into the row's fixed-height clip
+// zone: it is one non-wrapping line, and the tag pills clamp to a
+// character budget with the remainder declared as a +N pill. A character
+// budget is deliberately width-agnostic — conservative enough that the
+// visible set fits every desktop width the layout supports, with the
+// strip's own overflow-hidden as the belt-and-braces backstop — so the
+// decision stays a pure, unit-testable function instead of a
+// ResizeObserver dance.
+export const LABEL_BUDGET_CHARS = 36;
+
+export function clampLabels(
+	labels: ReadonlyArray<string>,
+	budget: number = LABEL_BUDGET_CHARS
+): { visible: string[]; hidden: string[] } {
+	const visible: string[] = [];
+	const hidden: string[] = [];
+	let used = 0;
+	for (const label of labels) {
+		// Each pill costs its text plus padding/gap (~4 chars' worth).
+		const cost = label.length + 4;
+		if (visible.length > 0 && used + cost > budget) {
+			hidden.push(label);
+			continue;
+		}
+		// The first label always renders (truncated by CSS if enormous) —
+		// a row with one long label shows that label, never only "+1".
+		visible.push(label);
+		used += cost;
+	}
+	return { visible, hidden };
+}
+
 export const searchSourcesCopy = Object.freeze({
 	pending: 'Searching sources…',
 	failed: 'The sources could not be searched — showing what the index found.',

@@ -141,9 +141,13 @@ var mockItems = []*toposv1.Item{
 		TimestampUnix: 1704326400, // 2024-01-04T00:00:00Z
 		Fidelity:      toposv1.LinkFidelity_LINK_FIDELITY_ANCHORED,
 		DeepLink:      "http://localhost/mock/folders/lists",
-		Labels:        []string{"demo", "errands"},
-		HasThumbnail:  true,
-		Provenance:    provenanceFor("4"),
+		// The long tail (M3-R3, #63/#75): enough label text that the
+		// desktop meta strip must clamp and declare overflow — the e2e
+		// spec's fixture for the +N pill. Neutral words, colliding with
+		// no search term any suite queries.
+		Labels:       []string{"demo", "errands", "renovation-paperwork-alpha", "renovation-paperwork-beta", "renovation-paperwork-gamma"},
+		HasThumbnail: true,
+		Provenance:   provenanceFor("4"),
 	},
 }
 
