@@ -58,6 +58,10 @@
 }
 
 :root {
+	/* The native controls (the date pickers' calendar popover and
+	 * indicator) follow the page's declared scheme — without this they
+	 * render browser-default light chrome on our dark surfaces (#87). */
+	color-scheme: dark;
 	--radius: 0.625rem;
 
 	/* Dominant (60%): page background, stream pane, empty negative space. */
