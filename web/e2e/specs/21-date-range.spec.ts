@@ -143,28 +143,47 @@ test.describe('21: date-range narrowing, promotion and removal', () => {
 			expect(await input.evaluate((el) => getComputedStyle(el).colorScheme)).toContain('dark');
 
 			// Empty = exactly the muted token; filled = exactly foreground.
-			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
+			// expect.poll: the class keys off the bound value, which round-
+			// trips through the page's state — a one-shot read can lose by
+			// a microtask (it did, in this spec's own first run).
+			await expect.poll(() => input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
 			await input.fill(value);
-			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(foregroundRef);
+			await expect
+				.poll(() => input.evaluate((el) => getComputedStyle(el).color))
+				.toBe(foregroundRef);
 			await input.fill('');
-			expect(await input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
+			await expect.poll(() => input.evaluate((el) => getComputedStyle(el).color)).toBe(mutedRef);
 
 			// Focus wears the shared accent ring, never a bright border: the
 			// focused border-color equals the ring token (focus-visible:
 			// border-ring) and the ring's box-shadow carries that same
 			// colour — compared against the search bar's own focused input,
 			// the explicitly named reference treatment.
+			// The shared treatment makes the FULL focused computed shadow
+			// identical — whole-string equality, so a transparent
+			// bookkeeping entry can never stand in for the visible accent
+			// ring (review round 2), and the focused border matches too.
+// Both controls are :focus-visible on programmatic focus (probed);
+			// what a one-shot read races is transition-colors ANIMATING the
+			// border toward the ring — so each read waits for the element's
+			// transitions to finish first, then the focused border and the
+			// FULL boxShadow compare as whole strings against the search
+			// bar's settled accent treatment. No substring, no transparent-
+			// component loophole, no mid-animation sample.
+			const settled = (sel: string) =>
+				page.locator(sel).evaluate(async (el) => {
+					await Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {})));
+					const cs = getComputedStyle(el);
+					return { border: cs.borderColor, shadow: cs.boxShadow };
+				});
 			const search = page.getByPlaceholder('Search this webspace');
 			await search.focus();
-			const refBorder = await search.evaluate((el) => getComputedStyle(el).borderColor);
-			const refShadowColor = await search.evaluate(
-				(el) => getComputedStyle(el).boxShadow.match(/rgba?\([^)]+\)/)?.[0] ?? ''
-			);
+			const ref = await settled('[placeholder="Search this webspace"]');
+			expect(ref.shadow).not.toBe('none');
 			await input.focus();
-			expect(await input.evaluate((el) => getComputedStyle(el).borderColor)).toBe(refBorder);
-			const shadow = await input.evaluate((el) => getComputedStyle(el).boxShadow);
-			expect(refShadowColor.length).toBeGreaterThan(0);
-			expect(shadow).toContain(refShadowColor);
+			const got = await settled(inputSel);
+			expect(got.border).toBe(ref.border);
+			expect(got.shadow).toBe(ref.shadow);
 		}
 	});
 
