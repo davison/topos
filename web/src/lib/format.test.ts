@@ -355,6 +355,9 @@ describe('clampLabels (M3-R3, #63)', () => {
 			visible: ['a-very-long-first-label-beyond-budget'],
 			hidden: ['x']
 		});
+	});
+});
+
 describe('dateRangeChipLabel (M3-R1, #70)', () => {
 	it('renders both-sided and open-ended ranges, whatever the locale orders', () => {
 		// The helper renders in the reader's locale by design (en-GB says
