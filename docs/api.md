@@ -421,10 +421,10 @@ in the app.
 `[webspaces.<w>] date_from`/`date_to` — calendar dates (`YYYY-MM-DD`),
 either side optional, from's day start through to's day END inclusive,
 kernel-local time — narrow the stream, the search and the agent mirror
-identically at query time, exactly as `filter` does. The stream and
-search routes also accept live `?from=`/`?to=` params (same shape, 400
-by name when malformed) that can only narrow further within the saved
-range — the UI's unsaved picker preview; promotion through Save as
+identically at query time, exactly as `filter` does. The stream,
+search and `/agent/v1` stream routes all accept live `?from=`/`?to=`
+params (same shape, 400 by name when malformed) that can only narrow
+further within the saved range — the UI's unsaved picker preview; promotion through Save as
 filter is what persists a range.
 
 **Search reaches bodies through the sources, not the index.** The

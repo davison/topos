@@ -174,7 +174,11 @@ func agentWebspacesHandler(store *index.Store, cfgStore *config.Store, prober He
 
 		resp := webspacesResponse{SchemaVersion: schemaVersion, Webspaces: make([]webspaceSummary, 0, len(names))}
 		for _, name := range names {
-			gFrom, gTo := cfg.Webspaces[name].DateRange()
+			gFrom, gTo, derr := effectiveDateRange(r, cfg.Webspaces[name])
+			if derr != nil {
+				WriteError(w, http.StatusBadRequest, "invalid_request", derr.Error())
+				return
+			}
 			count, err := agentGrantedItemCount(ctx, store, name, granted, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, gFrom, gTo)
 			if err != nil {
 				WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
@@ -232,7 +236,15 @@ func agentStreamHandler(store *index.Store, cfgStore *config.Store, prober Healt
 		// index.ViewIncluded, explicit: the agent mirror has no excluded
 		// view (13-02-PLAN.md Task 1) — an agent grant can never surface
 		// the excluded bucket.
-		wsDateFrom, wsDateTo := cfg.Webspaces[name].DateRange()
+		// The live ?from/?to are honoured and VALIDATED here too (QA's
+		// M3 finding on #76): the filtered view IS the webspace for every
+		// consumer, and a malformed param is 400 by name on this route
+		// exactly as on the human ones.
+		wsDateFrom, wsDateTo, derr := effectiveDateRange(r, cfg.Webspaces[name])
+		if derr != nil {
+			WriteError(w, http.StatusBadRequest, "invalid_request", derr.Error())
+			return
+		}
 		items, err := store.StreamItems(ctx, name, cfg.Webspaces[name].Filter, cfg.Webspaces[name].FilterBySource, wsDateFrom, wsDateTo, index.ViewIncluded)
 		if err != nil {
 			WriteError(w, http.StatusInternalServerError, "internal_error", err.Error())
