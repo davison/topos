@@ -708,11 +708,12 @@ export function sourceSearchElapsed(ms: number): string {
 // The desktop meta strip no longer wraps into the row's fixed-height clip
 // zone: it is one non-wrapping line, and the tag pills clamp to a
 // character budget with the remainder declared as a +N pill. A character
-// budget is deliberately width-agnostic — conservative enough that the
-// visible set fits every desktop width the layout supports, with the
-// strip's own overflow-hidden as the belt-and-braces backstop — so the
-// decision stays a pure, unit-testable function instead of a
-// ResizeObserver dance.
+// budget is deliberately width-agnostic and makes no promise about any
+// particular pane width: it bounds HOW MANY pills render, and the
+// pills' own CSS (the one shrinkable region in the strip) ellipsizes
+// what the width cannot fit, while the +N declaration and the search
+// badges stay shrink-0 and always survive (PR #78 round 1). Pure and
+// unit-testable, never a ResizeObserver dance.
 export const LABEL_BUDGET_CHARS = 36;
 
 export function clampLabels(

@@ -59,6 +59,25 @@ test.describe('20: label pills clamp and declare, never clip', () => {
 		}
 	});
 
+	test('at a narrow desktop pane the declaration survives horizontally too', async ({ page }) => {
+		// PR #78 round 1: the selected-item layout squeezes the stream to
+		// its 240–400px pane — the +N pill and the date must stay fully
+		// inside the row horizontally; only the label pills may give way.
+		await page.setViewportSize({ width: 900, height: 800 });
+		const row = page
+			.getByRole('main')
+			.locator('[data-item-id]', { hasText: 'Shopping list' });
+		await row.click(); // opens the detail pane, narrowing the stream
+		const marker = row.locator('[data-label-overflow]');
+		await expect(marker).toBeVisible();
+		const rowBox = await row.boundingBox();
+		const markerBox = await marker.boundingBox();
+		expect(rowBox && markerBox).toBeTruthy();
+		expect(markerBox!.x).toBeGreaterThanOrEqual(rowBox!.x - 1);
+		expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+		expect(markerBox!.y + markerBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height + 1);
+	});
+
 	test('a row whose labels fit shows no overflow marker', async ({ page }) => {
 		const row = page
 			.getByRole('main')
