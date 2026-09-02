@@ -749,6 +749,23 @@ export function dateRangeChipLabel(from?: string, to?: string): string {
 	return '';
 }
 
+// intersectDateRanges resolves what a promotion PERSISTS (M3-R1, PR #79
+// round 1): the saved range intersected with the live preview — a live
+// side narrows or stands aside, and an absent live side keeps the saved
+// side, so promotion can never widen the permanent filter. ISO calendar
+// dates compare lexically, so string comparison is date comparison.
+export function intersectDateRanges(
+	saved: { from?: string; to?: string },
+	live: { from?: string; to?: string }
+): { from: string; to: string } {
+	const froms = [saved.from, live.from].filter((v): v is string => Boolean(v));
+	const tos = [saved.to, live.to].filter((v): v is string => Boolean(v));
+	return {
+		from: froms.length ? froms.reduce((a, b) => (a > b ? a : b)) : '',
+		to: tos.length ? tos.reduce((a, b) => (a < b ? a : b)) : ''
+	};
+}
+
 export const searchSourcesCopy = Object.freeze({
 	pending: 'Searching sources…',
 	failed: 'The sources could not be searched — showing what the index found.',

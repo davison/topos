@@ -30,7 +30,8 @@
 		serializeSourceFilters,
 		staleSources,
 		filterItemsBySource
-	} from '$lib/format';
+,
+		intersectDateRanges } from '$lib/format';
 	import {
 		setWebspaceFilter,
 		removeSourceFromWebspace,
@@ -1184,12 +1185,10 @@
 			}
 			filterBusy = true;
 			try {
-				const nextConfig = setWebspaceDateRange(
-					configResponse.config,
-					webspace,
-					liveRange.from ?? '',
-					liveRange.to ?? ''
-				);
+				// Persist the INTERSECTION with the saved range — promotion
+				// narrows, never widens (PR #79 review round 1).
+				const eff = intersectDateRanges(savedDateRange, liveRange);
+				const nextConfig = setWebspaceDateRange(configResponse.config, webspace, eff.from, eff.to);
 				const res = await putConfig({ base_hash: configResponse.hash, config: nextConfig });
 				configResponse = res;
 				filterError = null;
@@ -1232,7 +1231,8 @@
 				nextConfig = setWebspaceFilter(nextConfig, webspace, [...filters, global]);
 			}
 			if (hasRange) {
-				nextConfig = setWebspaceDateRange(nextConfig, webspace, liveRange.from ?? '', liveRange.to ?? '');
+				const eff = intersectDateRanges(savedDateRange, liveRange);
+				nextConfig = setWebspaceDateRange(nextConfig, webspace, eff.from, eff.to);
 			}
 			for (const [instance, terms] of Object.entries(bySource)) {
 				nextConfig = setSourceFilterTerms(nextConfig, webspace, instance, [

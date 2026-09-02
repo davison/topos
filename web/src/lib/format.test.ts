@@ -6,6 +6,7 @@ import {
 	healthTone,
 	parseSnippet,
 	dateRangeChipLabel,
+	intersectDateRanges,
 	searchVariant,
 	matchedInLabel,
 	matchedInSummary,
@@ -360,5 +361,27 @@ describe('dateRangeChipLabel (M3-R1, #70)', () => {
 		expect(dateRangeChipLabel('2026-03-12', undefined)).toMatch(/^from /);
 		expect(dateRangeChipLabel(undefined, '2026-04-04')).toMatch(/^until /);
 		expect(dateRangeChipLabel(undefined, undefined)).toBe('');
+	});
+});
+
+describe('intersectDateRanges (M3-R1, PR #79 round 1)', () => {
+	it('a one-sided live from never drops the saved to', () => {
+		expect(
+			intersectDateRanges({ from: '2026-03-10', to: '2026-03-20' }, { from: '2026-03-15' })
+		).toEqual({ from: '2026-03-15', to: '2026-03-20' });
+	});
+	it('a one-sided live to never drops the saved from', () => {
+		expect(
+			intersectDateRanges({ from: '2026-03-10', to: '2026-03-20' }, { to: '2026-03-18' })
+		).toEqual({ from: '2026-03-10', to: '2026-03-18' });
+	});
+	it('a live bound outside the saved range cannot widen it', () => {
+		expect(
+			intersectDateRanges({ from: '2026-03-10', to: '2026-03-20' }, { from: '2026-03-01', to: '2026-03-31' })
+		).toEqual({ from: '2026-03-10', to: '2026-03-20' });
+	});
+	it('no saved range: the live preview persists as-is; nothing set stays empty', () => {
+		expect(intersectDateRanges({}, { from: '2026-03-15' })).toEqual({ from: '2026-03-15', to: '' });
+		expect(intersectDateRanges({}, {})).toEqual({ from: '', to: '' });
 	});
 });
