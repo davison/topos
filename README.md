@@ -32,7 +32,8 @@ the browser._
 ## Status
 
 topos is past its v1 milestones and shipped v1.3.1, the usability
-milestone. Seven sources ship today — paperless-ngx, SilverBullet,
+milestone; M3, the daily-driver polish milestone, is merged on main,
+its tag following the release gate. Seven sources ship today — paperless-ngx, SilverBullet,
 Proton Mail (via Bridge, never marking mail read), Signal Desktop (read
 strictly read-only from its local database, with a schema ceiling that
 advances by a verify-and-accept command run against your own database,
@@ -53,13 +54,21 @@ each source's chip or as `instance:term` in the search box), per-source
 health with manual refresh, full-text search that reaches item bodies
 across every source in a webspace — each source searching its own
 store, with a result set that says where each hit matched and which
-sources answered — a live detail pane, webspace creation and source
-configuration entirely from the browser (no hand-editing TOML required
-to get started), a default-deny agent permission model, and a
-responsive layout that adapts down to mobile widths. Development
+sources answered — date-range narrowing (two pickers beside the
+search bar that preview live and promote to a saved, removable
+filter, honoured by every consumer, the agent mirror included),
+webspace rename that carries items and exclusion marks with it, a
+stream row that declares overflowing label pills as a +N badge
+instead of clipping them, a live detail pane, webspace creation and
+source configuration entirely from the browser (no hand-editing TOML
+required to get started), a default-deny agent permission model, and
+a responsive layout that adapts down to mobile widths. Development
 quality-of-life moved with it: docs-only changes clear CI in seconds,
-and release version numbers are derived from the commit log rather
-than chosen by feel. The record of each milestone lives under
+release version numbers are derived from the commit log rather than
+chosen by feel, the plugin test suites are hermetic on any machine (a
+test can never wander into a live OAuth flow on the operator's
+exported credentials), and the fleet's release verifier is pinned at
+the kernel release it actually pairs with. The record of each milestone lives under
 [`docs/milestones/`](docs/milestones/).
 
 ## Install
