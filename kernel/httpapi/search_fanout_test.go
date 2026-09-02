@@ -142,9 +142,15 @@ func TestSearchHandler_DateRangeFiltersSourceHits(t *testing.T) {
 		t.Fatalf("want only the in-range source hit, got %+v", resp.Results)
 	}
 
-	// A malformed param is refused by name, not silently ignored.
+	// A malformed param is refused by name, not silently ignored — even
+	// on an empty query (PR #79 review round 1: the fast path must not
+	// skip validation the docs promise).
 	_, code = get(t, r, "/api/webspaces/house/search?q=boiler&from=soon")
 	if code != http.StatusBadRequest {
 		t.Fatalf("malformed from: status %d, want 400", code)
+	}
+	_, code = get(t, r, "/api/webspaces/house/search?q=&from=not-a-date")
+	if code != http.StatusBadRequest {
+		t.Fatalf("malformed from on an empty query: status %d, want 400", code)
 	}
 }

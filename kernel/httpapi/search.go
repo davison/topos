@@ -91,15 +91,18 @@ func SearchHandler(store *index.Store, cfgStore *config.Store, fetcher Fetcher) 
 			WriteError(w, http.StatusBadRequest, "invalid_request", "scope must be \"index\" or \"all\"")
 			return
 		}
-		q := r.URL.Query().Get("q")
-		if strings.TrimSpace(q) == "" {
-			WriteJSON(w, http.StatusOK, searchResponse{SchemaVersion: schemaVersion, Webspace: name, Query: "", Scope: scope, Results: []searchResult{}})
-			return
-		}
 		ws := cfg.Webspaces[name]
+		// The live range parses BEFORE the empty-query fast path (PR #79
+		// review round 1): a malformed ?from/?to is 400 by name whatever
+		// the query says — the docs' promise holds on every request.
 		dateFrom, dateTo, derr := effectiveDateRange(r, ws)
 		if derr != nil {
 			WriteError(w, http.StatusBadRequest, "invalid_request", derr.Error())
+			return
+		}
+		q := r.URL.Query().Get("q")
+		if strings.TrimSpace(q) == "" {
+			WriteJSON(w, http.StatusOK, searchResponse{SchemaVersion: schemaVersion, Webspace: name, Query: "", Scope: scope, Results: []searchResult{}})
 			return
 		}
 		results, err := store.Search(ctx, name, q, ws.Filter, ws.FilterBySource, dateFrom, dateTo)
