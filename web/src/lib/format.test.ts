@@ -11,6 +11,7 @@ import {
 	sourceSearchSummary,
 	sourceSearchTone,
 	sourceSearchElapsed,
+	clampLabels,
 	searchCopy,
 	noMatchesHeading
 } from './format';
@@ -317,5 +318,27 @@ describe('matched_in and source status wording (M2-R2, #54)', () => {
 		expect(sourceSearchTone('ok')).toBe('ok');
 		expect(sourceSearchTone('unsupported')).toBe('muted');
 		expect(sourceSearchTone('timeout')).toBe('warning');
+	});
+});
+
+describe('clampLabels (M3-R3, #63)', () => {
+	it('shows everything under budget and declares the rest', () => {
+		expect(clampLabels(['a', 'b'], 36)).toEqual({ visible: ['a', 'b'], hidden: [] });
+		const { visible, hidden } = clampLabels(
+			['house+home', 'insurance', 'renewals', 'correspondence'],
+			36
+		);
+		expect(visible.length).toBeGreaterThan(0);
+		expect(visible.length + hidden.length).toBe(4);
+		expect(hidden.length).toBeGreaterThan(0);
+	});
+	it('always renders the first label, however long', () => {
+		expect(clampLabels(['an-extremely-long-single-label-beyond-any-budget'], 36).visible).toHaveLength(
+			1
+		);
+	});
+	it('keeps order: hidden labels are exactly the trailing ones that did not fit', () => {
+		const { visible, hidden } = clampLabels(['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc'], 24);
+		expect([...visible, ...hidden]).toEqual(['aaaaaaaaaa', 'bbbbbbbbbb', 'cccccccccc']);
 	});
 });

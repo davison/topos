@@ -282,10 +282,12 @@
 		height: 152px;
 	}
 
-	/* The tag/date metadata strip within a stream row: pills wrap up to
-	 * this fixed height, then clip — the strip never grows the row. */
+	/* The tag/date metadata strip within a stream row: one non-wrapping
+	 * line since M3-R3 (#63) — overflow is declared by the row's +N pill,
+	 * never wrapped into a clip. The max-height stays as the backstop
+	 * that nothing can ever paint past. */
 	.stream-row-meta {
-		max-height: 40px;
+		max-height: 24px;
 		overflow: hidden;
 	}
 

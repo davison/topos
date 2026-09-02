@@ -9,7 +9,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import Thumbnail from './Thumbnail.svelte';
 	import PluginIcon from './PluginIcon.svelte';
-	import { formatItemDate, parseSnippet, highlightText, matchedInSummary, searchSourcesCopy } from '$lib/format';
+	import { formatItemDate, parseSnippet, highlightText, matchedInSummary, searchSourcesCopy, clampLabels } from '$lib/format';
 	import { cn } from '$lib/utils.js';
 	import type { StreamItem } from '$lib/api';
 
@@ -121,6 +121,7 @@
 		event.preventDefault();
 		handleActivate(event);
 	}
+	let clampedLabels = $derived(clampLabels(item.labels));
 </script>
 
 <!--
@@ -225,7 +226,7 @@
 		     last, so the dot is never the element that gets clipped
 		     (RESEARCH Pitfall 4 / planner_resolutions R2). -->
 		<div
-			class="stream-row-meta mt-1 flex flex-wrap items-center gap-2 text-[14px] leading-[1.4] text-muted-foreground max-md:mt-1 max-md:flex-nowrap max-md:gap-1.5 max-md:overflow-hidden max-md:leading-none"
+			class="stream-row-meta mt-1 flex flex-nowrap items-center gap-2 overflow-hidden text-[14px] leading-[1.4] text-muted-foreground max-md:mt-1 max-md:gap-1.5 max-md:leading-none"
 		>
 			<!-- Source identity icon (09-02-PLAN.md Task 4 checkpoint
 			     follow-up, additive metadata alongside the leading
@@ -303,9 +304,22 @@
 				>
 			{/if}
 			<span class="contents max-md:hidden">
-				{#each item.labels as label (label)}
-					<Badge variant="secondary">{label}</Badge>
+				<!-- M3-R3 (#63): the strip is one non-wrapping line now, and
+				     the pills clamp to a character budget with the remainder
+				     DECLARED — a +N pill naming the hidden labels in its
+				     title — never wrapped into the fixed row's clip zone.
+				     Each visible pill also truncates so one enormous label
+				     degrades to ellipsis, not overflow. -->
+				{#each clampedLabels.visible as label (label)}
+					<Badge variant="secondary" class="max-w-[10rem] text-ellipsis">{label}</Badge>
 				{/each}
+				{#if clampedLabels.hidden.length > 0}
+					<Badge
+						variant="outline"
+						data-label-overflow={clampedLabels.hidden.length}
+						title={clampedLabels.hidden.join(', ')}>+{clampedLabels.hidden.length}</Badge
+					>
+				{/if}
 			</span>
 		</div>
 
