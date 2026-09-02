@@ -271,7 +271,13 @@
 			     the date shrinks to a floor and truncates while the
 			     declaration keeps shrink-0. At every normal width the date
 			     renders at its natural size exactly as before. -->
-			<span class="overflow-hidden text-ellipsis whitespace-nowrap" style="flex:0 1 auto;min-width:2rem"
+			<!-- QA's M3-R3 finding (#82): at the pane clamp's floor the strip is
+			     ~73px — a 2rem date floor plus the 34px declaration can never
+			     both fit, so the date's floor is gone: it ellipsises away
+			     entirely under terminal pressure, because the recorded
+			     priority puts the declaration above it. At every normal
+			     width the date renders at its natural size unchanged. -->
+			<span class="overflow-hidden text-ellipsis whitespace-nowrap" style="flex:0 1 auto;min-width:0"
 				>{formatItemDate(item.timestamp_unix)}</span
 			>
 			{#if stale}
