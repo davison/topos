@@ -25,18 +25,18 @@ func TestRenameWebspace_CarriesItemsMarksAndSyncRecord(t *testing.T) {
 		t.Fatalf("RenameWebspace: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "new", nil, nil, ViewIncluded)
+	items, err := s.StreamItems(ctx, "new", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(new): %v", err)
 	}
 	if len(items) != 1 { // one excluded — the mark survived under the new name
 		t.Fatalf("new name: got %d included items, want 1 (the exclusion must survive)", len(items))
 	}
-	excluded, _ := s.StreamItems(ctx, "new", nil, nil, ViewExcluded)
+	excluded, _ := s.StreamItems(ctx, "new", nil, nil, 0, 0, ViewExcluded)
 	if len(excluded) != 1 {
 		t.Fatalf("the excluded mark did not follow the rename: %d", len(excluded))
 	}
-	old, _ := s.StreamItems(ctx, "old", nil, nil, ViewIncluded)
+	old, _ := s.StreamItems(ctx, "old", nil, nil, 0, 0, ViewIncluded)
 	if len(old) != 0 {
 		t.Fatalf("the old name still holds %d items", len(old))
 	}
@@ -70,14 +70,14 @@ func TestRenameWebspace_ClearsADeletedNamesakesRows(t *testing.T) {
 	if err := s.RenameWebspace(ctx, "old", "new"); err != nil {
 		t.Fatalf("RenameWebspace: %v", err)
 	}
-	items, err := s.StreamItems(ctx, "new", nil, nil, ViewIncluded)
+	items, err := s.StreamItems(ctx, "new", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
 	if len(items) != 1 || items[0].SourceID != "1" {
 		t.Fatalf("destination must hold exactly the renamed space's own items: %+v", items)
 	}
-	excluded, _ := s.StreamItems(ctx, "new", nil, nil, ViewExcluded)
+	excluded, _ := s.StreamItems(ctx, "new", nil, nil, 0, 0, ViewExcluded)
 	if len(excluded) != 0 {
 		t.Fatalf("a dead namesake's exclusion leaked into the renamed space: %d", len(excluded))
 	}

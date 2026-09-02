@@ -409,6 +409,10 @@ export function setWebspaceDateRange(
 	if (from) ws.date_from = from;
 	if (to) ws.date_to = to;
 	next.webspaces[name] = ws;
+	return next;
+}
+
+/**
  * Returns a new document with the webspace renamed (M3-R2, #77): the map
  * key changes and the body — keywords, sources, match, filter,
  * filter_by_source, date range — is carried byte-identical, which is
