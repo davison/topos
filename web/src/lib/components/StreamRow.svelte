@@ -330,8 +330,15 @@
 				     always survive the width. -->
 				<span class="flex items-center gap-2 overflow-hidden" style="flex:1 1 0;min-width:0">
 					{#each clampedLabels.visible as label (label)}
-						<Badge variant="secondary" class="max-w-[10rem] text-ellipsis"
-							>{label}</Badge
+						<!-- Inline flex-shrink: Badge's base shrink-0 wins any
+						     utility-class fight (emission order), so the override
+						     that makes a pill genuinely give way — ellipsis, never
+						     a half-cut crop at the region edge — must be inline
+						     (PR #78 round 2). -->
+						<Badge
+							variant="secondary"
+							class="max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap"
+							style="flex-shrink:1;min-width:0">{label}</Badge
 						>
 					{/each}
 				</span>
