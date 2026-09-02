@@ -736,6 +736,17 @@ export function clampLabels(
 		used += cost;
 	}
 	return { visible, hidden };
+// dateRangeChipLabel renders the saved date narrowing's chip (M3-R1,
+// #70): both sides, or the open-ended forms, in the reader's locale.
+export function dateRangeChipLabel(from?: string, to?: string): string {
+	const fmt = (d: string) =>
+		new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(
+			new Date(d + 'T00:00:00')
+		);
+	if (from && to) return `${fmt(from)} – ${fmt(to)}`;
+	if (from) return `from ${fmt(from)}`;
+	if (to) return `until ${fmt(to)}`;
+	return '';
 }
 
 export const searchSourcesCopy = Object.freeze({

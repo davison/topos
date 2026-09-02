@@ -117,3 +117,34 @@ func TestSearchHandler_WithoutASearcherIsIndexOnly(t *testing.T) {
 		t.Errorf("expected an index-only answer with no sources map: %d %+v", code, resp)
 	}
 }
+
+// TestSearchHandler_DateRangeFiltersSourceHits (M3-R1, #76; spec 21's
+// catch): a source hit outside the effective date range is dropped at the
+// merge — the fan-out cannot smuggle an out-of-range item past the range
+// the index rows were already filtered by.
+func TestSearchHandler_DateRangeFiltersSourceHits(t *testing.T) {
+	inside := item.Item{ID: "mail:in", Source: "mail", SourceType: "proton", SourceID: "in", Title: "inside", TimestampUnix: 1704153600}
+	outside := item.Item{ID: "mail:out", Source: "mail", SourceType: "proton", SourceID: "out", Title: "outside", TimestampUnix: 1704412800}
+	f := &fakeSearchingFetcher{outcomes: []pluginhost.SourceSearchOutcome{{
+		Instance: "mail", DisplayName: "Mail", Status: pluginhost.SearchStatusOK,
+		Hits: []pluginhost.SearchHit{
+			{Item: inside, MatchedIn: "body"},
+			{Item: outside, MatchedIn: "body"},
+		},
+	}}}
+	r, _ := searchRouter(t, searchCfg(), f)
+
+	resp, code := get(t, r, "/api/webspaces/house/search?q=boiler&scope=all&from=2024-01-01&to=2024-01-03")
+	if code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].ID != "mail:in" {
+		t.Fatalf("want only the in-range source hit, got %+v", resp.Results)
+	}
+
+	// A malformed param is refused by name, not silently ignored.
+	_, code = get(t, r, "/api/webspaces/house/search?q=boiler&from=soon")
+	if code != http.StatusBadRequest {
+		t.Fatalf("malformed from: status %d, want 400", code)
+	}
+}

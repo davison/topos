@@ -36,7 +36,7 @@ func TestStreamAndSearch_FilterBySourceNarrowsOneInstanceOnly(t *testing.T) {
 	bySource := map[string][]string{"mail-01": {"quote"}}
 
 	// Stream: mail-01 narrows to its quote item; docs-01 is untouched.
-	items, err := s.StreamItems(ctx, "ws", nil, bySource, ViewIncluded)
+	items, err := s.StreamItems(ctx, "ws", nil, bySource, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestStreamAndSearch_FilterBySourceNarrowsOneInstanceOnly(t *testing.T) {
 	}
 
 	// A global filter still ANDs with the per-instance terms.
-	items, err = s.StreamItems(ctx, "ws", []string{"manual"}, bySource, ViewIncluded)
+	items, err = s.StreamItems(ctx, "ws", []string{"manual"}, bySource, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems global+per: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestStreamAndSearch_FilterBySourceNarrowsOneInstanceOnly(t *testing.T) {
 	}
 
 	// Search: the live query refines within both.
-	results, err := s.Search(ctx, "ws", "boiler", nil, bySource)
+	results, err := s.Search(ctx, "ws", "boiler", nil, bySource, 0, 0)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestStreamAndSearch_FilterBySourceNarrowsOneInstanceOnly(t *testing.T) {
 
 	// An FTS-hostile per-instance term degrades to a no-op for that
 	// instance, exactly as BuildMatchQuery degrades the global filter.
-	items, err = s.StreamItems(ctx, "ws", nil, map[string][]string{"mail-01": {`""`}}, ViewIncluded)
+	items, err = s.StreamItems(ctx, "ws", nil, map[string][]string{"mail-01": {`""`}}, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems hostile term: %v", err)
 	}

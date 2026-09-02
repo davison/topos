@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { dateRangeChipLabel } from '$lib/format';
+	import CalendarDays from '@lucide/svelte/icons/calendar-days';
 	import { observeResize } from '$lib/resize-observer';
 	import SourceChip from './SourceChip.svelte';
 	import SearchBox from './SearchBox.svelte';
@@ -51,6 +53,10 @@
 		onsavefilter,
 		filterBySource,
 		onremovesourcefilter,
+		dateRange,
+		liveRange,
+		onrangechange,
+		onremovedaterange,
 		onremovefilter,
 		config,
 		baseHash,
@@ -127,6 +133,14 @@
 		// filter row and the funnel marker on the instance's own SourceChip.
 		filterBySource: Record<string, string[]>;
 		onremovesourcefilter: (instance: string, term: string) => void;
+		// The date narrowing (M3-R1, #70): dateRange is the SAVED config
+		// range (renders the removable chip); liveRange is the pickers'
+		// unsaved preview, applied to the stream/search immediately and
+		// promoted by the same Save as filter affordance a term uses.
+		dateRange: { from?: string; to?: string };
+		liveRange: { from?: string; to?: string };
+		onrangechange: (from: string, to: string) => void;
+		onremovedaterange: () => void;
 		onremovefilter: (term: string) => void;
 		// Add-source picker/flows (D-11, 07-04-PLAN.md): config/baseHash are
 		// the same last GET/PUT /api/config snapshot the filter-write path
@@ -227,7 +241,10 @@
 	// edge). A query that is merely a prefix or superstring of an active
 	// term is untouched by this check and still offers the affordance.
 	let trimmedQuery = $derived(searchQuery.trim());
-	let showSaveAsFilter = $derived(trimmedQuery !== '' && !filters.includes(trimmedQuery));
+	let showSaveAsFilter = $derived(
+		trimmedQuery !== '' && !filters.includes(trimmedQuery) ||
+			Boolean(liveRange.from || liveRange.to)
+	);
 
 	// The row below renders with `gap-2` (line ~175) — Tailwind's `gap-2` is
 	// 0.5rem, 8px at the default 16px root font size. Kept as a named
@@ -702,6 +719,25 @@
 	-->
 	<div class="mt-3 flex items-center gap-2">
 		<SearchBox query={searchQuery} onquery={onsearch} />
+		<!-- The date pickers (M3-R1, #70): a live, unsaved preview that
+		     narrows the stream and search immediately — promotion to the
+		     persisted range rides the same Save as filter button. -->
+		<input
+			type="date"
+			class="h-9 rounded-md border border-border bg-card px-2 text-[14px] text-foreground"
+			aria-label="Narrow from date"
+			data-date-from
+			value={liveRange.from ?? ''}
+			onchange={(e) => onrangechange((e.currentTarget as HTMLInputElement).value, liveRange.to ?? '')}
+		/>
+		<input
+			type="date"
+			class="h-9 rounded-md border border-border bg-card px-2 text-[14px] text-foreground"
+			aria-label="Narrow to date"
+			data-date-to
+			value={liveRange.to ?? ''}
+			onchange={(e) => onrangechange(liveRange.from ?? '', (e.currentTarget as HTMLInputElement).value)}
+		/>
 		{#if showSaveAsFilter}
 			<Button variant="ghost" size="sm" disabled={filterBusy} onclick={onsavefilter}>
 				Save as filter
@@ -717,11 +753,34 @@
 	  header. Gated on filters.length so it is ABSENT (not an
 	  empty-styled row) with zero active filters.
 	-->
-	{#if filters.length > 0 || Object.keys(filterBySource).length > 0}
+	{#if filters.length > 0 || Object.keys(filterBySource).length > 0 || dateRange.from || dateRange.to}
 		<div class="mt-3 flex flex-wrap items-center gap-2">
 			{#each filters as term (term)}
 				<FilterChip {term} disabled={filterBusy} onremove={onremovefilter} />
 			{/each}
+			<!-- The saved date-range chip (M3-R1, #70): one chip for the
+			     whole range, its × clearing both sides in one write. -->
+			{#if dateRange.from || dateRange.to}
+				<div
+					class="flex h-8 shrink-0 items-center gap-1 rounded-md border border-border bg-muted pr-1 pl-2.5"
+					data-date-filter-chip
+				>
+					<CalendarDays class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+					<span class="truncate text-[14px] leading-[1.4] text-foreground"
+						>{dateRangeChipLabel(dateRange.from, dateRange.to)}</span
+					>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-8 shrink-0 rounded-md"
+						aria-label="Remove date range"
+						disabled={filterBusy}
+						onclick={onremovedaterange}
+					>
+						<X class="size-4" />
+					</Button>
+				</div>
+			{/if}
 			<!-- Per-source filter chips (M2-R3, #55): labelled with whose rows
 			     they narrow, removable independently, after the global chips
 			     in a stable instance-then-term order. -->

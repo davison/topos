@@ -106,7 +106,7 @@ keywords = ["demo"]
 	// Status alone would pass even if the retry succeeded against an empty
 	// result — the gap's user-visible symptom was an empty stream under a
 	// failure banner, so assert the items themselves persisted too.
-	items, err := idx.StreamItems(ctx, "demo", nil, nil, index.ViewIncluded)
+	items, err := idx.StreamItems(ctx, "demo", nil, nil, 0, 0, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(demo): %v", err)
 	}

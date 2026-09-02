@@ -134,7 +134,7 @@ func TestTwoInstancesOfOnePluginType_StayDistinct(t *testing.T) {
 	// (b) Non-overlapping item id namespaces: both instances matched
 	// source_id "1", so a source_type-keyed id scheme would collide on
 	// "proton:1" for both. Instance-keyed ids must not collide.
-	items, err := store.StreamItems(context.Background(), "house-move", nil, nil, index.ViewIncluded)
+	items, err := store.StreamItems(context.Background(), "house-move", nil, nil, 0, 0, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestRefresh_RepeatedRefreshDoesNotDuplicateItems(t *testing.T) {
 		t.Fatalf("second Refresh: %v", err)
 	}
 
-	items, err := store.StreamItems(context.Background(), "house-move", nil, nil, index.ViewIncluded)
+	items, err := store.StreamItems(context.Background(), "house-move", nil, nil, 0, 0, index.ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}

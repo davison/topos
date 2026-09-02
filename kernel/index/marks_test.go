@@ -95,7 +95,7 @@ func TestStreamItems_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	itemsA, err := s.StreamItems(ctx, "ws-a", nil, nil, ViewIncluded)
+	itemsA, err := s.StreamItems(ctx, "ws-a", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws-a): %v", err)
 	}
@@ -103,7 +103,7 @@ func TestStreamItems_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Fatalf("expected ws-a to carry exactly [%s] after excluding %s, got %v", newer.ID, older.ID, idsOf(itemsA))
 	}
 
-	itemsB, err := s.StreamItems(ctx, "ws-b", nil, nil, ViewIncluded)
+	itemsB, err := s.StreamItems(ctx, "ws-b", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ws-b): %v", err)
 	}
@@ -134,7 +134,7 @@ func TestStreamItems_ExcludedItemOrderingPreservedAmongSurvivors(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	items, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestSearch_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	resultsA, err := s.Search(ctx, "ws-a", "invoice", nil, nil)
+	resultsA, err := s.Search(ctx, "ws-a", "invoice", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Search(ws-a): %v", err)
 	}
@@ -172,7 +172,7 @@ func TestSearch_OmitsExcludedItemForItsOwnWebspaceOnly(t *testing.T) {
 		t.Errorf("expected Search(ws-a) to omit the excluded item, got %d result(s)", len(resultsA))
 	}
 
-	resultsB, err := s.Search(ctx, "ws-b", "invoice", nil, nil)
+	resultsB, err := s.Search(ctx, "ws-b", "invoice", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("Search(ws-b): %v", err)
 	}
@@ -270,7 +270,7 @@ func TestItemMarks_SurviveIndexRebuild(t *testing.T) {
 
 	// (a) items/webspace_items rows are gone — the ordinary rebuild
 	// behavior, unaffected by this phase's addition.
-	items, err := reopened.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	items, err := reopened.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems after rebuild: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestItemMarks_SurviveIndexRebuild(t *testing.T) {
 	if err := reopened.ReplaceWebspaceSourceItems(ctx, "ws", "paperless", []item.Item{it}); err != nil {
 		t.Fatalf("re-insert after rebuild: %v", err)
 	}
-	itemsAfterReinsert, err := reopened.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	itemsAfterReinsert, err := reopened.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems after re-insert: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestStreamItems_ViewExcludedReturnsExactlyMarkedItems(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	got, err := s.StreamItems(ctx, "ws", nil, nil, ViewExcluded)
+	got, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewExcluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ViewExcluded): %v", err)
 	}
@@ -349,11 +349,11 @@ func TestStreamItems_IncludedAndExcludedViewsAreComplements(t *testing.T) {
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	included, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	included, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ViewIncluded): %v", err)
 	}
-	excluded, err := s.StreamItems(ctx, "ws", nil, nil, ViewExcluded)
+	excluded, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewExcluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ViewExcluded): %v", err)
 	}
@@ -387,7 +387,7 @@ func TestStreamItems_ZeroMarksExcludedViewReturnsEmpty(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	included, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	included, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ViewIncluded): %v", err)
 	}
@@ -395,7 +395,7 @@ func TestStreamItems_ZeroMarksExcludedViewReturnsEmpty(t *testing.T) {
 		t.Fatalf("expected ViewIncluded to carry the full stream with zero marks, got %v", idsOf(included))
 	}
 
-	excluded, err := s.StreamItems(ctx, "ws", nil, nil, ViewExcluded)
+	excluded, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewExcluded)
 	if err != nil {
 		t.Fatalf("StreamItems(ViewExcluded): %v", err)
 	}
@@ -587,7 +587,7 @@ func TestReplaceWebspaceSourceItems_ReappearingItemIsUnexcluded(t *testing.T) {
 		t.Fatalf("sync reintroducing item: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	items, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestReplaceWebspaceSourceItems_InterruptedSyncLeavesItemsAndMarksUnchanged(
 		t.Fatalf("SetItemMarks: %v", err)
 	}
 
-	before, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	before, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems (before): %v", err)
 	}
@@ -654,7 +654,7 @@ func TestReplaceWebspaceSourceItems_InterruptedSyncLeavesItemsAndMarksUnchanged(
 		t.Fatalf("blocker ROLLBACK: %v", err)
 	}
 
-	after, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	after, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems (after): %v", err)
 	}
@@ -698,7 +698,7 @@ func TestSetItemMarks_MarkForUnindexedItemOutranksLaterMatch(t *testing.T) {
 		t.Fatalf("ReplaceWebspaceSourceItems: %v", err)
 	}
 
-	items, err := s.StreamItems(ctx, "ws", nil, nil, ViewIncluded)
+	items, err := s.StreamItems(ctx, "ws", nil, nil, 0, 0, ViewIncluded)
 	if err != nil {
 		t.Fatalf("StreamItems: %v", err)
 	}

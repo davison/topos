@@ -619,6 +619,9 @@ func (cfg *Config) validateWebspaces() error {
 		if err := cfg.validateFilterBySource(name, ws); err != nil {
 			return err
 		}
+		if err := validateDateRange(name, ws); err != nil {
+			return err
+		}
 		if err := cfg.validateFallbackCoverage(name, ws); err != nil {
 			return err
 		}
@@ -677,6 +680,36 @@ func (cfg *Config) validateMatchBlocks(webspaceName string, ws Webspace) error {
 		}
 	}
 
+	return nil
+}
+
+// validateDateRange checks date_from/date_to (M3-R1, #70): each present
+// value must be a calendar date in 2006-01-02 form, and when both are set
+// the range must not be inverted — a silently-empty webspace is the shape
+// D-06 forbids elsewhere.
+func validateDateRange(webspaceName string, ws Webspace) error {
+	parse := func(key, v string) (time.Time, error) {
+		t, err := time.ParseInLocation("2006-01-02", v, time.Local)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("config: webspace %q %s %q is not a calendar date (want YYYY-MM-DD)", webspaceName, key, v)
+		}
+		return t, nil
+	}
+	var from, to time.Time
+	var err error
+	if ws.DateFrom != "" {
+		if from, err = parse("date_from", ws.DateFrom); err != nil {
+			return err
+		}
+	}
+	if ws.DateTo != "" {
+		if to, err = parse("date_to", ws.DateTo); err != nil {
+			return err
+		}
+	}
+	if ws.DateFrom != "" && ws.DateTo != "" && to.Before(from) {
+		return fmt.Errorf("config: webspace %q date range is inverted — date_from %q is after date_to %q", webspaceName, ws.DateFrom, ws.DateTo)
+	}
 	return nil
 }
 
