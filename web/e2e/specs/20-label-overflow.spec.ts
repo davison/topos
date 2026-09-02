@@ -75,6 +75,7 @@ test.describe('20: label pills clamp and declare, never clip', () => {
 		expect(rowBox && markerBox).toBeTruthy();
 		expect(markerBox!.x).toBeGreaterThanOrEqual(rowBox!.x - 1);
 		expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+		expect(markerBox!.y).toBeGreaterThanOrEqual(rowBox!.y - 1);
 		expect(markerBox!.y + markerBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height + 1);
 		// Every VISIBLE pill's box sits inside the row too (PR #78 round
 		// 2): a pill gives way by shrink+ellipsis, never by a half-cut
@@ -103,6 +104,7 @@ test.describe('20: label pills clamp and declare, never clip', () => {
 		expect(rowBox && markerBox).toBeTruthy();
 		expect(markerBox!.x).toBeGreaterThanOrEqual(rowBox!.x - 1);
 		expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+		expect(markerBox!.y).toBeGreaterThanOrEqual(rowBox!.y - 1);
 		expect(markerBox!.y + markerBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height + 1);
 	});
 
