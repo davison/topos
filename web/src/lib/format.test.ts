@@ -356,8 +356,14 @@ describe('clampLabels (M3-R3, #63)', () => {
 			hidden: ['x']
 		});
 describe('dateRangeChipLabel (M3-R1, #70)', () => {
-	it('renders both-sided and open-ended ranges', () => {
-		expect(dateRangeChipLabel('2026-03-12', '2026-04-04')).toMatch(/12.*Mar.*2026.*–.*4.*Apr.*2026/);
+	it('renders both-sided and open-ended ranges, whatever the locale orders', () => {
+		// The helper renders in the reader's locale by design (en-GB says
+		// "12 Mar 2026", CI's en-US says "Mar 12, 2026") — assert the
+		// parts and the joiner, never an ordering.
+		const both = dateRangeChipLabel('2026-03-12', '2026-04-04');
+		for (const part of ['Mar', '12', 'Apr', '4', '2026', '–']) {
+			expect(both).toContain(part);
+		}
 		expect(dateRangeChipLabel('2026-03-12', undefined)).toMatch(/^from /);
 		expect(dateRangeChipLabel(undefined, '2026-04-04')).toMatch(/^until /);
 		expect(dateRangeChipLabel(undefined, undefined)).toBe('');
