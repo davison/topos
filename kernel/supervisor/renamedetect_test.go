@@ -54,6 +54,10 @@ func TestApply_RenameMigrationFailureCommitsGenerationAndRunsRepair(t *testing.T
 plugin = "topos-plugin-mock"
 base_url = "http://mock.test"
 token = "unused"
+[sources.mock-02]
+plugin = "topos-plugin-mock"
+base_url = "http://mock.test"
+token = "unused"
 [webspaces.old]
 keywords = ["demo"]
 `)
@@ -63,6 +67,11 @@ keywords = ["demo"]
 	}
 	defer sup.Shutdown()
 
+	// The failing apply carries MORE than the rename: mock-02 is removed
+	// in the same write, so the cleanup region has observable work to do
+	// (PR #80 review round 3) — with the index sabotaged, its attempt
+	// surfaces as its own error in the join, proving the region ran
+	// rather than being skipped by the rename failure.
 	next := &config.Config{
 		Sources: map[string]config.Source{
 			"mock-01": {Plugin: "topos-plugin-mock", BaseURL: "http://mock.test", Token: "unused"},
@@ -95,5 +104,15 @@ keywords = ["demo"]
 	}
 	if _, ok := sup.cfg.Webspaces["old"]; ok {
 		t.Fatal("the old generation leaked into s.cfg after commitGeneration")
+	}
+	// The repair region RAN: the removed instance's cleanup attempted its
+	// index deletes against the sabotaged store, so its own failure is in
+	// the join beside the rename's — a skipped region would leave only
+	// the rename error.
+	if !strings.Contains(applyErr.Error(), "mock-02") {
+		t.Fatalf("the cleanup region's attempt must surface in the joined error: %v", applyErr)
+	}
+	if _, ok := sup.cfg.Sources["mock-02"]; ok {
+		t.Fatal("the removed instance survived commitGeneration")
 	}
 }
