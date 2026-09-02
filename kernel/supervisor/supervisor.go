@@ -754,11 +754,16 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// and BEFORE the cleanup/purge/resync region. A migration failure is
 	// an apply failure, loudly: reporting success after silently dropping
 	// the mark-preserving guarantee was the round-1 finding.
+	var renameErr error
 	for _, pair := range detectWebspaceRenames(oldCfg, newCfg) {
 		if err := s.idx.RenameWebspace(ctx, pair[0], pair[1]); err != nil {
-			s.cfg = newCfg
-			s.startScheduler(newCfg)
-			return fmt.Errorf("supervisor: apply: webspace rename %s -> %s: %w", pair[0], pair[1], err)
+			// Still an apply failure (round 1), but carried through the
+			// post-Reconcile repair path below (round 2): an early return
+			// here would strand removed instances' rows (the cleanup's
+			// diff is destroyed once s.cfg advances), skip the purge, and
+			// bypass commitGeneration's one-generation invariant.
+			renameErr = fmt.Errorf("webspace rename %s -> %s: %w", pair[0], pair[1], err)
+			break
 		}
 	}
 
@@ -813,7 +818,7 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// the purge error follows that — errors.Join drops nils, so each
 	// single-fault case still produces byte-identical text to before this
 	// restructuring, and a genuine multi-fault case reports all of them.
-	if err := errors.Join(validateErr, cleanupErr, purgeErr); err != nil {
+	if err := errors.Join(renameErr, validateErr, cleanupErr, purgeErr); err != nil {
 		return fmt.Errorf("supervisor: apply: %w", err)
 	}
 
