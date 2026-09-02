@@ -722,22 +722,33 @@
 		<!-- The date pickers (M3-R1, #70): a live, unsaved preview that
 		     narrows the stream and search immediately — promotion to the
 		     persisted range rides the same Save as filter button. -->
-		<input
-			type="date"
-			class="h-9 rounded-md border border-border bg-card px-2 text-[14px] text-foreground"
-			aria-label="Narrow from date"
-			data-date-from
-			value={liveRange.from ?? ''}
-			onchange={(e) => onrangechange((e.currentTarget as HTMLInputElement).value, liveRange.to ?? '')}
-		/>
-		<input
-			type="date"
-			class="h-9 rounded-md border border-border bg-card px-2 text-[14px] text-foreground"
-			aria-label="Narrow to date"
-			data-date-to
-			value={liveRange.to ?? ''}
-			onchange={(e) => onrangechange(liveRange.from ?? '', (e.currentTarget as HTMLInputElement).value)}
-		/>
+		<!-- UAT remedy (#87): visible labels say what the fields do; the
+		     inputs borrow the Input primitive's border/focus treatment (the
+		     search bar's accent ring, never a bright border); the dd/mm/yyyy
+		     hint stays muted until a value is set — date inputs have no
+		     :placeholder-shown, so the bound value drives the class. -->
+		<label class="flex items-center gap-1.5 text-[14px] leading-[1.4] text-muted-foreground">
+			<span data-date-from-label>From</span>
+			<input
+				type="date"
+				class="h-9 rounded-md border border-input bg-transparent px-2 text-[14px] transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 {liveRange.from ? 'text-foreground' : 'text-muted-foreground'}"
+				aria-label="Narrow from date"
+				data-date-from
+				value={liveRange.from ?? ''}
+				onchange={(e) => onrangechange((e.currentTarget as HTMLInputElement).value, liveRange.to ?? '')}
+			/>
+		</label>
+		<label class="flex items-center gap-1.5 text-[14px] leading-[1.4] text-muted-foreground">
+			<span data-date-to-label>To</span>
+			<input
+				type="date"
+				class="h-9 rounded-md border border-input bg-transparent px-2 text-[14px] transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30 {liveRange.to ? 'text-foreground' : 'text-muted-foreground'}"
+				aria-label="Narrow to date"
+				data-date-to
+				value={liveRange.to ?? ''}
+				onchange={(e) => onrangechange(liveRange.from ?? '', (e.currentTarget as HTMLInputElement).value)}
+			/>
+		</label>
 		{#if showSaveAsFilter}
 			<Button variant="ghost" size="sm" disabled={filterBusy} onclick={onsavefilter}>
 				Save as filter

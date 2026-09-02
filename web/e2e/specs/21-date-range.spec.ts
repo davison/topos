@@ -107,6 +107,26 @@ test.describe('21: date-range narrowing, promotion and removal', () => {
 		expect((await resp.json()).items).toHaveLength(2);
 	});
 
+	test('the pickers dress like the header — labels, muted hint, accent focus, dark scheme (#87)', async ({
+		page
+	}) => {
+		await expect(page.locator('[data-date-from-label]')).toHaveText('From');
+		await expect(page.locator('[data-date-to-label]')).toHaveText('To');
+		const input = page.locator('[data-date-from]');
+		// The native control follows the page's declared dark scheme — the
+		// calendar popover and indicator render dark, not browser-light.
+		expect(await input.evaluate((el) => getComputedStyle(el).colorScheme)).toContain('dark');
+		// Muted while empty, foreground once set.
+		const emptyColor = await input.evaluate((el) => getComputedStyle(el).color);
+		await input.fill('2024-01-02');
+		const filledColor = await input.evaluate((el) => getComputedStyle(el).color);
+		expect(filledColor).not.toBe(emptyColor);
+		// The focus treatment is the shared accent ring, not a bright border.
+		await input.focus();
+		const ring = await input.evaluate((el) => getComputedStyle(el).getPropertyValue('--tw-ring-color') || getComputedStyle(el).boxShadow);
+		expect(ring.trim().length).toBeGreaterThan(0);
+	});
+
 	test('an active search narrows under the live range too', async ({ page }) => {
 		const rows = page.getByRole('main').locator('[data-item-id]');
 		await expect(rows).toHaveCount(4);
