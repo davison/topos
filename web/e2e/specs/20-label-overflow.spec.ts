@@ -76,6 +76,16 @@ test.describe('20: label pills clamp and declare, never clip', () => {
 		expect(markerBox!.x).toBeGreaterThanOrEqual(rowBox!.x - 1);
 		expect(markerBox!.x + markerBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
 		expect(markerBox!.y + markerBox!.height).toBeLessThanOrEqual(rowBox!.y + rowBox!.height + 1);
+		// Every VISIBLE pill's box sits inside the row too (PR #78 round
+		// 2): a pill gives way by shrink+ellipsis, never by a half-cut
+		// crop at the region edge.
+		const pills = row.locator('.stream-row-meta [data-slot="badge"]:not([data-label-overflow])');
+		const n = await pills.count();
+		for (let i = 0; i < n; i++) {
+			const b = await pills.nth(i).boundingBox();
+			if (!b) continue;
+			expect(b.x + b.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width + 1);
+		}
 	});
 
 	test('a row whose labels fit shows no overflow marker', async ({ page }) => {
