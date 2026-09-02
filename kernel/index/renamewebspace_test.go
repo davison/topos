@@ -45,3 +45,40 @@ func TestRenameWebspace_CarriesItemsMarksAndSyncRecord(t *testing.T) {
 		t.Fatalf("the sync record did not follow: %v %v", exists, err)
 	}
 }
+
+// A deleted namesake's stale rows under the destination are cleared, not
+// merged (PR #80 review round 1): the renamed space arrives with exactly
+// its own items and marks.
+func TestRenameWebspace_ClearsADeletedNamesakesRows(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	// The destination name once existed and was deleted — its rows remain.
+	if err := s.ReplaceWebspaceSourceItems(ctx, "new", "paperless", []item.Item{
+		sampleItem("9", 900),
+	}); err != nil {
+		t.Fatalf("seed dead namesake: %v", err)
+	}
+	if _, err := s.SetItemMarks(ctx, "new", "excluded", []string{sampleItem("9", 900).ID}); err != nil {
+		t.Fatalf("mark dead namesake: %v", err)
+	}
+	if err := s.ReplaceWebspaceSourceItems(ctx, "old", "paperless", []item.Item{
+		sampleItem("1", 100),
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	if err := s.RenameWebspace(ctx, "old", "new"); err != nil {
+		t.Fatalf("RenameWebspace: %v", err)
+	}
+	items, err := s.StreamItems(ctx, "new", nil, nil, ViewIncluded)
+	if err != nil {
+		t.Fatalf("StreamItems: %v", err)
+	}
+	if len(items) != 1 || items[0].SourceID != "1" {
+		t.Fatalf("destination must hold exactly the renamed space's own items: %+v", items)
+	}
+	excluded, _ := s.StreamItems(ctx, "new", nil, nil, ViewExcluded)
+	if len(excluded) != 0 {
+		t.Fatalf("a dead namesake's exclusion leaked into the renamed space: %d", len(excluded))
+	}
+}

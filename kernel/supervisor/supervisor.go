@@ -689,20 +689,6 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 
 	s.stopScheduler()
 
-	// The rename migration (M3-R2, #77; the Decision on that issue): a
-	// webspace key that vanished while another appeared with an IDENTICAL
-	// body is a rename — carry its index rows (items, exclusion marks,
-	// sync record) to the new name before the reconcile, so operator
-	// judgments survive. A simultaneous rename-and-edit defeats the
-	// detection by design and falls back to clear-and-resync for the new
-	// key; the UI's rename dialog writes the rename alone, so it never
-	// produces that case.
-	for _, pair := range detectWebspaceRenames(oldCfg, newCfg) {
-		if err := s.idx.RenameWebspace(ctx, pair[0], pair[1]); err != nil {
-			s.logger.Error("webspace rename migration failed; the new name will resync from scratch", "from", pair[0], "to", pair[1], "error", err)
-		}
-	}
-
 	// WR-02 (08-REVIEW.md): exclude every currently suspended instance
 	// name from what Reconcile is asked to launch. A suspended instance
 	// (SuspendInstance, above) is already absent from s.host — its
@@ -761,6 +747,21 @@ func (s *Supervisor) Apply(ctx context.Context) error {
 	// (removedInstances(oldCfg, newCfg)) that would ever detect them as
 	// removed again. See 07-10-PLAN.md, closing 07-VERIFICATION.md gaps[0]
 	// and 07-REVIEW.md's post-07-09 CR-01.
+	// The rename migration (M3-R2, #77; the Decision there, placement per
+	// PR #80 review round 1): AFTER Reconcile has committed the new
+	// generation — a pre-Reconcile migration would already have moved the
+	// old key's rows when a Reconcile failure restores the old runtime —
+	// and BEFORE the cleanup/purge/resync region. A migration failure is
+	// an apply failure, loudly: reporting success after silently dropping
+	// the mark-preserving guarantee was the round-1 finding.
+	for _, pair := range detectWebspaceRenames(oldCfg, newCfg) {
+		if err := s.idx.RenameWebspace(ctx, pair[0], pair[1]); err != nil {
+			s.cfg = newCfg
+			s.startScheduler(newCfg)
+			return fmt.Errorf("supervisor: apply: webspace rename %s -> %s: %w", pair[0], pair[1], err)
+		}
+	}
+
 	cleanupErr := s.cleanupRemovedInstances(ctx, oldCfg, newCfg)
 
 	// The synchronous purge (07-16-PLAN.md, closes 07-UAT.md G-07-7): for

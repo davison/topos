@@ -736,10 +736,25 @@ func (s *Store) RenameWebspace(ctx context.Context, from, to string) error {
 		return fmt.Errorf("index: rename webspace: begin: %w", err)
 	}
 	defer tx.Rollback()
+	// A deleted webspace's rows are deliberately retained, and config
+	// validation only checks the CURRENT config — so the destination name
+	// may hold a dead sibling's stale rows (PR #80 review round 1).
+	// Clear them first, inside the same transaction: the renamed space
+	// must arrive with exactly its own items and marks, never a merge of
+	// a deleted namesake's exclusions.
+	for _, q := range []string{
+		`DELETE FROM webspace_items WHERE webspace_name = ?`,
+		`DELETE FROM item_marks WHERE webspace_name = ?`,
+		`DELETE FROM webspaces WHERE name = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, to); err != nil {
+			return fmt.Errorf("index: rename webspace %s -> %s: clear destination: %w", from, to, err)
+		}
+	}
 	for _, q := range []string{
 		`UPDATE webspace_items SET webspace_name = ? WHERE webspace_name = ?`,
 		`UPDATE item_marks SET webspace_name = ? WHERE webspace_name = ?`,
-		`UPDATE OR REPLACE webspaces SET name = ? WHERE name = ?`,
+		`UPDATE webspaces SET name = ? WHERE name = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, to, from); err != nil {
 			return fmt.Errorf("index: rename webspace %s -> %s: %w", from, to, err)
