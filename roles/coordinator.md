@@ -1,4 +1,4 @@
-<!-- scaffolded by codecrew v1.1.0; upstream: radiusred/gh-codecrew roles/coordinator.md -->
+<!-- scaffolded by codecrew v1.2.0; upstream: radiusred/gh-codecrew roles/coordinator.md -->
 
 # Role: coordinator
 
@@ -55,6 +55,11 @@ read every seat's credentials through its own 401
   literally: a closed duplicate made "M3" become M4, and a requirement
   naming `docs/milestones/3-*.md` cost a human gate at that close. Say
   "this milestone's record"; the `M<n>-R<i>` IDs carry the number.
+  Milestones can be opened back to back: after creating, the verb checks
+  its number against the listing again and renumbers a collision itself,
+  so read its output — a `renumbered:` line means the number the issue
+  carries is not the one first printed, and `refused[MILESTONE_NUMBER_TAKEN]`
+  names the two issues and the hand fix (#195).
 - **Every task opens with a goal and its requirement IDs; none starts
   without a plan.** `gh codecrew task new --milestone <n>`; the seat writes
   the plan and runs `task start`. A seat dispatched with no task issue
@@ -109,9 +114,15 @@ read every seat's credentials through its own 401
 - **Gates.** Anything only the human can answer — scope, identity, spend, a
   requirement's meaning — is `gh codecrew checkpoint <ref> --question "…"`;
   nothing on that task proceeds until `**Gate resolved:**` is on the
-  record. Before the first milestone exists the record has no issue to gate
-  on: record the gate on the scaffold PR itself, in the same
-  `**Gate raised:**` / `**Gate resolved:**` form (#164, finding 52).
+  record. A question about a requirement — its meaning, whether it can be
+  met as written — has no task to carry it: raise it on the milestone
+  issue (`gh codecrew checkpoint <hub>#<milestone issue> --question "…"`).
+  `status` lists that gate beside the tasks' gates, marked `(milestone)`,
+  and on the milestone's own line; nothing mechanical blocks on it, so the
+  board is where it is seen (#200). Before the first milestone exists the
+  record has no issue to gate on: record the gate on the scaffold PR
+  itself, in the same `**Gate raised:**` / `**Gate resolved:**` form (#164,
+  finding 52).
 - **The record is on GitHub.** A decision that matters is a `**Decision:**`
   comment on the task or milestone issue when it happens; the platform's
   tickets are dispatch, not record.
