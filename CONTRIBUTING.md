@@ -158,10 +158,11 @@ log (`docs/releasing.md`, "Versioning"), so `feat:` and `fix:` are
 version claims. The config inherits `@commitlint/config-conventional`
 with two rules switched off, body and footer line length, because the
 house style writes bodies as unwrapped paragraphs; the file says why.
-To run the same check locally over your branch:
+To run the same check locally over your branch, at the versions CI
+pins (an unpinned run can disagree with the gate):
 
 ```bash
-npx --yes --package @commitlint/cli --package @commitlint/config-conventional \
+npx --yes --package @commitlint/cli@21.2.2 --package @commitlint/config-conventional@21.2.2 \
   commitlint --config commitlint.config.mjs --from origin/main --to HEAD
 ```
 

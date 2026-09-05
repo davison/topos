@@ -103,10 +103,13 @@ derivation then reads both.
 
 The form is gated before the judgment is: CI's `Lint commit messages`
 check runs commitlint over every pull request's commits against
-[`commitlint.config.mjs`](../commitlint.config.mjs), so a commit whose
-type is not one the derivation can read (or is missing altogether)
-never reaches `main`. The lint checks the type is well-formed; only
-the review checks it is true.
+[`commitlint.config.mjs`](../commitlint.config.mjs), whose type list is
+exactly the eight types above — `feat`, `fix`, `docs`, `chore`, `test`,
+`ci`, `build`, `refactor` — so a commit under any other type, or with
+no type or subject at all, never reaches `main`. That is all the lint
+checks: the type is one the derivation defines, and the header is
+well-formed. Whether the type is *true* — a `fix:` that is really a
+`feat!:` — only the review can judge.
 
 Sequence:
 
