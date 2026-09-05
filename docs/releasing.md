@@ -106,10 +106,15 @@ check runs commitlint over every pull request's commits against
 [`commitlint.config.mjs`](../commitlint.config.mjs), whose type list is
 exactly the eight types above — `feat`, `fix`, `docs`, `chore`, `test`,
 `ci`, `build`, `refactor` — so a commit under any other type, or with
-no type or subject at all, never reaches `main`. That is all the lint
-checks: the type is one the derivation defines, and the header is
-well-formed. Whether the type is *true* — a `fix:` that is really a
-`feat!:` — only the review can judge.
+no type or subject at all, never reaches `main`. The one exception is
+commitlint's own ignore list, which no rule ever sees: a `Revert "…"`
+header as `git revert` writes it, a `Merge …` header, and `fixup!` /
+`squash!` prefixes. Those land untyped; the derivation reads none of
+them, and a `fixup!` left unsquashed is the reviewer's to catch — the
+rebase-merge does not autosquash. That is all the lint checks: the type
+is one the derivation defines, and the header is well-formed. Whether
+the type is *true* — a `fix:` that is really a `feat!:` — only the
+review can judge.
 
 Sequence:
 
