@@ -1,5 +1,5 @@
 # The repository's CI workflow (D-13). Two jobs on every push and pull
-# request to main:
+# request to main, and a third on pull requests only:
 #
 #   changes — always runs, cheap (seconds): checks out with history,
 #             decides from the DIFF whether the change touches code, runs
@@ -10,6 +10,15 @@
 #             make e2e), svelte-check, vitest, the e2e spec tree's own
 #             typecheck, and the hermetic Playwright suite — runs only
 #             when `changes` says the diff touches code.
+#   commitlint — "Lint commit messages" (davison/topos#93, M4-R3): every
+#             commit a pull request would land is checked against
+#             commitlint.config.mjs at the repo root, because release
+#             tags are derived from the commit log alone
+#             (docs/releasing.md, "Versioning") and a mistyped commit
+#             is a mistyped version. Pull requests only: a push to main
+#             has no PR range, and its commits were linted on the PR
+#             that landed them. Not gated by `changes` — a docs-only PR
+#             still names its commits.
 #
 # Why this shape (davison/topos#37, M2-R1): a docs-only PR used to spend
 # the ~4-minute gate twice (PR head, then push-to-main) on prose. The
@@ -29,8 +38,9 @@
 # never launches a real source plugin, only the mock-shaped fixtures under
 # plugins/mock and plugins/mockstrict.
 #
-# Every step below invokes an official actions/* action only, pinned to
-# its current major version (re-verified against each action's own GitHub
+# Every step below invokes an official actions/* action only (the lint
+# installs its pinned npm packages itself rather than pulling in a
+# third-party action), each pinned to its current major version (re-verified against each action's own GitHub
 # releases at the time this workflow was written — see
 # 07.1-RESEARCH.md Assumptions Log entry A4, which flagged the research
 # skeleton's own version numbers as a low-confidence snapshot that needed
@@ -84,6 +94,36 @@ jobs:
       # relative-path resolution and a claims sweep, no build, no network.
       - run: make docs-check
       - run: python3 scripts/split-claims-sweep.py
+
+  commitlint:
+    name: Lint commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      # The CLI and the preset are installed under the runner's temp
+      # directory, exact versions, no lockfile: the repo root has no
+      # package.json and gains none. commitlint resolves the config's
+      # `extends` from its own install, so the packages need not sit in
+      # the workspace. The range is the PR's own commits — everything
+      # reachable from the head that the base branch does not have.
+      - run: >-
+          npm install --no-package-lock --no-save
+          --prefix "$RUNNER_TEMP/commitlint"
+          @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
+      - run: >-
+          "$RUNNER_TEMP/commitlint/node_modules/.bin/commitlint"
+          --config commitlint.config.mjs --verbose
+          --from '${{ github.event.pull_request.base.sha }}'
+          --to '${{ github.event.pull_request.head.sha }}'
 
   test:
     needs: changes
