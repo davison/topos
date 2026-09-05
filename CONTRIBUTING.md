@@ -156,8 +156,12 @@ over every commit a pull request would land, against
 type matters beyond style — the release tag is derived from the commit
 log (`docs/releasing.md`, "Versioning"), so `feat:` and `fix:` are
 version claims. The config inherits `@commitlint/config-conventional`
-with two rules switched off, body and footer line length, because the
-house style writes bodies as unwrapped paragraphs; the file says why.
+with three departures: body and footer line length are off, because
+the house style writes bodies as unwrapped paragraphs, and the type
+list is narrowed to the eight types the derivation defines (`feat`,
+`fix`, `docs`, `chore`, `test`, `ci`, `build`, `refactor`), so nothing
+lands under a type the version cannot read; the file records why for
+each.
 To run the same check locally over your branch, at the versions CI
 pins (an unpinned run can disagree with the gate):
 
