@@ -8,7 +8,7 @@ binary is among the published artifacts.
 ## Milestones
 
 A milestone is a GitHub issue labelled `cc:milestone` — [#6](https://github.com/davison/topos/issues/6)
-was M1, [#40](https://github.com/davison/topos/issues/40) is M2 — and
+was M1, [#40](https://github.com/davison/topos/issues/40) was M2 — and
 its lifecycle is CodeCrew's, driven by the `gh codecrew` verbs (the
 protocol is [gh-codecrew's SPEC](https://github.com/radiusred/gh-codecrew/blob/main/SPEC.md);
 `AGENTS.md` at the repository root says how this project runs it).
@@ -16,8 +16,10 @@ GitHub's own milestone objects are not part of it.
 
 - **Opening.** `gh codecrew milestone new --title … --goal … --requirement …`
   creates the issue with its numbered requirements (`M<n>-R<k>`) and
-  writes the milestone's row into [`ROADMAP.md`](../ROADMAP.md) locally —
-  that edit rides in the milestone's first PR, as the verb says.
+  nothing else: [`ROADMAP.md`](../ROADMAP.md) lists finished milestones
+  and `gh codecrew status` reports the open one, so no row is written
+  until the milestone closes (gh-codecrew v1.2.0; before it the verb
+  wrote an Open row locally that rode in the first PR).
 - **Work.** Every change is a task issue (`task new --milestone N`), with
   its plan in the issue body, started (`task start`, which creates the
   linked branch) and finished (`task finish --operator-confirm`, which
@@ -30,7 +32,8 @@ GitHub's own milestone objects are not part of it.
   record cites; the qa seat posts one verdict line per requirement on
   the milestone issue and files a remedy task for anything not
   satisfied; the milestone document lands under
-  [`docs/milestones/`](milestones/) as the last task; the release tag is
+  [`docs/milestones/`](milestones/) as the last task, and its PR adds
+  the milestone's row to `ROADMAP.md`, already Done; the release tag is
   cut from the main that document merged into (below); the operator's
   live-instance UAT is raised as a checkpoint; then
   `gh codecrew milestone close N` closes the issue once its gates —
