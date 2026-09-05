@@ -109,18 +109,22 @@ jobs:
         with:
           node-version: '26'
 
-      # The CLI and the preset are installed under the runner's temp
-      # directory, exact versions, no lockfile: the repo root has no
-      # package.json and gains none. commitlint resolves the config's
-      # `extends` from its own install, so the packages need not sit in
-      # the workspace. The range is the PR's own commits — everything
-      # reachable from the head that the base branch does not have.
+      # The CLI and the preset are installed at the workspace root, exact
+      # versions, no lockfile: the repo root has no package.json and
+      # gains none (`--no-save`), and a root node_modules/ is gitignored.
+      # They must sit there: commitlint resolves the config's `extends`
+      # from the working directory first and from the npm cache second,
+      # never from its own install — an install under $RUNNER_TEMP
+      # failed on this job's first run with MODULE_NOT_FOUND for the
+      # preset (it had passed locally only because an earlier npx run
+      # had left the preset in the cache). The range is the PR's own
+      # commits — everything reachable from the head that the base
+      # branch does not have.
       - run: >-
-          npm install --no-package-lock --no-save
-          --prefix "$RUNNER_TEMP/commitlint"
+          npm install --no-package-lock --no-save --prefix "$GITHUB_WORKSPACE"
           @commitlint/cli@21.2.2 @commitlint/config-conventional@21.2.2
       - run: >-
-          "$RUNNER_TEMP/commitlint/node_modules/.bin/commitlint"
+          node_modules/.bin/commitlint
           --config commitlint.config.mjs --verbose
           --from '${{ github.event.pull_request.base.sha }}'
           --to '${{ github.event.pull_request.head.sha }}'
