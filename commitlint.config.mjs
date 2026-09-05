@@ -26,6 +26,14 @@
 //   remedied by #98). Widening this list means first saying in
 //   docs/releasing.md what the new type does to the version.
 //
+// - defaultIgnores stays on, as inherited: commitlint passes a
+//   `Revert "…"` header (what `git revert` writes), `Merge …`, `fixup!`
+//   and `squash!` before any rule runs, so those land untyped (QA on
+//   #98). Switching it off would refuse git's own revert header while
+//   `revert:` is not a type the derivation defines — the same rule as
+//   widening type-enum: docs/releasing.md says what a revert means to
+//   the version first.
+//
 // Everything else is inherited as-is — the empty-type and empty-subject
 // refusals, the lower-case subject, the 100-character header limit.
 // With this config the 60 commits measured above fail 12 times, all on
