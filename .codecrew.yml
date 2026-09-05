@@ -11,7 +11,11 @@ roles:
   # reviewer: the operator's auth, but the review itself is a headless Codex
   # session loaded with `gh codecrew roles show reviewer` — de-correlated
   # judgment without an App (solo mode; merges use --operator-confirm).
-  reviewer: { identity: ~, harness: codex }
+  # `model` is the model the seat is dispatched under: the dispatch passes
+  # it (`codex exec -m gpt-5.5 …`) and never inherits the harness default
+  # (gh-codecrew #212); a seat that must reach GitHub from the sandbox also
+  # takes `-c sandbox_workspace_write.network_access=true` (#202).
+  reviewer: { identity: ~, harness: codex, model: gpt-5.5 }
   # qa: ~ is the solo-mode design, not an omission — verdicts come from
   # dispatched clean-context sessions loaded with `gh codecrew roles show
   # qa`, posting under the operator's own auth, which is exactly the
