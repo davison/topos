@@ -31,22 +31,48 @@ rests on a gate rather than review vigilance. The charter named its own
 release outcome in advance — "expected tag derivation at the gate:
 docs/chore/ci only → no release" — and the gate bore that out.
 
-**The upstream that occasioned it.**
+**The upstream that occasioned it.** Everything in this paragraph is
+sourced to the upstream release
 [gh-codecrew v1.2.0](https://github.com/radiusred/gh-codecrew/releases/tag/v1.2.0)
-published 2026-09-05. Two of its changelog entries are what M4 adopts.
+(published 2026-09-05), its
+[CHANGELOG at that tag](https://github.com/radiusred/gh-codecrew/blob/v1.2.0/CHANGELOG.md)
+and the
+[M10 record](https://github.com/radiusred/gh-codecrew/blob/v1.2.0/docs/milestones/10-protocol-bookkeeping-from-the-field.md)
+beneath it; it is upstream's own account, not this hub's observation.
+Two of the changelog's entries are what M4 adopts.
+
 *"The ROADMAP row belongs to the doc-synthesizer at both ends"*
 ([gh-codecrew #208](https://github.com/radiusred/gh-codecrew/issues/208),
 [PR #216](https://github.com/radiusred/gh-codecrew/pull/216)):
-`milestone new` creates the tracking issue and nothing else — the local
-append to `ROADMAP.md` and the "rides in this milestone's first PR"
-line are gone, because the row had no PR to ride in when a milestone's
-tasks all lived in spokes, a shape hit three times in the field
-upstream. *"The codex seats are pinned to gpt-5.5"*
+`milestone new` creates the tracking issue and nothing else — "the
+local append to `ROADMAP.md`, the 'rides in this milestone's first PR'
+line and `--dry-run`'s row are gone. The row had no PR to ride in when
+a milestone's tasks all lived in spokes — hit three times in the field
+— so the doc-synthesizer now adds it, already Done, in the record PR."
+This hub is one of those three: the M10 record names the field runs
+that produced the cluster of gaps as "the `radiusred/ops` company hub,
+the `davison/topos` solo hub and the `codecrew-www` spoke."
+
+*"The codex seats are pinned to gpt-5.5"*
 ([gh-codecrew #226](https://github.com/radiusred/gh-codecrew/issues/226),
 [PR #228](https://github.com/radiusred/gh-codecrew/pull/228)): upstream
-moved its own codex seats off `gpt-5.6-sol` for cost on 2026-09-04, and
-the dispatch guidance became "pass the model, never inherit the harness
-default" ([gh-codecrew #212](https://github.com/radiusred/gh-codecrew/issues/212)).
+pins `model: gpt-5.5` on its own `reviewer` and `qa` rows, "the model
+the two codex-harnessed seats run under since the operator's Decision
+on #207 (2026-09-04) moved them off `gpt-5.6-sol` for cost" — the
+re-pin [#92's Decision](https://github.com/davison/topos/issues/92#issuecomment-5554073841)
+cites when it records the operator's own word on the model. The
+dispatch guidance those pins answer to is the third entry
+([gh-codecrew #212](https://github.com/radiusred/gh-codecrew/issues/212),
+[PR #217](https://github.com/radiusred/gh-codecrew/pull/217)):
+`docs/identities.md` gained a Reachability bullet and a statement of
+"how a codex seat's model and reasoning effort are set at dispatch
+(`-m`, `-c model_reasoning_effort=<level>`)", with
+`-c sandbox_workspace_write.network_access=true` as the flag a
+sandboxed seat needs to reach GitHub at all. Those are the two flags
+`.codecrew.yml`'s reviewer comment names, and its two citations are to
+this entry's issue and the capture that entry adopts
+([gh-codecrew #212](https://github.com/radiusred/gh-codecrew/issues/212),
+[#202](https://github.com/radiusred/gh-codecrew/issues/202)).
 
 **Shipped:**
 
@@ -121,12 +147,20 @@ solo-mode arrangement `.codecrew.yml` records
 `gh codecrew milestone evidence 4` first, as #91's Gates require:
 "requirements counted: M4-R1, M4-R2, M4-R3 (3) — all 0 cited links
 resolve across 4 issues", nothing in this milestone's record having
-cited a link for the verb to reject. Both verdict rounds re-ran the
-floors by their own hands on fresh full clones of merged `main` —
+cited a link for the verb to reject. Each round re-ran its floors by
+its own hands on a fresh full clone of merged `main`, and each says
+that green there is the verdict's first sentence, not its evidence.
+[The first round](https://github.com/davison/topos/issues/91#issuecomment-5554238086),
+covering all three requirements from a clone at `b5b7abf`, ran
 `make docs-check` (433 links across 20 files), the split-claims sweep
-(flagged: 0), and `gh codecrew roles diff` for all five roles — and
-both say that green there is the verdict's first sentence, not its
-evidence.
+(flagged: 0) and `gh codecrew roles diff` for all five roles (no
+`-`/`+` line on any).
+[The second](https://github.com/davison/topos/issues/91#issuecomment-5554335027)
+is **M4-R3 only** — it says in its own first line that M4-R1 and M4-R2
+are unchanged and not re-verified there — and from a new clone at
+`784cb25` it ran `make docs-check` and the split-claims sweep, plus the
+commitlint probes the requirement itself is about; it did not re-run
+`roles diff`, which bears on M4-R1 and had nothing to re-check.
 
 | Requirement | Delivered by | Outcome |
 |---|---|---|
