@@ -31,9 +31,9 @@ the browser._
 
 ## Status
 
-topos is past its v1 milestones and shipped v1.3.1, the usability
-milestone; M3, the daily-driver polish milestone, is merged on main,
-its tag following the release gate. Seven sources ship today — paperless-ngx, SilverBullet,
+topos is past its v1 milestones and shipped v1.3.2, the daily-driver
+polish milestone; M4, protocol housekeeping, followed it on main and
+cut no release, changing no kernel or web behaviour. Seven sources ship today — paperless-ngx, SilverBullet,
 Proton Mail (via Bridge, never marking mail read), Signal Desktop (read
 strictly read-only from its local database, with a schema ceiling that
 advances by a verify-and-accept command run against your own database,
@@ -65,7 +65,9 @@ required to get started), a default-deny agent permission model, and
 a responsive layout that adapts down to mobile widths. Development
 quality-of-life moved with it: docs-only changes clear CI in seconds,
 release version numbers are derived from the commit log rather than
-chosen by feel, the plugin test suites are hermetic on any machine (a
+chosen by feel and a CI check lints every pull request's commit
+messages against exactly the types that derivation reads, the plugin
+test suites are hermetic on any machine (a
 test can never wander into a live OAuth flow on the operator's
 exported credentials), and the fleet's release verifier is pinned at
 the kernel release it actually pairs with. The record of each milestone lives under
