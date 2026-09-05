@@ -101,6 +101,13 @@ obligations. A wrongly-typed commit discovered after merge is corrected
 by a follow-up commit stating the true consequence in its own type; the
 derivation then reads both.
 
+The form is gated before the judgment is: CI's `Lint commit messages`
+check runs commitlint over every pull request's commits against
+[`commitlint.config.mjs`](../commitlint.config.mjs), so a commit whose
+type is not one the derivation can read (or is missing altogether)
+never reaches `main`. The lint checks the type is well-formed; only
+the review checks it is true.
+
 Sequence:
 
 1. Confirm the portable gate is green (`make test-portable`, or check the

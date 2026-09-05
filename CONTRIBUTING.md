@@ -149,6 +149,22 @@ fleet is released, installed and updated from
 [`docs/releasing.md`](docs/releasing.md) for how a release is actually
 cut and what the nightly build does.
 
+Commit messages are conventional commits, and CI enforces it: the
+`Lint commit messages` check runs [commitlint](https://commitlint.js.org/)
+over every commit a pull request would land, against
+[`commitlint.config.mjs`](commitlint.config.mjs) at the repo root. The
+type matters beyond style — the release tag is derived from the commit
+log (`docs/releasing.md`, "Versioning"), so `feat:` and `fix:` are
+version claims. The config inherits `@commitlint/config-conventional`
+with two rules switched off, body and footer line length, because the
+house style writes bodies as unwrapped paragraphs; the file says why.
+To run the same check locally over your branch:
+
+```bash
+npx --yes --package @commitlint/cli --package @commitlint/config-conventional \
+  commitlint --config commitlint.config.mjs --from origin/main --to HEAD
+```
+
 ## Where to look next
 
 - **[`docs/plugin-development.md`](docs/plugin-development.md)** — writing
